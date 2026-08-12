@@ -21,7 +21,6 @@ set -euo pipefail
 # ── Configuration ────────────────────────────────────────────────────────────
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 INSTANCE_TYPE="${BENCH_INSTANCE:-t3.medium}"
-AMI_ID="${BENCH_AMI:-ami-0c7217cdde3efc8f2}"  # Ubuntu 22.04 LTS us-east-1
 KEY_NAME="velocity-bench-$$"
 SG_NAME="velocity-bench-sg-$$"
 PROFILE="${BENCH_PROFILE:-standard}"  # quick | standard | stress
@@ -55,9 +54,24 @@ if ! command -v aws &>/dev/null; then
     exit 1
 fi
 
+# Look up latest Ubuntu 22.04 AMI for current region (Canonical official)
+log "Looking up Ubuntu 22.04 AMI for region $REGION..."
+AMI_ID=$(aws ec2 describe-images \
+    --owners 099720109477 \
+    --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" \
+              "Name=state,Values=available" \
+    --query 'sort_by(Images,&CreationDate)[-1].ImageId' \
+    --output text \
+    --region "$REGION")
+
+if [ -z "$AMI_ID" ] || [ "$AMI_ID" = "None" ]; then
+    echo "ERROR: Could not find Ubuntu 22.04 AMI in $REGION" >&2
+    exit 1
+fi
+
 log "Region:        $REGION"
 log "Instance type: $INSTANCE_TYPE"
-log "AMI:           $AMI_ID"
+log "AMI:           $AMI_ID (auto-detected)"
 log "Profile:       $PROFILE"
 log "Workloads:     $WORKLOADS"
 echo ""
@@ -95,7 +109,7 @@ aws ec2 authorize-security-group-ingress \
     --protocol tcp \
     --port 22 \
     --cidr "${MY_IP}/32" \
-    --output none
+    --output json > /dev/null
 
 log "  SG created: $SG_ID (SSH from $MY_IP only)"
 
