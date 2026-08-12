@@ -13,10 +13,16 @@
     <ProjectReference Include="..\Velocity.Workflow.Generators\Velocity.Workflow.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
-  <!-- Copy native Rust DLLs to output -->
+  <!-- Copy native Rust DLLs to output (skip if not present — platform-specific) -->
   <Target Name="CopyNativeDlls" BeforeTargets="Build">
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)runtimes\win-x64\native\velocity_workflow_core.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)runtimes\win-x64\native\velocity_workflow_engine.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)runtimes\win-x64\native\velocity_workflow_core.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildThisFileDirectory)runtimes\win-x64\native\velocity_workflow_core.dll')" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)runtimes\win-x64\native\velocity_workflow_engine.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildThisFileDirectory)runtimes\win-x64\native\velocity_workflow_engine.dll')" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)runtimes\linux-x64\native\libvelocity_workflow_core.so" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildThisFileDirectory)runtimes\linux-x64\native\libvelocity_workflow_core.so')" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)runtimes\linux-x64\native\libvelocity_workflow_engine.so" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildThisFileDirectory)runtimes\linux-x64\native\libvelocity_workflow_engine.so')" />
   </Target>
 
 </Project>

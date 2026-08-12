@@ -335,8 +335,13 @@ impl DevEngine {
         wf_type: &str,
         task_queue: &str,
         input: serde_json::Value,
+        requested_id: &str,
     ) -> Result<WorkflowExecution, String> {
-        let wf_id = format!("wf-{}", generate_id());
+        let wf_id = if requested_id.is_empty() {
+            format!("wf-{}", generate_id())
+        } else {
+            requested_id.to_string()
+        };
         let run_id = generate_id();
         let now = now_millis();
 
@@ -850,7 +855,7 @@ async fn route_request(
                     let task_queue = v["taskQueue"].as_str().unwrap_or("default-queue");
                     let input = v.get("input").cloned().unwrap_or(serde_json::Value::Null);
                     let namespace = v["namespace"].as_str().unwrap_or(&engine.config.namespace);
-                    match engine.start_workflow(namespace, wf_type, task_queue, input) {
+                    match engine.start_workflow(namespace, wf_type, task_queue, input, "") {
                         Ok(exec) => (
                             created.to_string(),
                             json.to_string(),
@@ -1457,6 +1462,7 @@ mod tests {
             "TestWorkflow",
             "test-queue",
             serde_json::json!({"key": "value"}),
+            "",
         );
         assert!(result.is_ok());
         let wf = result.unwrap();
@@ -1476,6 +1482,7 @@ mod tests {
                 "TestWorkflow",
                 "test-queue",
                 serde_json::Value::Null,
+                "",
             )
             .unwrap();
         let result = engine.complete_workflow(
@@ -1498,6 +1505,7 @@ mod tests {
                 "TestWorkflow",
                 "test-queue",
                 serde_json::Value::Null,
+                "",
             )
             .unwrap();
         let result = engine.fail_workflow("test", &wf.workflow_id, "something went wrong");
@@ -1515,6 +1523,7 @@ mod tests {
                 "TestWorkflow",
                 "test-queue",
                 serde_json::Value::Null,
+                "",
             )
             .unwrap();
         let result = engine.signal_workflow(
@@ -1541,13 +1550,13 @@ mod tests {
     fn test_list_workflows() {
         let engine = DevEngine::new(test_config());
         engine
-            .start_workflow("test", "WF1", "q1", serde_json::Value::Null)
+            .start_workflow("test", "WF1", "q1", serde_json::Value::Null, "")
             .unwrap();
         engine
-            .start_workflow("test", "WF2", "q2", serde_json::Value::Null)
+            .start_workflow("test", "WF2", "q2", serde_json::Value::Null, "")
             .unwrap();
         engine
-            .start_workflow("test", "WF3", "q1", serde_json::Value::Null)
+            .start_workflow("test", "WF3", "q1", serde_json::Value::Null, "")
             .unwrap();
         let result = engine.list_workflows("test", None, 100);
         assert_eq!(result.executions.len(), 3);
@@ -1558,10 +1567,10 @@ mod tests {
     fn test_list_workflows_with_status_filter() {
         let engine = DevEngine::new(test_config());
         let wf1 = engine
-            .start_workflow("test", "WF1", "q1", serde_json::Value::Null)
+            .start_workflow("test", "WF1", "q1", serde_json::Value::Null, "")
             .unwrap();
         engine
-            .start_workflow("test", "WF2", "q2", serde_json::Value::Null)
+            .start_workflow("test", "WF2", "q2", serde_json::Value::Null, "")
             .unwrap();
         engine
             .complete_workflow("test", &wf1.workflow_id, serde_json::Value::Null)
@@ -1581,6 +1590,7 @@ mod tests {
                 "TestWorkflow",
                 "test-queue",
                 serde_json::Value::Null,
+                "",
             )
             .unwrap();
         let history = engine.get_history("test", &wf.workflow_id);
@@ -1606,13 +1616,13 @@ mod tests {
     fn test_task_queues() {
         let engine = DevEngine::new(test_config());
         engine
-            .start_workflow("test", "WF1", "queue-a", serde_json::Value::Null)
+            .start_workflow("test", "WF1", "queue-a", serde_json::Value::Null, "")
             .unwrap();
         engine
-            .start_workflow("test", "WF2", "queue-b", serde_json::Value::Null)
+            .start_workflow("test", "WF2", "queue-b", serde_json::Value::Null, "")
             .unwrap();
         engine
-            .start_workflow("test", "WF3", "queue-a", serde_json::Value::Null)
+            .start_workflow("test", "WF3", "queue-a", serde_json::Value::Null, "")
             .unwrap();
         let tqs = engine.list_task_queues("test");
         assert_eq!(tqs.len(), 2);
@@ -1627,6 +1637,7 @@ mod tests {
                 "TestWorkflow",
                 "test-queue",
                 serde_json::Value::Null,
+                "",
             )
             .unwrap();
         engine
@@ -1648,6 +1659,7 @@ mod tests {
                 "TestWorkflow",
                 "test-queue",
                 serde_json::Value::Null,
+                "",
             )
             .unwrap();
         let result = engine.query_workflow("test", &wf.workflow_id, "__stack_trace");

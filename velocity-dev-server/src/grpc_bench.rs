@@ -62,7 +62,13 @@ impl BenchmarkService for BenchmarkServiceImpl {
 
         let execution = self
             .engine
-            .start_workflow(namespace, &req.workflow_type, task_queue, input)
+            .start_workflow(
+                namespace,
+                &req.workflow_type,
+                task_queue,
+                input,
+                &req.workflow_id,
+            )
             .map_err(|e| Status::internal(e))?;
 
         tracing::debug!(

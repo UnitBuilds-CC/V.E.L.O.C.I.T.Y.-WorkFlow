@@ -1,6 +1,6 @@
 # =============================================================================
 # Multi-stage Dockerfile for Velocity Workflow Server
-# Stage 1: Build Rust engine (cdylib + rlib)
+# Stage 1: Build Rust engine (workspace build)
 # Stage 2: Build .NET server (net10.0)
 # Stage 3: Minimal runtime image
 # =============================================================================
@@ -14,25 +14,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build/rust
 
-# Cache dependencies first
+# Copy workspace root Cargo.toml
+COPY Cargo.toml Cargo.lock ./
+
+# Copy all workspace member Cargo.toml files for dependency caching
 COPY velocity-workflow-core/Cargo.toml velocity-workflow-core/Cargo.toml
 COPY velocity-workflow-engine/Cargo.toml velocity-workflow-engine/Cargo.toml
 COPY velocity-workflow-daemon/Cargo.toml velocity-workflow-daemon/Cargo.toml
+COPY velocity-bench/Cargo.toml velocity-bench/Cargo.toml
+COPY velocity-dev-server/Cargo.toml velocity-dev-server/Cargo.toml
+COPY velocity-test-framework/Cargo.toml velocity-test-framework/Cargo.toml
 
-# Create dummy lib.rs files to cache dependency builds
+# Create dummy source files to cache dependency builds
 RUN mkdir -p velocity-workflow-core/src && echo "pub fn dummy(){}" > velocity-workflow-core/src/lib.rs && \
     mkdir -p velocity-workflow-engine/src && echo "pub fn dummy(){}" > velocity-workflow-engine/src/lib.rs && \
-    mkdir -p velocity-workflow-daemon/src && echo "fn main(){}" > velocity-workflow-daemon/src/main.rs
+    mkdir -p velocity-workflow-daemon/src && echo "fn main(){}" > velocity-workflow-daemon/src/main.rs && \
+    mkdir -p velocity-bench/src && echo "pub fn dummy(){}" > velocity-bench/src/lib.rs && \
+    mkdir -p velocity-dev-server/src && echo "fn main(){}" > velocity-dev-server/src/main.rs && \
+    mkdir -p velocity-test-framework/src && echo "pub fn dummy(){}" > velocity-test-framework/src/lib.rs
 
-RUN cargo build --release --manifest-path velocity-workflow-engine/Cargo.toml || true
+# Pre-build dependencies (ignore errors from dummy sources)
+RUN cargo build --release --workspace || true
 
 # Copy actual source and build
 COPY velocity-workflow-core/ velocity-workflow-core/
 COPY velocity-workflow-engine/ velocity-workflow-engine/
 COPY velocity-workflow-daemon/ velocity-workflow-daemon/
+COPY velocity-bench/ velocity-bench/
+COPY velocity-dev-server/ velocity-dev-server/
+COPY velocity-test-framework/ velocity-test-framework/
 
-RUN cargo build --release --manifest-path velocity-workflow-engine/Cargo.toml && \
-    cargo build --release --manifest-path velocity-workflow-core/Cargo.toml
+RUN cargo build --release --workspace
 
 # ── Stage 2: .NET Builder ────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS dotnet-builder

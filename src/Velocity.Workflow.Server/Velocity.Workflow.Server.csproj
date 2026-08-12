@@ -23,10 +23,16 @@
     <ProjectReference Include="..\Velocity.Workflow.Core\Velocity.Workflow.Core.csproj" />
   </ItemGroup>
 
-  <!-- Copy native Rust DLLs from Core project runtimes folder -->
+  <!-- Copy native Rust DLLs from Core project runtimes folder (skip if not present) -->
   <Target Name="CopyNativeDlls" BeforeTargets="Build">
-    <Copy SourceFiles="..\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_core.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="..\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_engine.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_core.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('..\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_core.dll')" />
+    <Copy SourceFiles="..\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_engine.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('..\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_engine.dll')" />
+    <Copy SourceFiles="..\Velocity.Workflow.Core\runtimes\linux-x64\native\libvelocity_workflow_core.so" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('..\Velocity.Workflow.Core\runtimes\linux-x64\native\libvelocity_workflow_core.so')" />
+    <Copy SourceFiles="..\Velocity.Workflow.Core\runtimes\linux-x64\native\libvelocity_workflow_engine.so" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('..\Velocity.Workflow.Core\runtimes\linux-x64\native\libvelocity_workflow_engine.so')" />
   </Target>
 
 </Project>
