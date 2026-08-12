@@ -3,7 +3,7 @@
 //! Produces Markdown, CSV, and JSON reports comparing VELOCITY vs Temporal
 //! metrics for each workload. Includes delta percentages and verdicts.
 
-use crate::metrics::MetricsSnapshot;
+use crate::metrics::{AggregateMetrics, MetricsSnapshot, SignificanceTest};
 use serde::{Deserialize, Serialize};
 
 // ─── Comparison Row ──────────────────────────────────────────────────────────
@@ -145,6 +145,23 @@ pub struct ComparisonReport {
     pub temporal_version: String,
     pub rows: Vec<ComparisonRow>,
     pub summary: ReportSummary,
+    /// Statistical aggregation across multiple runs (present when --runs > 1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statistical_summary: Option<StatisticalReport>,
+}
+
+/// Statistical report data from multiple benchmark runs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatisticalReport {
+    /// Number of runs per workload.
+    pub runs_per_workload: usize,
+    /// Per-workload aggregate metrics for Velocity.
+    pub velocity_aggregates: Vec<AggregateMetrics>,
+    /// Per-workload aggregate metrics for Temporal.
+    pub temporal_aggregates: Vec<AggregateMetrics>,
+    /// Statistical significance tests (when --significance is enabled).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub significance_tests: Vec<SignificanceTest>,
 }
 
 /// Summary statistics across all workloads.

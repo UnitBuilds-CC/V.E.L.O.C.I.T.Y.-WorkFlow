@@ -113,6 +113,58 @@ service WorkflowService {
   // GetSystemInfo returns server capabilities and version info.
   rpc GetSystemInfo(GetSystemInfoRequest)
       returns (GetSystemInfoResponse);
+
+  // ─── Advanced Visibility ───────────────────────────────────────────────────
+
+  // CountWorkflowExecutions returns the count of workflows matching a query.
+  rpc CountWorkflowExecutions(CountWorkflowExecutionsRequest)
+      returns (CountWorkflowExecutionsResponse);
+
+  // ScanWorkflowExecutions lists workflows using a scan (eventual consistency).
+  rpc ScanWorkflowExecutions(ScanWorkflowExecutionsRequest)
+      returns (ScanWorkflowExecutionsResponse);
+
+  // ResetWorkflowExecution resets a workflow execution to a specified point.
+  rpc ResetWorkflowExecution(ResetWorkflowExecutionRequest)
+      returns (ResetWorkflowExecutionResponse);
+
+  // UpdateWorkflowExecution sends a synchronous update to a running workflow.
+  rpc UpdateWorkflowExecution(UpdateWorkflowExecutionRequest)
+      returns (UpdateWorkflowExecutionResponse);
+
+  // CreateSchedule creates a new schedule for recurring workflow executions.
+  rpc CreateSchedule(CreateScheduleRequest)
+      returns (CreateScheduleResponse);
+
+  // DescribeSchedule returns information about a schedule.
+  rpc DescribeSchedule(DescribeScheduleRequest)
+      returns (DescribeScheduleResponse);
+
+  // ListSchedules lists all schedules in a namespace.
+  rpc ListSchedules(ListSchedulesRequest)
+      returns (ListSchedulesResponse);
+
+  // DeleteSchedule deletes a schedule.
+  rpc DeleteSchedule(DeleteScheduleRequest)
+      returns (DeleteScheduleResponse);
+
+  // UpdateSchedule modifies an existing schedule.
+  rpc UpdateSchedule(UpdateScheduleRequest)
+      returns (UpdateScheduleResponse);
+
+  // ─── Batch Operations ──────────────────────────────────────────────────────
+
+  // StartBatchOperation starts a batch operation (terminate, cancel, signal many workflows).
+  rpc StartBatchOperation(StartBatchOperationRequest)
+      returns (StartBatchOperationResponse);
+
+  // DescribeBatchOperation returns info about a batch operation.
+  rpc DescribeBatchOperation(DescribeBatchOperationRequest)
+      returns (DescribeBatchOperationResponse);
+
+  // ListBatchOperations lists batch operations in a namespace.
+  rpc ListBatchOperations(ListBatchOperationsRequest)
+      returns (ListBatchOperationsResponse);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -280,6 +332,11 @@ message ListWorkflowExecutionsRequest {
   // Optional time range filter.
   google.protobuf.Timestamp start_time_min = 7;
   google.protobuf.Timestamp start_time_max = 8;
+
+  // Optional SQL-like query string for advanced visibility filtering.
+  // Supports: =, !=, <, >, <=, >=, AND, OR, NOT, BETWEEN, IN, LIKE, IS NULL, IS NOT NULL
+  // Example: "WorkflowType = 'MyWorkflow' AND ExecutionStatus = 'Running'"
+  string query = 9;
 }
 
 message ListWorkflowExecutionsResponse {
@@ -317,6 +374,8 @@ message PollWorkflowTaskQueueRequest {
   TaskQueue task_queue = 2;
   string identity = 3;
   string build_id = 4;
+  // Long poll timeout in milliseconds. If 0 or not set, returns immediately.
+  int64 long_poll_timeout_ms = 5;
 }
 
 message PollWorkflowTaskQueueResponse {
@@ -336,6 +395,8 @@ message PollActivityTaskQueueRequest {
   TaskQueue task_queue = 2;
   string identity = 3;
   string build_id = 4;
+  // Long poll timeout in milliseconds. If 0 or not set, returns immediately.
+  int64 long_poll_timeout_ms = 5;
 }
 
 message PollActivityTaskQueueResponse {
@@ -530,4 +591,242 @@ message GetSystemInfoRequest {
 
 message GetSystemInfoResponse {
   SystemInfo system_info = 1;
+}
+
+// ─── CountWorkflowExecutions ───────────────────────────────────────────────────
+
+message CountWorkflowExecutionsRequest {
+  string namespace = 1;
+  string query = 2;
+}
+
+message CountWorkflowExecutionsResponse {
+  int64 count = 1;
+}
+
+// ─── ScanWorkflowExecutions ────────────────────────────────────────────────────
+
+message ScanWorkflowExecutionsRequest {
+  string namespace = 1;
+  int32 page_size = 2;
+  bytes next_page_token = 3;
+  string query = 4;
+}
+
+message ScanWorkflowExecutionsResponse {
+  repeated WorkflowExecutionInfo executions = 1;
+  bytes next_page_token = 2;
+}
+
+// ─── ResetWorkflowExecution ────────────────────────────────────────────────────
+
+message ResetWorkflowExecutionRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  string reason = 3;
+  int64 workflow_task_finish_event_id = 4;
+}
+
+message ResetWorkflowExecutionResponse {
+  string run_id = 1;
+}
+
+// ─── UpdateWorkflowExecution ─────────────────────────────────────────────────
+
+message UpdateWorkflowExecutionRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  string update_id = 3;
+  string update_name = 4;
+  Payload args = 5;
+  string identity = 6;
+  // Wait policy: 0=admitted, 1=accepted, 2=completed
+  int32 wait_policy = 7;
+}
+
+message UpdateWorkflowExecutionResponse {
+  string update_id = 1;
+  // Status: 0=admitted, 1=accepted, 2=completed, 3=rejected
+  int32 status = 2;
+  Payload result = 3;
+  string failure = 4;
+}
+
+// ─── Schedule Management ─────────────────────────────────────────────────────
+
+message CreateScheduleRequest {
+  string namespace = 1;
+  string schedule_id = 2;
+  ScheduleSpec spec = 3;
+  ScheduleAction action = 4;
+  SchedulePolicies policies = 5;
+  string identity = 6;
+  string request_id = 7;
+  Memo memo = 8;
+  SearchAttributes search_attributes = 9;
+}
+
+message CreateScheduleResponse {
+  string schedule_id = 1;
+}
+
+message DescribeScheduleRequest {
+  string namespace = 1;
+  string schedule_id = 2;
+}
+
+message DescribeScheduleResponse {
+  string schedule_id = 1;
+  ScheduleSpec spec = 2;
+  ScheduleAction action = 3;
+  SchedulePolicies policies = 4;
+  ScheduleState state = 5;
+  int64 create_time = 6;
+  int64 last_updated = 7;
+}
+
+message ListSchedulesRequest {
+  string namespace = 1;
+  int32 page_size = 2;
+  bytes next_page_token = 3;
+  string query = 4;
+}
+
+message ListSchedulesResponse {
+  repeated ScheduleListEntry schedules = 1;
+  bytes next_page_token = 2;
+}
+
+message ScheduleListEntry {
+  string schedule_id = 1;
+  ScheduleSpec spec = 2;
+  ScheduleState state = 3;
+}
+
+message DeleteScheduleRequest {
+  string namespace = 1;
+  string schedule_id = 2;
+  string identity = 3;
+}
+
+message DeleteScheduleResponse {
+}
+
+message UpdateScheduleRequest {
+  string namespace = 1;
+  string schedule_id = 2;
+  ScheduleSpec spec = 3;
+  ScheduleAction action = 4;
+  SchedulePolicies policies = 5;
+  string identity = 6;
+  string request_id = 7;
+}
+
+message UpdateScheduleResponse {
+  string schedule_id = 1;
+}
+
+// ─── Schedule Sub-Messages ───────────────────────────────────────────────────
+
+message ScheduleSpec {
+  // Cron expression (5-field)
+  string cron_expression = 1;
+  // Calendar spec fields
+  string calendar_spec = 2;
+  // Interval in seconds
+  int64 interval_seconds = 3;
+  // Start time (epoch ms)
+  int64 start_time = 4;
+  // End time (epoch ms)
+  int64 end_time = 5;
+  // Jitter in seconds
+  int32 jitter_seconds = 6;
+  // Timezone name
+  string timezone = 7;
+}
+
+message ScheduleAction {
+  // Start a workflow when the schedule fires
+  StartWorkflowExecutionRequest start_workflow = 1;
+}
+
+message SchedulePolicies {
+  // Overlap policy: 0=skip, 1=buffer-one, 2=buffer-all, 3=terminate-other, 4=allow-all
+  int32 overlap_policy = 1;
+  // Catchup window in seconds
+  int64 catchup_window_seconds = 2;
+  // Pause on failure
+  bool pause_on_failure = 3;
+}
+
+message ScheduleState {
+  // 0=active, 1=paused, 2=completed
+  int32 status = 1;
+  // Optional note
+  string note = 2;
+  // Number of actions taken
+  int64 action_count = 3;
+  // Number of missed actions
+  int64 missed_count = 4;
+}
+
+// ─── Batch Operations ──────────────────────────────────────────────────────
+
+message StartBatchOperationRequest {
+  string namespace = 1;
+  // Job ID (optional, generated if empty)
+  string job_id = 2;
+  // Operation type: 0=terminate, 1=cancel, 2=signal, 3=query_status
+  int32 operation = 3;
+  // Visibility query to select workflows (e.g., "Status='running'")
+  string visibility_query = 4;
+  // For signal operations
+  string signal_name = 5;
+  Payload signal_input = 6;
+  // Reason for the batch operation
+  string reason = 7;
+  string identity = 8;
+}
+
+message StartBatchOperationResponse {
+  string job_id = 1;
+}
+
+message DescribeBatchOperationRequest {
+  string namespace = 1;
+  string job_id = 2;
+}
+
+message DescribeBatchOperationResponse {
+  string job_id = 1;
+  int32 operation = 2;
+  // 0=pending, 1=running, 2=completed, 3=failed
+  int32 status = 3;
+  int64 total_workflows = 4;
+  int64 succeeded = 5;
+  int64 failed = 6;
+  string reason = 7;
+  google.protobuf.Timestamp start_time = 8;
+  google.protobuf.Timestamp close_time = 9;
+}
+
+message ListBatchOperationsRequest {
+  string namespace = 1;
+  int32 page_size = 2;
+  bytes next_page_token = 3;
+}
+
+message ListBatchOperationsResponse {
+  repeated BatchOperationInfo operations = 1;
+  bytes next_page_token = 2;
+}
+
+message BatchOperationInfo {
+  string job_id = 1;
+  int32 operation = 2;
+  int32 status = 3;
+  int64 total_workflows = 4;
+  int64 succeeded = 5;
+  int64 failed = 6;
+  google.protobuf.Timestamp start_time = 7;
 }

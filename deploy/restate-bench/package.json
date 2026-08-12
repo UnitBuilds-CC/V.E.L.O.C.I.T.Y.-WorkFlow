@@ -1,0 +1,7 @@
+{
+  "name": "restate-bench",
+  "version": "1.0.0",
+  "dependencies": {
+    "@restatedev/restate-sdk": "^1.4.0"
+  }
+}

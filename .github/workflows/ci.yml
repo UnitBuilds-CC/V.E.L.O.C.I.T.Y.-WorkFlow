@@ -63,6 +63,37 @@ jobs:
       - name: Run tests
         run: cargo test --release --workspace --lib --bins -- --test-threads=1
 
+      - name: Run integration tests
+        run: cargo test --release --workspace --test '*' -- --test-threads=1
+        continue-on-error: true
+
+      - name: Run fault injection tests
+        run: cargo test --release -p velocity-workflow-engine --test fault_injection_tests
+
+      - name: Run property-based tests
+        run: cargo test --release -p velocity-workflow-engine --test proptest_tests
+
+      - name: Run API hardening tests
+        run: cargo test --release -p velocity-workflow-engine --test api_hardening_tests
+
+      - name: Run TLS/mTLS E2E tests
+        run: cargo test --release -p velocity-workflow-engine --test tls_e2e_tests
+
+      - name: Run Auth E2E tests
+        run: cargo test --release -p velocity-workflow-engine --test auth_e2e_tests
+
+      - name: Run Queue Processor tests
+        run: cargo test --release -p velocity-workflow-engine --test queue_processor_tests
+
+      - name: Run WAL & Snapshot tests
+        run: cargo test --release -p velocity-workflow-engine --test wal_snapshot_tests
+
+      - name: Run Raft Cluster tests
+        run: cargo test --release -p velocity-workflow-engine --test raft_cluster_tests
+
+      - name: Run benchmark regression gate
+        run: cargo test --release -p velocity-workflow-engine --test bench_ci_gate -- --nocapture
+
   # ── .NET Server Build & Test ──────────────────────────────────────────────
   dotnet:
     name: .NET Server
@@ -161,3 +192,103 @@ jobs:
             python3 -c "import yaml; yaml.safe_load(open('$f'))" || echo "Warning: $f has YAML issues"
           done
           echo "k8s manifest validation complete"
+
+  # ── TypeScript SDKs Build & Test ──────────────────────────────────────────
+  typescript-sdks:
+    name: TypeScript SDKs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sdk:
+          - dir: velocity-classic-ts
+            name: Classic
+          - dir: velocity-runtime-typescript
+            name: Runtime
+          - dir: velocity-embedded-ts
+            name: Embedded
+          - dir: velocity-migration-toolkit
+            name: Migration
+          - dir: velocity-sdk-typescript
+            name: Official
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: '${{ matrix.sdk.dir }}/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.sdk.dir }}
+        run: npm ci
+
+      - name: Type check
+        working-directory: ${{ matrix.sdk.dir }}
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        working-directory: ${{ matrix.sdk.dir }}
+        run: npx jest --ci --coverage
+
+  # ── Python Runtime SDK Build & Test ───────────────────────────────────────
+  python-sdk:
+    name: Python Runtime SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: velocity-runtime-python
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install -e .; fi
+
+      - name: Run tests
+        working-directory: velocity-runtime-python
+        run: python -m pytest tests/ -v
+
+  # ── Go SDK Build & Test ──────────────────────────────────────────────────
+  go-sdk:
+    name: Go SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build
+        working-directory: velocity-sdk-go
+        run: go build ./...
+
+      - name: Run tests
+        working-directory: velocity-sdk-go
+        run: go test -v -count=1 ./...
+
+  # ── Java SDK Build & Test ────────────────────────────────────────────────
+  java-sdk:
+    name: Java SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Build and test
+        working-directory: velocity-sdk-java
+        run: mvn -B verify

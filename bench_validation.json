@@ -1,0 +1,478 @@
+{
+  "generated_at": "2026-08-11T14:12:32.191174500+00:00",
+  "velocity_version": "0.1.0",
+  "temporal_version": "1.26+",
+  "rows": [],
+  "summary": {
+    "total_workloads": 0,
+    "velocity_wins": 0,
+    "temporal_wins": 0,
+    "comparable": 0,
+    "avg_throughput_delta_pct": 0.0,
+    "avg_p99_latency_delta_pct": 0.0,
+    "avg_memory_delta_pct": 0.0,
+    "overall_verdict": "VELOCITY and Temporal are roughly comparable"
+  },
+  "statistical_summary": {
+    "runs_per_workload": 3,
+    "velocity_aggregates": [
+      {
+        "workload": "simple_workflow",
+        "runs": 3,
+        "ops_per_sec": {
+          "n": 3,
+          "mean": 11491.078572190076,
+          "stddev": 536.9406369016125,
+          "min": 10986.596352450011,
+          "max": 12055.455093429777,
+          "ci95_lower": 10157.136432334135,
+          "ci95_upper": 12825.020712046016,
+          "cv_pct": 4.672673966402767
+        },
+        "p50_latency_us": {
+          "n": 3,
+          "mean": 186.0,
+          "stddev": 34.219877264537345,
+          "min": 147.0,
+          "max": 211.0,
+          "ci95_lower": 100.9862514275877,
+          "ci95_upper": 271.0137485724123,
+          "cv_pct": 18.397783475557713
+        },
+        "p99_latency_us": {
+          "n": 3,
+          "mean": 350.3333333333333,
+          "stddev": 43.82160806421112,
+          "min": 314.0,
+          "max": 399.0,
+          "ci95_lower": 241.46563806926008,
+          "ci95_upper": 459.20102859740655,
+          "cv_pct": 12.50854654544561
+        },
+        "peak_memory_mb": {
+          "n": 3,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "error_rate_pct": {
+          "n": 3,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "total_ops": {
+          "n": 3,
+          "mean": 20.0,
+          "stddev": 0.0,
+          "min": 20.0,
+          "max": 20.0,
+          "ci95_lower": 20.0,
+          "ci95_upper": 20.0,
+          "cv_pct": 0.0
+        },
+        "per_run_ops_per_sec": [
+          10986.596352450011,
+          11431.184270690443,
+          12055.455093429777
+        ],
+        "per_run_p99_us": [
+          399.0,
+          338.0,
+          314.0
+        ]
+      },
+      {
+        "workload": "signal_storm",
+        "runs": 3,
+        "ops_per_sec": {
+          "n": 3,
+          "mean": 7279.940757721754,
+          "stddev": 99.56228468527355,
+          "min": 7172.131147540984,
+          "max": 7368.421052631579,
+          "ci95_lower": 7032.594369770201,
+          "ci95_upper": 7527.287145673307,
+          "cv_pct": 1.3676249299098886
+        },
+        "p50_latency_us": {
+          "n": 3,
+          "mean": 109.66666666666667,
+          "stddev": 24.78574859336174,
+          "min": 92.0,
+          "max": 138.0,
+          "ci95_lower": 48.09048441429105,
+          "ci95_upper": 171.2428489190423,
+          "cv_pct": 22.60098655929642
+        },
+        "p99_latency_us": {
+          "n": 3,
+          "mean": 109.66666666666667,
+          "stddev": 24.78574859336174,
+          "min": 92.0,
+          "max": 138.0,
+          "ci95_lower": 48.09048441429105,
+          "ci95_upper": 171.2428489190423,
+          "cv_pct": 22.60098655929642
+        },
+        "peak_memory_mb": {
+          "n": 3,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "error_rate_pct": {
+          "n": 3,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "total_ops": {
+          "n": 3,
+          "mean": 7.0,
+          "stddev": 0.0,
+          "min": 7.0,
+          "max": 7.0,
+          "ci95_lower": 7.0,
+          "ci95_upper": 7.0,
+          "cv_pct": 0.0
+        },
+        "per_run_ops_per_sec": [
+          7368.421052631579,
+          7299.270072992701,
+          7172.131147540984
+        ],
+        "per_run_p99_us": [
+          99.0,
+          138.0,
+          92.0
+        ]
+      },
+      {
+        "workload": "cold_start",
+        "runs": 3,
+        "ops_per_sec": {
+          "n": 3,
+          "mean": 4576.876135901242,
+          "stddev": 467.362733537517,
+          "min": 4047.7636106051405,
+          "max": 4933.39911198816,
+          "ci95_lower": 3415.789039827727,
+          "ci95_upper": 5737.963231974758,
+          "cv_pct": 10.211391343355364
+        },
+        "p50_latency_us": {
+          "n": 3,
+          "mean": 121.0,
+          "stddev": 31.04834939252005,
+          "min": 91.0,
+          "max": 153.0,
+          "ci95_lower": 43.86539929880149,
+          "ci95_upper": 198.1346007011985,
+          "cv_pct": 25.659792886380206
+        },
+        "p99_latency_us": {
+          "n": 3,
+          "mean": 121.0,
+          "stddev": 31.04834939252005,
+          "min": 91.0,
+          "max": 153.0,
+          "ci95_lower": 43.86539929880149,
+          "ci95_upper": 198.1346007011985,
+          "cv_pct": 25.659792886380206
+        },
+        "peak_memory_mb": {
+          "n": 3,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "error_rate_pct": {
+          "n": 3,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "total_ops": {
+          "n": 3,
+          "mean": 2.0,
+          "stddev": 0.0,
+          "min": 2.0,
+          "max": 2.0,
+          "ci95_lower": 2.0,
+          "ci95_upper": 2.0,
+          "cv_pct": 0.0
+        },
+        "per_run_ops_per_sec": [
+          4749.4656851104255,
+          4933.39911198816,
+          4047.7636106051405
+        ],
+        "per_run_p99_us": [
+          119.0,
+          91.0,
+          153.0
+        ]
+      }
+    ],
+    "temporal_aggregates": [
+      {
+        "workload": "simple_workflow",
+        "runs": 0,
+        "ops_per_sec": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "p50_latency_us": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "p99_latency_us": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "peak_memory_mb": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "error_rate_pct": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "total_ops": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "per_run_ops_per_sec": [],
+        "per_run_p99_us": []
+      },
+      {
+        "workload": "signal_storm",
+        "runs": 0,
+        "ops_per_sec": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "p50_latency_us": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "p99_latency_us": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "peak_memory_mb": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "error_rate_pct": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "total_ops": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "per_run_ops_per_sec": [],
+        "per_run_p99_us": []
+      },
+      {
+        "workload": "cold_start",
+        "runs": 0,
+        "ops_per_sec": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "p50_latency_us": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "p99_latency_us": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "peak_memory_mb": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "error_rate_pct": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "total_ops": {
+          "n": 0,
+          "mean": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci95_lower": 0.0,
+          "ci95_upper": 0.0,
+          "cv_pct": 0.0
+        },
+        "per_run_ops_per_sec": [],
+        "per_run_p99_us": []
+      }
+    ],
+    "significance_tests": [
+      {
+        "metric": "simple_workflow/ops_per_sec",
+        "velocity_mean": 11491.078572190076,
+        "temporal_mean": 0.0,
+        "abs_diff": 11491.078572190076,
+        "rel_diff_pct": 0.0,
+        "t_statistic": 37.067658048102324,
+        "p_value": 0.0,
+        "significant": true,
+        "verdict": "VELOCITY is significantly faster by 0.0% (p = 0.0000)"
+      },
+      {
+        "metric": "signal_storm/ops_per_sec",
+        "velocity_mean": 7279.940757721754,
+        "temporal_mean": 0.0,
+        "abs_diff": 7279.940757721754,
+        "rel_diff_pct": 0.0,
+        "t_statistic": 126.64662435504158,
+        "p_value": 0.0,
+        "significant": true,
+        "verdict": "VELOCITY is significantly faster by 0.0% (p = 0.0000)"
+      },
+      {
+        "metric": "cold_start/ops_per_sec",
+        "velocity_mean": 4576.876135901242,
+        "temporal_mean": 0.0,
+        "abs_diff": 4576.876135901242,
+        "rel_diff_pct": 0.0,
+        "t_statistic": 16.961947195334325,
+        "p_value": 0.0,
+        "significant": true,
+        "verdict": "VELOCITY is significantly faster by 0.0% (p = 0.0000)"
+      }
+    ]
+  }
+}

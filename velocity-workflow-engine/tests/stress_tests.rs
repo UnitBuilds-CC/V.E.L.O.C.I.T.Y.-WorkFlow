@@ -299,8 +299,9 @@ fn test_timer_engine_scale() {
     println!("  scheduled {} timers in {:?}", count, start.elapsed());
 
     let handle = timer.start();
-    // Wait for all timers to fire (they all have short delays)
-    thread::sleep(Duration::from_millis(500));
+    // Wait for all timers to fire (they all have short delays of 10-59ms).
+    // Allow generous time for callback processing of 10k timers.
+    thread::sleep(Duration::from_secs(2));
 
     let fired = fired_count.load(Ordering::Relaxed);
     println!("  fired {} timers in {:?}", fired, start.elapsed());

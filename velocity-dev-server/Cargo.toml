@@ -21,6 +21,22 @@ tonic = "0.12"
 prost = "0.13"
 prost-types = "0.13"
 
+# HTTP server (Hyper — production-grade HTTP/1.1+HTTP/2 with keep-alive)
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "http1", "http2"] }
+http-body-util = "0.1"
+
+# TLS support (mTLS for production, optional for dev)
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+
+# System metrics (memory reporting for benchmarks)
+sysinfo = "0.31"
+
+# Memory allocator — significantly faster than system allocator for allocation-heavy workloads
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.6"
+
 [build-dependencies]
 tonic-build = "0.12"
 protox = "0.7"

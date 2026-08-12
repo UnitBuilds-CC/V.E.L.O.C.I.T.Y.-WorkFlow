@@ -13,10 +13,10 @@ export interface WorkflowInterceptor {
   onStart?(workflowType: string, workflowId: bigint, context?: Record<string, any>): void | Promise<void>;
 
   /** Called after workflow completes successfully. */
-  onComplete?(workflowId: bigint, result: any, context?: Record<string, any>): void | Promise<void>;
+  onWorkflowComplete?(workflowId: bigint, result: any, context?: Record<string, any>): void | Promise<void>;
 
   /** Called when workflow fails. */
-  onFail?(workflowId: bigint, error: Error, context?: Record<string, any>): void | Promise<void>;
+  onWorkflowFail?(workflowId: bigint, error: Error, context?: Record<string, any>): void | Promise<void>;
 
   /** Called when workflow receives a signal. */
   onSignal?(workflowId: bigint, signalName: string, context?: Record<string, any>): void | Promise<void>;
@@ -28,10 +28,10 @@ export interface ActivityInterceptor {
   onExecute?(activityType: string, activityId: string, context?: Record<string, any>): void | Promise<void>;
 
   /** Called after activity completes. */
-  onComplete?(activityId: string, result: any, context?: Record<string, any>): void | Promise<void>;
+  onActivityComplete?(activityId: string, result: any, context?: Record<string, any>): void | Promise<void>;
 
   /** Called when activity fails. */
-  onFail?(activityId: string, error: Error, context?: Record<string, any>): void | Promise<void>;
+  onActivityFail?(activityId: string, error: Error, context?: Record<string, any>): void | Promise<void>;
 }
 
 /** Logs workflow and activity lifecycle events. */
@@ -46,11 +46,11 @@ export class LoggingInterceptor implements WorkflowInterceptor, ActivityIntercep
     console.log(`${this.prefix} Workflow started: type=${workflowType}, id=${workflowId}`);
   }
 
-  onComplete(workflowId: bigint): void {
+  onWorkflowComplete(workflowId: bigint): void {
     console.log(`${this.prefix} Workflow completed: id=${workflowId}`);
   }
 
-  onFail(workflowId: bigint, error: Error): void {
+  onWorkflowFail(workflowId: bigint, error: Error): void {
     console.error(`${this.prefix} Workflow failed: id=${workflowId}, error=${error.message}`);
   }
 
@@ -62,11 +62,11 @@ export class LoggingInterceptor implements WorkflowInterceptor, ActivityIntercep
     console.log(`${this.prefix} Activity executing: type=${activityType}, id=${activityId}`);
   }
 
-  onComplete(activityId: string): void {
+  onActivityComplete(activityId: string): void {
     console.log(`${this.prefix} Activity completed: id=${activityId}`);
   }
 
-  onFail(activityId: string, error: Error): void {
+  onActivityFail(activityId: string, error: Error): void {
     console.error(`${this.prefix} Activity failed: id=${activityId}, error=${error.message}`);
   }
 }
@@ -84,11 +84,11 @@ export class MetricsInterceptor implements WorkflowInterceptor, ActivityIntercep
     this.workflowStarts++;
   }
 
-  onComplete(workflowId: bigint): void {
+  onWorkflowComplete(): void {
     this.workflowCompletions++;
   }
 
-  onFail(workflowId: bigint): void {
+  onWorkflowFail(): void {
     this.workflowFailures++;
   }
 
@@ -96,11 +96,11 @@ export class MetricsInterceptor implements WorkflowInterceptor, ActivityIntercep
     this.activityExecutions++;
   }
 
-  onComplete(activityId: string): void {
+  onActivityComplete(): void {
     this.activityCompletions++;
   }
 
-  onFail(activityId: string): void {
+  onActivityFail(): void {
     this.activityFailures++;
   }
 
@@ -142,8 +142,8 @@ export class InterceptorChain {
   /** Invoke all workflow interceptors for complete event. */
   async invokeWorkflowComplete(workflowId: bigint, result: any, context?: Record<string, any>): Promise<void> {
     for (const interceptor of this.interceptors) {
-      if ('onComplete' in interceptor && interceptor.onComplete) {
-        await interceptor.onComplete(workflowId, result, context);
+      if ('onWorkflowComplete' in interceptor && interceptor.onWorkflowComplete) {
+        await interceptor.onWorkflowComplete(workflowId, result, context);
       }
     }
   }
@@ -151,8 +151,8 @@ export class InterceptorChain {
   /** Invoke all workflow interceptors for fail event. */
   async invokeWorkflowFail(workflowId: bigint, error: Error, context?: Record<string, any>): Promise<void> {
     for (const interceptor of this.interceptors) {
-      if ('onFail' in interceptor && interceptor.onFail) {
-        await interceptor.onFail(workflowId, error, context);
+      if ('onWorkflowFail' in interceptor && interceptor.onWorkflowFail) {
+        await interceptor.onWorkflowFail(workflowId, error, context);
       }
     }
   }

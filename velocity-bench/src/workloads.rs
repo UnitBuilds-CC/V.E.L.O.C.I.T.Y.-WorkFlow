@@ -46,6 +46,15 @@ pub enum WorkloadKind {
     MemoryScaling,
     /// Cold start: first workflow execution after engine startup.
     ColdStart,
+    /// Replay amplification: measures signal latency vs history length.
+    /// Exposes O(1) vs O(n) replay cost — Velocity's key architectural advantage.
+    ReplayAmplification,
+    /// WAL durability: measures throughput with fsync on vs off.
+    /// Shows group commit amortization efficiency.
+    WalDurability,
+    /// Tail latency under sustained load: p99/p999 at 80% max throughput.
+    /// Measures latency stability over extended duration.
+    TailLatencySustained,
 }
 
 impl std::fmt::Display for WorkloadKind {
@@ -69,6 +78,9 @@ impl std::fmt::Display for WorkloadKind {
             WorkloadKind::ThroughputCeiling => write!(f, "throughput_ceiling"),
             WorkloadKind::MemoryScaling => write!(f, "memory_scaling"),
             WorkloadKind::ColdStart => write!(f, "cold_start"),
+            WorkloadKind::ReplayAmplification => write!(f, "replay_amplification"),
+            WorkloadKind::WalDurability => write!(f, "wal_durability"),
+            WorkloadKind::TailLatencySustained => write!(f, "tail_latency_sustained"),
         }
     }
 }
@@ -391,6 +403,65 @@ impl WorkloadDefinition {
                 },
                 description: "Start workflows → simulate crash → restart → verify recovery.".into(),
                 primary_metrics: vec!["recovery_time_ms".into(), "data_loss_count".into()],
+            },
+            // ─── Differentiator Workloads ─────────────────────────────────────────
+            // These expose Velocity's architectural advantages over event-sourced engines.
+            WorkloadDefinition {
+                name: "replay_amplification".into(),
+                kind: WorkloadKind::ReplayAmplification,
+                config: WorkloadConfig {
+                    workflow_count: 100,
+                    signals_per_workflow: 1000,
+                    ..WorkloadConfig::default()
+                },
+                description: "Signal a workflow 1000 times. Measures how signal latency scales \
+                    with history length. Event-sourced engines (Temporal) replay the full event \
+                    log on each signal — O(n²) total. Velocity uses direct mutation — O(n) total. \
+                    The curve should be flat for Velocity and steeply rising for Temporal."
+                    .into(),
+                primary_metrics: vec![
+                    "signal_p50_us".into(),
+                    "signal_p99_us".into(),
+                    "replay_amplification_factor".into(),
+                ],
+            },
+            WorkloadDefinition {
+                name: "wal_durability".into(),
+                kind: WorkloadKind::WalDurability,
+                config: WorkloadConfig {
+                    workflow_count: 5000,
+                    concurrency: 50,
+                    ..WorkloadConfig::default()
+                },
+                description: "High-throughput workflow creation with WAL fsync enabled. \
+                    Measures how much throughput the durability guarantee costs. \
+                    Velocity's group commit amortizes fsync across many workflows."
+                    .into(),
+                primary_metrics: vec![
+                    "ops/sec".into(),
+                    "durability_overhead_pct".into(),
+                    "p99_latency".into(),
+                ],
+            },
+            WorkloadDefinition {
+                name: "tail_latency_sustained".into(),
+                kind: WorkloadKind::TailLatencySustained,
+                config: WorkloadConfig {
+                    workflow_count: 50000,
+                    duration_secs: 120,
+                    concurrency: 100,
+                    ..WorkloadConfig::default()
+                },
+                description: "Sustained load at high concurrency for 2 minutes. \
+                    Measures p99/p999 tail latency stability. Shows whether the engine \
+                    maintains consistent latency or degrades under prolonged pressure."
+                    .into(),
+                primary_metrics: vec![
+                    "sustained_ops/sec".into(),
+                    "p99_latency".into(),
+                    "p999_latency".into(),
+                    "latency_stability_ratio".into(),
+                ],
             },
         ]
     }

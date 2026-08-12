@@ -12,174 +12,167 @@ option java_multiple_files = true;
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
 import "velocity/v1/common.proto";
+import "velocity/v1/messages.proto";
+import "velocity/v1/history_service.proto";
 
 // ─── WorkerService ────────────────────────────────────────────────────────────
 // Internal service for system workflows, batch operations, and maintenance tasks.
-// Temporal equivalent: api.workerservice.v1
+// Shared internal types (CloseShard, GetShard, etc.) are defined in history_service.proto.
+// Types that conflict with other services use "Worker" prefix.
 
 service WorkerService {
 
   // AddSearchAttributes — add search attributes to a namespace
-  rpc AddSearchAttributes(AddSearchAttributesRequest)
-      returns (AddSearchAttributesResponse);
+  rpc AddSearchAttributes(WorkerAddSearchAttributesRequest)
+      returns (WorkerAddSearchAttributesResponse);
 
   // RemoveSearchAttributes — remove search attributes from a namespace
-  rpc RemoveSearchAttributes(RemoveSearchAttributesRequest)
-      returns (RemoveSearchAttributesResponse);
+  rpc RemoveSearchAttributes(WorkerRemoveSearchAttributesRequest)
+      returns (WorkerRemoveSearchAttributesResponse);
 
   // DescribeHistoryHost — describe a history host
-  rpc DescribeHistoryHost(DescribeHistoryHostRequest)
-      returns (DescribeHistoryHostResponse);
+  rpc DescribeHistoryHost(WorkerDescribeHistoryHostRequest)
+      returns (WorkerDescribeHistoryHostResponse);
 
-  // GetWorkflowExecutionRawHistoryV2 — get raw history
+  // GetWorkflowExecutionRawHistoryV2 — get raw history (reuses history_service type)
   rpc GetWorkflowExecutionRawHistoryV2(GetWorkflowExecutionRawHistoryV2Request)
       returns (GetWorkflowExecutionRawHistoryV2Response);
 
-  // GetWorkflowExecutionRawHistory — get raw history
+  // GetWorkflowExecutionRawHistory — get raw history (reuses history_service type)
   rpc GetWorkflowExecutionRawHistory(GetWorkflowExecutionRawHistoryRequest)
       returns (GetWorkflowExecutionRawHistoryResponse);
 
-  // CloseShard — close a shard
-  rpc CloseShard(CloseShardRequest)
-      returns (CloseShardResponse);
+  // CloseShard — close a shard (reuses history_service type)
+  rpc CloseShard(CloseShardRequest) returns (CloseShardResponse);
 
-  // DescribeMutableState — describe mutable state
+  // DescribeMutableState — describe mutable state (reuses history_service type)
   rpc DescribeMutableState(DescribeMutableStateRequest)
       returns (DescribeMutableStateResponse);
 
-  // GetReplicationMessages — get replication messages
+  // GetReplicationMessages — get replication messages (reuses history_service type)
   rpc GetReplicationMessages(GetReplicationMessagesRequest)
       returns (GetReplicationMessagesResponse);
 
   // GetNamespaceReplicationMessages — get namespace replication messages
-  rpc GetNamespaceReplicationMessages(GetNamespaceReplicationMessagesRequest)
-      returns (GetNamespaceReplicationMessagesResponse);
+  rpc GetNamespaceReplicationMessages(WorkerGetNamespaceReplicationMessagesRequest)
+      returns (WorkerGetNamespaceReplicationMessagesResponse);
 
-  // GetDLQReplicationMessages — get DLQ replication messages
+  // GetDLQReplicationMessages — get DLQ replication messages (reuses history_service type)
   rpc GetDLQReplicationMessages(GetDLQReplicationMessagesRequest)
       returns (GetDLQReplicationMessagesResponse);
 
-  // ReapplyEvents — reapply events
-  rpc ReapplyEvents(ReapplyEventsRequest)
-      returns (ReapplyEventsResponse);
+  // ReapplyEvents — reapply events (reuses history_service type)
+  rpc ReapplyEvents(ReapplyEventsRequest) returns (ReapplyEventsResponse);
 
-  // RefreshWorkflowTasks — refresh workflow tasks
+  // RefreshWorkflowTasks — refresh workflow tasks (reuses history_service type)
   rpc RefreshWorkflowTasks(RefreshWorkflowTasksRequest)
       returns (RefreshWorkflowTasksResponse);
 
-  // DeleteWorkflowExecution — delete a workflow execution
+  // DeleteWorkflowExecution — delete a workflow execution (reuses history_service type)
   rpc DeleteWorkflowExecution(DeleteWorkflowExecutionRequest)
       returns (DeleteWorkflowExecutionResponse);
 
-  // ListQueuedMessages — list queued messages
+  // ListQueuedMessages — list queued messages (reuses history_service type)
   rpc ListQueuedMessages(ListQueuedMessagesRequest)
       returns (ListQueuedMessagesResponse);
 
-  // PurgeDLQMessages — purge dead letter queue
-  rpc PurgeDLQMessages(PurgeDLQMessagesRequest)
-      returns (PurgeDLQMessagesResponse);
+  // PurgeDLQMessages — purge dead letter queue (reuses history_service type)
+  rpc PurgeDLQMessages(PurgeDLQMessagesRequest) returns (PurgeDLQMessagesResponse);
 
-  // MergeDLQMessages — merge dead letter queue
-  rpc MergeDLQMessages(MergeDLQMessagesRequest)
-      returns (MergeDLQMessagesResponse);
+  // MergeDLQMessages — merge dead letter queue (reuses history_service type)
+  rpc MergeDLQMessages(MergeDLQMessagesRequest) returns (MergeDLQMessagesResponse);
 
-  // GetDLQMessages — get dead letter queue messages
-  rpc GetDLQMessages(GetDLQMessagesRequest)
-      returns (GetDLQMessagesResponse);
+  // GetDLQMessages — get dead letter queue messages (reuses history_service type)
+  rpc GetDLQMessages(GetDLQMessagesRequest) returns (GetDLQMessagesResponse);
 
   // RebuildMutableState — rebuild mutable state from history
-  rpc RebuildMutableState(RebuildMutableStateRequest)
-      returns (RebuildMutableStateResponse);
+  rpc RebuildMutableState(WorkerRebuildMutableStateRequest)
+      returns (WorkerRebuildMutableStateResponse);
 
   // ImportWorkflowExecution — import a workflow execution
-  rpc ImportWorkflowExecution(ImportWorkflowExecutionRequest)
-      returns (ImportWorkflowExecutionResponse);
+  rpc ImportWorkflowExecution(WorkerImportWorkflowExecutionRequest)
+      returns (WorkerImportWorkflowExecutionResponse);
 
   // DeleteDLQTasks — delete DLQ tasks
-  rpc DeleteDLQTasks(DeleteDLQTasksRequest)
-      returns (DeleteDLQTasksResponse);
+  rpc DeleteDLQTasks(WorkerDeleteDLQTasksRequest)
+      returns (WorkerDeleteDLQTasksResponse);
 
-  // ListHistoryTasks — list history tasks
-  rpc ListHistoryTasks(ListHistoryTasksRequest)
-      returns (ListHistoryTasksResponse);
+  // ListHistoryTasks — list history tasks (reuses history_service type)
+  rpc ListHistoryTasks(ListHistoryTasksRequest) returns (ListHistoryTasksResponse);
 
-  // RemoveTask — remove a task
-  rpc RemoveTask(RemoveTaskRequest)
-      returns (RemoveTaskResponse);
+  // RemoveTask — remove a task (reuses history_service type)
+  rpc RemoveTask(RemoveTaskRequest) returns (RemoveTaskResponse);
 
-  // GetShard — get shard info
-  rpc GetShard(GetShardRequest)
-      returns (GetShardResponse);
+  // GetShard — get shard info (reuses history_service type)
+  rpc GetShard(GetShardRequest) returns (GetShardResponse);
 
   // DescribeCluster — describe cluster
-  rpc DescribeCluster(DescribeClusterRequest)
-      returns (DescribeClusterResponse);
+  rpc DescribeCluster(WorkerDescribeClusterRequest)
+      returns (WorkerDescribeClusterResponse);
 
   // ListClusters — list clusters
-  rpc ListClusters(ListClustersRequest)
-      returns (ListClustersResponse);
+  rpc ListClusters(WorkerListClustersRequest) returns (WorkerListClustersResponse);
 
   // AddOrUpdateRemoteCluster — add or update remote cluster
-  rpc AddOrUpdateRemoteCluster(AddOrUpdateRemoteClusterRequest)
-      returns (AddOrUpdateRemoteClusterResponse);
+  rpc AddOrUpdateRemoteCluster(WorkerAddOrUpdateRemoteClusterRequest)
+      returns (WorkerAddOrUpdateRemoteClusterResponse);
 
   // RemoveRemoteCluster — remove remote cluster
-  rpc RemoveRemoteCluster(RemoveRemoteClusterRequest)
-      returns (RemoveRemoteClusterResponse);
+  rpc RemoveRemoteCluster(WorkerRemoveRemoteClusterRequest)
+      returns (WorkerRemoveRemoteClusterResponse);
 
   // SyncWorkflowState — sync workflow state
-  rpc SyncWorkflowState(SyncWorkflowStateRequest)
-      returns (SyncWorkflowStateResponse);
+  rpc SyncWorkflowState(WorkerSyncWorkflowStateRequest)
+      returns (WorkerSyncWorkflowStateResponse);
 
-  // GenerateLastHistoryReplicationTasks — generate replication tasks
+  // GenerateLastHistoryReplicationTasks — generate replication tasks (reuses history_service type)
   rpc GenerateLastHistoryReplicationTasks(GenerateLastHistoryReplicationTasksRequest)
       returns (GenerateLastHistoryReplicationTasksResponse);
 
-  // GetClusterInfo — get cluster info
-  rpc GetClusterInfo(GetClusterInfoRequest)
-      returns (GetClusterInfoResponse);
+  // GetClusterInfo — get cluster info (uses Worker prefix to avoid admin conflict)
+  rpc GetClusterInfo(WorkerGetClusterInfoRequest)
+      returns (WorkerGetClusterInfoResponse);
 
   // ListTables — list database tables
-  rpc ListTables(ListTablesRequest)
-      returns (ListTablesResponse);
+  rpc ListTables(WorkerListTablesRequest) returns (WorkerListTablesResponse);
 
-  // CreateNamespace — create a namespace
-  rpc CreateNamespace(CreateNamespaceRequest)
-      returns (CreateNamespaceResponse);
+  // CreateNamespace — create a namespace (uses Worker prefix)
+  rpc CreateNamespace(WorkerCreateNamespaceRequest)
+      returns (WorkerCreateNamespaceResponse);
 
-  // UpdateNamespace — update a namespace
-  rpc UpdateNamespace(UpdateNamespaceRequest)
-      returns (UpdateNamespaceResponse);
+  // UpdateNamespace — update a namespace (uses Worker prefix)
+  rpc UpdateNamespace(WorkerUpdateNamespaceRequest)
+      returns (WorkerUpdateNamespaceResponse);
 
-  // GetTaskQueueMetadata — get task queue metadata
-  rpc GetTaskQueueMetadata(GetTaskQueueMetadataRequest)
-      returns (GetTaskQueueMetadataResponse);
+  // GetTaskQueueMetadata — get task queue metadata (uses Worker prefix)
+  rpc GetTaskQueueMetadata(WorkerGetTaskQueueMetadataRequest)
+      returns (WorkerGetTaskQueueMetadataResponse);
 }
 
-// ─── Messages ─────────────────────────────────────────────────────────────────
+// ─── Worker-prefixed Messages ────────────────────────────────────────────────
 
-message AddSearchAttributesRequest {
+message WorkerAddSearchAttributesRequest {
   map<string, int32> search_attributes = 1;
   string namespace_id = 2;
 }
 
-message AddSearchAttributesResponse {}
+message WorkerAddSearchAttributesResponse {}
 
-message RemoveSearchAttributesRequest {
+message WorkerRemoveSearchAttributesRequest {
   repeated string search_attributes = 1;
   string namespace_id = 2;
 }
 
-message RemoveSearchAttributesResponse {}
+message WorkerRemoveSearchAttributesResponse {}
 
-message DescribeHistoryHostRequest {
+message WorkerDescribeHistoryHostRequest {
   string host_address = 1;
   int32 shard_id_for_host = 2;
   WorkflowExecution execution = 3;
   string namespace_id = 4;
 }
 
-message DescribeHistoryHostResponse {
+message WorkerDescribeHistoryHostResponse {
   int32 shard_count = 1;
   repeated int32 owned_shard_ids = 2;
   string namespace_cache_state = 3;
@@ -187,201 +180,45 @@ message DescribeHistoryHostResponse {
   string address = 5;
 }
 
-message GetWorkflowExecutionRawHistoryV2Request {
-  string namespace_id = 1;
-  WorkflowExecution execution = 2;
-  int64 start_event_id = 3;
-  int64 end_event_id = 4;
-  int32 maximum_page_size = 5;
-  bytes next_page_token = 6;
-}
-
-message GetWorkflowExecutionRawHistoryV2Response {
-  repeated HistoryEvent history_events = 1;
-  bytes next_page_token = 2;
-}
-
-message GetWorkflowExecutionRawHistoryRequest {
-  string namespace_id = 1;
-  WorkflowExecution execution = 2;
-  int64 start_event_id = 3;
-  int64 end_event_id = 4;
-  int32 maximum_page_size = 5;
-  bytes next_page_token = 6;
-}
-
-message GetWorkflowExecutionRawHistoryResponse {
-  repeated HistoryEvent history_events = 1;
-  bytes next_page_token = 2;
-}
-
-message CloseShardRequest {
-  int32 shard_id = 1;
-}
-
-message CloseShardResponse {}
-
-message DescribeMutableStateRequest {
-  string namespace_id = 1;
-  WorkflowExecution execution = 2;
-}
-
-message DescribeMutableStateResponse {
-  string shard_id = 1;
-  bytes database_state = 2;
-  bytes cache_state = 3;
-}
-
-message GetReplicationMessagesRequest {
-  repeated ShardReplicationInfo shards = 1;
-  string cluster_name = 2;
-}
-
-message GetReplicationMessagesResponse {
-  repeated ReplicationTaskList shard_messages = 1;
-}
-
-message GetNamespaceReplicationMessagesRequest {
+message WorkerGetNamespaceReplicationMessagesRequest {
   string cluster_name = 1;
   int64 last_known_namespace_replication_task_id = 2;
 }
 
-message GetNamespaceReplicationMessagesResponse {
+message WorkerGetNamespaceReplicationMessagesResponse {
   repeated ReplicationTask messages = 1;
 }
 
-message GetDLQReplicationMessagesRequest {
-  repeated ReplicationTaskInfo task_infos = 1;
-}
-
-message GetDLQReplicationMessagesResponse {
-  repeated ReplicationTask tasks = 1;
-}
-
-message ReapplyEventsRequest {
-  string namespace_id = 1;
-  WorkflowExecution execution = 2;
-  repeated HistoryEvent events = 3;
-}
-
-message ReapplyEventsResponse {}
-
-message RefreshWorkflowTasksRequest {
+message WorkerRebuildMutableStateRequest {
   string namespace_id = 1;
   WorkflowExecution execution = 2;
 }
 
-message RefreshWorkflowTasksResponse {}
+message WorkerRebuildMutableStateResponse {}
 
-message DeleteWorkflowExecutionRequest {
-  string namespace_id = 1;
-  WorkflowExecution execution = 2;
-}
-
-message DeleteWorkflowExecutionResponse {}
-
-message ListQueuedMessagesRequest {
-  int32 shard_id = 1;
-  int32 category = 2;
-  int32 page_size = 3;
-  bytes next_page_token = 4;
-}
-
-message ListQueuedMessagesResponse {
-  repeated QueuedMessage messages = 1;
-  bytes next_page_token = 2;
-}
-
-message PurgeDLQMessagesRequest {
-  string cluster_name = 1;
-  int32 shard_id = 2;
-  int64 first_message_id = 3;
-  int64 last_message_id = 4;
-}
-
-message PurgeDLQMessagesResponse {}
-
-message MergeDLQMessagesRequest {
-  string cluster_name = 1;
-  int32 shard_id = 2;
-  int64 first_message_id = 3;
-  int64 last_message_id = 4;
-}
-
-message MergeDLQMessagesResponse {}
-
-message GetDLQMessagesRequest {
-  string cluster_name = 1;
-  int32 shard_id = 2;
-  int64 first_message_id = 3;
-  int32 max_message_count = 4;
-  bytes last_message_id = 5;
-}
-
-message GetDLQMessagesResponse {
-  repeated DLQMessage messages = 1;
-}
-
-message RebuildMutableStateRequest {
-  string namespace_id = 1;
-  WorkflowExecution execution = 2;
-}
-
-message RebuildMutableStateResponse {}
-
-message ImportWorkflowExecutionRequest {
+message WorkerImportWorkflowExecutionRequest {
   string namespace_id = 1;
   WorkflowExecution execution = 2;
   bytes workflow_state = 3;
 }
 
-message ImportWorkflowExecutionResponse {}
+message WorkerImportWorkflowExecutionResponse {}
 
-message DeleteDLQTasksRequest {
+message WorkerDeleteDLQTasksRequest {
   string cluster_name = 1;
   int32 shard_id = 2;
   int64 inclusive_max_task_id = 3;
 }
 
-message DeleteDLQTasksResponse {
+message WorkerDeleteDLQTasksResponse {
   int64 messages_deleted = 1;
 }
 
-message ListHistoryTasksRequest {
-  int32 shard_id = 1;
-  int32 task_queue_type = 2;
-  TaskRange task_range = 3;
-  int32 batch_size = 4;
-  bytes next_page_token = 5;
-}
-
-message ListHistoryTasksResponse {
-  repeated Task tasks = 1;
-  bytes next_page_token = 2;
-}
-
-message RemoveTaskRequest {
-  int32 shard_id = 1;
-  int32 category = 2;
-  int64 task_id = 3;
-  google.protobuf.Timestamp visibility_time = 4;
-}
-
-message RemoveTaskResponse {}
-
-message GetShardRequest {
-  int32 shard_id = 1;
-}
-
-message GetShardResponse {
-  ShardInfo shard = 1;
-}
-
-message DescribeClusterRequest {
+message WorkerDescribeClusterRequest {
   string cluster_name = 1;
 }
 
-message DescribeClusterResponse {
+message WorkerDescribeClusterResponse {
   string cluster_name = 1;
   int32 history_shard_count = 2;
   string cluster_id = 3;
@@ -392,47 +229,40 @@ message DescribeClusterResponse {
   bool is_connection_enabled = 8;
 }
 
-message ListClustersRequest {
+message WorkerListClustersRequest {
   int32 page_size = 1;
   bytes next_page_token = 2;
 }
 
-message ListClustersResponse {
+message WorkerListClustersResponse {
   repeated ClusterMetadata clusters = 1;
   bytes next_page_token = 2;
 }
 
-message AddOrUpdateRemoteClusterRequest {
+message WorkerAddOrUpdateRemoteClusterRequest {
   string frontend_address = 1;
   bool enable_remote_cluster_connection = 2;
 }
 
-message AddOrUpdateRemoteClusterResponse {}
+message WorkerAddOrUpdateRemoteClusterResponse {}
 
-message RemoveRemoteClusterRequest {
+message WorkerRemoveRemoteClusterRequest {
   string cluster_name = 1;
 }
 
-message RemoveRemoteClusterResponse {}
+message WorkerRemoveRemoteClusterResponse {}
 
-message SyncWorkflowStateRequest {
+message WorkerSyncWorkflowStateRequest {
   string namespace_id = 1;
   WorkflowExecution execution = 2;
   bytes replication_state = 3;
 }
 
-message SyncWorkflowStateResponse {}
+message WorkerSyncWorkflowStateResponse {}
 
-message GenerateLastHistoryReplicationTasksRequest {
-  string namespace_id = 1;
-  WorkflowExecution execution = 2;
-}
+message WorkerGetClusterInfoRequest {}
 
-message GenerateLastHistoryReplicationTasksResponse {}
-
-message GetClusterInfoRequest {}
-
-message GetClusterInfoResponse {
+message WorkerGetClusterInfoResponse {
   repeated string supported_clients = 1;
   string server_version = 2;
   string cluster_id = 3;
@@ -443,18 +273,18 @@ message GetClusterInfoResponse {
   string visibility_store = 8;
 }
 
-message ListTablesRequest {
+message WorkerListTablesRequest {
   string database = 1;
   int32 page_size = 2;
   bytes next_page_token = 3;
 }
 
-message ListTablesResponse {
+message WorkerListTablesResponse {
   repeated string tables = 1;
   bytes next_page_token = 2;
 }
 
-message CreateNamespaceRequest {
+message WorkerCreateNamespaceRequest {
   string namespace = 1;
   string description = 2;
   string owner_email = 3;
@@ -465,104 +295,25 @@ message CreateNamespaceRequest {
   bool is_global_namespace = 8;
 }
 
-message CreateNamespaceResponse {
+message WorkerCreateNamespaceResponse {
   string namespace_id = 1;
 }
 
-message UpdateNamespaceRequest {
+message WorkerUpdateNamespaceRequest {
   string namespace_id = 1;
   string description = 2;
   string owner_email = 3;
   map<string, string> data = 4;
 }
 
-message UpdateNamespaceResponse {}
+message WorkerUpdateNamespaceResponse {}
 
-message GetTaskQueueMetadataRequest {
+message WorkerGetTaskQueueMetadataRequest {
   string namespace_id = 1;
   string task_queue = 2;
   int32 task_queue_type = 3;
 }
 
-message GetTaskQueueMetadataResponse {
+message WorkerGetTaskQueueMetadataResponse {
   int64 max_tasks_per_second = 1;
-}
-
-// ─── Supporting Types ─────────────────────────────────────────────────────────
-
-message WorkflowExecution {
-  string workflow_id = 1;
-  string run_id = 2;
-}
-
-message ShardReplicationInfo {
-  int32 shard_id = 1;
-  int64 cluster_ack_level = 2;
-}
-
-message ReplicationTaskList {
-  repeated ReplicationTask tasks = 1;
-}
-
-message ReplicationTask {
-  int32 task_type = 1;
-  int64 source_task_id = 2;
-  bytes task_attributes = 3;
-}
-
-message ReplicationTaskInfo {
-  string namespace_id = 1;
-  WorkflowExecution execution = 2;
-  int64 task_id = 3;
-}
-
-message DLQMessage {
-  int64 message_id = 1;
-  bytes data = 2;
-}
-
-message QueuedMessage {
-  int64 message_id = 1;
-  bytes data = 2;
-  google.protobuf.Timestamp enqueued_time = 3;
-}
-
-message TaskRange {
-  int64 inclusive_min_task_key = 1;
-  int64 exclusive_max_task_key = 2;
-}
-
-message Task {
-  int64 namespace_id = 1;
-  int64 task_id = 2;
-  int32 task_type = 3;
-  google.protobuf.Timestamp fire_time = 4;
-}
-
-message ShardInfo {
-  int32 shard_id = 1;
-  int64 range_id = 2;
-  string owner = 3;
-  int64 replication_ack_level = 4;
-  int64 transfer_ack_level = 5;
-}
-
-message ClusterMetadata {
-  string cluster_name = 1;
-  string cluster_id = 2;
-  string frontend_address = 3;
-  bool is_connection_enabled = 4;
-}
-
-message ClusterReplicationConfig {
-  string cluster_name = 1;
-}
-
-message HistoryEvent {
-  int64 event_id = 1;
-  google.protobuf.Timestamp event_time = 2;
-  int32 event_type = 3;
-  int64 task_id = 4;
-  int64 version = 5;
-  bytes attributes = 6;
 }

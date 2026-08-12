@@ -6,16 +6,70 @@
 
 ## Table of Contents
 
-1. [System Architecture Overview](#system-architecture-overview)
-2. [Component Diagram](#component-diagram)
-3. [Data Flow](#data-flow)
-4. [Slab Memory Model](#slab-memory-model)
-5. [WAL and Durability](#wal-and-durability)
-6. [Replication and Consistency](#replication-and-consistency)
-7. [Task Queue Design](#task-queue-design)
-8. [Timer Engine](#timer-engine)
-9. [Security Model](#security-model)
-10. [Performance Characteristics](#performance-characteristics)
+1. [Three Flavors of VELOCITY](#three-flavors-of-velocity)
+2. [System Architecture Overview](#system-architecture-overview)
+3. [Component Diagram](#component-diagram)
+4. [Data Flow](#data-flow)
+5. [Slab Memory Model](#slab-memory-model)
+6. [WAL and Durability](#wal-and-durability)
+7. [Replication and Consistency](#replication-and-consistency)
+8. [Task Queue Design](#task-queue-design)
+9. [Timer Engine](#timer-engine)
+10. [Security Model](#security-model)
+11. [Performance Characteristics](#performance-characteristics)
+12. [Kubernetes Deployment Architecture](#kubernetes-deployment-architecture)
+
+---
+
+## Three Flavors of VELOCITY
+
+VELOCITY-WorkFlow ships in three deployment flavors, each designed to replace a specific legacy workflow engine while sharing the same core slab engine:
+
+| Flavor | Replaces | Protocol | Port | Use Case |
+|--------|----------|----------|------|----------|
+| **Velocity Classic** | Temporal | gRPC (HTTP/2) | 7234 | Direct Temporal drop-in replacement; gRPC SDKs |
+| **Velocity Runtime** | Restate | HTTP/1.1 JSON | 7233 | Lightweight HTTP-based workflows; serverless |
+| **Velocity Embedded** | DBOS | HTTP + PostgreSQL | 7233 + 5432 | Postgres-backed durability; embedded in-app |
+
+### Flavor Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  FLAVOR 1 — Velocity Classic (gRPC / Temporal-compatible)                  │
+│  • Full gRPC BenchmarkService (33 RPCs) for apples-to-apples comparison    │
+│  • Temporal SDKs connect via gRPC with zero code changes                   │
+│  • Task queues, timer engine, history store, namespace registry            │
+│  • Deploy: `cargo run --release -p velocity-dev-server -- --grpc-port 7234`│
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │ gRPC (HTTP/2)
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  FLAVOR 2 — Velocity Runtime (HTTP / Restate-compatible)                   │
+│  • REST API: POST /api/v1/namespaces/{ns}/workflows                        │
+│  • JSON request/response, Content-Type validation, X-Request-Id tracking   │
+│  • 10 MB body size limit with Content-Length fast-path rejection           │
+│  • Deploy: `cargo run --release -p velocity-dev-server -- --port 7233`     │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │ HTTP/1.1 JSON
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  FLAVOR 3 — Velocity Embedded (Postgres / DBOS-compatible)                 │
+│  • PostgreSQL as primary persistence backend                               │
+│  • HTTP API + direct Postgres access for hybrid durability                 │
+│  • pgbench-compatible for raw database TPS benchmarking                    │
+│  • Deploy: `cargo run --release -p velocity-dev-server -- --embedded-mode` │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Shared Engine Core
+
+All three flavors share the same underlying engine:
+
+- **velocity-workflow-core**: `#![no_std]` Rust slab allocator, Bitmask256, Merkle root
+- **velocity-workflow-engine**: Task queue, timer engine, visibility store, WAL
+- **AES-256-GCM encryption**: At-rest encryption with key rotation and retired key chain
+- **jemalloc**: Global allocator for allocation-heavy workloads
+- **Graceful shutdown**: SIGTERM/SIGINT handling with in-flight workflow completion
 
 ---
 
@@ -332,11 +386,36 @@ TimerEngine (Binary Min-Heap)
 
 | Layer | Mechanism |
 |-------|-----------|
-| Transport | ChaCha20-Poly1305 (Rust native, 1.51x faster than TLS) |
+| Transport | ChaCha20-Poly1305 (Rust native, 1.51x faster than TLS) + optional TLS via tokio-rustls |
+| Encryption at rest | AES-256-GCM with automatic key rotation and retired key chain |
 | Authentication | JWT tokens (optional, anonymous by default) |
 | Authorization | Namespace-level ACLs |
 | State integrity | SHA-256 Merkle root per slab (tamper detection) |
 | Audit trail | Cryptographic proof chain across slab mutations |
+| Request validation | Content-Type enforcement on POST/PUT/PATCH to /api/ (415 on mismatch) |
+| DoS protection | 10 MB max request body with Content-Length fast-path rejection |
+| Request correlation | X-Request-Id header propagation (extract or generate, echo in all responses) |
+
+### Encryption at Rest: Key Rotation
+
+The engine uses AES-256-GCM for encrypting workflow state at rest. Key rotation is implemented with safe interior mutability using `RwLock<EncryptionState>`:
+
+```
+EncryptionState {
+    config: EncryptionConfig,
+    cipher: Aes256Gcm,           // Current encryption cipher
+    retired_keys: Vec<RetiredKey>, // Old keys retained for decryption
+}
+```
+
+**Rotation process:**
+1. Acquire write lock on `EncryptionState`
+2. Push current key to `retired_keys` with its `kid_hash`
+3. Generate new 256-bit key and create new cipher
+4. Reset nonce counter to zero (fresh nonce space per key)
+5. Update rotation timestamp
+
+**Decryption:** Tries current key first, then iterates retired keys by `kid_hash` match for backward-compatible decryption. No data migration needed during rotation.
 
 ---
 
@@ -368,3 +447,67 @@ TimerEngine (Binary Min-Heap)
 - **Horizontal**: Add workers per task queue — linear throughput scaling
 - **Vertical**: Single node handles 100k+ concurrent workflows
 - **Memory**: Constant per-workflow overhead (128 bytes + overflow arena)
+
+---
+
+## Kubernetes Deployment Architecture
+
+VELOCITY-WorkFlow is designed for Kubernetes-native deployment. The following architecture supports all three flavors running on a GKE cluster:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  GKE Cluster (velocity-bench namespace)                                     │
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                      │
+│  │ velocity-    │  │ velocity-    │  │ velocity-    │   Deployments         │
+│  │ classic      │  │ runtime      │  │ embedded     │   (1 replica each)    │
+│  │ :7234 (gRPC) │  │ :7233 (HTTP) │  │ :7233 (HTTP) │                      │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘                      │
+│         │                  │                  │                               │
+│  ┌──────┴───────┐  ┌──────┴───────┐  ┌──────┴───────┐                      │
+│  │ svc/velocity │  │ svc/velocity │  │ svc/velocity │   Services             │
+│  │ -classic     │  │ -runtime     │  │ -embedded    │   (ClusterIP)          │
+│  └──────────────┘  └──────────────┘  └──────────────┘                      │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────┐                       │
+│  │ postgres (StatefulSet) — PostgreSQL 16           │                       │
+│  │ PVC: 20Gi pd-ssd                                 │                       │
+│  │ Used by: velocity-embedded, all engines for PG   │                       │
+│  └──────────────────────────────────────────────────┘                       │
+│                                                                              │
+│  ┌─────────────────────┐  ┌─────────────────────────┐                       │
+│  │ velocity-bench-     │  │ embedded-bench-runner   │   Benchmark Jobs       │
+│  │ runner              │  │ (postgres:16-alpine)    │                      │
+│  │ (gRPC + HTTP bench) │  │ (pgbench + curl)        │                      │
+│  └─────────────────────┘  └─────────────────────────┘                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Health Checks for Kubernetes
+
+The `/health` endpoint provides deep health checks suitable for Kubernetes liveness and readiness probes:
+
+```json
+{
+  "status": "healthy",
+  "version": "0.1.0",
+  "uptime_secs": 3600,
+  "workflow_count": 150,
+  "running": 42,
+  "completed": 105,
+  "failed": 3,
+  "namespace_count": 5
+}
+```
+
+### Prometheus Metrics
+
+The `/metrics` endpoint exports Prometheus-compatible metrics including:
+
+- `velocity_workflows_started_total` / `_completed_total` / `_failed_total`
+- `velocity_workflow_duration_seconds` (histogram)
+- `velocity_task_queue_depth` / `velocity_active_workflows` (gauges)
+- `velocity_namespaces` / `velocity_task_queues` (gauges)
+- `velocity_signal_count_total` / `velocity_query_count_total` (counters)
+- `velocity_wal_records_written` (counter)
+- `velocity_replication_lag_ms` (gauge)

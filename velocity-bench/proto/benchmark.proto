@@ -99,6 +99,14 @@ service BenchmarkService {
   rpc PollActivityTask(PollActivityTaskRequest) returns (PollActivityTaskResponse);
   // Get workflow history (full event stream).
   rpc GetWorkflowHistory(GetWorkflowHistoryRequest) returns (GetWorkflowHistoryResponse);
+
+  // ── Tier 4: Visibility & matching (Temporal parity) ─────────────────
+  // List workflows using visibility index (compound queries, pagination, sorting).
+  rpc ListWorkflows(ListWorkflowsRequest) returns (ListWorkflowsResponse);
+  // Describe a workflow execution (status, pending activities, search attributes).
+  rpc DescribeWorkflowExecution(DescribeWorkflowExecutionRequest) returns (DescribeWorkflowExecutionResponse);
+  // Describe a task queue (pollers, backlog, build IDs).
+  rpc DescribeTaskQueue(DescribeTaskQueueRequest) returns (DescribeTaskQueueResponse);
 }
 
 // ─── Messages ────────────────────────────────────────────────────────────────
@@ -544,4 +552,77 @@ message GetWorkflowHistoryResponse {
   repeated bytes events = 1;  // Serialized HistoryEvent JSON per element
   bytes next_page_token = 2;
   int64 total_event_count = 3;
+}
+
+// ─── Tier 4: Visibility & Matching ──────────────────────────────────────────
+
+message ListWorkflowsRequest {
+  string namespace = 1;
+  string query = 2;           // SQL-like query (e.g., "WorkflowType='order' AND Status='Running'")
+  int32 page_size = 3;
+  bytes next_page_token = 4;
+  string status_filter = 5;   // "running", "completed", "failed", "all"
+  string workflow_type = 6;   // Optional type filter
+  int64 start_time_from = 7;  // Epoch millis
+  int64 start_time_to = 8;    // Epoch millis
+}
+message ListWorkflowsResponse {
+  repeated WorkflowExecutionInfo executions = 1;
+  bytes next_page_token = 2;
+  int64 total_count = 3;
+}
+
+message WorkflowExecutionInfo {
+  string workflow_id = 1;
+  string run_id = 2;
+  string workflow_type = 3;
+  string namespace = 4;
+  string status = 5;
+  int64 start_time_ms = 6;
+  int64 close_time_ms = 7;
+  string task_queue = 8;
+  map<string, string> search_attributes = 9;
+  int32 history_length = 10;
+}
+
+message DescribeWorkflowExecutionRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+}
+message DescribeWorkflowExecutionResponse {
+  WorkflowExecutionInfo execution = 1;
+  repeated PendingActivityInfo pending_activities = 2;
+  repeated PendingChildInfo pending_children = 3;
+  int64 history_length = 4;
+  int64 execution_duration_ms = 5;
+}
+message PendingActivityInfo {
+  string activity_id = 1;
+  string activity_type = 2;
+  string state = 3;
+  int32 attempt = 4;
+  int64 last_heartbeat_ms = 5;
+}
+message PendingChildInfo {
+  string workflow_id = 1;
+  string workflow_type = 2;
+  string state = 3;
+}
+
+message DescribeTaskQueueRequest {
+  string task_queue = 1;
+  string namespace = 2;
+  string task_queue_type = 3;  // "workflow" or "activity"
+}
+message DescribeTaskQueueResponse {
+  repeated PollerInfo pollers = 1;
+  int64 total_backlog = 2;
+  int32 partition_count = 3;
+  repeated string build_ids = 4;
+}
+message PollerInfo {
+  string poller_id = 1;
+  string build_id = 2;
+  int64 last_poll_time_ms = 3;
 }

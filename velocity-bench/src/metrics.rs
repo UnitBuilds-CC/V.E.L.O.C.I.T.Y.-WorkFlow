@@ -316,9 +316,11 @@ impl MetricsCollector {
             .workflows_completed
             .load(std::sync::atomic::Ordering::Relaxed);
         let duration = self.start_time.elapsed();
-        // Primary throughput metric: workflows completed per second
+        // Primary throughput metric: ALL successful operations per second.
+        // This gives a meaningful throughput number for every workload type,
+        // not just those that track full workflow completions.
         let ops_per_sec = if duration.as_secs_f64() > 0.0 {
-            workflows as f64 / duration.as_secs_f64()
+            success as f64 / duration.as_secs_f64()
         } else {
             0.0
         };
@@ -449,5 +451,281 @@ impl SystemMetricsProbe {
     pub fn current_cpu_percent(&self) -> f64 {
         // Simplified — in production, track CPU time deltas
         0.0
+    }
+}
+
+// ─── Statistical Aggregation ────────────────────────────────────────────────
+
+/// Statistical summary of a metric across multiple runs.
+/// Provides mean, standard deviation, min, max, and 95% confidence interval.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StatisticalSummary {
+    /// Number of runs.
+    pub n: usize,
+    /// Arithmetic mean.
+    pub mean: f64,
+    /// Sample standard deviation.
+    pub stddev: f64,
+    /// Minimum observed value.
+    pub min: f64,
+    /// Maximum observed value.
+    pub max: f64,
+    /// Lower bound of 95% confidence interval (t-distribution).
+    pub ci95_lower: f64,
+    /// Upper bound of 95% confidence interval (t-distribution).
+    pub ci95_upper: f64,
+    /// Coefficient of variation (stddev / mean) — measures consistency.
+    pub cv_pct: f64,
+}
+
+impl StatisticalSummary {
+    /// Compute statistical summary from a slice of values.
+    pub fn from_values(values: &[f64]) -> Self {
+        let n = values.len();
+        if n == 0 {
+            return Self::default();
+        }
+        if n == 1 {
+            return Self {
+                n: 1,
+                mean: values[0],
+                stddev: 0.0,
+                min: values[0],
+                max: values[0],
+                ci95_lower: values[0],
+                ci95_upper: values[0],
+                cv_pct: 0.0,
+            };
+        }
+
+        let sum: f64 = values.iter().sum();
+        let mean = sum / n as f64;
+
+        let variance: f64 = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
+        let stddev = variance.sqrt();
+
+        let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+        let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+        // 95% CI using t-distribution critical values
+        // For small samples (n < 30), use t-table; for large samples, use z ≈ 1.96
+        let t_crit = match n {
+            2 => 12.706,
+            3 => 4.303,
+            4 => 3.182,
+            5 => 2.776,
+            6 => 2.571,
+            7 => 2.447,
+            8 => 2.365,
+            9 => 2.306,
+            10 => 2.262,
+            11 => 2.228,
+            12 => 2.201,
+            13 => 2.179,
+            14 => 2.160,
+            15 => 2.145,
+            16 => 2.131,
+            17 => 2.120,
+            18 => 2.110,
+            19 => 2.101,
+            20 => 2.093,
+            25 => 2.064,
+            30 => 2.045,
+            _ => 1.96,
+        };
+
+        let se = stddev / (n as f64).sqrt();
+        let ci95_lower = mean - t_crit * se;
+        let ci95_upper = mean + t_crit * se;
+
+        let cv_pct = if mean.abs() > 1e-9 {
+            (stddev / mean.abs()) * 100.0
+        } else {
+            0.0
+        };
+
+        Self {
+            n,
+            mean,
+            stddev,
+            min,
+            max,
+            ci95_lower,
+            ci95_upper,
+            cv_pct,
+        }
+    }
+}
+
+/// Aggregated metrics across multiple benchmark runs.
+/// Contains statistical summaries for each primary metric.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregateMetrics {
+    /// Workload name.
+    pub workload: String,
+    /// Number of runs.
+    pub runs: usize,
+    /// Statistical summary for operations per second.
+    pub ops_per_sec: StatisticalSummary,
+    /// Statistical summary for p50 latency (µs).
+    pub p50_latency_us: StatisticalSummary,
+    /// Statistical summary for p99 latency (µs).
+    pub p99_latency_us: StatisticalSummary,
+    /// Statistical summary for peak memory (MB).
+    pub peak_memory_mb: StatisticalSummary,
+    /// Statistical summary for error rate (%).
+    pub error_rate_pct: StatisticalSummary,
+    /// Statistical summary for total operations.
+    pub total_ops: StatisticalSummary,
+    /// Per-run details (for debugging / transparency).
+    pub per_run_ops_per_sec: Vec<f64>,
+    pub per_run_p99_us: Vec<f64>,
+}
+
+impl AggregateMetrics {
+    /// Build aggregate metrics from a list of (workload_name, snapshots) pairs.
+    pub fn from_snapshots(workload_name: &str, snapshots: &[MetricsSnapshot]) -> Self {
+        let ops_values: Vec<f64> = snapshots.iter().map(|s| s.operations_per_second).collect();
+        let p50_values: Vec<f64> = snapshots
+            .iter()
+            .map(|s| s.primary_latency("").p50_us as f64)
+            .collect();
+        let p99_values: Vec<f64> = snapshots
+            .iter()
+            .map(|s| s.primary_latency("").p99_us as f64)
+            .collect();
+        let mem_values: Vec<f64> = snapshots.iter().map(|s| s.peak_memory_mb).collect();
+        let err_values: Vec<f64> = snapshots.iter().map(|s| s.error_rate()).collect();
+        let total_ops_values: Vec<f64> = snapshots
+            .iter()
+            .map(|s| s.total_operations as f64)
+            .collect();
+
+        Self {
+            workload: workload_name.to_string(),
+            runs: snapshots.len(),
+            ops_per_sec: StatisticalSummary::from_values(&ops_values),
+            p50_latency_us: StatisticalSummary::from_values(&p50_values),
+            p99_latency_us: StatisticalSummary::from_values(&p99_values),
+            peak_memory_mb: StatisticalSummary::from_values(&mem_values),
+            error_rate_pct: StatisticalSummary::from_values(&err_values),
+            total_ops: StatisticalSummary::from_values(&total_ops_values),
+            per_run_ops_per_sec: ops_values,
+            per_run_p99_us: p99_values,
+        }
+    }
+}
+
+/// Result of Welch's t-test for statistical significance between two samples.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignificanceTest {
+    /// The metric being compared.
+    pub metric: String,
+    /// Velocity mean.
+    pub velocity_mean: f64,
+    /// Temporal mean.
+    pub temporal_mean: f64,
+    /// Absolute difference.
+    pub abs_diff: f64,
+    /// Relative difference (%).
+    pub rel_diff_pct: f64,
+    /// Welch's t-statistic.
+    pub t_statistic: f64,
+    /// Approximate p-value (two-tailed).
+    pub p_value: f64,
+    /// Whether the difference is statistically significant (p < 0.05).
+    pub significant: bool,
+    /// Human-readable interpretation.
+    pub verdict: String,
+}
+
+impl SignificanceTest {
+    /// Perform Welch's t-test comparing two independent samples.
+    pub fn welchs_t_test(metric: &str, velocity: &[f64], temporal: &[f64]) -> Self {
+        let vel_mean = if velocity.is_empty() {
+            0.0
+        } else {
+            velocity.iter().sum::<f64>() / velocity.len() as f64
+        };
+        let tmp_mean = if temporal.is_empty() {
+            0.0
+        } else {
+            temporal.iter().sum::<f64>() / temporal.len() as f64
+        };
+
+        let abs_diff = (vel_mean - tmp_mean).abs();
+        let rel_diff_pct = if tmp_mean.abs() > 1e-9 {
+            ((vel_mean - tmp_mean) / tmp_mean) * 100.0
+        } else {
+            0.0
+        };
+
+        // Welch's t-statistic
+        let n1 = velocity.len().max(1) as f64;
+        let n2 = temporal.len().max(1) as f64;
+
+        let vel_var = if velocity.len() < 2 {
+            0.0
+        } else {
+            velocity.iter().map(|v| (v - vel_mean).powi(2)).sum::<f64>() / (n1 - 1.0)
+        };
+        let tmp_var = if temporal.len() < 2 {
+            0.0
+        } else {
+            temporal.iter().map(|v| (v - tmp_mean).powi(2)).sum::<f64>() / (n2 - 1.0)
+        };
+
+        let se = (vel_var / n1 + tmp_var / n2).sqrt();
+        let t_statistic = if se > 1e-9 {
+            (vel_mean - tmp_mean) / se
+        } else {
+            0.0
+        };
+
+        // Approximate p-value using the normal distribution for large samples
+        // For small samples, this is conservative (underestimates significance)
+        let z = t_statistic.abs();
+        // Abramowitz & Stegun approximation for normal CDF
+        let p_value = if z > 6.0 {
+            0.0
+        } else {
+            let b1 = 0.319381530;
+            let b2 = -0.356563782;
+            let b3 = 1.781477937;
+            let b4 = -1.821255978;
+            let b5 = 1.330274429;
+            let p = 0.2316419;
+            let t = 1.0 / (1.0 + p * z);
+            let phi = (-z * z / 2.0).exp() / (2.0 * std::f64::consts::PI).sqrt();
+            2.0 * phi * t * (b1 + t * (b2 + t * (b3 + t * (b4 + t * b5))))
+        };
+
+        let significant = p_value < 0.05;
+
+        let verdict = if !significant {
+            "No statistically significant difference (p ≥ 0.05)".to_string()
+        } else if vel_mean > tmp_mean {
+            format!(
+                "VELOCITY is significantly faster by {:.1}% (p = {:.4})",
+                rel_diff_pct, p_value
+            )
+        } else {
+            format!(
+                "Temporal is significantly faster by {:.1}% (p = {:.4})",
+                -rel_diff_pct, p_value
+            )
+        };
+
+        Self {
+            metric: metric.to_string(),
+            velocity_mean: vel_mean,
+            temporal_mean: tmp_mean,
+            abs_diff,
+            rel_diff_pct,
+            t_statistic,
+            p_value,
+            significant,
+            verdict,
+        }
     }
 }

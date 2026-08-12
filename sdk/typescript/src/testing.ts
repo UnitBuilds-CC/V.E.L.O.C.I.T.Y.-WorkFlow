@@ -52,11 +52,15 @@ export class MockVelocityClient {
 
     return {
       workflowKey,
+      workflowId: workflowKey.toString(),
       status: wf.status,
       currentStep: wf.currentStep,
       totalSteps: wf.totalSteps,
       namespace: wf.namespace,
       result: wf.result,
+      startTimeMs: 0,
+      closeTimeMs: null,
+      taskQueue: '',
     };
   }
 

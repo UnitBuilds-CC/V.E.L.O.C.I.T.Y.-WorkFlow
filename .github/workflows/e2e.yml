@@ -89,8 +89,17 @@ jobs:
           docker compose -f docker-compose.e2e.yml logs --tail=20 postgres
           exit 1
 
-      # ── Smoke tests ─────────────────────────────────────────────────────
-      - name: Run API smoke tests
+      # ── Required E2E assertions (CI gate) ────────────────────────────────
+      - name: Run E2E test harness (required assertions)
+        run: |
+          echo "Running E2E test harness with required assertions..."
+          bash deploy/run-e2e-tests.sh
+        env:
+          VELOCITY_URL: http://localhost:5000
+          GRPC_PORT: "50051"
+
+      # ── Informational smoke tests (diagnostic only) ─────────────────────
+      - name: Run API smoke tests (informational)
         run: |
           echo "=== Health endpoint ==="
           curl -sf http://localhost:5000/health | jq . 2>/dev/null || echo "(not available)"
@@ -114,6 +123,34 @@ jobs:
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "202" ]; then
             echo "✓ Workflow submission succeeded (HTTP $HTTP_CODE)"
+            
+            # Extract workflow ID from response
+            BODY=$(echo "$RESPONSE" | head -1)
+            WF_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('workflowId',''))" 2>/dev/null || echo "")
+            
+            if [ -n "$WF_ID" ]; then
+              echo "  Workflow ID: $WF_ID"
+              
+              # Wait for workflow to complete (poll with timeout)
+              echo "  Waiting for workflow completion..."
+              for i in $(seq 1 30); do
+                DESC=$(curl -sf http://localhost:5000/api/workflows/$WF_ID 2>/dev/null || echo "{}")
+                STATUS=$(echo "$DESC" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
+                
+                if [ "$STATUS" = "COMPLETED" ]; then
+                  echo "  ✓ Workflow completed successfully"
+                  break
+                elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "TERMINATED" ]; then
+                  echo "  ✗ Workflow ended with status: $STATUS"
+                  exit 1
+                fi
+                sleep 1
+              done
+              
+              # List workflows to verify visibility
+              LIST=$(curl -sf http://localhost:5000/api/workflows 2>/dev/null || echo "{}")
+              echo "  Workflow listing: $(echo "$LIST" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\"{len(d.get('workflows',[]))} workflows\")" 2>/dev/null || echo 'unavailable')"
+            fi
           elif [ "$HTTP_CODE" = "404" ] || [ "$HTTP_CODE" = "000" ]; then
             echo "⚠ Workflow API endpoint not available (expected in smoke test mode)"
           else

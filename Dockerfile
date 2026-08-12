@@ -20,6 +20,7 @@ COPY Cargo.toml Cargo.lock ./
 # Copy all workspace member Cargo.toml files for dependency caching
 COPY velocity-workflow-core/Cargo.toml velocity-workflow-core/Cargo.toml
 COPY velocity-workflow-engine/Cargo.toml velocity-workflow-engine/Cargo.toml
+COPY velocity-workflow-server/Cargo.toml velocity-workflow-server/Cargo.toml
 COPY velocity-workflow-daemon/Cargo.toml velocity-workflow-daemon/Cargo.toml
 COPY velocity-bench/Cargo.toml velocity-bench/Cargo.toml
 COPY velocity-dev-server/Cargo.toml velocity-dev-server/Cargo.toml
@@ -28,6 +29,7 @@ COPY velocity-test-framework/Cargo.toml velocity-test-framework/Cargo.toml
 # Create dummy source files to cache dependency builds
 RUN mkdir -p velocity-workflow-core/src && echo "pub fn dummy(){}" > velocity-workflow-core/src/lib.rs && \
     mkdir -p velocity-workflow-engine/src && echo "pub fn dummy(){}" > velocity-workflow-engine/src/lib.rs && \
+    mkdir -p velocity-workflow-server/src && echo "fn main(){}" > velocity-workflow-server/src/main.rs && \
     mkdir -p velocity-workflow-daemon/src && echo "fn main(){}" > velocity-workflow-daemon/src/main.rs && \
     mkdir -p velocity-bench/src && echo "pub fn dummy(){}" > velocity-bench/src/lib.rs && \
     mkdir -p velocity-dev-server/src && echo "fn main(){}" > velocity-dev-server/src/main.rs && \
@@ -39,10 +41,12 @@ RUN cargo build --profile ci --workspace || true
 # Copy actual source and build
 COPY velocity-workflow-core/ velocity-workflow-core/
 COPY velocity-workflow-engine/ velocity-workflow-engine/
+COPY velocity-workflow-server/ velocity-workflow-server/
 COPY velocity-workflow-daemon/ velocity-workflow-daemon/
 COPY velocity-bench/ velocity-bench/
 COPY velocity-dev-server/ velocity-dev-server/
 COPY velocity-test-framework/ velocity-test-framework/
+COPY proto/ proto/
 COPY migrations/ migrations/
 
 RUN cargo build --profile ci --workspace

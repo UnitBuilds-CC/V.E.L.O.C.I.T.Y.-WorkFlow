@@ -10,6 +10,82 @@
 
 ---
 
+## Quick Start
+
+Get up and running in under 2 minutes. Choose the flavor that fits your use case:
+
+### Flavor 1: Velocity Classic (gRPC — replaces Temporal)
+
+```bash
+# Start the server
+cargo run --release -p velocity-dev-server -- --grpc-port 7234 --port 7233
+
+# In another terminal, start a worker (TypeScript example)
+cd velocity-sdk-typescript && npm install
+npx ts-node examples/simple-worker.ts
+```
+
+### Flavor 2: Velocity Runtime (HTTP — replaces Restate)
+
+```bash
+# Start the server (HTTP mode)
+cargo run --release -p velocity-dev-server -- --port 7233
+
+# Start a workflow via HTTP
+curl -X POST http://localhost:7233/api/v1/namespaces/default/workflows \
+  -H "Content-Type: application/json" \
+  -d '{"workflow_type": "myWorkflow", "task_queue": "default", "input": {"name": "world"}}'
+```
+
+### Flavor 3: Velocity Embedded (PostgreSQL — replaces DBOS)
+
+```bash
+# Start PostgreSQL
+docker run -d --name velocity-pg -p 5432:5432 -e POSTGRES_PASSWORD=velocity postgres:16
+
+# Start the server in embedded mode
+cargo run --release -p velocity-dev-server -- --embedded-mode --port 7233
+```
+
+### Using SDKs
+
+```typescript
+// TypeScript — connect, start workflow, signal, query
+import { Client, Worker } from 'velocity-sdk-typescript';
+
+const client = new Client({ connection: { address: 'localhost:7233' } });
+const result = await client.execute({
+  workflowId: 'wf-1',
+  workflowType: 'myWorkflow',
+  taskQueue: 'default',
+  input: { name: 'world' },
+});
+```
+
+```python
+# Python — connect, start workflow, signal, query
+from velocity import Client, ClientOptions, Worker, WorkerOptions
+
+client = Client(ClientOptions(host_port="localhost:7233"))
+handle = client.start_workflow(WorkflowOptions(
+    workflow_id="wf-1", workflow_type="my_workflow",
+    task_queue="default", input_data={"name": "world"},
+))
+```
+
+```go
+// Go — connect, start workflow, signal, query
+client, _ := velocity.NewClient(velocity.ClientOptions{HostPort: "localhost:7233"})
+result, err := client.Execute(ctx, velocity.WorkflowOptions{
+    WorkflowID: "wf-1", WorkflowType: "myWorkflow",
+    TaskQueue: "default", Input: data,
+})
+```
+
+See the [Getting Started Guide](docs/getting_started.md) for full installation instructions, or the [SDK Quick Reference](docs/sdk_quick_reference.md) for all 7 languages.
+
+---
+
 ## gRPC Benchmark Suite — Live Measured Results
 
 All performance numbers below are derived from the **reproducible gRPC benchmark suite** (`velocity-bench`), not in-process microbenchmarks. Both engines connect through identical gRPC paths (same `BenchmarkService` proto, 33 RPCs), paying the same serialization, network, and protocol overhead. Anyone can reproduce these results by following the [Reproducible Benchmarking Guide](#-reproducible-benchmarking-guide) below.
@@ -202,6 +278,18 @@ public partial class PaymentWorkflow
 ---
 
 ## 🏛️ System Architecture Topology
+
+### Three Flavors
+
+VELOCITY-WorkFlow ships in three deployment flavors, each designed to replace a specific legacy engine:
+
+| Flavor | Replaces | Protocol | Quick Start |
+|--------|----------|----------|-------------|
+| **Velocity Classic** | Temporal | gRPC (HTTP/2) | `cargo run -p velocity-dev-server -- --grpc-port 7234` |
+| **Velocity Runtime** | Restate | HTTP/1.1 JSON | `cargo run -p velocity-dev-server -- --port 7233` |
+| **Velocity Embedded** | DBOS | HTTP + PostgreSQL | `cargo run -p velocity-dev-server -- --embedded-mode` |
+
+All three flavors share the same core engine: zero-allocation slab allocator, AES-256-GCM encryption with key rotation, WAL persistence, and Prometheus metrics.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -429,17 +517,51 @@ The benchmark produces `bench_results.md`, `bench_results.csv`, and `bench_resul
 
 ## 📚 Documentation
 
+### Getting Started
+
 | Guide | Description |
 |-------|-------------|
-| [Getting Started](docs/getting_started.md) | Quick start guide, installation, first workflow tutorial |
-| [Architecture](docs/architecture.md) | System architecture, slab memory model, WAL, replication |
-| [Deployment](docs/deployment.md) | Docker, Kubernetes, Helm, production checklist, monitoring |
-| [SDK Guide](docs/sdk_guide.md) | All 7 language SDKs — Python, TypeScript, Go, Java, Rust, PHP, Ruby |
-| [Migration from Temporal](docs/migration_from_temporal.md) | Comparison, API mapping, migration strategy, AST transpiler |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues, debugging techniques, FAQ |
-| [API Reference](docs/api_reference.md) | Full gRPC API and SDK method reference |
-| [SDK Development](docs/sdk_development.md) | How to build a VELOCITY-WorkFlow SDK for any language |
+| [Getting Started](docs/getting_started.md) | Quick start guide with all 3 flavors, installation, first workflow tutorial |
+| [Dev Server Setup](docs/setup_dev_server.md) | One-command local development with HTTP, gRPC, and embedded modes |
+
+### Architecture & Design
+
+| Guide | Description |
+|-------|-------------|
+| [Architecture](docs/architecture.md) | System architecture, 3 flavors, slab memory model, WAL, replication, security, K8s |
 | [Architecture Guide](docs/ARCHITECTURE_GUIDE.md) | Internal architecture deep dive |
+| [Open Core Model](docs/open_core_model.md) | Open-source vs enterprise feature breakdown |
+
+### SDK Guides (Detailed User Guides)
+
+| SDK | Language | Guide | Transport |
+|-----|----------|-------|-----------|
+| **TypeScript** | TypeScript / Node 18+ | [Full Guide](docs/sdk_typescript_guide.md) | gRPC / HTTP |
+| **Python** | Python 3.10+ | [Full Guide](docs/sdk_python_guide.md) | gRPC / HTTP |
+| **Go** | Go 1.21+ | [Full Guide](docs/sdk_go_guide.md) | gRPC |
+| **Java** | Java 17+ | [Full Guide](docs/sdk_java_guide.md) | gRPC |
+| **Rust** | Rust 1.82+ | [Full Guide](docs/sdk_rust_guide.md) | FFI (zero-copy) |
+| PHP | PHP 8.2+ | [SDK Guide](docs/sdk_guide.md#php-sdk) | gRPC |
+| Ruby | Ruby 3.2+ | [SDK Guide](docs/sdk_guide.md#ruby-sdk) | gRPC |
+
+### Deployment & Operations
+
+| Guide | Description |
+|-------|-------------|
+| [Deployment Guide](docs/deployment_guide.md) | Docker, Kubernetes, Helm, production checklist, monitoring, scaling |
+| [Kubernetes Setup](docs/setup_kubernetes.md) | Full K8s deployment with all 3 flavors, benchmarking, monitoring |
+| [Cloud Benchmark](docs/setup_cloud_benchmark.md) | Run benchmarks across 6 dedicated VMs or GKE cluster |
+| [API Reference](docs/api_reference.md) | Full gRPC API and SDK method reference |
+
+### Migration & Advanced
+
+| Guide | Description |
+|-------|-------------|
+| [Migration from Temporal](docs/migration_from_temporal.md) | Comparison, API mapping, AST transpiler, migration strategy |
+| [Migration from Restate & DBOS](docs/migration_from_restate_dbos.md) | Step-by-step migration from Restate (HTTP) and DBOS (PostgreSQL) |
+| [SDK Quick Reference](docs/sdk_quick_reference.md) | One-page cheat sheet for all 7 language SDKs |
+| [SDK Development](docs/sdk_development.md) | How to build a VELOCITY-WorkFlow SDK for any language |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues, debugging techniques, FAQ |
 
 ### Worker Examples
 

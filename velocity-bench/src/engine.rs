@@ -97,6 +97,20 @@ pub struct OperationResult {
     pub error: Option<String>,
 }
 
+/// Server-reported metrics from the engine's HealthCheck RPC.
+/// This measures the SERVER process, not the benchmark harness.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ServerMetrics {
+    /// Server process resident set size in MB.
+    pub memory_rss_mb: f64,
+    /// Server process CPU usage percentage.
+    pub cpu_percent: f64,
+    /// Number of active workflows on the server.
+    pub active_workflows: u64,
+    /// Server uptime in seconds.
+    pub uptime_secs: u64,
+}
+
 impl OperationResult {
     pub fn ok(latency: Duration) -> Self {
         Self {
@@ -213,12 +227,24 @@ pub trait BenchmarkEngine: Send + Sync {
     /// Get engine health status.
     async fn health_check(&self) -> Result<bool, String>;
 
+    /// Get server-reported metrics (memory, CPU) — measures the SERVER process,
+    /// not the benchmark harness. This is the authoritative source for engine
+    /// resource consumption.
+    async fn server_metrics(&self) -> Result<ServerMetrics, String>;
+
     /// Complete a workflow step (for driving workflows forward).
     async fn complete_step(
         &self,
         handle: &WorkflowHandle,
         step_index: i32,
         result: &[u8],
+    ) -> Result<OperationResult, String>;
+
+    /// Upsert search attributes on a running workflow.
+    async fn upsert_search_attributes(
+        &self,
+        handle: &WorkflowHandle,
+        attributes: std::collections::HashMap<String, String>,
     ) -> Result<OperationResult, String>;
 }
 
@@ -491,6 +517,24 @@ impl BenchmarkEngine for GrpcAdapter {
         Ok(resp.into_inner().healthy)
     }
 
+    async fn server_metrics(&self) -> Result<ServerMetrics, String> {
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
+        let resp = client
+            .health_check(HealthCheckRequest {})
+            .await
+            .map_err(|e| format!("HealthCheck gRPC error: {}", e))?;
+
+        let inner = resp.into_inner();
+        Ok(ServerMetrics {
+            memory_rss_mb: inner.memory_rss_mb,
+            cpu_percent: inner.cpu_percent,
+            active_workflows: inner.active_workflows as u64,
+            uptime_secs: inner.uptime_secs as u64,
+        })
+    }
+
     async fn complete_step(
         &self,
         handle: &WorkflowHandle,
@@ -511,6 +555,33 @@ impl BenchmarkEngine for GrpcAdapter {
             })
             .await
             .map_err(|e| format!("CompleteStep gRPC error: {}", e))?;
+
+        let inner = resp.into_inner();
+        if inner.success {
+            Ok(OperationResult::ok(start.elapsed()))
+        } else {
+            Ok(OperationResult::err(start.elapsed(), inner.error))
+        }
+    }
+
+    async fn upsert_search_attributes(
+        &self,
+        handle: &WorkflowHandle,
+        attributes: std::collections::HashMap<String, String>,
+    ) -> Result<OperationResult, String> {
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
+        let start = Instant::now();
+        let resp = client
+            .upsert_search_attributes(UpsertSearchAttributesRequest {
+                workflow_id: handle.workflow_id.clone(),
+                run_id: handle.run_id.clone(),
+                namespace: self.namespace.clone(),
+                search_attributes: attributes,
+            })
+            .await
+            .map_err(|e| format!("UpsertSearchAttributes gRPC error: {}", e))?;
 
         let inner = resp.into_inner();
         if inner.success {

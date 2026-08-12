@@ -1,0 +1,15 @@
+FROM rust:1.88-slim-bookworm
+
+RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/velocity-bench
+
+# Copy bench source (proto/ is a subdir of velocity-bench/)
+COPY velocity-bench/ .
+
+# Build
+RUN cargo build --release
+
+# Default: run all workloads against Velocity engine
+ENTRYPOINT ["./target/release/velocity-bench"]
+CMD ["--workloads", "all", "--engine", "velocity", "--velocity-address", "http://velocity-dev:7234", "--profile", "standard", "--format", "markdown"]

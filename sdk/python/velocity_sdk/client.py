@@ -207,6 +207,277 @@ class VelocityClient:
         response = stub.CancelWorkflow(request, metadata=self._metadata)
         return response.success
 
+    def signal_with_start(
+        self,
+        workflow_type: str,
+        signal_name: str,
+        signal_payload: bytes = b"",
+        task_queue: str = "default",
+        input_data: bytes = b"",
+        total_steps: int = 1,
+    ) -> WorkflowHandle:
+        """Signal an existing workflow or start a new one and signal it atomically."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.SignalWithStartRequest(
+            namespace="default",
+            workflow_type=workflow_type.encode("utf-8"),
+            task_queue=task_queue.encode("utf-8"),
+            input=input_data,
+            signal_name=signal_name.encode("utf-8"),
+            signal_payload=signal_payload,
+            total_steps=total_steps,
+        )
+        response = stub.SignalWithStartWorkflow(request, metadata=self._metadata)
+        return WorkflowHandle(
+            key=response.workflow_key,
+            workflow_id=response.workflow_id,
+            status=WorkflowStatus.RUNNING,
+            workflow_type=workflow_type,
+            task_queue=task_queue,
+            total_steps=total_steps,
+        )
+
+    def search_workflows(self, query: str) -> list:
+        """Search workflows using a SQL-like visibility query."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.SearchWorkflowsRequest(
+            namespace="default",
+            query=query,
+        )
+        response = stub.SearchWorkflows(request, metadata=self._metadata)
+        return [
+            WorkflowDescription(
+                key=wf.workflow_key,
+                workflow_id=wf.workflow_id,
+                status=WorkflowStatus(wf.status),
+                workflow_type=wf.workflow_type,
+                task_queue=wf.task_queue,
+                total_steps=wf.total_steps,
+            )
+            for wf in response.workflows
+        ]
+
+    def list_workflows(self, page_size: int = 100) -> list:
+        """List all workflows."""
+        return self.search_workflows("")
+
+    def reset_workflow(self, workflow_key: int, event_id: int = 0) -> bool:
+        """Reset a workflow to a previous event for replay."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.ResetWorkflowRequest(
+            workflow_key=workflow_key,
+            event_id=event_id,
+        )
+        response = stub.ResetWorkflow(request, metadata=self._metadata)
+        return response.success
+
+    def update_workflow(
+        self,
+        workflow_key: int,
+        update_name: str,
+        input_data: bytes = b"",
+    ) -> bytes:
+        """Send a synchronous update to a running workflow and wait for the result."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.UpdateWorkflowRequest(
+            workflow_key=workflow_key,
+            update_name=update_name.encode("utf-8"),
+            input=input_data,
+        )
+        response = stub.UpdateWorkflow(request, metadata=self._metadata)
+        return response.result
+
+    def continue_as_new(
+        self,
+        workflow_key: int,
+        new_workflow_type: str = "",
+        new_task_queue: str = "",
+        new_input: bytes = b"",
+    ) -> int:
+        """Continue a workflow as a new execution with new input."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.ContinueAsNewRequest(
+            workflow_key=workflow_key,
+            new_workflow_type=new_workflow_type.encode("utf-8"),
+            new_task_queue=new_task_queue.encode("utf-8"),
+            new_input=new_input,
+        )
+        response = stub.ContinueAsNew(request, metadata=self._metadata)
+        return response.new_workflow_key
+
+    def set_memo(self, workflow_key: int, memo: dict) -> bool:
+        """Set memo key-value pairs on a workflow."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.SetMemoRequest(
+            workflow_key=workflow_key,
+            memo={k: v if isinstance(v, bytes) else str(v).encode("utf-8") for k, v in memo.items()},
+        )
+        response = stub.SetMemo(request, metadata=self._metadata)
+        return response.success
+
+    def get_memo(self, workflow_key: int) -> dict:
+        """Get all memo key-value pairs for a workflow."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.GetMemoRequest(workflow_key=workflow_key)
+        response = stub.GetMemo(request, metadata=self._metadata)
+        return dict(response.memo)
+
+    def set_search_attributes(self, workflow_key: int, attributes: dict) -> bool:
+        """Set search attributes on a workflow for visibility queries."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.SetSearchAttributesRequest(
+            workflow_key=workflow_key,
+            attributes={k: v if isinstance(v, bytes) else str(v).encode("utf-8") for k, v in attributes.items()},
+        )
+        response = stub.SetSearchAttributes(request, metadata=self._metadata)
+        return response.success
+
+    def get_search_attributes(self, workflow_key: int) -> dict:
+        """Get all search attributes for a workflow."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.GetSearchAttributesRequest(workflow_key=workflow_key)
+        response = stub.GetSearchAttributes(request, metadata=self._metadata)
+        return dict(response.attributes)
+
+    def create_schedule(
+        self,
+        schedule_id: str,
+        cron_expression: str,
+        workflow_type: str,
+        input_data: bytes = b"",
+        task_queue: str = "default",
+    ) -> bool:
+        """Create a recurring schedule for a workflow type."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.CreateScheduleRequest(
+            namespace="default",
+            schedule_id=schedule_id,
+            cron_expression=cron_expression,
+            workflow_type=workflow_type.encode("utf-8"),
+            input=input_data,
+            task_queue=task_queue.encode("utf-8"),
+        )
+        response = stub.CreateSchedule(request, metadata=self._metadata)
+        return response.success
+
+    def describe_schedule(self, schedule_id: str) -> dict:
+        """Get information about a schedule."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.DescribeScheduleRequest(
+            namespace="default",
+            schedule_id=schedule_id,
+        )
+        response = stub.DescribeSchedule(request, metadata=self._metadata)
+        return {
+            "schedule_id": schedule_id,
+            "cron": response.cron_expression,
+            "workflow_type": response.workflow_type,
+        }
+
+    def list_schedules(self) -> list:
+        """List all schedules in the namespace."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.ListSchedulesRequest(namespace="default")
+        response = stub.ListSchedules(request, metadata=self._metadata)
+        return list(response.schedules)
+
+    def delete_schedule(self, schedule_id: str) -> bool:
+        """Delete a schedule."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.DeleteScheduleRequest(
+            namespace="default",
+            schedule_id=schedule_id,
+        )
+        response = stub.DeleteSchedule(request, metadata=self._metadata)
+        return response.success
+
+    def batch_terminate(self, workflow_keys: list, reason: str = "") -> str:
+        """Terminate multiple workflows in a single batch operation. Returns job ID."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.StartBatchOperationRequest(
+            namespace="default",
+            operation="terminate",
+            workflow_keys=workflow_keys,
+            reason=reason,
+        )
+        response = stub.StartBatchOperation(request, metadata=self._metadata)
+        return response.job_id
+
+    def batch_cancel(self, workflow_keys: list) -> str:
+        """Cancel multiple workflows in a single batch operation. Returns job ID."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.StartBatchOperationRequest(
+            namespace="default",
+            operation="cancel",
+            workflow_keys=workflow_keys,
+        )
+        response = stub.StartBatchOperation(request, metadata=self._metadata)
+        return response.job_id
+
+    def batch_signal(self, workflow_keys: list, signal_name: str, payload: bytes = b"") -> str:
+        """Signal multiple workflows in a single batch operation. Returns job ID."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.StartBatchOperationRequest(
+            namespace="default",
+            operation="signal",
+            workflow_keys=workflow_keys,
+            signal_name=signal_name.encode("utf-8"),
+            signal_payload=payload,
+        )
+        response = stub.StartBatchOperation(request, metadata=self._metadata)
+        return response.job_id
+
+    def describe_batch_operation(self, job_id: str) -> dict:
+        """Get the status of a batch operation."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.DescribeBatchOperationRequest(
+            namespace="default",
+            job_id=job_id,
+        )
+        response = stub.DescribeBatchOperation(request, metadata=self._metadata)
+        return {
+            "job_id": job_id,
+            "operation": response.operation,
+            "status": response.status,
+            "total": response.total_workflows,
+            "succeeded": response.succeeded,
+            "failed": response.failed,
+        }
+
     def close(self):
         """Close the gRPC channel."""
         self._channel.close()

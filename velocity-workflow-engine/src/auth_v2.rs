@@ -574,8 +574,13 @@ impl Default for AuditLogger {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Encryption at Rest (AES-256-GCM conceptual — XOR demo)
+//  Encryption at Rest (AES-256-GCM)
 // ═══════════════════════════════════════════════════════════════════════════
+
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
+use std::sync::RwLock;
 
 /// Encryption algorithm identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -593,105 +598,193 @@ pub struct EncryptionConfig {
     pub key_rotation_interval_ms: u64,
 }
 
-/// Encryption-at-rest manager.
-///
-/// Uses a XOR-based demo cipher keyed by SHA-256 of the master key.
-/// In production, this would delegate to a proper AES-256-GCM implementation
-/// (e.g., via the `aes-gcm` crate or an HSM).
-pub struct EncryptionAtRest {
+/// A retired encryption key kept for backward-compatible decryption of data
+/// encrypted before a key rotation.
+struct RetiredKey {
+    /// SHA-256 hash of the old key_id (matches the kid stored in ciphertext headers).
+    kid_hash: [u8; 32],
+    /// The old AES-256-GCM cipher instance.
+    cipher: Aes256Gcm,
+}
+
+/// Mutable encryption state protected by RwLock for safe interior mutability.
+struct EncryptionState {
     config: EncryptionConfig,
-    /// Derived encryption key (32 bytes for AES-256).
-    derived_key: [u8; 32],
+    cipher: Aes256Gcm,
+    retired_keys: Vec<RetiredKey>,
+}
+
+/// Encryption-at-rest manager using AES-256-GCM.
+///
+/// Each encryption operation uses a unique 12-byte nonce derived from a
+/// monotonic counter, ensuring nonce uniqueness even under concurrent access.
+///
+/// Supports key rotation: after `rotate_key()`, new data is encrypted with
+/// the new key while old data can still be decrypted using retired keys.
+pub struct EncryptionAtRest {
+    /// Mutable state (config + cipher + retired keys) behind RwLock.
+    state: RwLock<EncryptionState>,
     /// Timestamp of last key rotation.
     last_rotation: Mutex<u64>,
+    /// Monotonic nonce counter (prevents reuse).
+    nonce_counter: Mutex<u64>,
 }
 
 impl EncryptionAtRest {
     /// Create a new encryption manager from a master key string.
     pub fn new(config: EncryptionConfig, master_key: &str) -> Self {
         let derived_key = sha256_hex(master_key.as_bytes());
+        let key = GenericArray::from_slice(&derived_key);
+        let cipher = Aes256Gcm::new(key);
         Self {
-            config,
-            derived_key,
+            state: RwLock::new(EncryptionState {
+                config,
+                cipher,
+                retired_keys: Vec::new(),
+            }),
             last_rotation: Mutex::new(now_secs()),
+            nonce_counter: Mutex::new(0),
         }
     }
 
-    /// Encrypt data. Returns the ciphertext.
+    /// Encrypt data using AES-256-GCM. Returns the ciphertext with auth tag.
     ///
-    /// Format: [1-byte version][32-byte key_id hash][N-byte XOR ciphertext]
+    /// Format: [1-byte version][32-byte key_id hash][12-byte nonce][N-byte ciphertext+tag]
     pub fn encrypt(&self, data: &[u8]) -> Vec<u8> {
-        let mut output = Vec::with_capacity(1 + 32 + data.len());
+        // Generate unique 12-byte nonce from counter
+        let nonce_bytes = {
+            let mut counter = self.nonce_counter.lock().unwrap();
+            *counter += 1;
+            let mut n = [0u8; 12];
+            n[4..12].copy_from_slice(&counter.to_le_bytes());
+            n
+        };
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let state = self.state.read().unwrap();
+        let ciphertext = state.cipher.encrypt(nonce, data).expect("AES-256-GCM encryption failed");
+
+        let mut output = Vec::with_capacity(1 + 32 + 12 + ciphertext.len());
 
         // Version byte
-        output.push(0x01);
+        output.push(0x02); // v2 = real AES-256-GCM
 
         // Key identifier (hash of key_id)
-        let kid_hash = sha256_hex(self.config.key_id.as_bytes());
+        let kid_hash = sha256_hex(state.config.key_id.as_bytes());
         output.extend_from_slice(&kid_hash);
 
-        // XOR cipher with key stream derived from the derived_key
-        let key_stream = self.generate_key_stream(data.len());
-        for (i, &byte) in data.iter().enumerate() {
-            output.push(byte ^ key_stream[i]);
-        }
+        // Nonce
+        output.extend_from_slice(&nonce_bytes);
+
+        // Ciphertext (includes GCM auth tag)
+        output.extend_from_slice(&ciphertext);
 
         output
     }
 
-    /// Decrypt data. Returns the plaintext, or None if the key doesn't match.
+    /// Decrypt data using AES-256-GCM. Returns the plaintext, or None on failure.
+    ///
+    /// Tries the current key first, then falls back to retired keys from
+    /// previous rotations. This ensures data encrypted before a key rotation
+    /// can still be decrypted.
     pub fn decrypt(&self, data: &[u8]) -> Option<Vec<u8>> {
-        if data.len() < 33 {
+        // Minimum: 1 (version) + 32 (kid) + 12 (nonce) + 16 (GCM tag) = 61 bytes
+        if data.len() < 61 {
             return None;
         }
 
         let _version = data[0];
         let stored_kid = &data[1..33];
-        let expected_kid = sha256_hex(self.config.key_id.as_bytes());
+        let nonce_bytes: [u8; 12] = data[33..45].try_into().ok()?;
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let ciphertext = &data[45..];
 
-        if stored_kid != expected_kid {
-            return None; // Wrong key
+        let state = self.state.read().unwrap();
+
+        // Try current key first
+        let expected_kid = sha256_hex(state.config.key_id.as_bytes());
+        if stored_kid == expected_kid {
+            return state.cipher.decrypt(nonce, ciphertext).ok();
         }
 
-        let ciphertext = &data[33..];
-        let key_stream = self.generate_key_stream(ciphertext.len());
-        let mut plaintext = Vec::with_capacity(ciphertext.len());
-        for (i, &byte) in ciphertext.iter().enumerate() {
-            plaintext.push(byte ^ key_stream[i]);
+        // Fall back to retired keys (from key rotations)
+        for rk in &state.retired_keys {
+            if stored_kid == rk.kid_hash {
+                return rk.cipher.decrypt(nonce, ciphertext).ok();
+            }
         }
 
-        Some(plaintext)
+        None // No matching key found
     }
 
     /// Check if key rotation is needed.
     pub fn needs_rotation(&self) -> bool {
-        if self.config.key_rotation_interval_ms == 0 {
+        let state = self.state.read().unwrap();
+        if state.config.key_rotation_interval_ms == 0 {
             return false;
         }
         let last = *self.last_rotation.lock().unwrap();
         let elapsed_ms = (now_secs() - last) * 1000;
-        elapsed_ms > self.config.key_rotation_interval_ms
+        elapsed_ms > state.config.key_rotation_interval_ms
     }
 
-    /// Get the current config.
-    pub fn config(&self) -> &EncryptionConfig {
-        &self.config
-    }
+    /// Rotate to a new master key. The old key is retained for decryption of
+    /// existing data. All new encryptions use the new key.
+    ///
+    /// Returns the new key_id hash (first 8 bytes, hex-encoded) for logging.
+    pub fn rotate_key(&self, new_master_key: &str, new_key_id: &str) -> String {
+        // Derive new cipher from new master key
+        let derived_key = sha256_hex(new_master_key.as_bytes());
+        let new_cipher = Aes256Gcm::new(GenericArray::from_slice(&derived_key));
 
-    /// Generate a deterministic key stream of `len` bytes from the derived key.
-    fn generate_key_stream(&self, len: usize) -> Vec<u8> {
-        let mut stream = Vec::with_capacity(len);
-        let mut counter = 0u64;
-        while stream.len() < len {
-            let mut block_input = Vec::with_capacity(40);
-            block_input.extend_from_slice(&self.derived_key);
-            block_input.extend_from_slice(&counter.to_le_bytes());
-            let block = sha256_hex(&block_input);
-            stream.extend_from_slice(&block);
-            counter += 1;
+        // Acquire write lock and perform the rotation atomically
+        let new_kid_hex = {
+            let mut state = self.state.write().unwrap();
+
+            // Retire the current key
+            let old_kid_hash = sha256_hex(state.config.key_id.as_bytes());
+            let old_cipher = std::mem::replace(&mut state.cipher, new_cipher);
+            state.retired_keys.push(RetiredKey {
+                kid_hash: old_kid_hash,
+                cipher: old_cipher,
+            });
+
+            // Update config to new key_id (preserve rotation interval)
+            let rotation_interval = state.config.key_rotation_interval_ms;
+            let algorithm = state.config.algorithm.clone();
+            state.config = EncryptionConfig {
+                algorithm,
+                key_id: new_key_id.to_string(),
+                key_rotation_interval_ms: rotation_interval,
+            };
+
+            let new_kid = sha256_hex(new_key_id.as_bytes());
+            format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                new_kid[0], new_kid[1], new_kid[2], new_kid[3],
+                new_kid[4], new_kid[5], new_kid[6], new_kid[7])
+        };
+
+        // Update rotation timestamp and reset nonce counter
+        {
+            let mut last = self.last_rotation.lock().unwrap();
+            *last = now_secs();
         }
-        stream.truncate(len);
-        stream
+        {
+            let mut counter = self.nonce_counter.lock().unwrap();
+            *counter = 0;
+        }
+
+        new_kid_hex
+    }
+
+    /// Number of retired keys retained for backward-compatible decryption.
+    pub fn retired_key_count(&self) -> usize {
+        self.state.read().unwrap().retired_keys.len()
+    }
+
+    /// Get a snapshot of the current config.
+    pub fn config(&self) -> EncryptionConfig {
+        self.state.read().unwrap().config.clone()
     }
 }
 
@@ -1231,6 +1324,94 @@ mod tests {
             key_rotation_interval_ms: 0,
         };
         let enc = EncryptionAtRest::new(config, "master");
+        assert!(!enc.needs_rotation());
+    }
+
+    #[test]
+    fn test_key_rotation_preserves_old_decryption() {
+        let config = EncryptionConfig {
+            algorithm: EncryptionAlgorithm::Aes256Gcm,
+            key_id: "key-v1".into(),
+            key_rotation_interval_ms: 0,
+        };
+        let enc = EncryptionAtRest::new(config, "master-key-1");
+
+        // Encrypt data with the original key
+        let plaintext = b"sensitive data before rotation";
+        let ciphertext_old = enc.encrypt(plaintext);
+
+        // Rotate to a new key
+        let fingerprint = enc.rotate_key("master-key-2", "key-v2");
+        assert!(!fingerprint.is_empty());
+        assert_eq!(enc.retired_key_count(), 1);
+
+        // Old ciphertext must still decrypt via retired key
+        let decrypted_old = enc.decrypt(&ciphertext_old).unwrap();
+        assert_eq!(decrypted_old, plaintext);
+
+        // New encryption uses the new key
+        let plaintext2 = b"data after rotation";
+        let ciphertext_new = enc.encrypt(plaintext2);
+        let decrypted_new = enc.decrypt(&ciphertext_new).unwrap();
+        assert_eq!(decrypted_new, plaintext2);
+
+        // New ciphertext should differ from old (different key + nonce)
+        assert_ne!(ciphertext_old, ciphertext_new);
+    }
+
+    #[test]
+    fn test_key_rotation_updates_config() {
+        let config = EncryptionConfig {
+            algorithm: EncryptionAlgorithm::Aes256Gcm,
+            key_id: "original-key".into(),
+            key_rotation_interval_ms: 5000,
+        };
+        let enc = EncryptionAtRest::new(config, "key1");
+        assert_eq!(enc.config().key_id, "original-key");
+
+        enc.rotate_key("key2", "rotated-key");
+        assert_eq!(enc.config().key_id, "rotated-key");
+        // Rotation interval is preserved
+        assert_eq!(enc.config().key_rotation_interval_ms, 5000);
+    }
+
+    #[test]
+    fn test_multiple_key_rotations() {
+        let config = EncryptionConfig {
+            algorithm: EncryptionAlgorithm::Aes256Gcm,
+            key_id: "v1".into(),
+            key_rotation_interval_ms: 0,
+        };
+        let enc = EncryptionAtRest::new(config, "master1");
+
+        let ct1 = enc.encrypt(b"data-v1");
+        enc.rotate_key("master2", "v2");
+        let ct2 = enc.encrypt(b"data-v2");
+        enc.rotate_key("master3", "v3");
+        let ct3 = enc.encrypt(b"data-v3");
+
+        assert_eq!(enc.retired_key_count(), 2);
+
+        // All three ciphertexts must be decryptable
+        assert_eq!(enc.decrypt(&ct1).unwrap(), b"data-v1");
+        assert_eq!(enc.decrypt(&ct2).unwrap(), b"data-v2");
+        assert_eq!(enc.decrypt(&ct3).unwrap(), b"data-v3");
+    }
+
+    #[test]
+    fn test_rotation_resets_needs_rotation() {
+        let config = EncryptionConfig {
+            algorithm: EncryptionAlgorithm::Aes256Gcm,
+            key_id: "k1".into(),
+            key_rotation_interval_ms: 1, // 1ms
+        };
+        let enc = EncryptionAtRest::new(config, "m1");
+        // Force old timestamp
+        *enc.last_rotation.lock().unwrap() = 0;
+        assert!(enc.needs_rotation());
+
+        enc.rotate_key("m2", "k2");
+        // After rotation, needs_rotation should be false (just rotated)
         assert!(!enc.needs_rotation());
     }
 }

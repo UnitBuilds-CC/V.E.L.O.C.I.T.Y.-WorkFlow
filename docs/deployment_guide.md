@@ -7,13 +7,14 @@
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Local Development Setup](#local-development-setup)
-3. [Docker Deployment](#docker-deployment)
-4. [Kubernetes Deployment](#kubernetes-deployment)
-5. [Production Checklist](#production-checklist)
-6. [Scaling Guide](#scaling-guide)
-7. [Backup and Disaster Recovery](#backup-and-disaster-recovery)
-8. [Monitoring and Alerting](#monitoring-and-alerting)
+2. [Three Deployment Flavors](#three-deployment-flavors)
+3. [Local Development Setup](#local-development-setup)
+4. [Docker Deployment](#docker-deployment)
+5. [Kubernetes Deployment](#kubernetes-deployment)
+6. [Production Checklist](#production-checklist)
+7. [Scaling Guide](#scaling-guide)
+8. [Backup and Disaster Recovery](#backup-and-disaster-recovery)
+9. [Monitoring and Alerting](#monitoring-and-alerting)
 
 ---
 
@@ -39,6 +40,49 @@
 | Development | 4 cores | 8 GB | 50 GB SSD | localhost |
 | Staging | 8 cores | 16 GB | 200 GB SSD | 1 Gbps |
 | Production | 16+ cores | 64+ GB | 1 TB NVMe SSD | 10 Gbps |
+
+---
+
+## Three Deployment Flavors
+
+VELOCITY-WorkFlow can be deployed in three flavors:
+
+### Flavor 1: Velocity Classic (gRPC)
+
+Full Temporal-compatible gRPC API. Use when migrating from Temporal or when you need the full 33-RPC BenchmarkService.
+
+```bash
+# Dev server with gRPC
+cargo run --release -p velocity-dev-server -- --grpc-port 7234
+
+# Production server
+cargo run --release -p velocity-workflow-server -- --ip 0.0.0.0 --grpc-port 7234
+```
+
+### Flavor 2: Velocity Runtime (HTTP)
+
+Lightweight HTTP REST API. Use for serverless, lightweight integrations, or when migrating from Restate.
+
+```bash
+cargo run --release -p velocity-dev-server -- --port 7233
+
+# API endpoints
+# POST /api/v1/namespaces/{ns}/workflows — Start workflow
+# GET  /api/v1/namespaces/{ns}/workflows — List workflows
+# POST /api/v1/namespaces/{ns}/workflows/{id}/signal — Signal workflow
+```
+
+### Flavor 3: Velocity Embedded (PostgreSQL)
+
+PostgreSQL-backed durability. Use when migrating from DBOS or when you need direct database access.
+
+```bash
+# Start PostgreSQL first
+docker run -d --name velocity-pg -p 5432:5432 -e POSTGRES_PASSWORD=velocity postgres:16
+
+# Start in embedded mode
+cargo run --release -p velocity-dev-server -- --embedded-mode --port 7233
+```
 
 ---
 

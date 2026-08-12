@@ -329,6 +329,14 @@ impl BatchExecutor {
     pub fn batch_count(&self) -> usize {
         self.batches.lock().unwrap().len()
     }
+
+    /// List all batch operations with their status and results.
+    pub fn list_all(&self) -> Vec<(u64, BatchStatus, Option<BatchResult>)> {
+        let batches = self.batches.lock().unwrap();
+        batches.iter()
+            .map(|(id, entry)| (*id, entry.status, entry.result.clone()))
+            .collect()
+    }
 }
 
 impl Default for BatchExecutor {

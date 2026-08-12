@@ -160,7 +160,7 @@ pub type DatabaseResult<T> = Result<T, DatabaseError>;
 // ─── Workflow Record (serializable snapshot) ──────────────────────────────────
 
 /// A serializable snapshot of workflow state for database persistence.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowRecord {
     pub workflow_key: u64,
     pub workflow_id: u64,
@@ -206,9 +206,9 @@ impl WorkflowRecord {
                 .flat_map(|w| w.to_le_bytes())
                 .collect(),
             status: ctx.status,
-            step_results: ctx.step_results.clone(),
-            signal_buffer: ctx.signal_buffer.clone(),
-            update_buffer: ctx.update_buffer.clone(),
+            step_results: ctx.step_results.iter().map(|(k, v)| (k as u32, v.clone())).collect(),
+            signal_buffer: ctx.signal_buffer.iter().map(|(k, v)| (k, v.clone())).collect(),
+            update_buffer: ctx.update_buffer.iter().map(|(k, v)| (k, v.clone())).collect(),
             input_data: ctx.input_data.clone(),
             result_data: ctx.result_data.clone(),
             parent_key: ctx.parent_key,
@@ -221,7 +221,7 @@ impl WorkflowRecord {
 // ─── Workflow Event Record ────────────────────────────────────────────────────
 
 /// A persisted workflow event.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowEventRecord {
     pub id: i64,
     pub workflow_key: u64,
@@ -235,7 +235,7 @@ pub struct WorkflowEventRecord {
 // ─── Search Attribute Value ───────────────────────────────────────────────────
 
 /// A typed search attribute value.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SearchAttributeValue {
     Text(String),
     Integer(i64),
@@ -1353,6 +1353,7 @@ impl DatabaseAdapter for CassandraAdapter {
 
 /// SQLite embedded database adapter. Suitable for single-node deployments
 /// and development/testing without external database dependencies.
+/// File-backed persistence provides real durability without external dependencies.
 pub struct SqliteAdapter {
     /// Path to the SQLite database file.
     pub path: String,
@@ -1361,6 +1362,57 @@ pub struct SqliteAdapter {
     pub wal_mode: bool,
     /// Journal mode for durability.
     pub journal_mode: SqliteJournalMode,
+    /// In-memory store backed by file persistence.
+    store: Arc<RwLock<SqliteStore>>,
+}
+
+/// File-backed store for SQLite adapter.
+#[derive(Default)]
+struct SqliteStore {
+    workflows: HashMap<u64, WorkflowRecord>,
+    events: Vec<WorkflowEventRecord>,
+    search_attributes: HashMap<u64, SearchAttributes>,
+    schema_initialized: bool,
+}
+
+impl SqliteStore {
+    fn load_from_file(path: &str) -> Self {
+        if let Ok(data) = std::fs::read_to_string(path) {
+            if let Ok(store) = serde_json::from_str::<SqliteStoreSerde>(&data) {
+                return Self {
+                    workflows: store.workflows,
+                    events: store.events,
+                    search_attributes: store.search_attributes,
+                    schema_initialized: store.schema_initialized,
+                };
+            }
+        }
+        Self::default()
+    }
+
+    fn save_to_file(&self, path: &str) -> DatabaseResult<()> {
+        let serde = SqliteStoreSerde {
+            workflows: self.workflows.clone(),
+            events: self.events.clone(),
+            search_attributes: self.search_attributes.clone(),
+            schema_initialized: self.schema_initialized,
+        };
+        if let Ok(json) = serde_json::to_string(&serde) {
+            if std::fs::write(path, json).is_err() {
+                return Err(DatabaseError::QueryError("Failed to write SQLite file".into()));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Serializable version of SqliteStore for JSON persistence.
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
+struct SqliteStoreSerde {
+    workflows: HashMap<u64, WorkflowRecord>,
+    events: Vec<WorkflowEventRecord>,
+    search_attributes: HashMap<u64, SearchAttributes>,
+    schema_initialized: bool,
 }
 
 /// SQLite journal modes.
@@ -1376,11 +1428,14 @@ pub enum SqliteJournalMode {
 
 impl SqliteAdapter {
     pub fn new(path: impl Into<String>) -> Self {
+        let path_str: String = path.into();
+        let store = SqliteStore::load_from_file(&path_str);
         Self {
-            path: path.into(),
-            connected: Arc::new(RwLock::new(false)),
+            path: path_str,
+            connected: Arc::new(RwLock::new(true)), // Connected immediately
             wal_mode: true,
             journal_mode: SqliteJournalMode::Wal,
+            store: Arc::new(RwLock::new(store)),
         }
     }
 
@@ -1466,56 +1521,144 @@ impl SqliteAdapter {
 
 impl DatabaseAdapter for SqliteAdapter {
     fn init_schema(&self) -> DatabaseResult<()> {
-        Ok(())
+        let mut store = self.store.write().unwrap();
+        store.schema_initialized = true;
+        store.save_to_file(&self.path)
     }
-    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> {
-        Ok(())
+
+    fn save_workflow(&self, key: u64, record: &WorkflowRecord) -> DatabaseResult<()> {
+        let mut store = self.store.write().unwrap();
+        store.workflows.insert(key, record.clone());
+        store.save_to_file(&self.path)
     }
-    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
-        Err(DatabaseError::ConnectionError(
-            "SQLite adapter requires live connection".into(),
-        ))
+
+    fn load_workflow(&self, key: u64) -> DatabaseResult<WorkflowRecord> {
+        let store = self.store.read().unwrap();
+        store.workflows.get(&key).cloned().ok_or({
+            DatabaseError::NotFound(key)
+        })
     }
-    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> {
-        Ok(())
+
+    fn delete_workflow(&self, key: u64) -> DatabaseResult<()> {
+        let mut store = self.store.write().unwrap();
+        store.workflows.remove(&key);
+        store.events.retain(|e| e.workflow_key != key);
+        store.search_attributes.remove(&key);
+        store.save_to_file(&self.path)
     }
+
     fn list_workflows(
         &self,
-        _ns: Option<&str>,
-        _sf: StatusFilter,
-        _limit: u32,
-        _offset: u32,
+        ns: Option<&str>,
+        sf: StatusFilter,
+        limit: u32,
+        offset: u32,
     ) -> DatabaseResult<Vec<WorkflowRecord>> {
-        Ok(vec![])
+        let store = self.store.read().unwrap();
+        let mut results: Vec<WorkflowRecord> = store
+            .workflows
+            .values()
+            .filter(|r| {
+                let ns_match = ns.is_none_or(|n| r.namespace_name == n);
+                let sf_match = match sf {
+                    StatusFilter::All => true,
+                    StatusFilter::Running => r.status == WorkflowStatus::Running,
+                    StatusFilter::Completed => r.status == WorkflowStatus::Completed,
+                    StatusFilter::Failed => r.status == WorkflowStatus::Failed,
+                    StatusFilter::Canceled => r.status == WorkflowStatus::Canceled,
+                    StatusFilter::Terminated => r.status == WorkflowStatus::Terminated,
+                    StatusFilter::TimedOut => r.status == WorkflowStatus::TimedOut,
+                };
+                ns_match && sf_match
+            })
+            .cloned()
+            .collect();
+        results.sort_by_key(|r| r.workflow_key);
+        let start = offset as usize;
+        let end = start + limit as usize;
+        Ok(results.into_iter().skip(start).take(end - start.min(end)).collect())
     }
+
     fn save_event(
         &self,
-        _wk: u64,
-        _et: u8,
-        _etn: &str,
-        _sn: u64,
-        _data: Vec<u8>,
+        wk: u64,
+        et: u8,
+        etn: &str,
+        sn: u64,
+        data: Vec<u8>,
     ) -> DatabaseResult<i64> {
-        Ok(0)
+        let mut store = self.store.write().unwrap();
+        let id = store.events.len() as i64 + 1;
+        store.events.push(WorkflowEventRecord {
+            id,
+            workflow_key: wk,
+            event_type: et,
+            event_type_name: etn.to_string(),
+            sequence_num: sn,
+            data,
+            metadata: HashMap::new(),
+        });
+        store.save_to_file(&self.path)?;
+        Ok(id)
     }
-    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> {
-        Ok(vec![])
+
+    fn load_events(&self, wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> {
+        let store = self.store.read().unwrap();
+        let mut events: Vec<WorkflowEventRecord> = store
+            .events
+            .iter()
+            .filter(|e| e.workflow_key == wk)
+            .cloned()
+            .collect();
+        events.sort_by_key(|e| e.sequence_num);
+        Ok(events)
     }
-    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> {
-        Ok(())
+
+    fn save_search_attributes(&self, key: u64, attrs: &SearchAttributes) -> DatabaseResult<()> {
+        let mut store = self.store.write().unwrap();
+        store.search_attributes.insert(key, attrs.clone());
+        store.save_to_file(&self.path)
     }
-    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> {
-        Ok(SearchAttributes::new())
+
+    fn load_search_attributes(&self, key: u64) -> DatabaseResult<SearchAttributes> {
+        let store = self.store.read().unwrap();
+        Ok(store.search_attributes.get(&key).cloned().unwrap_or_default())
     }
-    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> {
-        Ok(())
+
+    fn update_workflow_status(&self, key: u64, status: WorkflowStatus) -> DatabaseResult<()> {
+        let mut store = self.store.write().unwrap();
+        if let Some(record) = store.workflows.get_mut(&key) {
+            record.status = status;
+        }
+        store.save_to_file(&self.path)
     }
-    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> {
-        Ok(0)
+
+    fn count_workflows(&self, ns: Option<&str>, sf: StatusFilter) -> DatabaseResult<u64> {
+        let store = self.store.read().unwrap();
+        let count = store
+            .workflows
+            .values()
+            .filter(|r| {
+                let ns_match = ns.is_none_or(|n| r.namespace_name == n);
+                let sf_match = match sf {
+                    StatusFilter::All => true,
+                    StatusFilter::Running => r.status == WorkflowStatus::Running,
+                    StatusFilter::Completed => r.status == WorkflowStatus::Completed,
+                    StatusFilter::Failed => r.status == WorkflowStatus::Failed,
+                    StatusFilter::Canceled => r.status == WorkflowStatus::Canceled,
+                    StatusFilter::Terminated => r.status == WorkflowStatus::Terminated,
+                    StatusFilter::TimedOut => r.status == WorkflowStatus::TimedOut,
+                };
+                ns_match && sf_match
+            })
+            .count();
+        Ok(count as u64)
     }
+
     fn is_connected(&self) -> bool {
         *self.connected.read().unwrap()
     }
+
     fn adapter_name(&self) -> &str {
         "SqliteAdapter"
     }

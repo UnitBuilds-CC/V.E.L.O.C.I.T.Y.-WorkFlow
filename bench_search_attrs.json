@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-08-11T12:37:34.271474600+00:00",
+  "velocity_version": "0.1.0",
+  "temporal_version": "1.26+",
+  "rows": [
+    {
+      "workload_name": "search_attributes",
+      "workload_description": "Start with attributes → query by attributes. Measures visibility performance.",
+      "velocity_ops_per_sec": 5521.927020003733,
+      "velocity_p50_us": 369,
+      "velocity_p95_us": 756,
+      "velocity_p99_us": 1271,
+      "velocity_p999_us": 1751,
+      "velocity_peak_memory_mb": 13.4296875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 3000,
+      "temporal_ops_per_sec": 5128.597005617353,
+      "temporal_p50_us": 359,
+      "temporal_p95_us": 697,
+      "temporal_p99_us": 1011,
+      "temporal_p999_us": 1427,
+      "temporal_peak_memory_mb": 13.796875,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 3000,
+      "throughput_delta_pct": 7.669349218812971,
+      "p50_latency_delta_pct": 2.785515320334262,
+      "p99_latency_delta_pct": 25.71711177052423,
+      "memory_delta_pct": -2.6613816534541335,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "Comparable"
+    }
+  ],
+  "summary": {
+    "total_workloads": 1,
+    "velocity_wins": 0,
+    "temporal_wins": 0,
+    "comparable": 1,
+    "avg_throughput_delta_pct": 7.669349218812971,
+    "avg_p99_latency_delta_pct": 25.71711177052423,
+    "avg_memory_delta_pct": -2.6613816534541335,
+    "overall_verdict": "VELOCITY and Temporal are roughly comparable"
+  }
+}

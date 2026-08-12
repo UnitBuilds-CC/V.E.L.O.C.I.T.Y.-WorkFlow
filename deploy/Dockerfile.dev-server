@@ -1,0 +1,25 @@
+FROM rust:1.88-slim-bookworm
+
+RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy proto files
+COPY velocity-bench/proto/ /proto/
+
+# Copy dev server source
+COPY velocity-dev-server/Cargo.toml velocity-dev-server/Cargo.toml
+COPY velocity-dev-server/build.rs velocity-dev-server/build.rs
+COPY velocity-dev-server/src/ velocity-dev-server/src/
+
+# Fix build.rs to use the correct proto path
+RUN sed -i 's|../velocity-bench/proto/|/proto/|g' velocity-dev-server/build.rs
+
+WORKDIR /app/velocity-dev-server
+
+# Build
+RUN cargo build --release
+
+EXPOSE 7233 7234 8233
+
+CMD ["./target/release/velocity-dev", "--port", "7233", "--grpc-port", "7234", "--ui-port", "8233"]

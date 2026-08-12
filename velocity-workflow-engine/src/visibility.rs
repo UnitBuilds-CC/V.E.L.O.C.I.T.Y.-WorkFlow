@@ -510,6 +510,17 @@ impl VisibilityIndex {
             .cloned()
             .collect()
     }
+
+    /// List all registered workflow executions.
+    pub fn list_all(&self) -> Vec<WorkflowExecutionInfo> {
+        let executions = self.executions.read().unwrap();
+        executions.values().cloned().collect()
+    }
+
+    /// Get total count of registered workflows.
+    pub fn total_count(&self) -> usize {
+        self.executions.read().unwrap().len()
+    }
 }
 
 impl Default for VisibilityIndex {

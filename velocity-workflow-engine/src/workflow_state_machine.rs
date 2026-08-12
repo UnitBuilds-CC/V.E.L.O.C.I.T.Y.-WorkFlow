@@ -351,11 +351,59 @@ impl MutableState {
         Ok(())
     }
 
+    pub fn start_activity(&self, activity_id: &str) -> Result<(), StateError> {
+        let mut activities = self.activities.write().unwrap();
+        let act = activities
+            .get_mut(activity_id)
+            .ok_or(StateError::ActivityNotFound)?;
+        if act.state != ActivityExecutionState::Scheduled {
+            return Err(StateError::InvalidTransition);
+        }
+        act.state = ActivityExecutionState::Started;
+        drop(activities);
+        self.record_transition();
+        Ok(())
+    }
+
+    pub fn cancel_activity(&self, activity_id: &str) -> Result<(), StateError> {
+        let mut activities = self.activities.write().unwrap();
+        let act = activities
+            .get_mut(activity_id)
+            .ok_or(StateError::ActivityNotFound)?;
+        if act.is_terminal() || act.state == ActivityExecutionState::Started {
+            return Err(StateError::InvalidTransition);
+        }
+        act.state = ActivityExecutionState::Cancelled;
+        drop(activities);
+        self.record_transition();
+        Ok(())
+    }
+
+    pub fn timeout_activity(&self, activity_id: &str) -> Result<(), StateError> {
+        let mut activities = self.activities.write().unwrap();
+        let act = activities
+            .get_mut(activity_id)
+            .ok_or(StateError::ActivityNotFound)?;
+        if act.is_terminal() {
+            return Err(StateError::InvalidTransition);
+        }
+        act.state = ActivityExecutionState::TimedOut;
+        drop(activities);
+        self.record_transition();
+        Ok(())
+    }
+
     pub fn heartbeat_activity(&self, activity_id: &str) -> Result<(), StateError> {
         let mut activities = self.activities.write().unwrap();
         let act = activities
             .get_mut(activity_id)
             .ok_or(StateError::ActivityNotFound)?;
+        // Heartbeat only valid for scheduled or started activities
+        if act.state != ActivityExecutionState::Scheduled
+            && act.state != ActivityExecutionState::Started
+        {
+            return Err(StateError::InvalidTransition);
+        }
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
@@ -433,6 +481,57 @@ impl MutableState {
         event_id
     }
 
+    pub fn start_child_workflow(&self, workflow_id: &str) -> Result<(), StateError> {
+        let mut children = self.child_workflows.write().unwrap();
+        let cw = children
+            .get_mut(workflow_id)
+            .ok_or(StateError::ChildNotFound)?;
+        if cw.state != ChildWorkflowExecutionState::Initiated {
+            return Err(StateError::InvalidTransition);
+        }
+        cw.state = ChildWorkflowExecutionState::Started;
+        drop(children);
+        self.record_transition();
+        Ok(())
+    }
+
+    pub fn fail_child_workflow(
+        &self,
+        workflow_id: &str,
+        failure: Option<String>,
+    ) -> Result<(), StateError> {
+        let mut children = self.child_workflows.write().unwrap();
+        let cw = children
+            .get_mut(workflow_id)
+            .ok_or(StateError::ChildNotFound)?;
+        if cw.state == ChildWorkflowExecutionState::Completed
+            || cw.state == ChildWorkflowExecutionState::Failed
+        {
+            return Err(StateError::InvalidTransition);
+        }
+        cw.state = ChildWorkflowExecutionState::Failed;
+        cw.failure = failure;
+        drop(children);
+        self.record_transition();
+        Ok(())
+    }
+
+    pub fn cancel_child_workflow(&self, workflow_id: &str) -> Result<(), StateError> {
+        let mut children = self.child_workflows.write().unwrap();
+        let cw = children
+            .get_mut(workflow_id)
+            .ok_or(StateError::ChildNotFound)?;
+        if cw.state == ChildWorkflowExecutionState::Completed
+            || cw.state == ChildWorkflowExecutionState::Cancelled
+        {
+            return Err(StateError::InvalidTransition);
+        }
+        cw.state = ChildWorkflowExecutionState::Cancelled;
+        drop(children);
+        self.record_transition();
+        Ok(())
+    }
+
     pub fn complete_child_workflow(
         &self,
         workflow_id: &str,
@@ -442,8 +541,12 @@ impl MutableState {
         let cw = children
             .get_mut(workflow_id)
             .ok_or(StateError::ChildNotFound)?;
+        if cw.state != ChildWorkflowExecutionState::Started {
+            return Err(StateError::InvalidTransition);
+        }
         cw.state = ChildWorkflowExecutionState::Completed;
         cw.result = result;
+        drop(children);
         self.record_transition();
         Ok(())
     }
@@ -483,65 +586,131 @@ impl MutableState {
         Ok(())
     }
 
-    // Workflow state transitions
-    pub fn start_workflow(&self) {
-        *self.execution_state.write().unwrap() = WorkflowExecutionState::Running;
-        self.record_transition();
+    // Workflow state transitions — with strict validation (Temporal parity)
+
+    /// Validate that a workflow state transition is legal.
+    /// Mirrors Temporal's transition matrix in service/history/workflow.
+    fn validate_transition(
+        from: WorkflowExecutionState,
+        to: WorkflowExecutionState,
+    ) -> Result<(), StateError> {
+        use WorkflowExecutionState::*;
+        let valid = match (from, to) {
+            // From Created: can only go to Running
+            (Created, Running) => true,
+            // From Running: can go to any terminal state
+            (Running, Completed | Failed | Cancelled | Terminated | ContinuedAsNew | TimedOut) => true,
+            // Terminal states cannot transition (except TimedOut from Running handled above)
+            _ => false,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(StateError::InvalidTransition)
+        }
     }
 
-    pub fn complete_workflow(&self) {
-        *self.execution_state.write().unwrap() = WorkflowExecutionState::Completed;
+    pub fn start_workflow(&self) -> Result<(), StateError> {
+        let mut state = self.execution_state.write().unwrap();
+        // start_workflow only valid from Created state
+        if *state != WorkflowExecutionState::Created {
+            return Err(StateError::InvalidTransition);
+        }
+        *state = WorkflowExecutionState::Running;
+        drop(state);
+        self.record_transition();
+        Ok(())
+    }
+
+    pub fn complete_workflow(&self) -> Result<(), StateError> {
+        let mut state = self.execution_state.write().unwrap();
+        Self::validate_transition(*state, WorkflowExecutionState::Completed)?;
+        *state = WorkflowExecutionState::Completed;
         *self.close_time.write().unwrap() = Some(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as i64,
         );
+        drop(state);
         self.record_transition();
+        Ok(())
     }
 
-    pub fn fail_workflow(&self) {
-        *self.execution_state.write().unwrap() = WorkflowExecutionState::Failed;
+    pub fn fail_workflow(&self) -> Result<(), StateError> {
+        let mut state = self.execution_state.write().unwrap();
+        Self::validate_transition(*state, WorkflowExecutionState::Failed)?;
+        *state = WorkflowExecutionState::Failed;
         *self.close_time.write().unwrap() = Some(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as i64,
         );
+        drop(state);
         self.record_transition();
+        Ok(())
     }
 
-    pub fn cancel_workflow(&self) {
-        *self.execution_state.write().unwrap() = WorkflowExecutionState::Cancelled;
+    pub fn cancel_workflow(&self) -> Result<(), StateError> {
+        let mut state = self.execution_state.write().unwrap();
+        Self::validate_transition(*state, WorkflowExecutionState::Cancelled)?;
+        *state = WorkflowExecutionState::Cancelled;
         *self.close_time.write().unwrap() = Some(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as i64,
         );
+        drop(state);
         self.record_transition();
+        Ok(())
     }
 
-    pub fn terminate_workflow(&self) {
-        *self.execution_state.write().unwrap() = WorkflowExecutionState::Terminated;
+    pub fn terminate_workflow(&self) -> Result<(), StateError> {
+        let mut state = self.execution_state.write().unwrap();
+        Self::validate_transition(*state, WorkflowExecutionState::Terminated)?;
+        *state = WorkflowExecutionState::Terminated;
         *self.close_time.write().unwrap() = Some(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as i64,
         );
+        drop(state);
         self.record_transition();
+        Ok(())
     }
 
-    pub fn continue_as_new(&self) {
-        *self.execution_state.write().unwrap() = WorkflowExecutionState::ContinuedAsNew;
+    pub fn continue_as_new(&self) -> Result<(), StateError> {
+        let mut state = self.execution_state.write().unwrap();
+        Self::validate_transition(*state, WorkflowExecutionState::ContinuedAsNew)?;
+        *state = WorkflowExecutionState::ContinuedAsNew;
         *self.close_time.write().unwrap() = Some(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as i64,
         );
+        drop(state);
         self.record_transition();
+        Ok(())
+    }
+
+    /// Timeout the workflow (Temporal parity — workflow execution/run timeout).
+    pub fn timeout_workflow(&self) -> Result<(), StateError> {
+        let mut state = self.execution_state.write().unwrap();
+        Self::validate_transition(*state, WorkflowExecutionState::TimedOut)?;
+        *state = WorkflowExecutionState::TimedOut;
+        *self.close_time.write().unwrap() = Some(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
+        );
+        drop(state);
+        self.record_transition();
+        Ok(())
     }
 
     pub fn execution_state(&self) -> WorkflowExecutionState {
@@ -669,7 +838,7 @@ mod tests {
     #[test]
     fn test_start_workflow() {
         let ms = test_state();
-        ms.start_workflow();
+        ms.start_workflow().unwrap();
         assert_eq!(ms.execution_state(), WorkflowExecutionState::Running);
         assert!(ms.transition_count() >= 1);
     }
@@ -677,8 +846,8 @@ mod tests {
     #[test]
     fn test_complete_workflow() {
         let ms = test_state();
-        ms.start_workflow();
-        ms.complete_workflow();
+        ms.start_workflow().unwrap();
+        ms.complete_workflow().unwrap();
         assert_eq!(ms.execution_state(), WorkflowExecutionState::Completed);
         assert!(ms.is_terminal());
     }
@@ -686,8 +855,8 @@ mod tests {
     #[test]
     fn test_fail_workflow() {
         let ms = test_state();
-        ms.start_workflow();
-        ms.fail_workflow();
+        ms.start_workflow().unwrap();
+        ms.fail_workflow().unwrap();
         assert_eq!(ms.execution_state(), WorkflowExecutionState::Failed);
         assert!(ms.is_terminal());
     }
@@ -695,13 +864,14 @@ mod tests {
     #[test]
     fn test_activity_lifecycle() {
         let ms = test_state();
-        ms.start_workflow();
+        ms.start_workflow().unwrap();
 
         let act = ActivityState::new("act-1", "DoWork", "queue");
         let event_id = ms.add_activity(act);
         assert!(event_id > 0);
         assert_eq!(ms.active_activity_count(), 1);
 
+        ms.start_activity("act-1").unwrap();
         ms.complete_activity("act-1", Some(b"result".to_vec()))
             .unwrap();
         let completed = ms.get_activity("act-1").unwrap();
@@ -712,7 +882,7 @@ mod tests {
     #[test]
     fn test_activity_failure() {
         let ms = test_state();
-        ms.start_workflow();
+        ms.start_workflow().unwrap();
         ms.add_activity(ActivityState::new("act-1", "DoWork", "queue"));
         ms.fail_activity("act-1", "something went wrong").unwrap();
         let failed = ms.get_activity("act-1").unwrap();
@@ -730,7 +900,7 @@ mod tests {
     #[test]
     fn test_timer_lifecycle() {
         let ms = test_state();
-        ms.start_workflow();
+        ms.start_workflow().unwrap();
 
         let event_id = ms.add_timer("timer-1", 1000);
         assert!(event_id > 0);
@@ -751,7 +921,7 @@ mod tests {
     #[test]
     fn test_child_workflow() {
         let ms = test_state();
-        ms.start_workflow();
+        ms.start_workflow().unwrap();
 
         let child = ChildWorkflowState {
             workflow_id: "child-1".to_string(),
@@ -766,6 +936,7 @@ mod tests {
             failure: None,
         };
         ms.add_child_workflow(child);
+        ms.start_child_workflow("child-1").unwrap();
         ms.complete_child_workflow("child-1", Some(b"done".to_vec()))
             .unwrap();
     }
@@ -825,7 +996,7 @@ mod tests {
     #[test]
     fn test_checksum() {
         let ms = test_state();
-        ms.start_workflow();
+        ms.start_workflow().unwrap();
         let cs1 = ms.compute_checksum();
         assert!(!cs1.is_empty());
 
@@ -838,8 +1009,8 @@ mod tests {
     #[test]
     fn test_continue_as_new() {
         let ms = test_state();
-        ms.start_workflow();
-        ms.continue_as_new();
+        ms.start_workflow().unwrap();
+        ms.continue_as_new().unwrap();
         assert_eq!(ms.execution_state(), WorkflowExecutionState::ContinuedAsNew);
         assert!(ms.is_terminal());
     }
@@ -859,5 +1030,221 @@ mod tests {
         ms.heartbeat_activity("act-1").unwrap();
         let act = ms.get_activity("act-1").unwrap();
         assert!(act.last_heartbeat_at.is_some());
+    }
+
+    // ─── Strict Transition Validation Tests ───────────────────────────────
+
+    #[test]
+    fn test_cannot_start_already_running_workflow() {
+        let ms = test_state();
+        ms.start_workflow().unwrap();
+        // Starting again should fail (Running → Running is not valid via start_workflow)
+        assert!(ms.start_workflow().is_err());
+    }
+
+    #[test]
+    fn test_cannot_complete_unstarted_workflow() {
+        let ms = test_state();
+        // Created → Completed is invalid
+        assert!(ms.complete_workflow().is_err());
+    }
+
+    #[test]
+    fn test_cannot_fail_unstarted_workflow() {
+        let ms = test_state();
+        assert!(ms.fail_workflow().is_err());
+    }
+
+    #[test]
+    fn test_cannot_cancel_unstarted_workflow() {
+        let ms = test_state();
+        assert!(ms.cancel_workflow().is_err());
+    }
+
+    #[test]
+    fn test_cannot_terminate_unstarted_workflow() {
+        let ms = test_state();
+        assert!(ms.terminate_workflow().is_err());
+    }
+
+    #[test]
+    fn test_cannot_transition_from_completed() {
+        let ms = test_state();
+        ms.start_workflow().unwrap();
+        ms.complete_workflow().unwrap();
+        // All transitions from Completed should fail
+        assert!(ms.fail_workflow().is_err());
+        assert!(ms.cancel_workflow().is_err());
+        assert!(ms.terminate_workflow().is_err());
+        assert!(ms.timeout_workflow().is_err());
+    }
+
+    #[test]
+    fn test_timeout_workflow() {
+        let ms = test_state();
+        ms.start_workflow().unwrap();
+        ms.timeout_workflow().unwrap();
+        assert_eq!(ms.execution_state(), WorkflowExecutionState::TimedOut);
+        assert!(ms.is_terminal());
+    }
+
+    #[test]
+    fn test_cannot_timeout_completed_workflow() {
+        let ms = test_state();
+        ms.start_workflow().unwrap();
+        ms.complete_workflow().unwrap();
+        assert!(ms.timeout_workflow().is_err());
+    }
+
+    #[test]
+    fn test_activity_start_transition() {
+        let ms = test_state();
+        ms.add_activity(ActivityState::new("act-1", "DoWork", "queue"));
+        // Scheduled → Started
+        ms.start_activity("act-1").unwrap();
+        let act = ms.get_activity("act-1").unwrap();
+        assert_eq!(act.state, ActivityExecutionState::Started);
+    }
+
+    #[test]
+    fn test_cannot_start_non_scheduled_activity() {
+        let ms = test_state();
+        ms.add_activity(ActivityState::new("act-1", "DoWork", "queue"));
+        ms.start_activity("act-1").unwrap();
+        // Already Started → cannot start again
+        assert!(ms.start_activity("act-1").is_err());
+    }
+
+    #[test]
+    fn test_cancel_activity() {
+        let ms = test_state();
+        ms.add_activity(ActivityState::new("act-1", "DoWork", "queue"));
+        ms.cancel_activity("act-1").unwrap();
+        let act = ms.get_activity("act-1").unwrap();
+        assert_eq!(act.state, ActivityExecutionState::Cancelled);
+    }
+
+    #[test]
+    fn test_cannot_cancel_started_activity() {
+        let ms = test_state();
+        ms.add_activity(ActivityState::new("act-1", "DoWork", "queue"));
+        ms.start_activity("act-1").unwrap();
+        // Cannot cancel a started activity
+        assert!(ms.cancel_activity("act-1").is_err());
+    }
+
+    #[test]
+    fn test_timeout_activity() {
+        let ms = test_state();
+        ms.add_activity(ActivityState::new("act-1", "DoWork", "queue"));
+        ms.timeout_activity("act-1").unwrap();
+        let act = ms.get_activity("act-1").unwrap();
+        assert_eq!(act.state, ActivityExecutionState::TimedOut);
+    }
+
+    #[test]
+    fn test_cannot_timeout_completed_activity() {
+        let ms = test_state();
+        ms.add_activity(ActivityState::new("act-1", "DoWork", "queue"));
+        ms.complete_activity("act-1", None).unwrap();
+        assert!(ms.timeout_activity("act-1").is_err());
+    }
+
+    #[test]
+    fn test_child_workflow_start_transition() {
+        let ms = test_state();
+        let child = ChildWorkflowState {
+            workflow_id: "child-1".to_string(),
+            run_id: "child-run-1".to_string(),
+            workflow_type: "Child".to_string(),
+            namespace: "ns-1".to_string(),
+            initiated_event_id: 0,
+            started_event_id: 0,
+            state: ChildWorkflowExecutionState::Initiated,
+            parent_close_policy: ParentClosePolicy::Terminate,
+            result: None,
+            failure: None,
+        };
+        ms.add_child_workflow(child);
+        ms.start_child_workflow("child-1").unwrap();
+        // Cannot start again
+        assert!(ms.start_child_workflow("child-1").is_err());
+    }
+
+    #[test]
+    fn test_child_workflow_fail_transition() {
+        let ms = test_state();
+        let child = ChildWorkflowState {
+            workflow_id: "child-1".to_string(),
+            run_id: "child-run-1".to_string(),
+            workflow_type: "Child".to_string(),
+            namespace: "ns-1".to_string(),
+            initiated_event_id: 0,
+            started_event_id: 0,
+            state: ChildWorkflowExecutionState::Initiated,
+            parent_close_policy: ParentClosePolicy::Terminate,
+            result: None,
+            failure: None,
+        };
+        ms.add_child_workflow(child);
+        ms.start_child_workflow("child-1").unwrap();
+        ms.fail_child_workflow("child-1", Some("error".to_string())).unwrap();
+        // Cannot fail again
+        assert!(ms.fail_child_workflow("child-1", None).is_err());
+    }
+
+    #[test]
+    fn test_child_workflow_cancel_transition() {
+        let ms = test_state();
+        let child = ChildWorkflowState {
+            workflow_id: "child-1".to_string(),
+            run_id: "child-run-1".to_string(),
+            workflow_type: "Child".to_string(),
+            namespace: "ns-1".to_string(),
+            initiated_event_id: 0,
+            started_event_id: 0,
+            state: ChildWorkflowExecutionState::Initiated,
+            parent_close_policy: ParentClosePolicy::Terminate,
+            result: None,
+            failure: None,
+        };
+        ms.add_child_workflow(child);
+        ms.cancel_child_workflow("child-1").unwrap();
+        // Cannot cancel again
+        assert!(ms.cancel_child_workflow("child-1").is_err());
+    }
+
+    #[test]
+    fn test_cannot_complete_child_without_start() {
+        let ms = test_state();
+        let child = ChildWorkflowState {
+            workflow_id: "child-1".to_string(),
+            run_id: "child-run-1".to_string(),
+            workflow_type: "Child".to_string(),
+            namespace: "ns-1".to_string(),
+            initiated_event_id: 0,
+            started_event_id: 0,
+            state: ChildWorkflowExecutionState::Initiated,
+            parent_close_policy: ParentClosePolicy::Terminate,
+            result: None,
+            failure: None,
+        };
+        ms.add_child_workflow(child);
+        // Cannot complete without starting first
+        assert!(ms.complete_child_workflow("child-1", None).is_err());
+    }
+
+    #[test]
+    fn test_heartbeat_requires_scheduled_or_started() {
+        let ms = test_state();
+        ms.add_activity(ActivityState::new("act-1", "DoWork", "queue"));
+        // Scheduled → heartbeat OK
+        ms.heartbeat_activity("act-1").unwrap();
+        ms.start_activity("act-1").unwrap();
+        // Started → heartbeat OK
+        ms.heartbeat_activity("act-1").unwrap();
+        ms.complete_activity("act-1", None).unwrap();
+        // Completed → heartbeat fails
+        assert!(ms.heartbeat_activity("act-1").is_err());
     }
 }

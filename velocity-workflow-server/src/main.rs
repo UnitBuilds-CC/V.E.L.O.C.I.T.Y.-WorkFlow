@@ -46,6 +46,14 @@ struct Cli {
     /// Log level.
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    /// Path to the WAL file for durable persistence. Set to empty to disable WAL.
+    #[arg(long, default_value = "velocity.wal")]
+    wal_path: String,
+
+    /// Maximum WAL file size in bytes before rotation.
+    #[arg(long, default_value_t = 64 * 1024 * 1024)]
+    wal_max_size: u64,
 }
 
 // ─── ID Mapping ──────────────────────────────────────────────────────────────
@@ -71,7 +79,7 @@ struct WorkflowEntry {
     memo: HashMap<String, String>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 enum WorkflowState {
     Running,
     Completed,
@@ -1067,19 +1075,61 @@ impl BenchmarkService for BenchmarkServiceImpl {
         request: Request<PollWorkflowTaskRequest>,
     ) -> Result<Response<PollWorkflowTaskResponse>, Status> {
         let req = request.into_inner();
-        let tq_hash = if req.task_queue.is_empty() {
-            hash_id("bench-queue")
+        let tq_name = if req.task_queue.is_empty() {
+            "bench-queue".to_string()
         } else {
-            hash_id(&req.task_queue)
+            req.task_queue.clone()
         };
+        let tq_hash = hash_id(&tq_name);
+        let _identity = req.identity.clone();
+
+        // Register poller with matching service for version-aware dispatch
+        let matching = self.engine.matching_service();
+        let poller_id = matching.register_poller(&tq_name, None);
+
+        // Try the fast path first (non-blocking task queue poll)
         if let Some(task) = self.engine.task_queue().poll(tq_hash) {
-            Ok(Response::new(PollWorkflowTaskResponse {
+            matching.remove_poller(&tq_name, poller_id);
+            return Ok(Response::new(PollWorkflowTaskResponse {
                 task_token: format!("{}:{}", task.workflow_key, task.step_index),
                 event_id: task.step_index as i64,
                 event_type: format!("{:?}", task.kind),
                 workflow_execution: task.workflow_key.to_le_bytes().to_vec(),
                 has_task: true,
-            }))
+            }));
+        }
+
+        // Long-poll: use matching service with blocking wait (spawn_blocking)
+        let matching_clone = self.engine.matching_service().clone();
+        let tq_name_clone = tq_name.clone();
+        let match_result = tokio::task::spawn_blocking(move || {
+            matching_clone.poll_task(&tq_name_clone, None, velocity_workflow_engine::TaskKindFilter::Any)
+        })
+        .await
+        .map_err(|e| Status::internal(format!("spawn_blocking failed: {}", e)))?;
+
+        matching.remove_poller(&tq_name, poller_id);
+
+        if let Some(mt) = match_result {
+            // Also get the task from the engine's task queue for full details
+            if let Some(task) = self.engine.task_queue().poll(tq_hash) {
+                Ok(Response::new(PollWorkflowTaskResponse {
+                    task_token: format!("{}:{}", task.workflow_key, task.step_index),
+                    event_id: task.step_index as i64,
+                    event_type: format!("{:?}", task.kind),
+                    workflow_execution: task.workflow_key.to_le_bytes().to_vec(),
+                    has_task: true,
+                }))
+            } else {
+                // Matching service had a task but task queue didn't — return matching info
+                Ok(Response::new(PollWorkflowTaskResponse {
+                    task_token: format!("{}:0", mt.workflow_key),
+                    event_id: 0,
+                    event_type: "WorkflowTask".to_string(),
+                    workflow_execution: mt.workflow_key.to_le_bytes().to_vec(),
+                    has_task: true,
+                }))
+            }
         } else {
             Ok(Response::new(PollWorkflowTaskResponse {
                 task_token: String::new(),
@@ -1163,6 +1213,173 @@ impl BenchmarkService for BenchmarkServiceImpl {
             }))
         }
     }
+
+    // ─── Tier 4: Visibility & Matching ─────────────────────────────────
+    async fn list_workflows(
+        &self,
+        request: Request<ListWorkflowsRequest>,
+    ) -> Result<Response<ListWorkflowsResponse>, Status> {
+        let req = request.into_inner();
+        let page_size = if req.page_size > 0 { req.page_size as usize } else { 100 };
+
+        // Use the visibility index for query-backed listing
+        let vis = self.engine.visibility();
+        let executions = match req.status_filter.as_str() {
+            "running" => vis.list_by_status(velocity_workflow_engine::WorkflowStatus::Running),
+            "completed" => vis.list_by_status(velocity_workflow_engine::WorkflowStatus::Completed),
+            "failed" => vis.list_by_status(velocity_workflow_engine::WorkflowStatus::Failed),
+            "canceled" => vis.list_by_status(velocity_workflow_engine::WorkflowStatus::Canceled),
+            _ => {
+                // Use compound query if time range specified
+                if req.start_time_from > 0 || req.start_time_to > 0 {
+                    let from = if req.start_time_from > 0 { req.start_time_from as u64 } else { 0 };
+                    let to = if req.start_time_to > 0 { req.start_time_to as u64 } else { u64::MAX };
+                    vis.list_by_time_range(from, to)
+                } else {
+                    // Return all indexed workflows
+                    let q = velocity_workflow_engine::AdvancedVisibilityQuery::new(
+                        velocity_workflow_engine::VisibilityFilter::Status(velocity_workflow_engine::WorkflowStatus::Running),
+                    );
+                    let result = vis.execute_query(&q);
+                    result.items
+                }
+            }
+        };
+
+        let total = executions.len() as i64;
+        let page: Vec<_> = executions.into_iter().take(page_size).collect();
+        let workflow_map = self.workflows.read().await;
+
+        let proto_executions: Vec<bench_proto::WorkflowExecutionInfo> = page
+            .iter()
+            .map(|info| {
+                let wf_id_str = workflow_map
+                    .iter()
+                    .find(|(_, e)| e.workflow_key == info.workflow_key)
+                    .map(|(k, _)| k.clone())
+                    .unwrap_or_else(|| info.workflow_id.to_string());
+                bench_proto::WorkflowExecutionInfo {
+                    workflow_id: wf_id_str,
+                    run_id: info.run_id.to_string(),
+                    workflow_type: info.workflow_type_id.to_string(),
+                    namespace: info.namespace_id.to_string(),
+                    status: format!("{:?}", info.status),
+                    start_time_ms: info.start_time_ms as i64,
+                    close_time_ms: info.close_time_ms.unwrap_or(0) as i64,
+                    task_queue: format!("tq-{}", info.task_queue_hash),
+                    search_attributes: info
+                        .search_attributes
+                        .iter()
+                        .map(|(k, v)| (k.clone(), format!("{:?}", v)))
+                        .collect(),
+                    history_length: self
+                        .engine
+                        .history_store()
+                        .get_history(info.workflow_key)
+                        .map(|h| h.len() as i32)
+                        .unwrap_or(0),
+                }
+            })
+            .collect();
+
+        Ok(Response::new(ListWorkflowsResponse {
+            executions: proto_executions,
+            next_page_token: Vec::new(),
+            total_count: total,
+        }))
+    }
+
+    async fn describe_workflow_execution(
+        &self,
+        request: Request<DescribeWorkflowExecutionRequest>,
+    ) -> Result<Response<DescribeWorkflowExecutionResponse>, Status> {
+        let req = request.into_inner();
+        let workflows = self.workflows.read().await;
+        let entry = workflows
+            .get(&req.workflow_id)
+            .ok_or_else(|| Status::not_found(format!("workflow {} not found", req.workflow_id)))?;
+
+        let vis_info = self.engine.visibility().get(entry.workflow_key);
+        let history = self.engine.history_store().get_history(entry.workflow_key);
+        let history_len = history.map(|h| h.len() as i64).unwrap_or(0);
+
+        let exec_info = if let Some(info) = vis_info {
+            bench_proto::WorkflowExecutionInfo {
+                workflow_id: req.workflow_id.clone(),
+                run_id: info.run_id.to_string(),
+                workflow_type: info.workflow_type_id.to_string(),
+                namespace: info.namespace_id.to_string(),
+                status: format!("{:?}", info.status),
+                start_time_ms: info.start_time_ms as i64,
+                close_time_ms: info.close_time_ms.unwrap_or(0) as i64,
+                task_queue: format!("tq-{}", info.task_queue_hash),
+                search_attributes: info
+                    .search_attributes
+                    .iter()
+                    .map(|(k, v)| (k.clone(), format!("{:?}", v)))
+                    .collect(),
+                history_length: history_len as i32,
+            }
+        } else {
+            bench_proto::WorkflowExecutionInfo {
+                workflow_id: req.workflow_id.clone(),
+                run_id: entry.numeric_wf_id.to_string(),
+                workflow_type: String::new(),
+                namespace: String::new(),
+                status: format!("{:?}", entry.status),
+                start_time_ms: 0,
+                close_time_ms: 0,
+                task_queue: String::new(),
+                search_attributes: entry
+                    .search_attributes
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+                history_length: history_len as i32,
+            }
+        };
+
+        let _engine_ctx = {
+            let wfs = self.engine.workflows_write();
+            // Read-only access via the engine's internal state
+            drop(wfs);
+            None::<()>
+        };
+
+        Ok(Response::new(DescribeWorkflowExecutionResponse {
+            execution: Some(exec_info),
+            pending_activities: vec![],
+            pending_children: vec![],
+            history_length: history_len,
+            execution_duration_ms: 0,
+        }))
+    }
+
+    async fn describe_task_queue(
+        &self,
+        request: Request<DescribeTaskQueueRequest>,
+    ) -> Result<Response<DescribeTaskQueueResponse>, Status> {
+        let req = request.into_inner();
+        let matching = self.engine.matching_service();
+        let desc = matching.describe_task_queue(&req.task_queue);
+
+        let pollers: Vec<bench_proto::PollerInfo> = desc
+            .pollers
+            .iter()
+            .map(|p| bench_proto::PollerInfo {
+                poller_id: format!("poller-{}", p.poller_id),
+                build_id: p.build_id.clone().unwrap_or_default(),
+                last_poll_time_ms: p.last_poll_at.elapsed().as_millis() as i64,
+            })
+            .collect();
+
+        Ok(Response::new(DescribeTaskQueueResponse {
+            pollers,
+            total_backlog: desc.total_backlog as i64,
+            partition_count: desc.partition_count() as i32,
+            build_ids: desc.build_ids.clone(),
+        }))
+    }
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -1187,10 +1404,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Production Server v{}", env!("CARGO_PKG_VERSION"));
     println!("  gRPC:  http://{}", addr);
     println!("  Engine: WorkflowEngine (production)");
+    println!("  WAL:   {}", cli.wal_path);
     println!();
 
-    // Create the production engine
-    let engine = Arc::new(WorkflowEngine::new());
+    // Create the production engine with WAL persistence
+    let engine = if cli.wal_path.is_empty() {
+        WorkflowEngine::new()
+    } else {
+        let e = WorkflowEngine::with_wal(&cli.wal_path, cli.wal_max_size)
+            .expect("Failed to initialize WAL");
+        // Recover state from WAL (crash recovery)
+        match e.recover_from_wal() {
+            Ok((records, workflows)) => {
+                if records > 0 {
+                    tracing::info!(
+                        records_replayed = records,
+                        workflows_recovered = workflows,
+                        "Crash recovery: replayed WAL on startup"
+                    );
+                }
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "WAL recovery failed (starting fresh)");
+            }
+        }
+        e
+    };
+
+    let engine = Arc::new(engine);
     let service = BenchmarkServiceImpl::new(engine);
 
     tracing::info!("BenchmarkService (production engine) listening on {}", addr);

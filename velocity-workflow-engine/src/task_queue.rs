@@ -167,6 +167,35 @@ impl TaskQueue {
         }
     }
 
+    /// Blocking poll with timeout. Returns None if no task arrives within the duration.
+    pub fn poll_timeout(&self, tq_hash: u64, timeout: Duration) -> Option<TaskItem> {
+        let mut map = self.inner.lock().unwrap();
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            if let Some(state) = map.get_mut(&tq_hash) {
+                if let Some(task) = state.deque.pop_front() {
+                    state.dequeued += 1;
+                    if state.deque.is_empty() {
+                        state.oldest_task_at = None;
+                    }
+                    drop(map);
+                    self.total_dequeued.fetch_add(1, Ordering::Relaxed);
+                    return Some(task);
+                }
+                if state.shutdown {
+                    return None;
+                }
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return None;
+            }
+            let (new_map, _) = self.condvar.wait_timeout(map, deadline - now).unwrap();
+            map = new_map;
+        }
+    }
+
     /// Returns the number of pending tasks for a named queue.
     pub fn pending_count(&self, tq_hash: u64) -> usize {
         let map = self.inner.lock().unwrap();

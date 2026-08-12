@@ -1,0 +1,39 @@
+FROM rust:1.88-slim-bookworm
+
+RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy proto files (needed by engine build.rs and server build.rs)
+COPY proto/velocity /proto/velocity
+COPY velocity-bench/proto/ /bench-proto/
+
+# Copy engine source (dependency)
+COPY velocity-workflow-engine/ /engine/
+
+# Copy core source (dependency of engine)
+COPY velocity-workflow-core/ /velocity-workflow-core/
+
+# Copy migrations (needed by engine include_str!)
+COPY migrations/ /migrations/
+
+# Copy server source
+COPY velocity-workflow-server/Cargo.toml velocity-workflow-server/Cargo.toml
+COPY velocity-workflow-server/build.rs velocity-workflow-server/build.rs
+COPY velocity-workflow-server/src/ velocity-workflow-server/src/
+
+# Fix build.rs proto paths for container (server uses bench proto)
+RUN sed -i 's|../velocity-bench/proto/|/bench-proto/|g' velocity-workflow-server/build.rs
+
+# Fix engine path in Cargo.toml
+RUN sed -i 's|path = "../velocity-workflow-engine"|path = "/engine"|g' velocity-workflow-server/Cargo.toml
+
+# Fix core path in engine's Cargo.toml
+RUN sed -i 's|path = "../velocity-workflow-core"|path = "/velocity-workflow-core"|g' /engine/Cargo.toml
+
+WORKDIR /app/velocity-workflow-server
+RUN cargo build --release
+
+EXPOSE 7234
+
+CMD ["./target/release/velocity-server", "--ip", "0.0.0.0", "--grpc-port", "7234"]

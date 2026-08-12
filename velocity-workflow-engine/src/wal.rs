@@ -2,13 +2,23 @@
 //! Every state-changing event is appended to the log before being applied to memory.
 //! On recovery, the log is replayed to reconstruct the in-memory state.
 //!
+//! File header: [magic: 4 bytes "VELO"][version: u32 LE] = 8 bytes
 //! Record format: [event_type: u8][workflow_key: u64][data_len: u32][data: bytes][crc32: u32]
-//! Total header: 1 + 8 + 4 = 13 bytes + data + 4 bytes CRC
+//! Total record header: 1 + 8 + 4 = 13 bytes + data + 4 bytes CRC
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+/// WAL file magic bytes — identifies a valid Velocity WAL file.
+pub const WAL_MAGIC: [u8; 4] = *b"VELO";
+
+/// Current WAL format version. Increment on breaking format changes.
+pub const WAL_VERSION: u32 = 1;
+
+/// Maximum supported WAL version for forward-compatibility checks.
+pub const WAL_VERSION_MAX: u32 = 1;
 
 // ─── WAL Event Types ──────────────────────────────────────────────────────────
 
@@ -129,34 +139,61 @@ impl WalRecord {
 
 // ─── WAL Writer ───────────────────────────────────────────────────────────────
 
-/// Append-only WAL writer. Each `append` writes a record and fsyncs.
+/// Append-only WAL writer. Each `append` writes to the OS buffer.
+/// Use `sync()` for explicit durability (group commit pattern).
 pub struct WalWriter {
     writer: BufWriter<File>,
     path: PathBuf,
     record_count: u64,
+    unsynced_count: u64,
 }
 
 impl WalWriter {
     /// Open or create a WAL file at the given path.
+    /// New files get a versioned header; existing files are validated.
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let is_new = !path.exists() || fs::metadata(&path)?.len() == 0;
+
         let file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(path.as_ref())?;
+            .open(&path)?;
+        let mut writer = BufWriter::new(file);
+
+        if is_new {
+            // Write versioned header: [magic: 4][version: u32]
+            writer.write_all(&WAL_MAGIC)?;
+            writer.write_all(&WAL_VERSION.to_le_bytes())?;
+            writer.flush()?;
+        }
+
         Ok(Self {
-            writer: BufWriter::new(file),
-            path: path.as_ref().to_path_buf(),
+            writer,
+            path,
             record_count: 0,
+            unsynced_count: 0,
         })
     }
 
-    /// Append a record to the WAL. Fsyncs after each write for durability.
+    /// Append a record to the WAL. Data is flushed to the OS buffer but NOT fsynced.
+    /// Call `sync()` for group-commit durability (amortizes fsync across many records).
     pub fn append(&mut self, record: &WalRecord) -> io::Result<()> {
         let encoded = record.encode();
         self.writer.write_all(&encoded)?;
-        self.writer.flush()?;
-        self.writer.get_ref().sync_all()?;
+        self.writer.flush()?; // push to OS kernel buffer — no fsync
         self.record_count += 1;
+        self.unsynced_count += 1;
+        Ok(())
+    }
+
+    /// Fsync the WAL file — ensures all previously appended records are durable.
+    /// Call this after a batch of appends for group-commit semantics.
+    pub fn sync(&mut self) -> io::Result<()> {
+        if self.unsynced_count > 0 {
+            self.writer.get_ref().sync_all()?;
+            self.unsynced_count = 0;
+        }
         Ok(())
     }
 
@@ -183,11 +220,34 @@ impl WalWriter {
 // ─── WAL READER ───────────────────────────────────────────────────────────────
 
 /// Read all records from a WAL file (for recovery/replay).
+/// Validates the versioned header before reading records.
 pub fn read_wal_records(path: impl AsRef<Path>) -> io::Result<Vec<WalRecord>> {
     let file = File::open(path.as_ref())?;
     let mut reader = BufReader::new(file);
-    let mut records = Vec::new();
 
+    // Validate header: [magic: 4][version: u32]
+    let mut magic = [0u8; 4];
+    reader.read_exact(&mut magic)?;
+    if magic != WAL_MAGIC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Not a Velocity WAL file (bad magic: {:?})", magic),
+        ));
+    }
+    let mut ver_bytes = [0u8; 4];
+    reader.read_exact(&mut ver_bytes)?;
+    let version = u32::from_le_bytes(ver_bytes);
+    if version > WAL_VERSION_MAX {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "WAL version {} is newer than maximum supported version {} — upgrade the engine",
+                version, WAL_VERSION_MAX
+            ),
+        ));
+    }
+
+    let mut records = Vec::new();
     while let Some(record) = WalRecord::decode(&mut reader)? {
         records.push(record);
     }
@@ -215,7 +275,7 @@ impl WalManager {
         })
     }
 
-    /// Append an event to the WAL.
+    /// Append an event to the WAL (no fsync — data is in OS buffer).
     pub fn append(
         &self,
         event_type: WalEventType,
@@ -234,6 +294,12 @@ impl WalManager {
         }
 
         Ok(())
+    }
+
+    /// Fsync the WAL — group commit: ensures all pending records are durable.
+    /// Call after a batch of `append()` calls for amortized fsync.
+    pub fn sync(&self) -> io::Result<()> {
+        self.writer.lock().unwrap().sync()
     }
 
     /// Rotate the WAL file: rename current to .old, open fresh file.
@@ -273,6 +339,48 @@ impl WalManager {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Create a timestamped snapshot (copy) of the current WAL file.
+    /// Returns the path to the snapshot file.
+    ///
+    /// The snapshot is fsynced to ensure it's durable.
+    pub fn snapshot(&self, snapshot_dir: impl AsRef<Path>) -> io::Result<PathBuf> {
+        let dir = snapshot_dir.as_ref();
+        fs::create_dir_all(dir)?;
+
+        // Sync current WAL before snapshotting
+        self.sync()?;
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let snapshot_name = format!("wal_snapshot_{}.wal", timestamp);
+        let snapshot_path = dir.join(&snapshot_name);
+
+        fs::copy(&self.path, &snapshot_path)?;
+
+        // Fsync the snapshot to ensure durability
+        let snap_file = std::fs::OpenOptions::new().read(true).open(&snapshot_path)?;
+        snap_file.sync_all()?;
+
+        Ok(snapshot_path)
+    }
+
+    /// List all available snapshot files in a directory, sorted newest first.
+    pub fn list_snapshots(snapshot_dir: impl AsRef<Path>) -> io::Result<Vec<PathBuf>> {
+        let dir = snapshot_dir.as_ref();
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+        let mut snapshots: Vec<PathBuf> = fs::read_dir(dir)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("wal_snapshot_")))
+            .collect();
+        snapshots.sort_by(|a, b| b.cmp(a)); // newest first
+        Ok(snapshots)
     }
 }
 
@@ -448,12 +556,16 @@ mod tests {
         let path = temp_wal_path("raw_write_read");
         cleanup(&path);
 
-        // Manually encode record
+        // Write versioned header + manually encoded record
         let record = WalRecord::new(WalEventType::WorkflowStarted, 1001, vec![1, 2, 3]);
         let encoded = record.encode();
+        let mut file_data = Vec::new();
+        file_data.extend_from_slice(&WAL_MAGIC);
+        file_data.extend_from_slice(&WAL_VERSION.to_le_bytes());
+        file_data.extend_from_slice(&encoded);
 
         // Write raw bytes to file
-        fs::write(&path, &encoded).unwrap();
+        fs::write(&path, &file_data).unwrap();
 
         // Read back
         let records = read_wal_records(&path).unwrap();

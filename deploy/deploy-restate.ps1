@@ -1,0 +1,2 @@
+$gcloud = 'C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd'
+& $gcloud compute ssh velocity-classic --zone=us-east1-b --quiet --command="sudo docker pull restatedev/restate:latest; sudo docker run -d --name restate --network velocity-workflow_default -p 8080:8080 -p 9070:9070 -p 9071:9071 restatedev/restate:latest; sleep 3; sudo docker ps --filter name=restate --format '{{.Names}} {{.Status}}'; curl -s http://localhost:9070/health"

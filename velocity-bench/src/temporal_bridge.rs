@@ -1988,6 +1988,109 @@ impl BenchmarkService for BenchmarkServiceImpl {
             Err(e) => Err(Status::not_found(e)),
         }
     }
+
+    // ─── ListWorkflows ─────────────────────────────────────────────────────
+    async fn list_workflows(
+        &self,
+        request: Request<ListWorkflowsRequest>,
+    ) -> Result<Response<ListWorkflowsResponse>, Status> {
+        let req = request.into_inner();
+        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
+
+        // Clone event logs under lock, then replay each outside lock
+        let all_logs: Vec<(String, Vec<HistoryEvent>)> = {
+            let logs = self.engine.logs.lock().await;
+            logs.iter()
+                .filter(|(_, log)| log.namespace == ns)
+                .map(|(wf_id, log)| (wf_id.clone(), log.events.clone()))
+                .collect()
+        };
+
+        let mut executions = Vec::new();
+        for (_wf_id, events) in &all_logs {
+            let state = TemporalEngine::replay_events(events);
+            let status_str = format!("{:?}", state.status);
+            if !req.status_filter.is_empty() && req.status_filter.to_lowercase() != status_str.to_lowercase() && req.status_filter != "all" {
+                continue;
+            }
+            executions.push(WorkflowExecutionInfo {
+                workflow_id: state.workflow_id,
+                run_id: state.run_id,
+                workflow_type: state.workflow_type,
+                namespace: state.namespace,
+                status: status_str,
+                start_time_ms: 0,
+                close_time_ms: 0,
+                task_queue: String::new(),
+                search_attributes: state.search_attributes,
+                history_length: events.len() as i32,
+            });
+        }
+
+        let total = executions.len() as i64;
+        Ok(Response::new(ListWorkflowsResponse {
+            executions,
+            next_page_token: Vec::new(),
+            total_count: total,
+        }))
+    }
+
+    // ─── DescribeWorkflowExecution ─────────────────────────────────────────
+    async fn describe_workflow_execution(
+        &self,
+        request: Request<DescribeWorkflowExecutionRequest>,
+    ) -> Result<Response<DescribeWorkflowExecutionResponse>, Status> {
+        let req = request.into_inner();
+        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
+
+        let events = {
+            let logs = self.engine.logs.lock().await;
+            let log = logs.get(&req.workflow_id)
+                .ok_or_else(|| Status::not_found(format!("workflow {} not found", req.workflow_id)))?;
+            if log.namespace != ns {
+                return Err(Status::not_found("namespace mismatch"));
+            }
+            log.events.clone()
+        };
+
+        let state = TemporalEngine::replay_events(&events);
+        let status_str = format!("{:?}", state.status);
+
+        let execution = WorkflowExecutionInfo {
+            workflow_id: state.workflow_id,
+            run_id: state.run_id,
+            workflow_type: state.workflow_type,
+            namespace: state.namespace,
+            status: status_str,
+            start_time_ms: 0,
+            close_time_ms: 0,
+            task_queue: String::new(),
+            search_attributes: state.search_attributes,
+            history_length: events.len() as i32,
+        };
+
+        Ok(Response::new(DescribeWorkflowExecutionResponse {
+            execution: Some(execution),
+            pending_activities: Vec::new(),
+            pending_children: Vec::new(),
+            history_length: events.len() as i64,
+            execution_duration_ms: 0,
+        }))
+    }
+
+    // ─── DescribeTaskQueue ─────────────────────────────────────────────────
+    async fn describe_task_queue(
+        &self,
+        _request: Request<DescribeTaskQueueRequest>,
+    ) -> Result<Response<DescribeTaskQueueResponse>, Status> {
+        // Temporal bridge doesn't maintain task queue state — return empty
+        Ok(Response::new(DescribeTaskQueueResponse {
+            pollers: Vec::new(),
+            total_backlog: 0,
+            partition_count: 0,
+            build_ids: Vec::new(),
+        }))
+    }
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────

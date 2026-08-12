@@ -34,6 +34,12 @@ pub struct ReplayResult {
     pub pending_signals: HashMap<u64, Vec<Vec<u8>>>,
     /// Reconstructed activity states.
     pub activity_states: Vec<ReplayActivityState>,
+    /// Reconstructed timer states.
+    pub timer_states: Vec<ReplayTimerState>,
+    /// Reconstructed child workflow states.
+    pub child_states: Vec<ReplayChildState>,
+    /// Determinism checksum — FNV-1a hash of the event sequence + state transitions.
+    pub determinism_checksum: u64,
     /// Whether the replay completed successfully.
     pub success: bool,
     /// Error message if replay failed.
@@ -47,6 +53,37 @@ pub struct ReplayActivityState {
     pub activity_name_id: u64,
     pub status: ReplayActivityStatus,
     pub result: Option<Vec<u8>>,
+}
+
+/// State of a timer reconstructed during replay.
+#[derive(Debug, Clone)]
+pub struct ReplayTimerState {
+    pub timer_id: u64,
+    pub started_at_event_id: u64,
+    pub status: ReplayTimerStatus,
+    pub fired_at_event_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplayTimerStatus {
+    Started,
+    Fired,
+    Canceled,
+}
+
+/// State of a child workflow reconstructed during replay.
+#[derive(Debug, Clone)]
+pub struct ReplayChildState {
+    pub child_workflow_key: u64,
+    pub status: ReplayChildStatus,
+    pub result: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplayChildStatus {
+    Started,
+    Completed,
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,9 +137,13 @@ impl ReplayEngine {
         let mut step_results: HashMap<u32, Vec<u8>> = HashMap::new();
         let mut pending_signals: HashMap<u64, Vec<Vec<u8>>> = HashMap::new();
         let mut activity_states: Vec<ReplayActivityState> = Vec::new();
+        let mut timer_states: Vec<ReplayTimerState> = Vec::new();
+        let mut child_states: Vec<ReplayChildState> = Vec::new();
         let mut status = WorkflowStatus::Void;
         let mut events_replayed = 0usize;
         let mut replayed_to_event_id = 0u64;
+        // FNV-1a hash for determinism checksum
+        let mut checksum: u64 = 0xcbf29ce484222325; // FNV offset basis
 
         for event in history {
             if event.event_id > cutoff {
@@ -114,6 +155,14 @@ impl ReplayEngine {
 
             replayed_to_event_id = event.event_id;
             events_replayed += 1;
+
+            // Update determinism checksum: hash(event_type_discriminant, event_id, payload_len)
+            checksum ^= event.event_type as u64;
+            checksum = checksum.wrapping_mul(0x100000001b3); // FNV prime
+            checksum ^= event.event_id;
+            checksum = checksum.wrapping_mul(0x100000001b3);
+            checksum ^= event.payload.len() as u64;
+            checksum = checksum.wrapping_mul(0x100000001b3);
 
             match event.event_type {
                 HistoryEventType::WorkflowStarted => {
@@ -237,8 +286,77 @@ impl ReplayEngine {
                             .push(signal_payload);
                     }
                 }
-                // Timer, child workflow, marker, update, query events are noted but
-                // don't change the core reconstructed state in this implementation.
+                // Timer events
+                HistoryEventType::TimerStarted => {
+                    if event.payload.len() >= 8 {
+                        let timer_id =
+                            u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
+                        timer_states.push(ReplayTimerState {
+                            timer_id,
+                            started_at_event_id: event.event_id,
+                            status: ReplayTimerStatus::Started,
+                            fired_at_event_id: None,
+                        });
+                    }
+                }
+                HistoryEventType::TimerFired => {
+                    if event.payload.len() >= 8 {
+                        let timer_id =
+                            u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
+                        if let Some(t) = timer_states.iter_mut().rev().find(|t| t.timer_id == timer_id && t.status == ReplayTimerStatus::Started) {
+                            t.status = ReplayTimerStatus::Fired;
+                            t.fired_at_event_id = Some(event.event_id);
+                        }
+                    }
+                }
+                HistoryEventType::TimerCanceled => {
+                    if event.payload.len() >= 8 {
+                        let timer_id =
+                            u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
+                        if let Some(t) = timer_states.iter_mut().rev().find(|t| t.timer_id == timer_id && t.status == ReplayTimerStatus::Started) {
+                            t.status = ReplayTimerStatus::Canceled;
+                            t.fired_at_event_id = Some(event.event_id);
+                        }
+                    }
+                }
+                // Child workflow events
+                HistoryEventType::ChildWorkflowStarted => {
+                    if event.payload.len() >= 8 {
+                        let child_key =
+                            u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
+                        child_states.push(ReplayChildState {
+                            child_workflow_key: child_key,
+                            status: ReplayChildStatus::Started,
+                            result: None,
+                        });
+                    }
+                }
+                HistoryEventType::ChildWorkflowCompleted => {
+                    if event.payload.len() >= 8 {
+                        let child_key =
+                            u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
+                        let result = if event.payload.len() > 8 {
+                            Some(event.payload[8..].to_vec())
+                        } else {
+                            None
+                        };
+                        if let Some(c) = child_states.iter_mut().rev().find(|c| c.child_workflow_key == child_key) {
+                            c.status = ReplayChildStatus::Completed;
+                            c.result = result;
+                        }
+                    }
+                }
+                HistoryEventType::ChildWorkflowFailed => {
+                    if event.payload.len() >= 8 {
+                        let child_key =
+                            u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
+                        if let Some(c) = child_states.iter_mut().rev().find(|c| c.child_workflow_key == child_key) {
+                            c.status = ReplayChildStatus::Failed;
+                        }
+                    }
+                }
+                // Update, query, marker, reset events are noted but
+                // don't change the core reconstructed state.
                 _ => {}
             }
         }
@@ -252,6 +370,9 @@ impl ReplayEngine {
             step_results,
             pending_signals,
             activity_states,
+            timer_states,
+            child_states,
+            determinism_checksum: checksum,
             success: true,
             error: None,
         }
@@ -318,6 +439,7 @@ impl ReplayEngine {
     }
 
     /// Verify determinism: replay the same history twice and confirm identical results.
+    /// Compares both structural state and the FNV-1a determinism checksum.
     pub fn verify_determinism(&self, workflow_key: u64, history: &[HistoryEvent]) -> bool {
         let result1 = self.replay(workflow_key, history, None);
         let result2 = self.replay(workflow_key, history, None);
@@ -326,6 +448,22 @@ impl ReplayEngine {
             && result1.step_results == result2.step_results
             && result1.events_replayed == result2.events_replayed
             && result1.replayed_to_event_id == result2.replayed_to_event_id
+            && result1.determinism_checksum == result2.determinism_checksum
+            && result1.timer_states.len() == result2.timer_states.len()
+            && result1.child_states.len() == result2.child_states.len()
+    }
+
+    /// Compare two replay results for determinism equivalence.
+    /// Returns true if both produce identical state and checksum.
+    pub fn compare_replay_results(a: &ReplayResult, b: &ReplayResult) -> bool {
+        a.status == b.status
+            && a.step_results == b.step_results
+            && a.events_replayed == b.events_replayed
+            && a.replayed_to_event_id == b.replayed_to_event_id
+            && a.determinism_checksum == b.determinism_checksum
+            && a.activity_states.len() == b.activity_states.len()
+            && a.timer_states.len() == b.timer_states.len()
+            && a.child_states.len() == b.child_states.len()
     }
 
     /// Get a cached replay result.
@@ -523,5 +661,116 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.events_replayed, 0);
         assert_eq!(result.status, WorkflowStatus::Void);
+    }
+
+    #[test]
+    fn test_replay_with_timers() {
+        let store = HistoryStore::new();
+        let key = 500u64;
+        store.record_event(key, HistoryEventType::WorkflowStarted, vec![]);
+
+        // Timer started: timer_id=42
+        let mut start_payload = Vec::new();
+        start_payload.extend_from_slice(&42u64.to_le_bytes());
+        store.record_event(key, HistoryEventType::TimerStarted, start_payload);
+
+        // Timer fired: timer_id=42
+        let mut fired_payload = Vec::new();
+        fired_payload.extend_from_slice(&42u64.to_le_bytes());
+        store.record_event(key, HistoryEventType::TimerFired, fired_payload);
+
+        store.record_event(key, HistoryEventType::WorkflowCompleted, vec![]);
+
+        let history = store.get_history(key).unwrap();
+        let engine = ReplayEngine::new();
+        let result = engine.replay(key, &history, None);
+
+        assert!(result.success);
+        assert_eq!(result.timer_states.len(), 1);
+        assert_eq!(result.timer_states[0].timer_id, 42);
+        assert_eq!(result.timer_states[0].status, ReplayTimerStatus::Fired);
+        assert!(result.timer_states[0].fired_at_event_id.is_some());
+    }
+
+    #[test]
+    fn test_replay_with_child_workflows() {
+        let store = HistoryStore::new();
+        let key = 600u64;
+        store.record_event(key, HistoryEventType::WorkflowStarted, vec![]);
+
+        // Child started: child_key=777
+        let mut started_payload = Vec::new();
+        started_payload.extend_from_slice(&777u64.to_le_bytes());
+        store.record_event(key, HistoryEventType::ChildWorkflowStarted, started_payload);
+
+        // Child completed: child_key=777, result=[1,2,3]
+        let mut completed_payload = Vec::new();
+        completed_payload.extend_from_slice(&777u64.to_le_bytes());
+        completed_payload.extend_from_slice(&[1, 2, 3]);
+        store.record_event(key, HistoryEventType::ChildWorkflowCompleted, completed_payload);
+
+        store.record_event(key, HistoryEventType::WorkflowCompleted, vec![]);
+
+        let history = store.get_history(key).unwrap();
+        let engine = ReplayEngine::new();
+        let result = engine.replay(key, &history, None);
+
+        assert!(result.success);
+        assert_eq!(result.child_states.len(), 1);
+        assert_eq!(result.child_states[0].child_workflow_key, 777);
+        assert_eq!(result.child_states[0].status, ReplayChildStatus::Completed);
+        assert_eq!(result.child_states[0].result, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn test_determinism_checksum_stable() {
+        let engine = ReplayEngine::new();
+        let history = make_history(42);
+
+        let result1 = engine.replay(42, &history, None);
+        let result2 = engine.replay(42, &history, None);
+
+        // Same history → same checksum
+        assert_eq!(result1.determinism_checksum, result2.determinism_checksum);
+        assert_ne!(result1.determinism_checksum, 0); // Not the initial offset basis
+    }
+
+    #[test]
+    fn test_determinism_checksum_differs_for_different_histories() {
+        let store1 = HistoryStore::new();
+        let key1 = 1000u64;
+        store1.record_event(key1, HistoryEventType::WorkflowStarted, vec![]);
+        store1.record_event(key1, HistoryEventType::WorkflowCompleted, vec![]);
+        let history1 = store1.get_history(key1).unwrap();
+
+        let store2 = HistoryStore::new();
+        let key2 = 1001u64;
+        store2.record_event(key2, HistoryEventType::WorkflowStarted, vec![]);
+        store2.record_event(key2, HistoryEventType::StepCompleted, {
+            let mut p = Vec::new();
+            p.extend_from_slice(&0u32.to_le_bytes());
+            p.extend_from_slice(&[99]);
+            p
+        });
+        store2.record_event(key2, HistoryEventType::WorkflowCompleted, vec![]);
+        let history2 = store2.get_history(key2).unwrap();
+
+        let engine = ReplayEngine::new();
+        let r1 = engine.replay(key1, &history1, None);
+        let r2 = engine.replay(key2, &history2, None);
+
+        // Different histories → different checksums
+        assert_ne!(r1.determinism_checksum, r2.determinism_checksum);
+    }
+
+    #[test]
+    fn test_compare_replay_results() {
+        let engine = ReplayEngine::new();
+        let history = make_history(42);
+
+        let r1 = engine.replay(42, &history, None);
+        let r2 = engine.replay(42, &history, None);
+
+        assert!(ReplayEngine::compare_replay_results(&r1, &r2));
     }
 }

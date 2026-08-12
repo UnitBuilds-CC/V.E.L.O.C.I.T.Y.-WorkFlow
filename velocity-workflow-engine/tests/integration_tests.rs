@@ -915,3 +915,228 @@ fn test_engine_event_sequence_increments() {
     let seq2 = engine.get_event_sequence(key);
     assert!(seq2 > seq1);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// End-to-End Crash Recovery Tests (Phase 9)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Simulates a crash after starting workflows and completing some steps.
+/// Creates a new engine with the same WAL file and verifies state recovery.
+#[test]
+fn test_crash_recovery_end_to_end() {
+    let wal_path = format!("velocity_test_crash_{}.wal", std::process::id());
+
+    // Phase 1: Create engine with WAL, start workflows, complete some steps
+    {
+        let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
+            .expect("Failed to create engine with WAL");
+
+        // Start 3 workflows
+        let key1 = engine.start_workflow(1, 100, 0, 42, 3, Some(b"wf1-input".to_vec()));
+        let key2 = engine.start_workflow(2, 101, 0, 43, 5, Some(b"wf2-input".to_vec()));
+        let key3 = engine.start_workflow(3, 100, 1, 44, 2, Some(b"wf3-input".to_vec()));
+
+        // Complete some steps
+        engine.complete_step(key1, 0, b"step0-result".to_vec());
+        engine.complete_step(key1, 1, b"step1-result".to_vec());
+        engine.complete_step(key2, 0, b"step0-result".to_vec());
+
+        // Signal workflow 1
+        engine.signal_workflow(key1, 99, b"signal-payload".to_vec());
+
+        // Complete workflow 3
+        engine.complete_step(key3, 0, b"s0".to_vec());
+        engine.complete_step(key3, 1, b"s1".to_vec());
+        engine.complete_workflow(key3, Some(b"wf3-done".to_vec()));
+
+        // Verify pre-crash state
+        assert_eq!(engine.get_status(key1), WorkflowStatus::Running);
+        assert_eq!(engine.get_status(key2), WorkflowStatus::Running);
+        assert_eq!(engine.get_status(key3), WorkflowStatus::Completed);
+
+        // "Crash" — engine is dropped here without graceful shutdown
+    }
+
+    // Phase 2: Create a new engine with the same WAL file (simulates restart)
+    {
+        let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
+            .expect("Failed to create recovery engine");
+
+        // Recover from WAL
+        let (records, workflows) = engine.recover_from_wal().expect("WAL recovery failed");
+
+        // Verify recovery counts
+        assert!(records > 0, "Should have replayed WAL records");
+        assert!(workflows > 0, "Should have recovered workflows");
+
+        // Verify recovered state
+        // Note: keys are (namespace_id << 32) | workflow_id
+        let key1 = (0u64 << 32) | 1;
+        let key2 = (0u64 << 32) | 2;
+        let key3 = (1u64 << 32) | 3;
+
+        // Workflow 1 should be running with 2 steps completed
+        assert_eq!(engine.get_status(key1), WorkflowStatus::Running);
+        assert!(engine.is_step_completed(key1, 0));
+        assert!(engine.is_step_completed(key1, 1));
+        assert!(!engine.is_step_completed(key1, 2));
+
+        // Workflow 2 should be running with 1 step completed
+        assert_eq!(engine.get_status(key2), WorkflowStatus::Running);
+        assert!(engine.is_step_completed(key2, 0));
+        assert!(!engine.is_step_completed(key2, 1));
+
+        // Workflow 3 should be completed
+        assert_eq!(engine.get_status(key3), WorkflowStatus::Completed);
+
+        // Verify signal was recovered
+        let sig = engine.take_signal(key1, 99);
+        assert!(sig.is_some(), "Signal should be recovered from WAL");
+        assert_eq!(sig.unwrap(), b"signal-payload".to_vec());
+
+        // Verify visibility index was populated during recovery
+        let vis = engine.visibility();
+        assert!(vis.count() > 0, "Visibility should have recovered workflows");
+    }
+
+    // Clean up WAL file
+    let _ = std::fs::remove_file(&wal_path);
+}
+
+/// Test that WAL recovery correctly handles fail/cancel/terminate states.
+#[test]
+fn test_crash_recovery_terminal_states() {
+    let wal_path = format!("velocity_test_terminal_{}.wal", std::process::id());
+
+    {
+        let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
+            .expect("Failed to create engine");
+
+        let key1 = engine.start_workflow(10, 100, 0, 42, 1, None);
+        let key2 = engine.start_workflow(11, 100, 0, 42, 1, None);
+        let key3 = engine.start_workflow(12, 100, 0, 42, 1, None);
+
+        engine.complete_workflow(key1, Some(b"done".to_vec()));
+        engine.fail_workflow(key2);
+        engine.cancel_workflow(key3);
+
+        assert_eq!(engine.get_status(key1), WorkflowStatus::Completed);
+        assert_eq!(engine.get_status(key2), WorkflowStatus::Failed);
+        assert_eq!(engine.get_status(key3), WorkflowStatus::Canceled);
+    }
+
+    {
+        let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
+            .expect("Failed to create recovery engine");
+        let (records, _) = engine.recover_from_wal().expect("recovery failed");
+        assert!(records > 0);
+
+        let key1 = (0u64 << 32) | 10;
+        let key2 = (0u64 << 32) | 11;
+        let key3 = (0u64 << 32) | 12;
+
+        assert_eq!(engine.get_status(key1), WorkflowStatus::Completed);
+        assert_eq!(engine.get_status(key2), WorkflowStatus::Failed);
+        assert_eq!(engine.get_status(key3), WorkflowStatus::Canceled);
+
+        // Verify visibility reflects terminal states
+        let vis = engine.visibility();
+        let running = vis.list_by_status(WorkflowStatus::Running);
+        let completed = vis.list_by_status(WorkflowStatus::Completed);
+        let failed = vis.list_by_status(WorkflowStatus::Failed);
+        let canceled = vis.list_by_status(WorkflowStatus::Canceled);
+
+        assert_eq!(running.len(), 0, "No workflows should be running");
+        assert!(completed.len() >= 1, "At least 1 completed");
+        assert!(failed.len() >= 1, "At least 1 failed");
+        assert!(canceled.len() >= 1, "At least 1 canceled");
+    }
+
+    let _ = std::fs::remove_file(&wal_path);
+}
+
+/// Test that replay engine verifies determinism after WAL recovery.
+#[test]
+fn test_replay_verification_after_recovery() {
+    let wal_path = format!("velocity_test_replay_{}.wal", std::process::id());
+
+    {
+        let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
+            .expect("Failed to create engine");
+
+        let key = engine.start_workflow(20, 200, 0, 42, 3, Some(b"input".to_vec()));
+        engine.complete_step(key, 0, b"r0".to_vec());
+        engine.complete_step(key, 1, b"r1".to_vec());
+        engine.complete_step(key, 2, b"r2".to_vec());
+        engine.complete_workflow(key, Some(b"final".to_vec()));
+
+        // Verify history was recorded
+        let history = engine.history_store().get_history(key);
+        assert!(history.is_some());
+        let events = history.unwrap();
+        assert!(events.len() >= 2, "Should have start + complete events");
+    }
+
+    {
+        let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
+            .expect("Failed to create recovery engine");
+        let (records, recovered) = engine.recover_from_wal().expect("recovery failed");
+        assert!(records > 0);
+        assert!(recovered > 0);
+
+        // The replay engine should have verified determinism during recovery
+        let replay = engine.replay_engine();
+        assert!(replay.total_replays() > 0, "Replay engine should have run during recovery");
+    }
+
+    let _ = std::fs::remove_file(&wal_path);
+}
+
+/// Test matching service integration with engine workflow lifecycle.
+#[test]
+fn test_matching_service_integration() {
+    let engine = WorkflowEngine::new();
+
+    // Start a workflow — should submit task to matching service
+    let key = engine.start_workflow(50, 300, 0, 42, 1, None);
+
+    // Check matching service has the task
+    let matching = engine.matching_service();
+    let stats = matching.stats();
+    assert!(stats.tasks_added > 0, "Matching service should have tasks from workflow start");
+
+    // Check visibility was updated
+    let vis = engine.visibility();
+    assert_eq!(vis.count(), 1);
+    let info = vis.get(key);
+    assert!(info.is_some());
+    let info = info.unwrap();
+    assert_eq!(info.status, WorkflowStatus::Running);
+
+    // Complete the workflow — visibility should update
+    engine.complete_workflow(key, Some(b"done".to_vec()));
+    let info = vis.get(key).unwrap();
+    assert_eq!(info.status, WorkflowStatus::Completed);
+    assert!(info.close_time_ms.is_some(), "Close time should be set");
+
+    // Start + fail another workflow
+    let key2 = engine.start_workflow(51, 300, 0, 42, 1, None);
+    engine.fail_workflow(key2);
+    let info2 = vis.get(key2);
+    assert!(info2.is_some());
+    assert_eq!(info2.unwrap().status, WorkflowStatus::Failed);
+
+    // Start + cancel another
+    let key3 = engine.start_workflow(52, 300, 0, 42, 1, None);
+    engine.cancel_workflow(key3);
+    let info3 = vis.get(key3);
+    assert!(info3.is_some());
+    assert_eq!(info3.unwrap().status, WorkflowStatus::Canceled);
+
+    // Start + terminate another
+    let key4 = engine.start_workflow(53, 300, 0, 42, 1, None);
+    engine.terminate_workflow(key4);
+    let info4 = vis.get(key4);
+    assert!(info4.is_some());
+    assert_eq!(info4.unwrap().status, WorkflowStatus::Terminated);
+}

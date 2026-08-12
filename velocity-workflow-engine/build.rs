@@ -18,6 +18,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "velocity/v1/messages.proto",
         "velocity/v1/errordetails.proto",
         "velocity/v1/workflow_service.proto",
+        "velocity/v1/health_service.proto",
+        "velocity/v1/history_service.proto",
+        "velocity/v1/matching_service.proto",
+        "velocity/v1/worker_service.proto",
+        "velocity/v1/admin_service.proto",
     ];
 
     // Use protox (pure Rust) instead of prost-build (requires protoc binary)

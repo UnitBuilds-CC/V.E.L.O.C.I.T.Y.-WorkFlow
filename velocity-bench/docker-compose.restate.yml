@@ -1,0 +1,22 @@
+# docker-compose for Restate server (used by velocity-bench-http).
+#
+# Usage:
+#   docker-compose -f docker-compose.restate.yml up -d
+#
+# Restate ingress:  port 8080 (handler invocation)
+# Restate admin:    port 9070 (service registration, health)
+
+services:
+  # ─── Restate Server ──────────────────────────────────────────────────────
+  restate:
+    image: restatedev/restate:latest
+    container_name: velocity-bench-restate
+    ports:
+      - "8080:8080"   # Ingress (handler invocation)
+      - "9070:9070"   # Admin (service registration, health)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9070/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped

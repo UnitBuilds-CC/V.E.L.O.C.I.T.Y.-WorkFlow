@@ -40,6 +40,15 @@ export interface UpdateRequest {
   waitPolicy: UpdateWaitPolicy;
 }
 
+/** Options for executing an update. */
+export interface UpdateOptions {
+  workflowKey: number;
+  updateName: string;
+  args?: unknown;
+  waitPolicy?: UpdateWaitPolicy;
+  updateId?: string;
+}
+
 export interface UpdateResult {
   updateId: string;
   status: UpdateStatus;

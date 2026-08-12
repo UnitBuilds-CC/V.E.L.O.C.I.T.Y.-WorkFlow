@@ -1,2 +1,0 @@
-Test run for E:\Temporal-V2\VELOCITY-WorkFlow\tests\Velocity.Workflow.Core.Tests\bin\Debug\net10.0\Velocity.Workflow.Core.Tests.dll (.NETCoreApp,Version=v10.0)
-A total of 1 test files matched the specified pattern.

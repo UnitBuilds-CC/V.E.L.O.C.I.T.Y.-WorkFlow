@@ -13,6 +13,10 @@ path = "src/main.rs"
 name = "temporal-bridge"
 path = "src/temporal_bridge.rs"
 
+[[bin]]
+name = "velocity-bench-http"
+path = "src/http_main.rs"
+
 [dependencies]
 # Both engines connect via identical gRPC paths (BenchmarkService proto).
 # No direct engine dependencies — fairness requires the same code path.
@@ -20,11 +24,15 @@ path = "src/temporal_bridge.rs"
 # Async
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
+futures = "0.3"
 
 # gRPC client + server (BenchmarkService — shared proto for both engines)
 tonic = "0.12"
 prost = "0.13"
 prost-types = "0.13"
+
+# HTTP client (for velocity-bench-http: Runtime vs Restate)
+reqwest = { version = "0.12", features = ["json"] }
 
 # Metrics & timing
 hdrhistogram = "7"

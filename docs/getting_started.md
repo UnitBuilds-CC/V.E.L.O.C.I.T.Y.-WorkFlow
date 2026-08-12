@@ -7,12 +7,13 @@
 ## Table of Contents
 
 1. [What is VELOCITY-WorkFlow?](#what-is-velocity-workflow)
-2. [Prerequisites](#prerequisites)
-3. [Installation](#installation)
-4. [Quick Start: Your First Workflow](#quick-start-your-first-workflow)
-5. [Running a Worker](#running-a-worker)
-6. [Sending Signals and Queries](#sending-signals-and-queries)
-7. [Next Steps](#next-steps)
+2. [Three Flavors](#three-flavors)
+3. [Prerequisites](#prerequisites)
+4. [Installation](#installation)
+5. [Quick Start: Your First Workflow](#quick-start-your-first-workflow)
+6. [Running a Worker](#running-a-worker)
+7. [Sending Signals and Queries](#sending-signals-and-queries)
+8. [Next Steps](#next-steps)
 
 ---
 
@@ -29,6 +30,65 @@ VELOCITY-WorkFlow is a hardware-native, zero-allocation durable execution engine
 | State verification | Trust database admin | SHA-256 Merkle root per slab |
 | Infrastructure | 4+ services + database | Single binary or embedded |
 | Transport | gRPC/HTTP2 | VCTP zero-copy UDP + shared memory |
+| Encryption | External KMS | AES-256-GCM with key rotation |
+
+---
+
+## Three Flavors
+
+VELOCITY-WorkFlow ships in three flavors. Choose the one that matches your use case:
+
+| Flavor | Protocol | Best For | Quick Start |
+|--------|----------|----------|-------------|
+| **Velocity Classic** | gRPC | Temporal migration; full-featured | `cargo run -p velocity-dev-server -- --grpc-port 7234` |
+| **Velocity Runtime** | HTTP/JSON | Lightweight; serverless; Restate migration | `cargo run -p velocity-dev-server -- --port 7233` |
+| **Velocity Embedded** | HTTP + Postgres | DBOS migration; embedded durability | `cargo run -p velocity-dev-server -- --embedded-mode` |
+
+### Flavor 1: Velocity Classic (gRPC)
+
+The gRPC flavor provides a full Temporal-compatible API. Connect any Temporal SDK directly.
+
+```bash
+# Start the server
+cargo run --release -p velocity-dev-server -- --grpc-port 7234
+
+# In another terminal, start a workflow via gRPC
+# (Use any Temporal SDK pointing to localhost:7234)
+```
+
+### Flavor 2: Velocity Runtime (HTTP)
+
+The HTTP flavor provides a REST API for lightweight workflow management.
+
+```bash
+# Start the server
+cargo run --release -p velocity-dev-server -- --port 7233
+
+# Start a workflow via HTTP
+curl -X POST http://localhost:7233/api/v1/namespaces/default/workflows \
+  -H "Content-Type: application/json" \
+  -d '{"workflow_type": "greeting", "task_queue": "greetings", "input": {"name": "World"}}'
+
+# Check health
+curl http://localhost:7233/health
+```
+
+### Flavor 3: Velocity Embedded (Postgres)
+
+The Embedded flavor uses PostgreSQL for persistence, compatible with DBOS.
+
+```bash
+# Start PostgreSQL
+docker run -d --name velocity-pg -p 5432:5432 -e POSTGRES_PASSWORD=velocity postgres:16
+
+# Start the server in embedded mode
+cargo run --release -p velocity-dev-server -- --embedded-mode --port 7233
+
+# Start a workflow
+curl -X POST http://localhost:7233/api/v1/namespaces/default/workflows \
+  -H "Content-Type: application/json" \
+  -d '{"workflow_type": "greeting", "task_queue": "greetings"}'
+```
 
 ---
 

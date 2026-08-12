@@ -1,0 +1,702 @@
+# =============================================================================
+# cloud-bench/k8s/k8s_bench_manifests.yaml
+#
+# Kubernetes benchmark suite: deploys all 6 engines into a GKE cluster.
+# Measures orchestration overhead vs bare VM (Suite B).
+#
+# Namespace: velocity-bench
+# Engines:
+#   - velocity-classic (gRPC :7234)
+#   - temporal-bench (gRPC :7233)
+#   - velocity-runtime (HTTP :8080)
+#   - restate-bench (HTTP :8080)
+#   - velocity-embedded (HTTP :8082)
+#   - dbos-bench (HTTP :3000)
+# =============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: velocity-bench
+  labels:
+    app.kubernetes.io/part-of: velocity-bench
+---
+# ─── Velocity Classic (gRPC :7234) ──────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-classic
+  namespace: velocity-bench
+  labels:
+    app: velocity-classic
+    flavor: classic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity-classic
+  template:
+    metadata:
+      labels:
+        app: velocity-classic
+        flavor: classic
+    spec:
+      containers:
+        - name: velocity-classic
+          image: velocity-workflow-server:latest
+          ports:
+            - containerPort: 7234
+              name: grpc
+          args: ["--grpc-port", "7234"]
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 7234
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velocity-classic
+  namespace: velocity-bench
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7234
+      targetPort: 7234
+      name: grpc
+  selector:
+    app: velocity-classic
+---
+# ─── Temporal (gRPC :7233) ──────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal-bench
+  namespace: velocity-bench
+  labels:
+    app: temporal-bench
+    flavor: temporal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temporal-bench
+  template:
+    metadata:
+      labels:
+        app: temporal-bench
+        flavor: temporal
+    spec:
+      containers:
+        - name: temporal
+          image: temporalio/auto-setup:latest
+          ports:
+            - containerPort: 7233
+              name: grpc
+          env:
+            - name: DB
+              value: "sqlite"
+            - name: DB_PATH
+              value: "/data/temporal.db"
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 7233
+            initialDelaySeconds: 15
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal-bench
+  namespace: velocity-bench
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7233
+      targetPort: 7233
+      name: grpc
+  selector:
+    app: temporal-bench
+---
+# ─── Velocity Runtime (HTTP :8080) ──────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-runtime
+  namespace: velocity-bench
+  labels:
+    app: velocity-runtime
+    flavor: runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity-runtime
+  template:
+    metadata:
+      labels:
+        app: velocity-runtime
+        flavor: runtime
+    spec:
+      containers:
+        - name: velocity-runtime
+          image: velocity-dev-server:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          args: ["--http-port", "8080"]
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velocity-runtime
+  namespace: velocity-bench
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app: velocity-runtime
+---
+# ─── Restate (HTTP :8080) ───────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restate-bench
+  namespace: velocity-bench
+  labels:
+    app: restate-bench
+    flavor: restate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: restate-bench
+  template:
+    metadata:
+      labels:
+        app: restate-bench
+        flavor: restate
+    spec:
+      containers:
+        - name: restate
+          image: restatedev/restate:latest
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9070
+              name: admin
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9070
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: restate-bench
+  namespace: velocity-bench
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+    - port: 9070
+      targetPort: 9070
+      name: admin
+  selector:
+    app: restate-bench
+---
+# ─── PostgreSQL (shared by Embedded + DBOS) ─────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bench-postgres-credentials
+  namespace: velocity-bench
+type: Opaque
+stringData:
+  POSTGRES_DB: benchdb
+  POSTGRES_USER: bench
+  POSTGRES_PASSWORD: bench
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: bench-postgres
+  namespace: velocity-bench
+  labels:
+    app: bench-postgres
+spec:
+  serviceName: bench-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bench-postgres
+  template:
+    metadata:
+      labels:
+        app: bench-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          envFrom:
+            - secretRef:
+                name: bench-postgres-credentials
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "bench"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "bench"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bench-postgres
+  namespace: velocity-bench
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres
+  selector:
+    app: bench-postgres
+---
+# ─── Velocity Embedded (HTTP :8082) ─────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-embedded
+  namespace: velocity-bench
+  labels:
+    app: velocity-embedded
+    flavor: embedded
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity-embedded
+  template:
+    metadata:
+      labels:
+        app: velocity-embedded
+        flavor: embedded
+    spec:
+      containers:
+        - name: velocity-embedded
+          image: velocity-dev-server:latest
+          ports:
+            - containerPort: 8082
+              name: http
+          args:
+            - "--http-port"
+            - "8082"
+            - "--postgres-url"
+            - "postgresql://bench:bench@bench-postgres:5432/benchdb"
+          env:
+            - name: RUST_LOG
+              value: "info"
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velocity-embedded
+  namespace: velocity-bench
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8082
+      targetPort: 8082
+      name: http
+  selector:
+    app: velocity-embedded
+---
+# ─── DBOS (HTTP :3000) ──────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbos-bench
+  namespace: velocity-bench
+  labels:
+    app: dbos-bench
+    flavor: dbos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dbos-bench
+  template:
+    metadata:
+      labels:
+        app: dbos-bench
+        flavor: dbos
+    spec:
+      containers:
+        - name: dbos
+          image: dbos/dbos:latest
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: PGHOST
+              value: "bench-postgres"
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: "bench"
+            - name: PGPASSWORD
+              value: "bench"
+            - name: PGDATABASE
+              value: "benchdb"
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dbos-bench
+  namespace: velocity-bench
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
+  selector:
+    app: dbos-bench
+---
+# ─── Benchmark Runner Job (gRPC + HTTP) ────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: velocity-bench-runner
+  namespace: velocity-bench
+  labels:
+    app: velocity-bench-runner
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: velocity-bench-runner
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bench-runner
+          image: velocity-bench:latest
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              echo "=== Suite B: Kubernetes Benchmark ==="
+              echo ""
+
+              # gRPC benchmark: Velocity Classic vs Temporal
+              echo "--- gRPC: Velocity Classic vs Temporal ---"
+              /usr/local/bin/velocity-bench \
+                --workloads all \
+                --engine both \
+                --format all \
+                --profile standard \
+                --velocity-address http://velocity-classic:7234 \
+                --temporal-address http://temporal-bench:7233 \
+                --output /results/grpc_k8s_results || true
+
+              echo ""
+
+              # HTTP benchmark: Velocity Runtime vs Restate
+              echo "--- HTTP: Velocity Runtime vs Restate ---"
+              /usr/local/bin/velocity-bench-http \
+                --workloads all \
+                --engine both \
+                --format all \
+                --profile standard \
+                --velocity-address http://velocity-runtime:8080 \
+                --restate-address http://restate-bench:8080 \
+                --output /results/http_k8s_results || true
+
+              echo ""
+              echo "=== gRPC + HTTP Benchmarks Complete ==="
+              ls -la /results/
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: results
+          emptyDir: {}
+---
+# ─── Embedded Benchmark Job (Velocity Embedded vs DBOS) ────────────────────
+# Uses a postgres:16 image (has pgbench) + curl for HTTP workflow benchmarks
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: embedded-bench-runner
+  namespace: velocity-bench
+  labels:
+    app: embedded-bench-runner
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: embedded-bench-runner
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: embedded-bench-runner
+          image: postgres:16-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              apk add --no-cache curl jq bash >/dev/null 2>&1
+
+              echo "=== Embedded Benchmark: Velocity Embedded vs DBOS ==="
+              echo ""
+
+              EMBEDDED_URL="http://velocity-embedded:8082"
+              DBOS_URL="http://dbos-bench:3000"
+              PG_HOST="bench-postgres"
+              PG_PORT="5432"
+              PG_USER="bench"
+              PG_DB="benchdb"
+              RESULTS="/results"
+              OPS=500
+              CONCURRENCY=10
+
+              # ── Phase 1: pgbench baseline ──────────────────────────────
+              echo "--- pgbench raw Postgres baseline (30s) ---"
+              export PGPASSWORD=bench
+              pgbench -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -i 2>/dev/null || true
+              PGBENCH_OUT=$(pgbench -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -T 30 -j 2 -c 10 2>&1) || true
+              PG_TPS=$(echo "$PGBENCH_OUT" | grep "tps =" | head -1 | awk '{print $3}')
+              PG_LAT=$(echo "$PGBENCH_OUT" | grep "latency average" | awk '{print $4}')
+              echo "  pgbench: ${PG_TPS:-0} TPS, latency ${PG_LAT:-0}ms"
+
+              # ── Phase 2: Velocity Embedded workflow benchmark ──────────
+              echo ""
+              echo "--- Velocity Embedded: workflow CRUD ($OPS ops) ---"
+              VEL_START=$(date +%s%N)
+              VEL_SUCCESS=0
+              for i in $(seq 1 $OPS); do
+                HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+                  -X POST "$EMBEDDED_URL/api/v1/namespaces/default/workflows" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"workflowId\":\"k8s-vel-$i\",\"workflowType\":\"bench\",\"input\":{\"n\":$i}}" \
+                  --max-time 5 2>/dev/null) || HTTP_CODE="000"
+                if [ "$HTTP_CODE" -ge 200 ] 2>/dev/null && [ "$HTTP_CODE" -lt 300 ] 2>/dev/null; then
+                  VEL_SUCCESS=$((VEL_SUCCESS + 1))
+                fi
+              done
+              VEL_END=$(date +%s%N)
+              VEL_MS=$(( (VEL_END - VEL_START) / 1000000 ))
+              VEL_TPS=0
+              if [ "$VEL_MS" -gt 0 ]; then
+                VEL_TPS=$(awk "BEGIN{printf \"%.1f\", $VEL_SUCCESS * 1000.0 / $VEL_MS}")
+              fi
+              echo "  Velocity Embedded: $VEL_SUCCESS/$OPS success, ${VEL_TPS} ops/sec"
+
+              # ── Phase 3: DBOS workflow benchmark ───────────────────────
+              echo ""
+              echo "--- DBOS: workflow CRUD ($OPS ops) ---"
+              DBOS_START=$(date +%s%N)
+              DBOS_SUCCESS=0
+              for i in $(seq 1 $OPS); do
+                HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+                  -X POST "$DBOS_URL/api/v1/namespaces/default/workflows" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"workflowId\":\"k8s-dbos-$i\",\"workflowType\":\"bench\",\"input\":{\"n\":$i}}" \
+                  --max-time 5 2>/dev/null) || HTTP_CODE="000"
+                if [ "$HTTP_CODE" -ge 200 ] 2>/dev/null && [ "$HTTP_CODE" -lt 300 ] 2>/dev/null; then
+                  DBOS_SUCCESS=$((DBOS_SUCCESS + 1))
+                fi
+              done
+              DBOS_END=$(date +%s%N)
+              DBOS_MS=$(( (DBOS_END - DBOS_START) / 1000000 ))
+              DBOS_TPS=0
+              if [ "$DBOS_MS" -gt 0 ]; then
+                DBOS_TPS=$(awk "BEGIN{printf \"%.1f\", $DBOS_SUCCESS * 1000.0 / $DBOS_MS}")
+              fi
+              echo "  DBOS: $DBOS_SUCCESS/$OPS success, ${DBOS_TPS} ops/sec"
+
+              # ── Phase 4: Concurrent benchmark ──────────────────────────
+              echo ""
+              echo "--- Concurrent: Velocity Embedded ($OPS ops, concurrency $CONCURRENCY) ---"
+              VEL_CONC_START=$(date +%s%N)
+              VEL_CONC_SUCCESS=0
+              for w in $(seq 1 $CONCURRENCY); do
+                (
+                  for j in $(seq 1 $((OPS / CONCURRENCY))); do
+                    curl -sf -o /dev/null -w "%{http_code}" \
+                      -X POST "$EMBEDDED_URL/api/v1/namespaces/default/workflows" \
+                      -H "Content-Type: application/json" \
+                      -d "{\"workflowId\":\"k8s-vel-conc-${w}-${j}\",\"workflowType\":\"bench\",\"input\":{}}" \
+                      --max-time 5 2>/dev/null || echo "000"
+                  done
+                ) &
+              done
+              wait
+              VEL_CONC_END=$(date +%s%N)
+              VEL_CONC_MS=$(( (VEL_CONC_END - VEL_CONC_START) / 1000000 ))
+              echo "  Velocity Embedded concurrent: ${VEL_CONC_MS}ms"
+
+              echo ""
+              echo "--- Concurrent: DBOS ($OPS ops, concurrency $CONCURRENCY) ---"
+              DBOS_CONC_START=$(date +%s%N)
+              DBOS_CONC_SUCCESS=0
+              for w in $(seq 1 $CONCURRENCY); do
+                (
+                  for j in $(seq 1 $((OPS / CONCURRENCY))); do
+                    curl -sf -o /dev/null -w "%{http_code}" \
+                      -X POST "$DBOS_URL/api/v1/namespaces/default/workflows" \
+                      -H "Content-Type: application/json" \
+                      -d "{\"workflowId\":\"k8s-dbos-conc-${w}-${j}\",\"workflowType\":\"bench\",\"input\":{}}" \
+                      --max-time 5 2>/dev/null || echo "000"
+                  done
+                ) &
+              done
+              wait
+              DBOS_CONC_END=$(date +%s%N)
+              DBOS_CONC_MS=$(( (DBOS_CONC_END - DBOS_CONC_START) / 1000000 ))
+              echo "  DBOS concurrent: ${DBOS_CONC_MS}ms"
+
+              # ── Write results ──────────────────────────────────────────
+              echo ""
+              echo "--- Writing results ---"
+
+              cat > "$RESULTS/embedded_k8s_results.json" <<ENDJSON
+              {
+                "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                "benchmark": "embedded_k8s",
+                "pgbench": {
+                  "tps": "${PG_TPS:-0}",
+                  "latency_avg_ms": "${PG_LAT:-0}",
+                  "duration_secs": 30
+                },
+                "velocity_embedded": {
+                  "sequential_ops": $VEL_SUCCESS,
+                  "sequential_total_ms": $VEL_MS,
+                  "sequential_tps": $VEL_TPS,
+                  "concurrent_total_ms": $VEL_CONC_MS
+                },
+                "dbos": {
+                  "sequential_ops": $DBOS_SUCCESS,
+                  "sequential_total_ms": $DBOS_MS,
+                  "sequential_tps": $DBOS_TPS,
+                  "concurrent_total_ms": $DBOS_CONC_MS
+                }
+              }
+              ENDJSON
+
+              echo ""
+              echo "=== Embedded Benchmark Complete ==="
+              ls -la /results/
+          env:
+            - name: PGPASSWORD
+              value: "bench"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: results
+          emptyDir: {}

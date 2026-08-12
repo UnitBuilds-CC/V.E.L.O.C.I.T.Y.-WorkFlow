@@ -53,8 +53,15 @@ pub mod db_adapter;
 pub mod deep_observability;
 pub mod deletion_manager;
 pub mod deployment_api;
+pub mod deployment_pipeline;
+pub mod circuit_breaker;
+pub mod concurrency_limiter;
+pub mod search_query;
+pub mod search_query_executor;
+pub mod test_framework;
 pub mod depth_operations;
 pub mod distributed_locks;
+pub mod durable_promises;
 pub mod durable_rpc;
 pub mod dynamic_config;
 pub mod engine;
@@ -110,6 +117,7 @@ pub mod persistence_serialization;
 pub mod persistence_sql;
 pub mod persistence_visibility;
 pub mod predictive_autoscaler;
+pub mod push_dispatcher;
 pub mod query_handler;
 pub mod queue_infrastructure;
 pub mod queue_processing;
@@ -142,23 +150,31 @@ pub mod timer_queue_executor;
 pub mod transfer_queue_executor;
 pub mod update;
 pub mod validation;
+pub mod vctp_transport;
 pub mod visibility;
 pub mod visibility_query;
+pub mod virtual_objects;
 pub mod wal;
 pub mod worker_deployment;
 pub mod worker_determinism;
+pub mod worker_process;
 pub mod worker_registry;
 pub mod worker_service;
 pub mod worker_services;
 pub mod worker_sessions;
 pub mod worker_versioning;
+pub mod workflow_change_versioning;
 pub mod workflow_commands;
 pub mod workflow_context;
+pub mod workflow_dependency_graph;
+pub mod workflow_execution_tracker;
 pub mod workflow_execution;
 pub mod workflow_replay;
 pub mod workflow_reset;
 pub mod workflow_state_machine;
 pub mod workflow_task_handler;
+pub mod zero_alloc;
+pub mod string_interner;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
 // Requires protoc to be installed for proto compilation.
@@ -211,6 +227,32 @@ pub use db_adapter::{
     SqliteJournalMode, SslMode, StatusFilter, WorkflowEventRecord, WorkflowRecord,
 };
 pub use deployment_api::{Deployment, DeploymentManager, DeploymentStatus, DrainageStatus};
+pub use deployment_pipeline::{
+    DeploymentAuditAction, DeploymentAuditEntry, DeploymentConfig, DeploymentMetrics,
+    DeploymentPipeline, DeploymentStage, DeploymentStatus as PipelineDeploymentStatus,
+    HealthCheckResult as DeploymentHealthCheck, WorkflowDeployment,
+};
+
+// circuit_breaker: per-workflow-type circuit breaking for cascade failure prevention
+pub use circuit_breaker::{
+    CircuitBreakerConfig as WorkflowCircuitBreakerConfig,
+    CircuitBreakerRegistry,
+    CircuitBreakerSummary as WorkflowCircuitBreakerSummary,
+    CircuitState as WorkflowCircuitState,
+    WorkflowCircuitBreaker,
+};
+pub use concurrency_limiter::{
+    AcquireResult, ConcurrencyConfig, ConcurrencyStats, OverflowPolicy,
+    WorkflowConcurrencyLimiter,
+};
+pub use search_query::{
+    CompareOp as SearchCompareOp, QueryError as SearchQueryError,
+    QueryExpr as SearchQueryExpr, QueryValue as SearchQueryValue, parse_query,
+};
+pub use search_query_executor::SearchQueryExecutor;
+pub use test_framework::{
+    MockActivityResult, TestWorkflowEnvironment, TestWorkflowResult,
+};
 pub use depth_operations::{
     EngineStatistics, EngineStats, ExtendedEventType, ExtendedHistoryEvent, ExtendedHistoryStore,
     NamespaceRetentionManager, PollContext, PollContextManager, RetentionPolicy, SizeCheckResult,
@@ -314,7 +356,10 @@ pub use rate_limiter::{
 pub use reachability::{
     ReachabilityQuery, ReachabilityResult, ReachabilityTracker, ReachabilityType,
 };
-pub use replay::{ReplayActivityState, ReplayActivityStatus, ReplayEngine, ReplayResult};
+pub use replay::{
+    ReplayActivityState, ReplayActivityStatus, ReplayChildState, ReplayChildStatus,
+    ReplayEngine, ReplayResult, ReplayTimerState, ReplayTimerStatus,
+};
 pub use replication_daemon::{
     DeliveredTask, ReplicationDaemon, ReplicationDaemonConfig, ReplicationDaemonStats,
 };
@@ -324,7 +369,7 @@ pub use retry::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerMetrics, CircuitState, RetryExecutor,
     RetryPolicy, RetryStats,
 };
-pub use saga::{SagaOrchestrator, SagaStatus, SagaStepDefinition};
+pub use saga::{EnhancedSagaOrchestrator, SagaExecutionLog, SagaLogEntry, SagaLogEntryType, SagaOrchestrator, SagaStatus, StepExecutionMode, SagaStepDefinition};
 pub use schedules::{
     CalendarSpec, OverlapPolicy, ScheduleAction, ScheduleEntry, ScheduleManager, ScheduleState,
 };
@@ -350,10 +395,18 @@ pub use visibility::{
     WorkflowExecutionInfo,
 };
 pub use visibility_query::{QueryCondition, QueryField, QueryOp, VisibilityQuery};
+pub use vctp_transport::{
+    VctpPeer, VctpTransport, VctpTransportConfig, VctpTransportStats,
+};
 pub use wal::{WalEventType, WalManager, WalRecord, WalWriter};
 pub use worker_determinism::{
     DeterminismChecker, DeterminismResult, DeterminismViolation, OperationType, RecordedSideEffect,
     ViolationSeverity, WorkflowOperation,
+};
+pub use worker_process::{
+    ProcessStatus, StreamingPollChannel, StreamedTask, TaskCompletion, WorkerProcess,
+    WorkerProcessId, WorkerProcessManager, WorkerProcessManagerConfig,
+    WorkerProcessManagerStats,
 };
 pub use worker_registry::{WorkerInfo, WorkerRegistry, WorkerStatus};
 pub use worker_service::{
@@ -724,6 +777,20 @@ pub use queue_infrastructure::{
     QueueSliceStats, QueueTaskDescriptor, TaskKey as QiTaskKey, TaskPredicate,
 };
 
+// workflow_dependency_graph: cross-workflow relationship tracking and impact analysis
+pub use workflow_dependency_graph::{
+    DependencyDirection, DependencyEdge, DependencyGraphStats, DependencyTraversalResult,
+    DependencyType, ImpactAnalysis, WorkflowDependencyGraph,
+};
+
+// workflow_execution_tracker: SLO tracking, error budgets, latency histograms, throughput
+pub use workflow_execution_tracker::{
+    BurnRateAlert, ErrorBudget, LatencyHistogram, SloComplianceEntry,
+    SloDefinition, ThroughputTracker, TrackerGlobalSummary, WorkflowExecutionStats,
+    WorkflowExecutionTracker,
+    AlertSeverity as TrackerAlertSeverity,
+};
+
 // workflow_execution: deep mutable state, query/update registries, state transitions
 pub use workflow_execution::{
     ActivityState as WfActivityState, ActivityStateEnum, ChildState,
@@ -895,9 +962,30 @@ pub use replay_testing::{
     ReplayEngine as RtReplayEngine, ReplayResult as RtReplayResult, ReplayStatsSnapshot,
     ReplayStatus as RtReplayStatus, ReplayTestBuilder, ViolationType as RtViolationType,
 };
+// workflow_change_versioning: getVersion() API for safe code deployments
+pub use workflow_change_versioning::{
+    ChangeVersionRegistry, ChangeVersionSummary, VersionAuditEntry, VersionDecision, VersionResult,
+    WorkflowVersionState,
+};
 // otel_integration: OpenTelemetry tracing, metrics, context propagation.
 pub use otel_integration::{
     AttributeValue, ContextPropagator as OtContextPropagator, HistogramStats, MetricsRecorder,
     SpanBuilder as OtSpanBuilder, SpanEvent as OtSpanEvent, SpanLink as OtSpanLink,
     SpanStatus as OtSpanStatus, TraceContext, Tracer, TracerStatsSnapshot, WorkflowTelemetry,
+};
+// virtual_objects: Restate-style actor-model keyed state, virtual objects, awakeables.
+pub use virtual_objects::{
+    Awakeable, HandlerDefinition, HandlerInvocation, HandlerKind, HandlerState,
+    JournalEntry, JournalEntryType, ObjectKey, ObjectState, VirtualObjectError,
+    VirtualObjectRuntime, VirtualObjectStats,
+};
+// durable_promises: external resolution points for async coordination.
+pub use durable_promises::{
+    DurablePromise, DurablePromiseConfig, DurablePromiseRuntime, DurablePromiseStats,
+    PromiseError, PromiseState,
+};
+// push_dispatcher: Restate-style push-based work dispatch.
+pub use push_dispatcher::{
+    DispatchError, DispatchState, PushDispatch, PushDispatcher, PushDispatcherConfig,
+    PushDispatcherStats, ServiceEndpoint,
 };

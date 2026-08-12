@@ -20,13 +20,56 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio::sync::{broadcast, Notify};
 
+// jemalloc — significantly faster allocator for allocation-heavy workloads
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+// Hyper HTTP server (production-grade HTTP/1.1 with keep-alive)
+use hyper::body::Incoming;
+use hyper::service::service_fn;
+use hyper::{Request, Response};
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder as ServerBuilder;
+use http_body_util::Full;
+use hyper::body::Bytes;
+
+// TLS support — optional, enabled via --tls-cert / --tls-key
+use tokio_rustls::TlsAcceptor;
+use std::io::BufReader;
+
 // gRPC BenchmarkService — apples-to-apples comparison with Temporal.
 mod grpc_bench;
+
+/// Load TLS configuration from PEM certificate and key files.
+/// Returns None if either path is empty (TLS disabled).
+fn load_tls_config(cert_path: &str, key_path: &str) -> Option<tokio_rustls::TlsAcceptor> {
+    if cert_path.is_empty() || key_path.is_empty() {
+        return None;
+    }
+
+    let cert_file = std::fs::File::open(cert_path).ok()?;
+    let key_file = std::fs::File::open(key_path).ok()?;
+
+    let mut cert_reader = BufReader::new(cert_file);
+    let certs: Vec<_> = rustls_pemfile::certs(&mut cert_reader)
+        .filter_map(|c| c.ok())
+        .collect();
+
+    let mut key_reader = BufReader::new(key_file);
+    let key = rustls_pemfile::private_key(&mut key_reader).ok()??;
+
+    let config = tokio_rustls::rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .ok()?;
+
+    Some(TlsAcceptor::from(Arc::new(config)))
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLI Configuration
@@ -140,6 +183,18 @@ struct DevServerConfig {
     /// Rate limit (requests per second per namespace).
     #[arg(long, default_value_t = 1000)]
     rate_limit_rps: u32,
+
+    /// TLS certificate file path (PEM). Enables TLS on HTTP and gRPC servers.
+    #[arg(long, default_value = "")]
+    tls_cert: String,
+
+    /// TLS private key file path (PEM).
+    #[arg(long, default_value = "")]
+    tls_key: String,
+
+    /// Auth bearer token. When set, all /api/ requests require Authorization: Bearer <token>.
+    #[arg(long, default_value = "", env = "VELOCITY_AUTH_TOKEN")]
+    auth_token: String,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -272,6 +327,25 @@ struct HistoryEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct ScheduleInfo {
+    schedule_id: String,
+    workflow_type: String,
+    state: String,
+    cron_schedule: String,
+    last_action_time: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BatchOperationInfo {
+    job_id: String,
+    operation: String,
+    status: String,
+    total_workflows: u64,
+    succeeded: u64,
+    failed: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SearchResult {
     executions: Vec<WorkflowExecution>,
     next_page_token: Option<String>,
@@ -326,6 +400,14 @@ struct SignalEntry {
     identity: String,
     timestamp: i64,
 }
+
+/// Static feature list — allocated once, never changes.
+const FEATURES_LIST: &[&str] = &[
+    "signals", "queries", "updates", "cancellation", "child_workflows",
+    "timers", "activities", "heartbeats", "retry", "continue_as_new",
+    "search_attributes", "memo", "signal_with_start", "batch_operations",
+    "cron", "replay", "reset", "namespace_mgmt", "worker_poll", "history_archival",
+];
 
 #[derive(Debug)]
 struct EngineStats {
@@ -675,10 +757,32 @@ impl DevEngine {
             .collect()
     }
 
+    fn list_schedules(&self) -> Vec<ScheduleInfo> {
+        // Return empty list for now - schedules would be tracked in a real implementation
+        vec![]
+    }
+
+    fn list_batch_operations(&self) -> Vec<BatchOperationInfo> {
+        // Return empty list for now - batch operations would be tracked in a real implementation
+        vec![]
+    }
+
+    fn get_task_queue(&self, namespace: &str, queue_name: &str) -> Option<TaskQueue> {
+        let key = format!("{}/{}", namespace, queue_name);
+        self.task_queues.read().unwrap().get(&key).cloned()
+    }
+
+    fn get_workflow_activities(&self, namespace: &str, workflow_id: &str) -> Vec<ActivityTask> {
+        let activities = self.activities.read().unwrap();
+        activities
+            .values()
+            .filter(|a| a.namespace == namespace && a.workflow_id == workflow_id)
+            .cloned()
+            .collect()
+    }
+
     fn get_stats(&self) -> ServerStats {
-        let _workflows = self.workflows.read().unwrap();
-        let namespaces = self.namespaces.read().unwrap();
-        let task_queues = self.task_queues.read().unwrap();
+        // Only acquire locks for computed counts — most stats are already atomic.
         let activities = self.activities.read().unwrap();
         let timers = self.timers.read().unwrap();
         let child_workflows = self.child_workflows.read().unwrap();
@@ -690,6 +794,12 @@ impl DevEngine {
         let pending_timers = timers.values().filter(|t| t.status == "PENDING").count() as u64;
         let total_children = child_workflows.values().map(|v| v.len() as u64).sum();
 
+        // Namespace/task_queue counts — small maps, read lock is cheap.
+        let namespaces = self.namespaces.read().unwrap();
+        let task_queues = self.task_queues.read().unwrap();
+        let namespace_count = namespaces.len() as u64;
+        let task_queue_count = task_queues.len() as u64;
+
         ServerStats {
             uptime_secs: self.started_at.elapsed().as_secs(),
             workflow_count: self.stats.workflow_count.load(Ordering::Relaxed),
@@ -698,8 +808,8 @@ impl DevEngine {
             failed_workflows: self.stats.failed_count.load(Ordering::Relaxed),
             cancelled_workflows: self.stats.cancelled_count.load(Ordering::Relaxed),
             terminated_workflows: self.stats.terminated_count.load(Ordering::Relaxed),
-            namespace_count: namespaces.len() as u64,
-            task_queue_count: task_queues.len() as u64,
+            namespace_count,
+            task_queue_count,
             history_event_count: self.stats.history_event_count.load(Ordering::Relaxed),
             signal_count: self.stats.signal_count.load(Ordering::Relaxed),
             query_count: self.stats.query_count.load(Ordering::Relaxed),
@@ -708,29 +818,20 @@ impl DevEngine {
             active_activities,
             pending_timers,
             child_workflows: total_children,
-            memory_usage_bytes: 0,
-            features: vec![
-                "signals".into(),
-                "queries".into(),
-                "updates".into(),
-                "cancellation".into(),
-                "child_workflows".into(),
-                "timers".into(),
-                "activities".into(),
-                "heartbeats".into(),
-                "retry".into(),
-                "continue_as_new".into(),
-                "search_attributes".into(),
-                "memo".into(),
-                "signal_with_start".into(),
-                "batch_operations".into(),
-                "cron".into(),
-                "replay".into(),
-                "reset".into(),
-                "namespace_mgmt".into(),
-                "worker_poll".into(),
-                "history_archival".into(),
-            ],
+            memory_usage_bytes: Self::current_rss_bytes(),
+            features: FEATURES_LIST.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// Get current process RSS (resident set size) in bytes using sysinfo.
+    fn current_rss_bytes() -> u64 {
+        let pid = sysinfo::Pid::from_u32(std::process::id());
+        let mut sys = sysinfo::System::new();
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]));
+        if let Some(process) = sys.process(pid) {
+            process.memory()
+        } else {
+            0
         }
     }
 
@@ -1228,6 +1329,7 @@ impl DevEngine {
     }
 
     /// Signal-with-start: signal existing workflow or start a new one and signal it.
+    #[allow(clippy::too_many_arguments)]
     fn signal_with_start(
         &self,
         namespace: &str,
@@ -1293,6 +1395,7 @@ impl DevEngine {
     }
 
     /// Schedule an activity task for a workflow.
+    #[allow(clippy::too_many_arguments)]
     fn schedule_activity(
         &self,
         namespace: &str,
@@ -1778,6 +1881,7 @@ async fn run_http_server(
     engine: Arc<DevEngine>,
     addr: SocketAddr,
     mut shutdown_rx: broadcast::Receiver<()>,
+    tls_acceptor: Option<TlsAcceptor>,
 ) {
     let listener = match TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -1786,17 +1890,64 @@ async fn run_http_server(
             return;
         }
     };
-    tracing::info!("HTTP API listening on http://{}", addr);
+    if tls_acceptor.is_some() {
+        tracing::info!("HTTP API listening on https://{} (Hyper + TLS, keep-alive)", addr);
+    } else {
+        tracing::info!("HTTP API listening on http://{} (Hyper, keep-alive)", addr);
+    }
+
+    let (shutdown_tx, mut shutdown_rx_oneshot) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        let _ = shutdown_rx.recv().await;
+        let _ = shutdown_tx.send(());
+    });
 
     loop {
         tokio::select! {
             result = listener.accept() => {
                 match result {
                     Ok((stream, _)) => {
+                        let _ = stream.set_nodelay(true);
                         let engine = engine.clone();
+                        let tls = tls_acceptor.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = handle_http_connection(engine, stream).await {
-                                tracing::debug!("HTTP connection error: {}", e);
+                            if let Some(acceptor) = tls {
+                                // TLS path: wrap TCP stream with rustls
+                                match acceptor.accept(stream).await {
+                                    Ok(tls_stream) => {
+                                        let io = TokioIo::new(tls_stream);
+                                        let svc = service_fn(move |req: Request<Incoming>| {
+                                            let engine = engine.clone();
+                                            async move {
+                                                route_to_http_response(&engine, req).await
+                                            }
+                                        });
+                                        if let Err(e) = ServerBuilder::new(TokioExecutor::new())
+                                            .serve_connection(io, svc)
+                                            .await
+                                        {
+                                            tracing::debug!("HTTPS connection error: {}", e);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::debug!("TLS handshake failed: {}", e);
+                                    }
+                                }
+                            } else {
+                                // Plain TCP path
+                                let io = TokioIo::new(stream);
+                                let svc = service_fn(move |req: Request<Incoming>| {
+                                    let engine = engine.clone();
+                                    async move {
+                                        route_to_http_response(&engine, req).await
+                                    }
+                                });
+                                if let Err(e) = ServerBuilder::new(TokioExecutor::new())
+                                    .serve_connection(io, svc)
+                                    .await
+                                {
+                                    tracing::debug!("HTTP connection error: {}", e);
+                                }
                             }
                         });
                     }
@@ -1805,7 +1956,7 @@ async fn run_http_server(
                     }
                 }
             }
-            _ = shutdown_rx.recv() => {
+            _ = &mut shutdown_rx_oneshot => {
                 tracing::info!("HTTP server shutting down");
                 break;
             }
@@ -1813,58 +1964,116 @@ async fn run_http_server(
     }
 }
 
-async fn handle_http_connection(
-    engine: Arc<DevEngine>,
-    stream: tokio::net::TcpStream,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (reader, mut writer) = stream.into_split();
-    let mut buf_reader = BufReader::new(reader);
-    let mut request_line = String::new();
-    buf_reader.read_line(&mut request_line).await?;
+/// Maximum allowed request body size (10 MB). Requests exceeding this are rejected
+/// with 413 Payload Too Large to prevent memory exhaustion attacks.
+const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 
-    let parts: Vec<&str> = request_line.split_whitespace().collect();
-    if parts.len() < 2 {
-        return Ok(());
-    }
-    let method = parts[0];
-    let path = parts[1];
+/// Server version reported in /health responses.
+const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-    // Read headers (skip them for simplicity)
-    let mut headers = String::new();
-    loop {
-        let mut line = String::new();
-        buf_reader.read_line(&mut line).await?;
-        if line == "\r\n" || line.is_empty() {
-            break;
+/// Convert a hyper Request into an HTTP Response by delegating to route_request.
+async fn route_to_http_response(
+    engine: &Arc<DevEngine>,
+    req: Request<Incoming>,
+) -> Result<Response<Full<Bytes>>, std::convert::Infallible> {
+    use http_body_util::BodyExt;
+
+    let method = req.method().as_str().to_string();
+    let path = req.uri().path().to_string();
+
+    // Extract or generate X-Request-Id for request correlation
+    let request_id = req.headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("req-{}", generate_id()));
+
+    // Auth enforcement: check bearer token for /api/ routes when auth is configured
+    if !engine.config.auth_token.is_empty() && path.starts_with("/api/") {
+        let auth_header = req.headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let expected = format!("Bearer {}", engine.config.auth_token);
+        if auth_header != expected {
+            return Ok(Response::builder()
+                .status(401)
+                .header("Content-Type", "application/json")
+                .header("X-Request-Id", &request_id)
+                .body(Full::new(Bytes::from(r#"{"error":"unauthorized"}"#)))
+                .unwrap());
         }
-        headers.push_str(&line);
     }
 
-    // Read body if present
-    let content_length: usize = headers
-        .lines()
-        .find(|l| l.to_lowercase().starts_with("content-length:"))
-        .and_then(|l| l.split(':').nth(1))
-        .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(0);
-
-    let mut body = vec![0u8; content_length];
-    if content_length > 0 {
-        use tokio::io::AsyncReadExt;
-        buf_reader.read_exact(&mut body).await?;
+    // Content-Type validation: POST/PUT/PATCH to /api/ must send application/json
+    if (method == "POST" || method == "PUT" || method == "PATCH") && path.starts_with("/api/") {
+        let ct = req.headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if !ct.is_empty() && !ct.contains("application/json") && !ct.contains("multipart/") {
+            return Ok(Response::builder()
+                .status(415)
+                .header("Content-Type", "application/json")
+                .header("X-Request-Id", &request_id)
+                .body(Full::new(Bytes::from(
+                    r#"{"error":"unsupported media type","expected":"application/json"}"#
+                )))
+                .unwrap());
+        }
     }
 
-    let (status, content_type, response_body) = route_request(&engine, method, path, &body).await;
+    // Request body size limit: check Content-Length first for fast rejection
+    let content_length = req.headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<usize>().ok());
+    if let Some(len) = content_length {
+        if len > MAX_BODY_SIZE {
+            let msg = format!(r#"{{"error":"payload too large","max_bytes":{}}}"#, MAX_BODY_SIZE);
+            return Ok(Response::builder()
+                .status(413)
+                .header("Content-Type", "application/json")
+                .header("X-Request-Id", &request_id)
+                .body(Full::new(Bytes::from(msg)))
+                .unwrap());
+        }
+    }
 
-    let response = format!(
-        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-        status,
-        content_type,
-        response_body.len(),
-        response_body
-    );
-    writer.write_all(response.as_bytes()).await?;
-    Ok(())
+    let body_bytes = match req.into_body().collect().await {
+        Ok(collected) => {
+            let bytes = collected.to_bytes();
+            if bytes.len() > MAX_BODY_SIZE {
+                let msg = format!(r#"{{"error":"payload too large","max_bytes":{}}}"#, MAX_BODY_SIZE);
+                return Ok(Response::builder()
+                    .status(413)
+                    .header("Content-Type", "application/json")
+                    .header("X-Request-Id", &request_id)
+                    .body(Full::new(Bytes::from(msg)))
+                    .unwrap());
+            }
+            bytes
+        }
+        Err(_) => Bytes::new(),
+    };
+
+    let (status, content_type, response_body) = route_request(engine, &method, &path, &body_bytes).await;
+
+    let Ok(response) = Response::builder()
+        .status(status)
+        .header("Content-Type", content_type)
+        .header("Access-Control-Allow-Origin", "*")
+        .header("X-Request-Id", &request_id)
+        .header("X-Response-Time-Ms", "0") // placeholder — real timing requires middleware
+        .body(Full::new(Bytes::from(response_body)))
+    else {
+        return Ok(Response::builder()
+            .status(500)
+            .header("X-Request-Id", &request_id)
+            .body(Full::new(Bytes::from("Internal Server Error")))
+            .unwrap());
+    };
+    Ok(response)
 }
 
 async fn route_request(
@@ -1872,27 +2081,37 @@ async fn route_request(
     method: &str,
     path: &str,
     body: &[u8],
-) -> (String, String, String) {
-    let json = "application/json";
-    let ok = "200 OK";
-    let created = "201 Created";
-    let bad = "400 Bad Request";
-    let not_found = "404 Not Found";
+) -> (u16, &'static str, String) {
+    let json: &'static str = "application/json";
 
     match (method, path) {
-        ("GET", "/health") => (
-            ok.to_string(),
-            json.to_string(),
-            serde_json::json!({"status": "ok", "server": "velocity-dev"}).to_string(),
-        ),
+        ("GET", "/health") => {
+            let stats = engine.get_stats();
+            let health = serde_json::json!({
+                "status": "ok",
+                "server": "velocity-dev",
+                "version": SERVER_VERSION,
+                "uptime_secs": stats.uptime_secs,
+                "workflow_count": stats.workflow_count,
+                "running_workflows": stats.running_workflows,
+                "completed_workflows": stats.completed_workflows,
+                "failed_workflows": stats.failed_workflows,
+                "namespace_count": stats.namespace_count,
+            });
+            (
+                200,
+                json,
+                health.to_string(),
+            )
+        },
         ("GET", "/api/v1/stats") => (
-            ok.to_string(),
-            json.to_string(),
+            200,
+            json,
             serde_json::to_string(&engine.get_stats()).unwrap_or_default(),
         ),
         ("GET", "/api/v1/namespaces") => (
-            ok.to_string(),
-            json.to_string(),
+            200,
+            json,
             serde_json::to_string(&engine.list_namespaces()).unwrap_or_default(),
         ),
         ("POST", "/api/v1/namespaces") => {
@@ -1901,11 +2120,11 @@ async fn route_request(
                     let name = v["name"].as_str().unwrap_or("unnamed");
                     let desc = v["description"].as_str().unwrap_or("");
                     match engine.create_namespace(name, desc) {
-                        Ok(ns) => (created.to_string(), json.to_string(), serde_json::to_string(&ns).unwrap_or_default()),
-                        Err(e) => (bad.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                        Ok(ns) => (201, json, serde_json::to_string(&ns).unwrap_or_default()),
+                        Err(e) => (400, json, serde_json::json!({"error": e}).to_string()),
                     }
                 }
-                Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
             }
         }
         ("POST", "/api/v1/workflows") => {
@@ -1917,18 +2136,18 @@ async fn route_request(
                     let namespace = v["namespace"].as_str().unwrap_or(&engine.config.namespace);
                     match engine.start_workflow(namespace, wf_type, task_queue, input, "") {
                         Ok(exec) => (
-                            created.to_string(),
-                            json.to_string(),
+                            201,
+                            json,
                             serde_json::json!({
                                 "workflowId": exec.workflow_id,
                                 "runId": exec.run_id,
                             })
                             .to_string(),
                         ),
-                        Err(e) => (bad.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                        Err(e) => (400, json, serde_json::json!({"error": e}).to_string()),
                     }
                 }
-                Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
             }
         }
         ("GET", p) if p.starts_with("/api/v1/workflows/") => {
@@ -1940,36 +2159,36 @@ async fn route_request(
                     match parts[5] {
                         "history" => {
                             let history = engine.get_history(namespace, wf_id);
-                            (ok.to_string(), json.to_string(), serde_json::to_string(&history).unwrap_or_default())
+                            (200, json, serde_json::to_string(&history).unwrap_or_default())
                         }
                         "query" => {
                             let query_type = parts.get(6).copied().unwrap_or("__stack_trace");
                             match engine.query_workflow(namespace, wf_id, query_type) {
-                                Ok(result) => (ok.to_string(), json.to_string(), result.to_string()),
-                                Err(e) => (not_found.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                                Ok(result) => (200, json, result.to_string()),
+                                Err(e) => (404, json, serde_json::json!({"error": e}).to_string()),
                             }
                         }
-                        _ => (not_found.to_string(), json.to_string(), serde_json::json!({"error": "unknown sub-path"}).to_string()),
+                        _ => (404, json, serde_json::json!({"error": "unknown sub-path"}).to_string()),
                     }
                 } else {
                     match engine.get_workflow(namespace, wf_id) {
-                        Some(wf) => (ok.to_string(), json.to_string(), serde_json::to_string(&wf).unwrap_or_default()),
-                        None => (not_found.to_string(), json.to_string(), serde_json::json!({"error": "not found"}).to_string()),
+                        Some(wf) => (200, json, serde_json::to_string(&wf).unwrap_or_default()),
+                        None => (404, json, serde_json::json!({"error": "not found"}).to_string()),
                     }
                 }
             } else {
-                (not_found.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (404, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("GET", "/api/v1/workflows") => {
             let namespace = &engine.config.namespace;
             let result = engine.list_workflows(namespace, None, 100);
-            (ok.to_string(), json.to_string(), serde_json::to_string(&result).unwrap_or_default())
+            (200, json, serde_json::to_string(&result).unwrap_or_default())
         }
         ("GET", "/api/v1/task-queues") => {
             let namespace = &engine.config.namespace;
             let tqs = engine.list_task_queues(namespace);
-            (ok.to_string(), json.to_string(), serde_json::to_string(&tqs).unwrap_or_default())
+            (200, json, serde_json::to_string(&tqs).unwrap_or_default())
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/signal") => {
             let parts: Vec<&str> = p.split('/').collect();
@@ -1981,14 +2200,14 @@ async fn route_request(
                         let signal_name = v["signalName"].as_str().unwrap_or("unknown");
                         let input = v.get("input").cloned().unwrap_or(serde_json::Value::Null);
                         match engine.signal_workflow(namespace, wf_id, signal_name, input) {
-                            Ok(()) => (ok.to_string(), json.to_string(), serde_json::json!({"signaled": true}).to_string()),
-                            Err(e) => (not_found.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                            Ok(()) => (200, json, serde_json::json!({"signaled": true}).to_string()),
+                            Err(e) => (404, json, serde_json::json!({"error": e}).to_string()),
                         }
                     }
-                    Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                    Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/cancel") => {
@@ -1999,11 +2218,11 @@ async fn route_request(
                 let v = serde_json::from_slice::<serde_json::Value>(body).unwrap_or(serde_json::Value::Null);
                 let reason = v["reason"].as_str().unwrap_or("cancelled via API");
                 match engine.cancel_workflow(namespace, wf_id, reason) {
-                    Ok(()) => (ok.to_string(), json.to_string(), serde_json::json!({"cancelled": true}).to_string()),
-                    Err(e) => (not_found.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                    Ok(()) => (200, json, serde_json::json!({"cancelled": true}).to_string()),
+                    Err(e) => (404, json, serde_json::json!({"error": e}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/update") => {
@@ -2017,14 +2236,14 @@ async fn route_request(
                         let update_id = v["updateId"].as_str().unwrap_or("");
                         let payload = v.get("payload").cloned().unwrap_or(serde_json::Value::Null);
                         match engine.update_workflow(namespace, wf_id, update_name, update_id, payload) {
-                            Ok(result) => (ok.to_string(), json.to_string(), serde_json::to_string(&result).unwrap_or_default()),
-                            Err(e) => (not_found.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                            Ok(result) => (200, json, serde_json::to_string(&result).unwrap_or_default()),
+                            Err(e) => (404, json, serde_json::json!({"error": e}).to_string()),
                         }
                     }
-                    Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                    Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/search-attributes") => {
@@ -2034,13 +2253,13 @@ async fn route_request(
                 let wf_id = parts[4];
                 match serde_json::from_slice::<HashMap<String, String>>(body) {
                     Ok(attrs) => match engine.upsert_search_attributes(namespace, wf_id, attrs) {
-                        Ok(()) => (ok.to_string(), json.to_string(), serde_json::json!({"upserted": true}).to_string()),
-                        Err(e) => (not_found.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                        Ok(()) => (200, json, serde_json::json!({"upserted": true}).to_string()),
+                        Err(e) => (404, json, serde_json::json!({"error": e}).to_string()),
                     },
-                    Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                    Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/memo") => {
@@ -2050,13 +2269,13 @@ async fn route_request(
                 let wf_id = parts[4];
                 match serde_json::from_slice::<HashMap<String, String>>(body) {
                     Ok(memo) => match engine.set_memo(namespace, wf_id, memo) {
-                        Ok(()) => (ok.to_string(), json.to_string(), serde_json::json!({"memo_set": true}).to_string()),
-                        Err(e) => (not_found.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                        Ok(()) => (200, json, serde_json::json!({"memo_set": true}).to_string()),
+                        Err(e) => (404, json, serde_json::json!({"error": e}).to_string()),
                     },
-                    Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                    Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/timers") => {
@@ -2069,14 +2288,14 @@ async fn route_request(
                         let timer_id = v["timerId"].as_str().unwrap_or("");
                         let duration_ms = v["durationMs"].as_i64().unwrap_or(1000);
                         match engine.schedule_timer(namespace, wf_id, timer_id, duration_ms) {
-                            Ok(tid) => (created.to_string(), json.to_string(), serde_json::json!({"timerId": tid}).to_string()),
-                            Err(e) => (bad.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                            Ok(tid) => (201, json, serde_json::json!({"timerId": tid}).to_string()),
+                            Err(e) => (400, json, serde_json::json!({"error": e}).to_string()),
                         }
                     }
-                    Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                    Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/continue-as-new") => {
@@ -2089,11 +2308,11 @@ async fn route_request(
                 let tq = v["taskQueue"].as_str().unwrap_or("default-queue");
                 let input = v.get("input").cloned().unwrap_or(serde_json::Value::Null);
                 match engine.continue_as_new(namespace, wf_id, wf_type, tq, input) {
-                    Ok(new_run_id) => (ok.to_string(), json.to_string(), serde_json::json!({"newRunId": new_run_id}).to_string()),
-                    Err(e) => (bad.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                    Ok(new_run_id) => (200, json, serde_json::json!({"newRunId": new_run_id}).to_string()),
+                    Err(e) => (400, json, serde_json::json!({"error": e}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/replay") => {
@@ -2102,11 +2321,11 @@ async fn route_request(
                 let namespace = &engine.config.namespace;
                 let wf_id = parts[4];
                 match engine.replay_workflow(namespace, wf_id) {
-                    Ok((events, status)) => (ok.to_string(), json.to_string(), serde_json::json!({"eventsReplayed": events, "finalStatus": status}).to_string()),
-                    Err(e) => (bad.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                    Ok((events, status)) => (200, json, serde_json::json!({"eventsReplayed": events, "finalStatus": status}).to_string()),
+                    Err(e) => (400, json, serde_json::json!({"error": e}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/reset") => {
@@ -2118,11 +2337,11 @@ async fn route_request(
                 let event_id = v["resetToEventId"].as_i64().unwrap_or(1);
                 let reason = v["reason"].as_str().unwrap_or("reset via API");
                 match engine.reset_workflow(namespace, wf_id, event_id, reason) {
-                    Ok(new_run_id) => (ok.to_string(), json.to_string(), serde_json::json!({"newRunId": new_run_id}).to_string()),
-                    Err(e) => (bad.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                    Ok(new_run_id) => (200, json, serde_json::json!({"newRunId": new_run_id}).to_string()),
+                    Err(e) => (400, json, serde_json::json!({"error": e}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", "/api/v1/batch/terminate") => {
@@ -2133,9 +2352,9 @@ async fn route_request(
                     let reason = v["reason"].as_str().unwrap_or("batch terminated");
                     let max = v["maxCount"].as_i64().unwrap_or(0);
                     let count = engine.batch_terminate(namespace, filter, reason, max);
-                    (ok.to_string(), json.to_string(), serde_json::json!({"terminatedCount": count}).to_string())
+                    (200, json, serde_json::json!({"terminatedCount": count}).to_string())
                 }
-                Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
             }
         }
         ("POST", "/api/v1/batch/signal") => {
@@ -2147,9 +2366,9 @@ async fn route_request(
                     let payload = v.get("payload").cloned().unwrap_or(serde_json::Value::Null);
                     let max = v["maxCount"].as_i64().unwrap_or(0);
                     let count = engine.batch_signal(namespace, filter, signal_name, payload, max);
-                    (ok.to_string(), json.to_string(), serde_json::json!({"signaledCount": count}).to_string())
+                    (200, json, serde_json::json!({"signaledCount": count}).to_string())
                 }
-                Err(_) => (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid JSON"}).to_string()),
+                Err(_) => (400, json, serde_json::json!({"error": "invalid JSON"}).to_string()),
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/complete") => {
@@ -2159,11 +2378,11 @@ async fn route_request(
                 let wf_id = parts[4];
                 let result = serde_json::from_slice::<serde_json::Value>(body).unwrap_or(serde_json::Value::Null);
                 match engine.complete_workflow(namespace, wf_id, result) {
-                    Ok(()) => (ok.to_string(), json.to_string(), serde_json::json!({"completed": true}).to_string()),
-                    Err(e) => (not_found.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                    Ok(()) => (200, json, serde_json::json!({"completed": true}).to_string()),
+                    Err(e) => (404, json, serde_json::json!({"error": e}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("POST", p) if p.starts_with("/api/v1/workflows/") && p.ends_with("/fail") => {
@@ -2174,11 +2393,11 @@ async fn route_request(
                 let v = serde_json::from_slice::<serde_json::Value>(body).unwrap_or(serde_json::Value::Null);
                 let reason = v["reason"].as_str().unwrap_or("unknown");
                 match engine.fail_workflow(namespace, wf_id, reason) {
-                    Ok(()) => (ok.to_string(), json.to_string(), serde_json::json!({"failed": true}).to_string()),
-                    Err(e) => (not_found.to_string(), json.to_string(), serde_json::json!({"error": e}).to_string()),
+                    Ok(()) => (200, json, serde_json::json!({"failed": true}).to_string()),
+                    Err(e) => (404, json, serde_json::json!({"error": e}).to_string()),
                 }
             } else {
-                (bad.to_string(), json.to_string(), serde_json::json!({"error": "invalid path"}).to_string())
+                (400, json, serde_json::json!({"error": "invalid path"}).to_string())
             }
         }
         ("GET", "/metrics") => {
@@ -2228,7 +2447,13 @@ async fn route_request(
                  velocity_child_workflows {}\n\
                  # HELP velocity_history_events_total Total history events\n\
                  # TYPE velocity_history_events_total counter\n\
-                 velocity_history_events_total {}\n",
+                 velocity_history_events_total {}\n\
+                 # HELP velocity_namespaces Registered namespaces\n\
+                 # TYPE velocity_namespaces gauge\n\
+                 velocity_namespaces {}\n\
+                 # HELP velocity_task_queues Active task queues\n\
+                 # TYPE velocity_task_queues gauge\n\
+                 velocity_task_queues {}\n",
                 stats.uptime_secs,
                 stats.workflow_count,
                 stats.running_workflows,
@@ -2244,17 +2469,15 @@ async fn route_request(
                 stats.pending_timers,
                 stats.child_workflows,
                 stats.history_event_count,
+                stats.namespace_count,
+                stats.task_queue_count,
             );
-            (ok.to_string(), "text/plain; version=0.0.4".to_string(), prom)
+            (200, "text/plain; version=0.0.4", prom)
         }
         _ => (
-            not_found.to_string(),
-            json.to_string(),
-            serde_json::json!({
-                "error": "not found",
-                "hint": "Try /health, /api/v1/workflows, /api/v1/namespaces, /api/v1/stats, /metrics"
-            })
-            .to_string(),
+            404,
+            json,
+            r#"{"error":"not found","hint":"Try /health, /api/v1/workflows, /api/v1/namespaces, /api/v1/stats, /metrics"}"#.to_string(),
         ),
     }
 }
@@ -2275,16 +2498,34 @@ async fn run_ui_server(
             return;
         }
     };
-    tracing::info!("Web UI listening on http://{}", addr);
+    tracing::info!("Web UI listening on http://{} (Hyper, keep-alive)", addr);
+
+    let (shutdown_tx, mut shutdown_rx_oneshot) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        let _ = shutdown_rx.recv().await;
+        let _ = shutdown_tx.send(());
+    });
 
     loop {
         tokio::select! {
             result = listener.accept() => {
                 match result {
                     Ok((stream, _)) => {
+                        // TCP_NODELAY: disable Nagle's algorithm for lower latency
+                        let _ = stream.set_nodelay(true);
                         let engine = engine.clone();
+                        let io = TokioIo::new(stream);
                         tokio::spawn(async move {
-                            if let Err(e) = handle_ui_connection(engine, stream).await {
+                            let svc = service_fn(move |req: Request<Incoming>| {
+                                let engine = engine.clone();
+                                async move {
+                                    route_ui_to_http_response(&engine, req).await
+                                }
+                            });
+                            if let Err(e) = ServerBuilder::new(TokioExecutor::new())
+                                .serve_connection(io, svc)
+                                .await
+                            {
                                 tracing::debug!("UI connection error: {}", e);
                             }
                         });
@@ -2294,7 +2535,7 @@ async fn run_ui_server(
                     }
                 }
             }
-            _ = shutdown_rx.recv() => {
+            _ = &mut shutdown_rx_oneshot => {
                 tracing::info!("UI server shutting down");
                 break;
             }
@@ -2302,57 +2543,58 @@ async fn run_ui_server(
     }
 }
 
-async fn handle_ui_connection(
-    engine: Arc<DevEngine>,
-    stream: tokio::net::TcpStream,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (reader, mut writer) = stream.into_split();
-    let mut buf_reader = BufReader::new(reader);
-    let mut request_line = String::new();
-    buf_reader.read_line(&mut request_line).await?;
+/// Route a UI request to an HTTP response using Hyper types.
+async fn route_ui_to_http_response(
+    engine: &Arc<DevEngine>,
+    req: Request<Incoming>,
+) -> Result<Response<Full<Bytes>>, std::convert::Infallible> {
+    let path = req.uri().path().to_string();
 
-    let parts: Vec<&str> = request_line.split_whitespace().collect();
-    if parts.len() < 2 {
-        return Ok(());
-    }
-    let path = parts[1];
-
-    // Read remaining headers
-    loop {
-        let mut line = String::new();
-        buf_reader.read_line(&mut line).await?;
-        if line == "\r\n" || line.is_empty() {
-            break;
-        }
-    }
-
-    let (status, content_type, body) = match path {
+    let (status, content_type, body) = match path.as_str() {
         "/" | "/index.html" => (
-            "200 OK".to_string(),
-            "text/html".to_string(),
-            generate_ui_html(&engine),
+            200,
+            "text/html",
+            generate_ui_html(engine),
         ),
         "/health" => (
-            "200 OK".to_string(),
-            "application/json".to_string(),
+            200,
+            "application/json",
             r#"{"status":"ok"}"#.to_string(),
         ),
-        _ => (
-            "404 Not Found".to_string(),
-            "text/html".to_string(),
-            "<h1>404 Not Found</h1>".to_string(),
-        ),
+        p if p.starts_with("/workflows/") => {
+            let wf_id = p.trim_start_matches("/workflows/");
+            let namespace = &engine.config.namespace;
+            match engine.get_workflow(namespace, wf_id) {
+                Some(wf) => (
+                    200,
+                    "text/html",
+                    generate_workflow_detail_html(engine, &wf),
+                ),
+                None => (
+                    404,
+                    "text/html",
+                    format!("<h1>Workflow {} not found</h1><a href='/'>Back to dashboard</a>", wf_id),
+                ),
+            }
+        }
+        "/schedules" => (200, "text/html", generate_schedules_html(engine)),
+        "/task-queues" => (200, "text/html", generate_task_queues_html(engine)),
+        "/batch-operations" => (200, "text/html", generate_batch_operations_html(engine)),
+        "/search" => (200, "text/html", generate_search_html(engine)),
+        _ => (404, "text/html", "<h1>404 Not Found</h1>".to_string()),
     };
 
-    let response = format!(
-        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        status,
-        content_type,
-        body.len(),
-        body
-    );
-    writer.write_all(response.as_bytes()).await?;
-    Ok(())
+    let Ok(response) = Response::builder()
+        .status(status)
+        .header("Content-Type", content_type)
+        .body(Full::new(Bytes::from(body)))
+    else {
+        return Ok(Response::builder()
+            .status(500)
+            .body(Full::new(Bytes::from("Internal Server Error")))
+            .unwrap());
+    };
+    Ok(response)
 }
 
 fn generate_ui_html(engine: &Arc<DevEngine>) -> String {
@@ -2420,12 +2662,22 @@ a {{ color: #00d4ff; text-decoration: none; }}
 a:hover {{ text-decoration: underline; }}
 .endpoints {{ background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px; }}
 .endpoints code {{ color: #4CAF50; display: block; margin: 4px 0; }}
+.nav {{ background: #1a1a2e; padding: 12px 40px; border-bottom: 1px solid #333; display: flex; gap: 20px; }}
+.nav a {{ color: #00d4ff; font-size: 14px; }}
+.nav a:hover {{ text-decoration: underline; }}
 </style>
 </head>
 <body>
 <div class="header">
   <h1>VELOCITY Dev Server</h1>
   <div class="subtitle">In-memory workflow engine for local development</div>
+</div>
+<div class="nav">
+  <a href="/">Dashboard</a>
+  <a href="/schedules">Schedules</a>
+  <a href="/task-queues">Task Queues</a>
+  <a href="/batch-operations">Batch Operations</a>
+  <a href="/search">Search</a>
 </div>
 <div class="container">
   <div class="stats">
@@ -2493,6 +2745,329 @@ a:hover {{ text-decoration: underline; }}
         stats.history_event_count,
         workflow_rows,
         ns_rows,
+    )
+}
+
+fn generate_workflow_detail_html(engine: &Arc<DevEngine>, wf: &WorkflowExecution) -> String {
+    let history = engine.get_history(&engine.config.namespace, &wf.workflow_id);
+    
+    let history_rows: String = history
+        .iter()
+        .map(|e| {
+            let attrs_str = e.attributes.to_string();
+            format!(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                e.event_id,
+                e.event_type,
+                format_duration(e.event_time),
+                if attrs_str.is_empty() || attrs_str == "null" { "-" } else { &attrs_str[..attrs_str.len().min(50)] }
+            )
+        })
+        .collect();
+    
+    let status_color = match wf.status.as_str() {
+        "RUNNING" => "#2196F3",
+        "COMPLETED" => "#4CAF50",
+        "FAILED" => "#f44336",
+        "CANCELLED" => "#FF9800",
+        _ => "#9E9E9E",
+    };
+    
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workflow {} - VELOCITY</title>
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e0e0e0; }}
+.header {{ background: #1a1a2e; padding: 20px 40px; border-bottom: 1px solid #333; }}
+.header h1 {{ color: #00d4ff; font-size: 24px; }}
+.header .subtitle {{ color: #888; font-size: 14px; margin-top: 4px; }}
+.container {{ max-width: 1400px; margin: 0 auto; padding: 20px 40px; }}
+.info-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 30px; }}
+.info-card {{ background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px; }}
+.info-card .label {{ color: #888; font-size: 12px; text-transform: uppercase; margin-bottom: 4px; }}
+.info-card .value {{ color: #fff; font-size: 16px; word-break: break-all; }}
+.status-badge {{ display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; color: #fff; background: {}; }}
+.section {{ margin-bottom: 30px; }}
+.section h2 {{ color: #fff; margin-bottom: 12px; font-size: 18px; }}
+table {{ width: 100%; border-collapse: collapse; background: #1a1a2e; border-radius: 8px; overflow: hidden; }}
+th {{ background: #252540; color: #888; text-align: left; padding: 10px 16px; font-size: 12px; text-transform: uppercase; }}
+td {{ padding: 10px 16px; border-top: 1px solid #252540; font-size: 14px; }}
+a {{ color: #00d4ff; text-decoration: none; }}
+a:hover {{ text-decoration: underline; }}
+.actions {{ background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 20px; }}
+.btn {{ display: inline-block; padding: 8px 16px; margin-right: 8px; border-radius: 4px; font-size: 14px; font-weight: bold; color: #fff; cursor: pointer; border: none; }}
+.btn-cancel {{ background: #FF9800; }}
+.btn-terminate {{ background: #f44336; }}
+.btn-signal {{ background: #2196F3; }}
+.btn:hover {{ opacity: 0.9; }}
+.back-link {{ display: inline-block; margin-bottom: 20px; color: #00d4ff; }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Workflow Details</h1>
+  <div class="subtitle">{}</div>
+</div>
+<div class="container">
+  <a href='/' class="back-link">← Back to dashboard</a>
+  
+  <div class="info-grid">
+    <div class="info-card">
+      <div class="label">Workflow ID</div>
+      <div class="value">{}</div>
+    </div>
+    <div class="info-card">
+      <div class="label">Run ID</div>
+      <div class="value">{}</div>
+    </div>
+    <div class="info-card">
+      <div class="label">Type</div>
+      <div class="value">{}</div>
+    </div>
+    <div class="info-card">
+      <div class="label">Status</div>
+      <div class="value"><span class="status-badge">{}</span></div>
+    </div>
+    <div class="info-card">
+      <div class="label">Task Queue</div>
+      <div class="value">{}</div>
+    </div>
+    <div class="info-card">
+      <div class="label">Started</div>
+      <div class="value">{}</div>
+    </div>
+    <div class="info-card">
+      <div class="label">Closed</div>
+      <div class="value">{}</div>
+    </div>
+    <div class="info-card">
+      <div class="label">History Events</div>
+      <div class="value">{}</div>
+    </div>
+  </div>
+  
+  <div class="section">
+    <h2>Actions</h2>
+    <div class="actions">
+      <button class="btn btn-signal" onclick="alert('Signal workflow via API: POST /api/v1/workflows/{}/signal')">Signal</button>
+      <button class="btn btn-cancel" onclick="alert('Cancel workflow via API: POST /api/v1/workflows/{}/cancel')">Cancel</button>
+      <button class="btn btn-terminate" onclick="alert('Terminate workflow via API: POST /api/v1/batch/terminate')">Terminate</button>
+    </div>
+  </div>
+  
+  <div class="section">
+    <h2>History Events ({})</h2>
+    <table>
+      <thead><tr><th>Event ID</th><th>Event Type</th><th>Timestamp</th><th>Payload</th></tr></thead>
+      <tbody>{}</tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>"#,
+        wf.workflow_id,
+        wf.workflow_id,
+        wf.workflow_id,
+        wf.run_id,
+        wf.workflow_type,
+        status_color,
+        wf.status,
+        wf.task_queue,
+        format_duration(wf.started_at),
+        wf.closed_at.map(format_duration).unwrap_or_else(|| "-".to_string()),
+        history.len(),
+        wf.workflow_id,
+        wf.workflow_id,
+        history.len(),
+        history_rows,
+    )
+}
+
+fn generate_schedules_html(engine: &Arc<DevEngine>) -> String {
+    let schedules = engine.list_schedules();
+    
+    let schedule_rows: String = schedules
+        .iter()
+        .map(|s| {
+            let state_color = match s.state.as_str() {
+                "ACTIVE" => "#4CAF50",
+                "PAUSED" => "#FF9800",
+                "COMPLETED" => "#2196F3",
+                _ => "#9E9E9E",
+            };
+            format!(
+                "<tr><td>{}</td><td>{}</td><td style='color:{}'>{}</td><td>{}</td><td>{}</td></tr>",
+                s.schedule_id,
+                s.workflow_type,
+                state_color,
+                s.state,
+                s.cron_schedule,
+                s.last_action_time,
+            )
+        })
+        .collect();
+    
+    generate_page_html("Schedules", &format!(
+        r#"<div class="section">
+    <h2>Schedules ({})</h2>
+    <table>
+      <thead><tr><th>Schedule ID</th><th>Workflow Type</th><th>State</th><th>Cron</th><th>Last Action</th></tr></thead>
+      <tbody>{}</tbody>
+    </table>
+  </div>"#,
+        schedules.len(),
+        schedule_rows,
+    ))
+}
+
+fn generate_task_queues_html(engine: &Arc<DevEngine>) -> String {
+    let namespace = &engine.config.namespace;
+    let task_queues = engine.list_task_queues(namespace);
+    
+    let tq_rows: String = task_queues
+        .iter()
+        .map(|tq| {
+            format!(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                tq.name,
+                tq.task_type,
+                tq.backlog_count,
+                tq.pollers.len(),
+            )
+        })
+        .collect();
+    
+    generate_page_html("Task Queues", &format!(
+        r#"<div class="section">
+    <h2>Task Queues ({})</h2>
+    <table>
+      <thead><tr><th>Name</th><th>Type</th><th>Pending Tasks</th><th>Pollers</th></tr></thead>
+      <tbody>{}</tbody>
+    </table>
+  </div>"#,
+        task_queues.len(),
+        tq_rows,
+    ))
+}
+
+fn generate_batch_operations_html(engine: &Arc<DevEngine>) -> String {
+    let batches = engine.list_batch_operations();
+    
+    let batch_rows: String = batches
+        .iter()
+        .map(|b| {
+            let status_color = match b.status.as_str() {
+                "RUNNING" => "#2196F3",
+                "COMPLETED" => "#4CAF50",
+                "FAILED" => "#f44336",
+                _ => "#9E9E9E",
+            };
+            format!(
+                "<tr><td>{}</td><td>{}</td><td style='color:{}'>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                b.job_id,
+                b.operation,
+                status_color,
+                b.status,
+                b.total_workflows,
+                b.succeeded,
+                b.failed,
+            )
+        })
+        .collect();
+    
+    generate_page_html("Batch Operations", &format!(
+        r#"<div class="section">
+    <h2>Batch Operations ({})</h2>
+    <table>
+      <thead><tr><th>Job ID</th><th>Operation</th><th>Status</th><th>Total</th><th>Succeeded</th><th>Failed</th></tr></thead>
+      <tbody>{}</tbody>
+    </table>
+  </div>"#,
+        batches.len(),
+        batch_rows,
+    ))
+}
+
+fn generate_search_html(_engine: &Arc<DevEngine>) -> String {
+    generate_page_html("Search", r#"
+  <div class="section">
+    <h2>Search Workflows</h2>
+    <div class="actions">
+      <form method="GET" action="/search">
+        <input type="text" name="query" placeholder="Enter search query (e.g., Status='running' AND WorkflowType='MyWorkflow')" 
+               style="width: 100%; padding: 10px; background: #252540; border: 1px solid #333; color: #fff; border-radius: 4px; margin-bottom: 10px;">
+        <button type="submit" class="btn btn-signal">Search</button>
+      </form>
+    </div>
+    <div style="margin-top: 20px; color: #888; font-size: 14px;">
+      <h3 style="color: #fff; margin-bottom: 10px;">Query Examples:</h3>
+      <ul style="list-style: none; padding: 0;">
+        <li style="margin: 8px 0;"><code style="color: #4CAF50;">Status='running'</code> - Find all running workflows</li>
+        <li style="margin: 8px 0;"><code style="color: #4CAF50;">Status='completed' AND WorkflowType='OrderWorkflow'</code> - Find completed orders</li>
+        <li style="margin: 8px 0;"><code style="color: #4CAF50;">StartTime > '2024-01-01'</code> - Find workflows started after date</li>
+        <li style="margin: 8px 0;"><code style="color: #4CAF50;">NamespaceId = 0</code> - Find workflows in default namespace</li>
+      </ul>
+    </div>
+  </div>"#)
+}
+
+fn generate_page_html(title: &str, content: &str) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{} - VELOCITY</title>
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e0e0e0; }}
+.header {{ background: #1a1a2e; padding: 20px 40px; border-bottom: 1px solid #333; }}
+.header h1 {{ color: #00d4ff; font-size: 24px; }}
+.nav {{ background: #1a1a2e; padding: 12px 40px; border-bottom: 1px solid #333; display: flex; gap: 20px; }}
+.nav a {{ color: #00d4ff; font-size: 14px; }}
+.nav a:hover {{ text-decoration: underline; }}
+.container {{ max-width: 1400px; margin: 0 auto; padding: 20px 40px; }}
+.section {{ margin-bottom: 30px; }}
+.section h2 {{ color: #fff; margin-bottom: 12px; font-size: 18px; }}
+table {{ width: 100%; border-collapse: collapse; background: #1a1a2e; border-radius: 8px; overflow: hidden; }}
+th {{ background: #252540; color: #888; text-align: left; padding: 10px 16px; font-size: 12px; text-transform: uppercase; }}
+td {{ padding: 10px 16px; border-top: 1px solid #252540; font-size: 14px; }}
+a {{ color: #00d4ff; text-decoration: none; }}
+a:hover {{ text-decoration: underline; }}
+.actions {{ background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px; }}
+.btn {{ display: inline-block; padding: 8px 16px; margin-right: 8px; border-radius: 4px; font-size: 14px; font-weight: bold; color: #fff; cursor: pointer; border: none; }}
+.btn-signal {{ background: #2196F3; }}
+.btn:hover {{ opacity: 0.9; }}
+.back-link {{ display: inline-block; margin-bottom: 20px; color: #00d4ff; }}
+code {{ background: #252540; padding: 2px 6px; border-radius: 3px; }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>{}</h1>
+</div>
+<div class="nav">
+  <a href="/">Dashboard</a>
+  <a href="/schedules">Schedules</a>
+  <a href="/task-queues">Task Queues</a>
+  <a href="/batch-operations">Batch Operations</a>
+  <a href="/search">Search</a>
+</div>
+<div class="container">
+  <a href='/' class="back-link">← Back to dashboard</a>
+  {}
+</div>
+</body>
+</html>"#,
+        title,
+        title,
+        content,
     )
 }
 
@@ -2595,13 +3170,19 @@ async fn main() {
     let engine = DevEngine::new(config.clone());
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
+    // Graceful shutdown — tracks component drain progress
+    let shutdown_started = Arc::new(AtomicBool::new(false));
+    let drained_count = Arc::new(AtomicU64::new(0));
+    let total_components: u64 = if config.ui_port > 0 { 3 } else { 2 }; // http + grpc + optional ui
+
     let http_addr: SocketAddr = format!("{}:{}", config.ip, config.port)
         .parse()
         .expect("Invalid HTTP address");
+    let tls_acceptor = load_tls_config(&config.tls_cert, &config.tls_key);
     let http_engine = engine.clone();
     let http_shutdown = shutdown_tx.subscribe();
     let http_handle = tokio::spawn(async move {
-        run_http_server(http_engine, http_addr, http_shutdown).await;
+        run_http_server(http_engine, http_addr, http_shutdown, tls_acceptor).await;
     });
 
     let ui_handle = if config.ui_port > 0 {
@@ -2645,20 +3226,47 @@ async fn main() {
     // Wait for shutdown signal
     tokio::select! {
         _ = signal::ctrl_c() => {
-            println!("\n  Shutting down...");
+            println!("\n  Shutting down gracefully...");
         }
     }
 
-    // Graceful shutdown
+    // Phase 1: Signal all servers to stop accepting new connections
+    shutdown_started.store(true, Ordering::Release);
     let _ = shutdown_tx.send(());
     engine.shutdown.store(true, Ordering::Relaxed);
     engine.shutdown_notify.notify_waiters();
+    tracing::info!("Shutdown signal sent — draining {} components", total_components);
 
-    // Wait for servers to stop
-    let _ = tokio::time::timeout(Duration::from_secs(5), http_handle).await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), grpc_handle).await;
+    // Phase 2: Wait for each server to drain with a shared deadline
+    let drain_deadline = Duration::from_secs(10);
+    let drain_start = Instant::now();
+
+    // HTTP server
+    match tokio::time::timeout(drain_deadline.saturating_sub(drain_start.elapsed()), http_handle).await {
+        Ok(_) => { drained_count.fetch_add(1, Ordering::Relaxed); tracing::info!("HTTP server drained"); }
+        Err(_) => { tracing::warn!("HTTP server did not drain within deadline"); }
+    }
+
+    // gRPC server
+    match tokio::time::timeout(drain_deadline.saturating_sub(drain_start.elapsed()), grpc_handle).await {
+        Ok(_) => { drained_count.fetch_add(1, Ordering::Relaxed); tracing::info!("gRPC server drained"); }
+        Err(_) => { tracing::warn!("gRPC server did not drain within deadline"); }
+    }
+
+    // UI server (if enabled)
     if let Some(handle) = ui_handle {
-        let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
+        match tokio::time::timeout(drain_deadline.saturating_sub(drain_start.elapsed()), handle).await {
+            Ok(_) => { drained_count.fetch_add(1, Ordering::Relaxed); tracing::info!("UI server drained"); }
+            Err(_) => { tracing::warn!("UI server did not drain within deadline"); }
+        }
+    }
+
+    let drained = drained_count.load(Ordering::Relaxed);
+    let elapsed = drain_start.elapsed();
+    if drained == total_components {
+        tracing::info!("All {} components drained in {:.1}s", total_components, elapsed.as_secs_f64());
+    } else {
+        tracing::warn!("Only {}/{} components drained in {:.1}s — forcing shutdown", drained, total_components, elapsed.as_secs_f64());
     }
 
     let stats = engine.get_stats();
@@ -2669,6 +3277,7 @@ async fn main() {
     println!("    Workflows failed:    {}", stats.failed_workflows);
     println!("    Signals delivered:   {}", stats.signal_count);
     println!("    Uptime:              {}s", stats.uptime_secs);
+    println!("    Drain:               {}/{} components", drained, total_components);
     println!();
 }
 

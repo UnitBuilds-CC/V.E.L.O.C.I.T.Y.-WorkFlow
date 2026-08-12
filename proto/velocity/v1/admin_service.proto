@@ -24,8 +24,8 @@ service AdminService {
   // ─── Cluster Info ────────────────────────────────────────────────────────
 
   // GetClusterInfo returns information about the VELOCITY-WorkFlow cluster.
-  rpc GetClusterInfo(GetClusterInfoRequest)
-      returns (GetClusterInfoResponse);
+  rpc GetClusterInfo(AdminGetClusterInfoRequest)
+      returns (AdminGetClusterInfoResponse);
 
   // ListClusterMembers returns all nodes in the cluster.
   rpc ListClusterMembers(ListClusterMembersRequest)
@@ -34,8 +34,8 @@ service AdminService {
   // ─── Namespace Management ────────────────────────────────────────────────
 
   // DeleteNamespace permanently removes a namespace and all its workflows.
-  rpc DeleteNamespace(DeleteNamespaceRequest)
-      returns (DeleteNamespaceResponse);
+  rpc DeleteNamespace(AdminDeleteNamespaceRequest)
+      returns (AdminDeleteNamespaceResponse);
 
   // ─── Configuration ───────────────────────────────────────────────────────
 
@@ -58,16 +58,16 @@ service AdminService {
       returns (DescribeShardResponse);
 
   // CloseShard forces a shard to close (for maintenance).
-  rpc CloseShard(CloseShardRequest)
-      returns (CloseShardResponse);
+  rpc CloseShard(AdminCloseShardRequest)
+      returns (AdminCloseShardResponse);
 }
 
 // ─── GetClusterInfo ────────────────────────────────────────────────────────────
 
-message GetClusterInfoRequest {
+message AdminGetClusterInfoRequest {
 }
 
-message GetClusterInfoResponse {
+message AdminGetClusterInfoResponse {
   // Cluster identifier.
   string cluster_id = 1;
 
@@ -107,11 +107,11 @@ message ClusterMember {
 
 // ─── DeleteNamespace ───────────────────────────────────────────────────────────
 
-message DeleteNamespaceRequest {
+message AdminDeleteNamespaceRequest {
   string namespace = 1;
 }
 
-message DeleteNamespaceResponse {
+message AdminDeleteNamespaceResponse {
   // Number of workflows deleted.
   uint64 workflows_deleted = 1;
 }
@@ -166,10 +166,10 @@ message DescribeShardResponse {
   string state = 5;
 }
 
-message CloseShardRequest {
+message AdminCloseShardRequest {
   uint32 shard_id = 1;
   string reason = 2;
 }
 
-message CloseShardResponse {
+message AdminCloseShardResponse {
 }

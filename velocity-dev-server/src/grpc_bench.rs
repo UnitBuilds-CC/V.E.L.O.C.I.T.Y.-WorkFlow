@@ -1105,4 +1105,167 @@ impl BenchmarkService for BenchmarkServiceImpl {
             total_event_count: total,
         }))
     }
+
+    // ─── ListWorkflows ─────────────────────────────────────────────────────
+    async fn list_workflows(
+        &self,
+        request: Request<ListWorkflowsRequest>,
+    ) -> Result<Response<ListWorkflowsResponse>, Status> {
+        let req = request.into_inner();
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        let status_filter = if req.status_filter.is_empty() {
+            None
+        } else {
+            Some(req.status_filter.as_str())
+        };
+        let page_size = if req.page_size > 0 {
+            req.page_size as usize
+        } else {
+            100
+        };
+
+        let result = self.engine.list_workflows(ns, status_filter, page_size);
+
+        let executions: Vec<WorkflowExecutionInfo> = result
+            .executions
+            .iter()
+            .filter(|w| {
+                if req.workflow_type.is_empty() {
+                    true
+                } else {
+                    w.workflow_type == req.workflow_type
+                }
+            })
+            .map(|w| WorkflowExecutionInfo {
+                workflow_id: w.workflow_id.clone(),
+                run_id: w.run_id.clone(),
+                workflow_type: w.workflow_type.clone(),
+                namespace: w.namespace.clone(),
+                status: w.status.clone(),
+                start_time_ms: w.started_at,
+                close_time_ms: w.closed_at.unwrap_or(0),
+                task_queue: w.task_queue.clone(),
+                search_attributes: w.search_attributes.clone(),
+                history_length: w.history_length as i32,
+            })
+            .collect();
+
+        let total = executions.len() as i64;
+        Ok(Response::new(ListWorkflowsResponse {
+            executions,
+            next_page_token: Vec::new(),
+            total_count: total,
+        }))
+    }
+
+    // ─── DescribeWorkflowExecution ─────────────────────────────────────────
+    async fn describe_workflow_execution(
+        &self,
+        request: Request<DescribeWorkflowExecutionRequest>,
+    ) -> Result<Response<DescribeWorkflowExecutionResponse>, Status> {
+        let req = request.into_inner();
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+
+        let wf = self
+            .engine
+            .get_workflow(ns, &req.workflow_id)
+            .ok_or_else(|| Status::not_found(format!("workflow {} not found", req.workflow_id)))?;
+
+        let history = self.engine.get_history(ns, &req.workflow_id);
+        let activities = self.engine.get_workflow_activities(ns, &req.workflow_id);
+
+        let pending_activities: Vec<PendingActivityInfo> = activities
+            .iter()
+            .filter(|a| a.status == "SCHEDULED" || a.status == "STARTED")
+            .map(|a| PendingActivityInfo {
+                activity_id: a.activity_id.clone(),
+                activity_type: a.activity_type.clone(),
+                state: a.status.clone(),
+                attempt: a.attempt as i32,
+                last_heartbeat_ms: a.last_heartbeat,
+            })
+            .collect();
+
+        let execution = WorkflowExecutionInfo {
+            workflow_id: wf.workflow_id.clone(),
+            run_id: wf.run_id.clone(),
+            workflow_type: wf.workflow_type.clone(),
+            namespace: wf.namespace.clone(),
+            status: wf.status.clone(),
+            start_time_ms: wf.started_at,
+            close_time_ms: wf.closed_at.unwrap_or(0),
+            task_queue: wf.task_queue.clone(),
+            search_attributes: wf.search_attributes.clone(),
+            history_length: wf.history_length as i32,
+        };
+
+        let execution_duration_ms = wf
+            .closed_at
+            .map(|c| c - wf.started_at)
+            .unwrap_or_else(|| {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64
+                    - wf.started_at
+            });
+
+        Ok(Response::new(DescribeWorkflowExecutionResponse {
+            execution: Some(execution),
+            pending_activities,
+            pending_children: Vec::new(),
+            history_length: history.len() as i64,
+            execution_duration_ms,
+        }))
+    }
+
+    // ─── DescribeTaskQueue ─────────────────────────────────────────────────
+    async fn describe_task_queue(
+        &self,
+        request: Request<DescribeTaskQueueRequest>,
+    ) -> Result<Response<DescribeTaskQueueResponse>, Status> {
+        let req = request.into_inner();
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+
+        let tq = self.engine.get_task_queue(ns, &req.task_queue);
+
+        match tq {
+            Some(queue) => {
+                let pollers: Vec<velocity_bench_proto::PollerInfo> = queue
+                    .pollers
+                    .iter()
+                    .map(|p| velocity_bench_proto::PollerInfo {
+                        poller_id: p.identity.clone(),
+                        build_id: String::new(),
+                        last_poll_time_ms: p.last_access_time,
+                    })
+                    .collect();
+
+                Ok(Response::new(DescribeTaskQueueResponse {
+                    pollers,
+                    total_backlog: queue.backlog_count as i64,
+                    partition_count: 1,
+                    build_ids: Vec::new(),
+                }))
+            }
+            None => Ok(Response::new(DescribeTaskQueueResponse {
+                pollers: Vec::new(),
+                total_backlog: 0,
+                partition_count: 0,
+                build_ids: Vec::new(),
+            })),
+        }
+    }
 }

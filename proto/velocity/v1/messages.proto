@@ -250,3 +250,146 @@ message Capabilities {
   bool eager_workflow_start = 5;
   bool nexus = 6;
 }
+
+// ─── Shared Internal Types ────────────────────────────────────────────────────
+// These types are shared across history, matching, worker, and admin services.
+// Defined here (canonical) to avoid cross-file naming conflicts.
+
+message ShardReplicationInfo {
+  int32 shard_id = 1;
+  int64 cluster_ack_level = 2;
+}
+
+message ReplicationTaskList {
+  repeated ReplicationTask tasks = 1;
+}
+
+message ReplicationTask {
+  int32 task_type = 1;
+  int64 source_task_id = 2;
+  bytes task_attributes = 3;
+}
+
+message ReplicationTaskInfo {
+  WorkflowExecution execution = 1;
+  int64 task_id = 2;
+}
+
+message DLQMessage {
+  int64 message_id = 1;
+  bytes data = 2;
+}
+
+message QueuedMessage {
+  int64 message_id = 1;
+  bytes data = 2;
+  google.protobuf.Timestamp enqueued_time = 3;
+}
+
+message TaskRange {
+  int64 inclusive_min_task_key = 1;
+  int64 exclusive_max_task_key = 2;
+}
+
+message InternalTask {
+  int64 namespace_id = 1;
+  int64 task_id = 2;
+  int32 task_type = 3;
+  google.protobuf.Timestamp fire_time = 4;
+  int64 version = 5;
+}
+
+message ShardInfo {
+  int32 shard_id = 1;
+  int64 range_id = 2;
+  string owner = 3;
+  int64 replication_ack_level = 4;
+  int64 transfer_ack_level = 5;
+  int64 timer_ack_level = 6;
+}
+
+message ClusterMetadata {
+  string cluster_name = 1;
+  string cluster_id = 2;
+  string frontend_address = 3;
+  bool is_connection_enabled = 4;
+}
+
+message ClusterReplicationConfig {
+  string cluster_name = 1;
+}
+
+message WorkerVersionCapabilities {
+  string build_id = 1;
+  bool use_versioning = 2;
+}
+
+message TaskVersionDirective {
+  string build_id = 1;
+  bool use_versioning = 2;
+}
+
+message PollerInfo {
+  string identity = 1;
+  google.protobuf.Timestamp last_access_time = 2;
+  float rate_per_second = 3;
+}
+
+message TaskQueueStatus {
+  int64 backlog_count = 1;
+  int64 read_level = 2;
+  int64 ack_level = 3;
+  float rate_per_second = 4;
+  int64 task_id_block_start = 5;
+  int64 task_id_block_end = 6;
+}
+
+message TaskQueuePartitionMetadata {
+  string key = 1;
+  string owner_host_name = 2;
+}
+
+message TaskQueueUserData {
+  int64 clock = 1;
+  TaskQueueVersionInfo versioning_data = 2;
+}
+
+message TaskQueueVersionInfo {
+  repeated TaskQueueVersionInfoEntry versions = 1;
+}
+
+message TaskQueueVersionInfoEntry {
+  string build_id = 1;
+  bool is_default = 2;
+}
+
+message TaskQueueMetadata {
+  int64 max_tasks_per_second = 1;
+}
+
+message StickyExecutionAttributes {
+  string task_queue = 1;
+  google.protobuf.Duration schedule_to_start_timeout = 2;
+}
+
+message WorkflowCommand {
+  int32 command_type = 1;
+  bytes attributes = 2;
+}
+
+message NexusOperationCancellationInfo {
+  int32 state = 1;
+  string operation_id = 2;
+}
+
+message PendingChildExecutionInfo {
+  string workflow_id = 1;
+  string run_id = 2;
+  string workflow_type = 3;
+  int64 initiated_id = 4;
+  int32 parent_close_policy = 5;
+}
+
+message QueryRejected {
+  int32 status = 1;
+}

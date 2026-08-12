@@ -675,8 +675,9 @@ impl S3Adapter {
         format!("workflows/{}/record.bin", workflow_key)
     }
 
-    fn namespace_prefix(namespace_id: u64) -> String {
-        format!("workflows/")
+    #[allow(dead_code)]
+    fn namespace_prefix(_namespace_id: u64) -> String {
+        "workflows/".to_string()
     }
 
     /// Sign a request using AWS Signature Version 4.
@@ -694,7 +695,7 @@ impl S3Adapter {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default();
-        let date_stamp = format!("{}", now.as_secs() / 86400 * 86400);
+        let _date_stamp = format!("{}", now.as_secs() / 86400 * 86400);
         // Simplified: use YYYYMMDD format
         let dt: chrono_like::DateTime = chrono_like::DateTime::from_timestamp(now.as_secs());
         let amz_date = dt.to_amz_date();
@@ -706,9 +707,9 @@ impl S3Adapter {
         // Canonical headers (always include host, x-amz-date, x-amz-content-sha256)
         let host = self.endpoint.replace("https://", "").replace("http://", "");
         let mut canon_headers = vec![
-            (format!("host"), host.clone()),
-            (format!("x-amz-content-sha256"), payload_hash.to_string()),
-            (format!("x-amz-date"), amz_date.clone()),
+            ("host".to_string(), host.clone()),
+            ("x-amz-content-sha256".to_string(), payload_hash.to_string()),
+            ("x-amz-date".to_string(), amz_date.clone()),
         ];
         for (k, v) in headers {
             canon_headers.push((k.to_lowercase(), v.clone()));
@@ -775,7 +776,7 @@ impl S3Adapter {
             self.access_key, credential_scope, signed_headers_str, signature
         );
 
-        let mut auth_headers = vec![
+        let auth_headers = vec![
             ("x-amz-date".to_string(), amz_date),
             ("x-amz-content-sha256".to_string(), payload_hash.to_string()),
             ("Authorization".to_string(), authorization),
@@ -807,12 +808,11 @@ impl CloudStorageAdapter for S3Adapter {
         }
         let resp = req
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
+            Err(io::Error::other(
                 format!("S3 PUT failed: {}", resp.status()),
             ))
         }
@@ -830,7 +830,7 @@ impl CloudStorageAdapter for S3Adapter {
         }
         let resp = req
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -838,14 +838,13 @@ impl CloudStorageAdapter for S3Adapter {
             ));
         }
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("S3 GET failed: {}", resp.status()),
             ));
         }
         let bytes = resp
             .bytes()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         deserialize_record_binary(&bytes)
     }
 
@@ -861,14 +860,14 @@ impl CloudStorageAdapter for S3Adapter {
         }
         let resp = req
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         Ok(resp.status().is_success() || resp.status() == reqwest::StatusCode::NO_CONTENT)
     }
 
     fn list_by_namespace(&self, namespace_id: u64) -> io::Result<Vec<ColdStorageRecord>> {
         // S3 LIST with prefix to find objects, then retrieve each
         // For simplicity, list all objects under the workflows/ prefix
-        let path = format!("/?list-type=2&prefix=workflows/");
+        let path = "/?list-type=2&prefix=workflows/".to_string();
         let payload_hash = hex::encode(sha2::Sha256::digest(b""));
         let auth_headers = self.sign_request("GET", &path, &[], &payload_hash);
 
@@ -878,16 +877,15 @@ impl CloudStorageAdapter for S3Adapter {
         }
         let resp = req
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("S3 LIST failed: {}", resp.status()),
             ));
         }
         let body = resp
             .text()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         // Parse XML response for <Key> elements
         let mut records = Vec::new();
@@ -920,7 +918,7 @@ impl CloudStorageAdapter for S3Adapter {
     fn gc_older_than(&self, retention_ms: u64, now_ms: u64) -> io::Result<usize> {
         let cutoff = now_ms.saturating_sub(retention_ms);
         // List all objects, check their Last-Modified, delete old ones
-        let path = format!("/?list-type=2&prefix=workflows/");
+        let path = "/?list-type=2&prefix=workflows/".to_string();
         let payload_hash = hex::encode(sha2::Sha256::digest(b""));
         let auth_headers = self.sign_request("GET", &path, &[], &payload_hash);
 
@@ -930,16 +928,15 @@ impl CloudStorageAdapter for S3Adapter {
         }
         let resp = req
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("S3 LIST failed: {}", resp.status()),
             ));
         }
         let body = resp
             .text()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         let mut deleted = 0;
         let mut search_from = 0;
@@ -954,11 +951,10 @@ impl CloudStorageAdapter for S3Adapter {
                     if let Ok(wk) = wk_str.parse::<u64>() {
                         // Try to retrieve and check archived_at_ms
                         if let Ok(record) = self.retrieve(wk) {
-                            if record.archived_at_ms < cutoff {
-                                if self.delete(wk).unwrap_or(false) {
+                            if record.archived_at_ms < cutoff
+                                && self.delete(wk).unwrap_or(false) {
                                     deleted += 1;
                                 }
-                            }
                         }
                     }
                 }
@@ -971,7 +967,7 @@ impl CloudStorageAdapter for S3Adapter {
     }
 
     fn count(&self) -> io::Result<usize> {
-        let path = format!("/?list-type=2&prefix=workflows/&max-keys=1000");
+        let path = "/?list-type=2&prefix=workflows/&max-keys=1000".to_string();
         let payload_hash = hex::encode(sha2::Sha256::digest(b""));
         let auth_headers = self.sign_request("GET", &path, &[], &payload_hash);
 
@@ -981,16 +977,15 @@ impl CloudStorageAdapter for S3Adapter {
         }
         let resp = req
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("S3 LIST failed: {}", resp.status()),
             ));
         }
         let body = resp
             .text()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         // Count <Key> occurrences
         let count = body.matches("<Key>").count();
@@ -1053,12 +1048,11 @@ impl CloudStorageAdapter for GcsAdapter {
             .header("Content-Type", "application/octet-stream")
             .body(data)
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
+            Err(io::Error::other(
                 format!("GCS upload failed: {}", resp.status()),
             ))
         }
@@ -1073,7 +1067,7 @@ impl CloudStorageAdapter for GcsAdapter {
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -1081,14 +1075,13 @@ impl CloudStorageAdapter for GcsAdapter {
             ));
         }
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("GCS GET failed: {}", resp.status()),
             ));
         }
         let bytes = resp
             .bytes()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         deserialize_record_binary(&bytes)
     }
 
@@ -1100,7 +1093,7 @@ impl CloudStorageAdapter for GcsAdapter {
             .delete(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         Ok(resp.status().is_success() || resp.status() == reqwest::StatusCode::NO_CONTENT)
     }
 
@@ -1111,16 +1104,15 @@ impl CloudStorageAdapter for GcsAdapter {
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("GCS LIST failed: {}", resp.status()),
             ));
         }
         let body = resp
             .text()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         // Parse JSON response for object names
         let mut records = Vec::new();
@@ -1158,16 +1150,15 @@ impl CloudStorageAdapter for GcsAdapter {
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("GCS LIST failed: {}", resp.status()),
             ));
         }
         let body = resp
             .text()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         let mut deleted = 0;
         let mut search_from = 0;
@@ -1181,11 +1172,10 @@ impl CloudStorageAdapter for GcsAdapter {
                 {
                     if let Ok(wk) = wk_str.parse::<u64>() {
                         if let Ok(record) = self.retrieve(wk) {
-                            if record.archived_at_ms < cutoff {
-                                if self.delete(wk).unwrap_or(false) {
+                            if record.archived_at_ms < cutoff
+                                && self.delete(wk).unwrap_or(false) {
                                     deleted += 1;
                                 }
-                            }
                         }
                     }
                 }
@@ -1204,16 +1194,15 @@ impl CloudStorageAdapter for GcsAdapter {
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("GCS LIST failed: {}", resp.status()),
             ));
         }
         let body = resp
             .text()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         let count = body.matches("\"name\":").count();
         Ok(count)
     }
@@ -1297,7 +1286,7 @@ mod chrono_like {
         }
     }
     fn is_leap(y: u32) -> bool {
-        (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+        (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
     }
 }
 

@@ -96,6 +96,14 @@ impl PartitionQueue {
             }
         })
     }
+
+    /// Remove expired tasks from the queue. Returns the number of tasks expired.
+    fn expire_tasks(&mut self, ttl: Duration) -> u64 {
+        let now = Instant::now();
+        let before = self.tasks.len();
+        self.tasks.retain(|t| now.duration_since(t.created_at) < ttl);
+        (before - self.tasks.len()) as u64
+    }
 }
 
 // ─── Matching Service ────────────────────────────────────────────────────────
@@ -163,44 +171,28 @@ impl MatchingService {
         let queue_name = task.task_queue.clone();
         let partition = self.partition_for(&queue_name);
 
-        // Check for immediate match with a waiting poller
-        {
-            let mut queues = self.queues.write().unwrap();
-            let partitions = queues.entry(queue_name.clone()).or_insert_with(|| {
-                (0..self.config.num_partitions)
-                    .map(|i| PartitionQueue::new(i, self.config.max_queue_depth))
-                    .collect()
-            });
-
-            if let Some(pq) = partitions.get_mut(partition as usize) {
-                if pq.has_compatible_poller(&task.build_id) && pq.is_empty() {
-                    // Immediate match possible — poller is waiting
-                    self.stats.write().unwrap().tasks_matched += 1;
-                    self.notify.notify_one();
-                    // Still enqueue for the poller to pick up
-                    pq.enqueue(task);
-                    self.stats.write().unwrap().tasks_added += 1;
-                    return true;
-                }
-            }
-        }
-
-        // No immediate match — enqueue in the target partition.
-        // Forwarding to root is only used when workers poll exclusively from root.
         let mut queues = self.queues.write().unwrap();
-        if let Some(partitions) = queues.get_mut(&queue_name) {
-            if let Some(pq) = partitions.get_mut(partition as usize) {
-                let ok = pq.enqueue(task);
-                if ok {
-                    self.stats.write().unwrap().tasks_added += 1;
-                }
-                return ok;
+        let partitions = queues.entry(queue_name).or_insert_with(|| {
+            (0..self.config.num_partitions)
+                .map(|i| PartitionQueue::new(i, self.config.max_queue_depth))
+                .collect()
+        });
+
+        if let Some(pq) = partitions.get_mut(partition as usize) {
+            if pq.has_compatible_poller(&task.build_id) && pq.is_empty() {
+                self.notify.notify_one();
             }
+            let ok = pq.enqueue(task);
+            if ok {
+                self.stats.write().unwrap().tasks_added += 1;
+            }
+            return ok;
         }
         false
     }
 
     /// Poll for a task (blocking with timeout). Returns None if no task available within timeout.
+    /// Tries all partitions (cross-partition forwarding) before waiting.
     pub fn poll_task(
         &self,
         queue_name: &str,
@@ -214,19 +206,25 @@ impl MatchingService {
         let deadline = Instant::now() + timeout;
 
         loop {
-            // Try to dequeue
+            // Try to dequeue from any partition (cross-partition forwarding)
             {
                 let mut queues = self.queues.write().unwrap();
                 if let Some(partitions) = queues.get_mut(queue_name) {
-                    if let Some(pq) = partitions.get_mut(partition as usize) {
-                        if let Some(task) = pq.dequeue() {
-                            // Check version compatibility
-                            if self.is_task_compatible(&task, &build_id, kind) {
-                                self.stats.write().unwrap().tasks_matched += 1;
-                                return Some(task);
-                            } else {
-                                // Put it back and try another partition
-                                pq.tasks.push_front(task);
+                    let num_parts = partitions.len();
+                    for offset in 0..num_parts {
+                        let try_part = (partition + offset as u64) % num_parts as u64;
+                        if let Some(pq) = partitions.get_mut(try_part as usize) {
+                            if let Some(task) = pq.dequeue() {
+                                let bid = build_id.clone();
+                                if self.is_task_compatible(&task, &bid, kind) {
+                                    self.stats.write().unwrap().tasks_matched += 1;
+                                    if offset > 0 {
+                                        self.stats.write().unwrap().tasks_forwarded += 1;
+                                    }
+                                    return Some(task);
+                                } else {
+                                    pq.tasks.push_front(task);
+                                }
                             }
                         }
                     }
@@ -393,6 +391,7 @@ impl MatchingService {
     ) -> Option<MatchTask> {
         let mut queues = self.queues.write().unwrap();
         if let Some(partitions) = queues.get_mut(queue_name) {
+            // Try the assigned partition first
             if let Some(pq) = partitions.get_mut(partition as usize) {
                 if let Some(task) = pq.dequeue() {
                     let bid = build_id.map(|s| s.to_string());
@@ -401,6 +400,24 @@ impl MatchingService {
                         return Some(task);
                     } else {
                         pq.tasks.push_front(task);
+                    }
+                }
+            }
+
+            // Cross-partition forwarding: try other partitions (Temporal parity)
+            let num_parts = partitions.len();
+            for offset in 1..num_parts {
+                let try_part = (partition + offset as u64) % num_parts as u64;
+                if let Some(pq) = partitions.get_mut(try_part as usize) {
+                    if let Some(task) = pq.dequeue() {
+                        let bid = build_id.map(|s| s.to_string());
+                        if self.is_task_compatible(&task, &bid, kind) {
+                            self.stats.write().unwrap().tasks_matched += 1;
+                            self.stats.write().unwrap().tasks_forwarded += 1;
+                            return Some(task);
+                        } else {
+                            pq.tasks.push_front(task);
+                        }
                     }
                 }
             }
@@ -457,6 +474,23 @@ impl MatchingService {
     /// List all task queue names.
     pub fn list_task_queues(&self) -> Vec<String> {
         self.queues.read().unwrap().keys().cloned().collect()
+    }
+
+    /// Expire tasks older than the configured TTL across all queues.
+    /// Returns the total number of tasks expired.
+    pub fn expire_tasks(&self) -> u64 {
+        let ttl = Duration::from_secs(self.config.task_ttl_seconds);
+        let mut queues = self.queues.write().unwrap();
+        let mut total_expired = 0u64;
+        for partitions in queues.values_mut() {
+            for pq in partitions.iter_mut() {
+                total_expired += pq.expire_tasks(ttl);
+            }
+        }
+        if total_expired > 0 {
+            self.stats.write().unwrap().tasks_expired += total_expired;
+        }
+        total_expired
     }
 }
 
@@ -679,5 +713,50 @@ mod tests {
         let mut names = svc.list_task_queues();
         names.sort();
         assert_eq!(names, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn test_task_expiry() {
+        let mut cfg = MatchingServiceConfig::default();
+        cfg.task_ttl_seconds = 0; // expire immediately
+        let svc = MatchingService::new(cfg);
+        svc.add_task(make_task(1, "exp-q"));
+        svc.add_task(make_task(2, "exp-q"));
+
+        // All tasks should be expired since TTL is 0
+        let expired = svc.expire_tasks();
+        assert_eq!(expired, 2);
+        assert_eq!(svc.queue_depth("exp-q"), 0);
+
+        let stats = svc.stats();
+        assert_eq!(stats.tasks_expired, 2);
+    }
+
+    #[test]
+    fn test_cross_partition_polling() {
+        // Use a config with many partitions to ensure tasks land in different ones
+        let cfg = MatchingServiceConfig {
+            num_partitions: 4,
+            max_queue_depth: 1000,
+            forward_max_partitions: 2,
+            task_ttl_seconds: 60,
+            poll_timeout_ms: 100,
+        };
+        let svc = MatchingService::new(cfg);
+
+        // Add many tasks — they'll hash to different partitions
+        for i in 0..20 {
+            svc.add_task(make_task(i, "cross-q"));
+        }
+
+        // Poll from any partition — cross-partition forwarding should find tasks
+        let mut found = 0;
+        for _ in 0..20 {
+            if svc.try_poll_task("cross-q", None, TaskKindFilter::Any).is_some() {
+                found += 1;
+            }
+        }
+        // All 20 tasks should be found via cross-partition forwarding
+        assert_eq!(found, 20);
     }
 }

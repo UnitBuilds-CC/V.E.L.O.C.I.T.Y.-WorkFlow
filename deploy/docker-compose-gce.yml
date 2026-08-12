@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: velocity
+      POSTGRES_USER: velocity
+      POSTGRES_PASSWORD: velocity_secret
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velocity"]
+      interval: 5s
+      retries: 5
+    restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports: ["9090:9090"]
+    volumes: ["prometheus-data:/prometheus"]
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on: [prometheus]
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
