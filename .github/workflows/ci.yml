@@ -72,6 +72,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
+
+      - name: Build Rust native libraries
+        run: cargo build --release --workspace
+
+      - name: Copy native libraries for .NET
+        run: |
+          mkdir -p src/Velocity.Workflow.Core/runtimes/linux-x64/native/
+          cp target/release/libvelocity_workflow_core.so src/Velocity.Workflow.Core/runtimes/linux-x64/native/
+          cp target/release/libvelocity_workflow_engine.so src/Velocity.Workflow.Core/runtimes/linux-x64/native/
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -86,11 +103,9 @@ jobs:
 
       - name: Restore dependencies
         run: dotnet restore
-        continue-on-error: true
 
       - name: Build
         run: dotnet build -c Release
-        continue-on-error: true
 
       - name: Run tests
         run: dotnet test --no-build -c Release --verbosity normal --collect:"XPlat Code Coverage"

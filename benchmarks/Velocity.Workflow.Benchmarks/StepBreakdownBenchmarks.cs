@@ -14,7 +14,7 @@ public unsafe class StepBreakdownBenchmarks
     private NdaHeader _ndaHeader;
     private VctpPacketHeader _vctpHeader;
     private void* _arenaPtr;
-    private byte[] _payload;
+    private byte[]? _payload;
 
     [GlobalSetup]
     public void Setup()
