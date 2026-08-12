@@ -1,0 +1,19 @@
+# Build outputs
+target/
+bin/
+obj/
+*.dll
+*.pdb
+*.so
+*.dylib
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# OS
+Thumbs.db
+Desktop.ini
