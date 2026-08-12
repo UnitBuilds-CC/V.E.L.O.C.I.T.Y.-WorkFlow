@@ -694,7 +694,7 @@ impl RealEngineAdapter {
         namespace: &str,
         workflow_id: &str,
     ) -> Result<(String, u64, u64), String> {
-        Ok(("COMPLETED".to_string(), 0, 0))
+        Ok(("Completed".to_string(), 0, 0))
     }
 }
 
@@ -1428,8 +1428,10 @@ impl BenchmarkService for BenchmarkServiceImpl {
                 .get_workflow_status(namespace, &req.workflow_id)
                 .await
             {
-                match status.as_str() {
-                    "Completed" => {
+                // Case-insensitive match: mock returns "Completed", real engine may return "COMPLETED"
+                let status_lower = status.to_lowercase();
+                match status_lower.as_str() {
+                    "completed" => {
                         return Ok(Response::new(WaitForCompletionResponse {
                             success: true,
                             latency_us: start.elapsed().as_micros() as i64,
@@ -1438,7 +1440,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
                             error: String::new(),
                         }))
                     }
-                    "Failed" => {
+                    "failed" => {
                         return Ok(Response::new(WaitForCompletionResponse {
                             success: false,
                             latency_us: start.elapsed().as_micros() as i64,
@@ -1447,7 +1449,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
                             error: String::new(),
                         }))
                     }
-                    "Terminated" => {
+                    "terminated" => {
                         return Ok(Response::new(WaitForCompletionResponse {
                             success: false,
                             latency_us: start.elapsed().as_micros() as i64,
@@ -1456,7 +1458,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
                             error: String::new(),
                         }))
                     }
-                    "Cancelled" => {
+                    "cancelled" => {
                         return Ok(Response::new(WaitForCompletionResponse {
                             success: false,
                             latency_us: start.elapsed().as_micros() as i64,
@@ -1465,7 +1467,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
                             error: String::new(),
                         }))
                     }
-                    "ContinuedAsNew" => {
+                    "continuedasnew" => {
                         return Ok(Response::new(WaitForCompletionResponse {
                             success: true,
                             latency_us: start.elapsed().as_micros() as i64,
