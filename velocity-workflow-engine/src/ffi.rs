@@ -5749,6 +5749,94 @@ pub extern "C" fn velocity_chaos_crash_recovery_test(workflow_count: u32) -> u64
     ((started as u64) << 32) | (recovered as u64)
 }
 
+// ─── Hot-Swap FFI ─────────────────────────────────────────────────────────────
+
+use crate::hot_swap::HotSwapRegistry;
+
+static HOT_SWAP_REGISTRY: OnceLock<HotSwapRegistry> = OnceLock::new();
+
+fn get_hot_swap() -> &'static HotSwapRegistry {
+    HOT_SWAP_REGISTRY.get_or_init(|| HotSwapRegistry::new())
+}
+
+/// Register a hot-swap patch. Returns the patch_id.
+#[no_mangle]
+pub extern "C" fn velocity_hotswap_register(
+    workflow_type_id: u64,
+    desc_ptr: *const u8,
+    desc_len: u32,
+    step_index: u32,
+    handler_id: u64,
+) -> u64 {
+    let desc = if desc_ptr.is_null() || desc_len == 0 {
+        "patch".to_string()
+    } else {
+        let slice = unsafe { std::slice::from_raw_parts(desc_ptr, desc_len as usize) };
+        String::from_utf8_lossy(slice).to_string()
+    };
+    get_hot_swap().register_patch(workflow_type_id, &desc, vec![(step_index, handler_id)])
+}
+
+/// Apply a hot-swap patch to a workflow. Returns 1 on success, 0 on failure.
+#[no_mangle]
+pub extern "C" fn velocity_hotswap_apply(patch_id: u64, workflow_key: u64) -> u32 {
+    match get_hot_swap().apply_patch(patch_id, workflow_key) {
+        crate::hot_swap::HotSwapResult::Applied { .. } => 1,
+        _ => 0,
+    }
+}
+
+/// Rollback the last patch for a workflow. Returns 1 on success, 0 on failure.
+#[no_mangle]
+pub extern "C" fn velocity_hotswap_rollback(workflow_key: u64) -> u32 {
+    if get_hot_swap().rollback(workflow_key) { 1 } else { 0 }
+}
+
+/// Get total patch count.
+#[no_mangle]
+pub extern "C" fn velocity_hotswap_patch_count() -> u64 {
+    get_hot_swap().patch_count() as u64
+}
+
+/// Get patched workflow count.
+#[no_mangle]
+pub extern "C" fn velocity_hotswap_patched_workflow_count() -> u64 {
+    get_hot_swap().patched_workflow_count() as u64
+}
+
+/// Get latest version for a workflow type.
+#[no_mangle]
+pub extern "C" fn velocity_hotswap_latest_version(workflow_type_id: u64) -> u64 {
+    get_hot_swap().latest_version(workflow_type_id)
+}
+
+// ─── Slab Visualization FFI ───────────────────────────────────────────────────
+
+/// Get the slab header size (always 128).
+#[no_mangle]
+pub extern "C" fn velocity_slab_header_size() -> u32 {
+    128
+}
+
+/// Get the slab count for an engine.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_slab_count(handle: *mut EngineHandle) -> u32 {
+    if handle.is_null() { return 0; }
+    let h = &*handle;
+    h.engine.workflow_count() as u32
+}
+
+/// Verify a slab's Merkle root for a workflow. Returns 1 if valid, 0 if invalid.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_slab_verify_merkle(handle: *mut EngineHandle, workflow_key: u64) -> u32 {
+    if handle.is_null() { return 0; }
+    let h = &*handle;
+    match h.engine.get_slab(workflow_key) {
+        Some(slab) => if slab.verify_merkle_root() { 1 } else { 0 },
+        None => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

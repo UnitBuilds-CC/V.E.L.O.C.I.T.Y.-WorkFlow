@@ -5,12 +5,18 @@ Cross-language worker SDK for the VELOCITY-WorkFlow gRPC server.
 """
 
 from .client import VelocityClient, WorkflowHandle, WorkflowDescription, WorkflowStatus
+from .transpiler import transpile_python, is_temporal_workflow, TranspilerConfig, TranspileResult, TranspileStats
 
 __all__ = [
     "VelocityClient",
     "WorkflowHandle",
     "WorkflowDescription",
     "WorkflowStatus",
+    "transpile_python",
+    "is_temporal_workflow",
+    "TranspilerConfig",
+    "TranspileResult",
+    "TranspileStats",
 ]
 
 __version__ = "0.1.0"

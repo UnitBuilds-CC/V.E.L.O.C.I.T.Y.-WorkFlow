@@ -25,6 +25,7 @@ pub mod hardware_traits;
 pub mod hardware_integration;
 pub mod heartbeat;
 pub mod history_compaction;
+pub mod hot_swap;
 pub mod memo;
 pub mod metrics;
 pub mod namespace;
@@ -68,6 +69,7 @@ pub use hardware_traits::{SmartNicOffload, TeeEnclave, PeerToPeerReplication, Se
 pub use hardware_integration::{HardwareAbstractionLayer, EccParityStore, EccStats, MerkleEccResult, compute_simple_merkle_root};
 pub use heartbeat::HeartbeatTracker;
 pub use history_compaction::{HistoryCompactor, CompactionConfig, CompactionStats, CompactionLevel, CompactableEventType};
+pub use hot_swap::{HotSwapRegistry, HotSwapPatch, HotSwapResult, HotSwapStats};
 pub use memo::MemoStore;
 pub use metrics::MetricsRegistry;
 pub use namespace::{NamespaceRegistry, NamespaceConfig, NamespaceError};

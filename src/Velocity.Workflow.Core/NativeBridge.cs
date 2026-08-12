@@ -1329,4 +1329,28 @@ public static unsafe partial class NativeBridge
     public static partial ulong ChaosSoakTest(ulong durationMs, uint threadCount, int injectFailures);
     [LibraryImport(EngineDll, EntryPoint = "velocity_chaos_crash_recovery_test")]
     public static partial ulong ChaosCrashRecoveryTest(uint workflowCount);
+
+    // ─── Batch 39: Hot-Swap ───────────────────────────────────────────────
+
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hotswap_register")]
+    public static partial ulong HotSwapRegister(ulong workflowTypeId, byte* descPtr, uint descLen, uint stepIndex, ulong handlerId);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hotswap_apply")]
+    public static partial uint HotSwapApply(ulong patchId, ulong workflowKey);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hotswap_rollback")]
+    public static partial uint HotSwapRollback(ulong workflowKey);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hotswap_patch_count")]
+    public static partial ulong HotSwapPatchCount();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hotswap_patched_workflow_count")]
+    public static partial ulong HotSwapPatchedWorkflowCount();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hotswap_latest_version")]
+    public static partial ulong HotSwapLatestVersion(ulong workflowTypeId);
+
+    // ─── Batch 39: Slab Visualization ─────────────────────────────────────
+
+    [LibraryImport(EngineDll, EntryPoint = "velocity_slab_header_size")]
+    public static partial uint SlabHeaderSize();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_slab_count")]
+    public static partial uint SlabCount(void* engineHandle);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_slab_verify_merkle")]
+    public static partial uint SlabVerifyMerkle(void* engineHandle, ulong workflowKey);
 }
