@@ -430,7 +430,7 @@ impl MutableState {
 
     // Checksum
     pub fn compute_checksum(&self) -> WorkflowChecksum {
-        let checksum = WorkflowChecksum {
+        let mut checksum = WorkflowChecksum {
             event_count: self.next_event_id.load(Ordering::Relaxed) as u64,
             activity_count: self.activities.read().unwrap().len() as u64,
             timer_count: self.timers.read().unwrap().len() as u64,
@@ -438,6 +438,7 @@ impl MutableState {
             signal_count: self.signals.read().unwrap().len() as u64,
             ..Default::default()
         };
+        checksum.compute_hash();
         *self.checksum.write().unwrap() = checksum.clone();
         checksum
     }

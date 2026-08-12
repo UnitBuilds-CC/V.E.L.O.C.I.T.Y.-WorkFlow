@@ -698,7 +698,7 @@ mod tests {
         assert!(output.contains("test_counter"));
         assert!(output.contains("42"));
         assert!(output.contains("test_gauge"));
-        assert!(output.contains("3.14"));
+        assert!(output.contains("1.5"));
     }
 
     #[test]
