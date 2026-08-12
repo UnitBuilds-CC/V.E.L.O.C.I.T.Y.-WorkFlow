@@ -9,7 +9,6 @@ on:
         default: 'standard'
         type: choice
         options:
-          - smoke
           - quick
           - standard
           - stress
@@ -19,7 +18,6 @@ on:
         default: 'all'
         type: choice
         options:
-          - smoke
           - all
 
 env:
