@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Velocity.Workflow.Core/Velocity.Workflow.Core.csproj" />
+    <Project Path="src/Velocity.Workflow.Generators/Velocity.Workflow.Generators.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Velocity.Workflow.Core.Tests/Velocity.Workflow.Core.Tests.csproj" />
+    <Project Path="tests/Velocity.Workflow.Generators.Tests/Velocity.Workflow.Generators.Tests.csproj" />
   </Folder>
 </Solution>
