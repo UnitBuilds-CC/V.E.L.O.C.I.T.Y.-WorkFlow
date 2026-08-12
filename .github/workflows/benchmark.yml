@@ -21,14 +21,6 @@ on:
         options:
           - smoke
           - all
-      runner:
-        description: 'Runner type'
-        required: true
-        default: 'github'
-        type: choice
-        options:
-          - github
-          - large
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,7 +28,7 @@ env:
 jobs:
   benchmark:
     name: Run Benchmark
-    runs-on: ${{ inputs.runner == 'large' && 'ubuntu-latest-8-cores' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 120
 
     steps:
@@ -110,7 +102,7 @@ jobs:
           echo "════════════════════════════════════════════════════════"
           echo "  Benchmark Environment                                 "
           echo "════════════════════════════════════════════════════════"
-          echo "  Runner:     ${{ inputs.runner }}"
+          echo "  Runner:     ubuntu-latest (2 vCPU, 7GB RAM)"
           echo "  OS:         $(uname -a)"
           echo "  CPU:        $(lscpu | grep 'Model name' | sed 's/Model name:\s*//' | xargs)"
           echo "  vCPUs:      $(nproc)"
