@@ -8,6 +8,7 @@ pub mod ffi;
 pub mod nda;
 pub mod slab;
 pub mod vctp;
+pub mod wal;
 
 pub use arena::BumpArenaPage;
 pub use bitmask::Bitmask256;
@@ -16,3 +17,4 @@ pub use ffi::*;
 pub use nda::NdaHeader;
 pub use slab::SlabHeader;
 pub use vctp::{AimdController, VctpPacketHeader};
+pub use wal::wal_append_step;

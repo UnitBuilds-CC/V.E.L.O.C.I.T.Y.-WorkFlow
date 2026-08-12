@@ -1,0 +1,7 @@
+[package]
+name = "velocity-workflow-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+velocity-workflow-core = { path = "../velocity-workflow-core" }

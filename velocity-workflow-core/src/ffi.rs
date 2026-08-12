@@ -5,6 +5,7 @@ use crate::crdt::PNCounter;
 use crate::nda::NdaHeader;
 use crate::slab::SlabHeader;
 use crate::vctp::{AimdController, VctpPacketHeader};
+use crate::wal::wal_append_step;
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_slab_create(
@@ -117,6 +118,20 @@ pub unsafe extern "C" fn velocity_vctp_aimd_update(
     0
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn velocity_wal_write_step(
+    header: *mut SlabHeader,
+    step_index: u32,
+) -> i32 {
+    if header.is_null() {
+        return -1;
+    }
+    match wal_append_step(&mut *header, step_index) {
+        Ok(_) => 0,
+        Err(err) => err,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,6 +168,16 @@ mod tests {
             let res = velocity_vctp_packet_create(1, 100, 32, 16, &mut packet);
             assert_eq!(res, 0);
             assert_eq!(packet.sequence_number, 1);
+        }
+    }
+
+    #[test]
+    fn test_ffi_wal_write() {
+        let mut header = SlabHeader::new(100, 200, 10);
+        unsafe {
+            let res = velocity_wal_write_step(&mut header, 0);
+            assert_eq!(res, 0);
+            assert_eq!(header.current_step, 1);
         }
     }
 }
