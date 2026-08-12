@@ -19,13 +19,27 @@ info() { echo -e "${CYAN}[server]${NC} $*"; }
 # ── 1. System packages ─────────────────────────────────────────────────────
 log "[1/5] Installing system packages..."
 export DEBIAN_FRONTEND=noninteractive
-sudo apt-get update -qq
-sudo apt-get install -y -qq \
+
+log "  Updating package lists..."
+for i in 1 2 3; do
+    if sudo apt-get update; then break; fi
+    warn "  apt-get update failed (attempt $i), retrying..."
+    sleep 5
+done
+
+log "  Adding Docker repository..."
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+
+log "  Installing packages..."
+sudo apt-get install -y \
     build-essential pkg-config libssl-dev \
     protobuf-compiler \
     curl wget git unzip jq netcat-openbsd \
-    docker.io docker-compose-v2 \
-    > /dev/null 2>&1
+    docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER" 2>/dev/null || true
