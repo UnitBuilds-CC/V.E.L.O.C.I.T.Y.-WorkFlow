@@ -8,6 +8,7 @@
 //!   [C# Developer Code] ──FFI──► [velocity-workflow-engine] ──► [velocity-workflow-core]
 //!   (thin bridge)                (runtime engine, zero-GC)      (slab, bitmask, Merkle)
 
+pub mod advanced_scheduler;
 pub mod ai_context;
 pub mod archival;
 pub mod auth;
@@ -31,6 +32,7 @@ pub mod history_compaction;
 pub mod hot_swap;
 pub mod memo;
 pub mod metrics;
+pub mod multi_region;
 pub mod namespace;
 pub mod network_replication;
 pub mod nexus;
@@ -63,6 +65,8 @@ pub mod workflow_reset;
 #[cfg(feature = "grpc")]
 pub mod grpc_server;
 
+pub use advanced_scheduler::{CronExpression as CronExpressionV2, CronError as CronErrorV2, WorkflowSchedule, ScheduleManager as AdvancedScheduleManager, ScheduleInfo, RateLimiterV2, StickyScheduler, WorkerVersioningV2};
+pub use multi_region::{RegionConfig, RegionState, RegionInfo, MultiRegionReplicator, ReplicationResult, SyncResult, ConflictResolutionStrategy, ReplicationConflict, ResolvedValue, FailoverController, FailoverResult, FailoverEvent, HealthStatus};
 pub use errors::{VelocityError, VelocityResult, ErrorCategory, ErrorCode, FfiErrorCode};
 pub use retry::{RetryPolicy, RetryExecutor, RetryStats, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerMetrics, CircuitState};
 pub use ai_context::{AiContextWindow, AiContextConfig, AiContextStats, MessageRole, ContextMessage, AgentToolCall, ToolCallStatus};
