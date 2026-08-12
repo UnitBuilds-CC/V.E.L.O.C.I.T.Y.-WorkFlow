@@ -7,13 +7,13 @@
 //! - Concurrent DashMap stress (many writers, no deadlocks)
 //! - Zero-alloc container correctness under pressure
 
-use velocity_workflow_engine::engine::WorkflowEngine;
-use velocity_workflow_engine::wal::{WalWriter, WalRecord, WalEventType, WAL_MAGIC, WAL_VERSION};
-use velocity_workflow_engine::wal::read_wal_records;
-use velocity_workflow_engine::zero_alloc::{SlotMap, SlotVec};
-use velocity_workflow_engine::string_interner::StringInterner;
 use std::fs;
 use std::io::Write;
+use velocity_workflow_engine::engine::WorkflowEngine;
+use velocity_workflow_engine::string_interner::StringInterner;
+use velocity_workflow_engine::wal::read_wal_records;
+use velocity_workflow_engine::wal::{WalEventType, WalRecord, WalWriter, WAL_MAGIC, WAL_VERSION};
+use velocity_workflow_engine::zero_alloc::{SlotMap, SlotVec};
 
 // ── WAL Corruption Tests ────────────────────────────────────────────────────
 
@@ -27,8 +27,12 @@ fn test_wal_corruption_truncated_record() {
     // Write valid records
     {
         let mut writer = WalWriter::open(&wal_path).unwrap();
-        writer.append_event(WalEventType::WorkflowStarted, 42, vec![1, 2, 3]).unwrap();
-        writer.append_event(WalEventType::StepCompleted, 42, vec![4, 5, 6]).unwrap();
+        writer
+            .append_event(WalEventType::WorkflowStarted, 42, vec![1, 2, 3])
+            .unwrap();
+        writer
+            .append_event(WalEventType::StepCompleted, 42, vec![4, 5, 6])
+            .unwrap();
         writer.sync().unwrap();
     }
 
@@ -43,13 +47,20 @@ fn test_wal_corruption_truncated_record() {
     match result {
         Ok(records) => {
             // At least the header was valid, partial reads are ok
-            assert!(records.len() <= 2, "Should not read more records than written");
+            assert!(
+                records.len() <= 2,
+                "Should not read more records than written"
+            );
         }
         Err(e) => {
             // Corruption detected — this is the expected behavior
             assert!(
-                e.to_string().contains("CRC") || e.to_string().contains("truncated") || e.to_string().contains("Unexpected EOF") || e.kind() == std::io::ErrorKind::UnexpectedEof,
-                "Error should indicate corruption: {}", e
+                e.to_string().contains("CRC")
+                    || e.to_string().contains("truncated")
+                    || e.to_string().contains("Unexpected EOF")
+                    || e.kind() == std::io::ErrorKind::UnexpectedEof,
+                "Error should indicate corruption: {}",
+                e
             );
         }
     }
@@ -67,7 +78,9 @@ fn test_wal_corruption_garbage_bytes() {
     // Write valid records
     {
         let mut writer = WalWriter::open(&wal_path).unwrap();
-        writer.append_event(WalEventType::WorkflowStarted, 100, vec![10, 20]).unwrap();
+        writer
+            .append_event(WalEventType::WorkflowStarted, 100, vec![10, 20])
+            .unwrap();
         writer.sync().unwrap();
     }
 
@@ -113,7 +126,8 @@ fn test_wal_version_header_validation() {
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("Not a Velocity WAL") || err.to_string().contains("bad magic"),
-        "Error should mention bad magic: {}", err
+        "Error should mention bad magic: {}",
+        err
     );
 
     // Write a file with a future version
@@ -128,7 +142,8 @@ fn test_wal_version_header_validation() {
     let err = result.unwrap_err();
     assert!(
         err.to_string().contains("newer than maximum"),
-        "Error should mention version mismatch: {}", err
+        "Error should mention version mismatch: {}",
+        err
     );
 
     let _ = fs::remove_dir_all(&dir);
@@ -144,7 +159,9 @@ fn test_wal_valid_header_on_create() {
     // Create a new WAL
     {
         let mut writer = WalWriter::open(&wal_path).unwrap();
-        writer.append_event(WalEventType::WorkflowStarted, 1, vec![]).unwrap();
+        writer
+            .append_event(WalEventType::WorkflowStarted, 1, vec![])
+            .unwrap();
         writer.sync().unwrap();
     }
 
@@ -166,7 +183,9 @@ fn test_wal_valid_header_on_create() {
 
 #[test]
 fn test_aes256gcm_roundtrip() {
-    use velocity_workflow_engine::auth_v2::{EncryptionAtRest, EncryptionConfig, EncryptionAlgorithm};
+    use velocity_workflow_engine::auth_v2::{
+        EncryptionAlgorithm, EncryptionAtRest, EncryptionConfig,
+    };
 
     let config = EncryptionConfig {
         algorithm: EncryptionAlgorithm::Aes256Gcm,
@@ -179,7 +198,11 @@ fn test_aes256gcm_roundtrip() {
     let ciphertext = enc.encrypt(plaintext);
 
     // Ciphertext should be different from plaintext
-    assert_ne!(&ciphertext[45..], plaintext, "Ciphertext should differ from plaintext");
+    assert_ne!(
+        &ciphertext[45..],
+        plaintext,
+        "Ciphertext should differ from plaintext"
+    );
 
     // Decrypt should recover original
     let decrypted = enc.decrypt(&ciphertext).expect("Decryption should succeed");
@@ -188,7 +211,9 @@ fn test_aes256gcm_roundtrip() {
 
 #[test]
 fn test_aes256gcm_tamper_detection() {
-    use velocity_workflow_engine::auth_v2::{EncryptionAtRest, EncryptionConfig, EncryptionAlgorithm};
+    use velocity_workflow_engine::auth_v2::{
+        EncryptionAlgorithm, EncryptionAtRest, EncryptionConfig,
+    };
 
     let config = EncryptionConfig {
         algorithm: EncryptionAlgorithm::Aes256Gcm,
@@ -207,12 +232,17 @@ fn test_aes256gcm_tamper_detection() {
 
     // GCM should detect tampering and return None
     let result = enc.decrypt(&ciphertext);
-    assert!(result.is_none(), "Tampered ciphertext should fail decryption");
+    assert!(
+        result.is_none(),
+        "Tampered ciphertext should fail decryption"
+    );
 }
 
 #[test]
 fn test_aes256gcm_wrong_key_fails() {
-    use velocity_workflow_engine::auth_v2::{EncryptionAtRest, EncryptionConfig, EncryptionAlgorithm};
+    use velocity_workflow_engine::auth_v2::{
+        EncryptionAlgorithm, EncryptionAtRest, EncryptionConfig,
+    };
 
     let config1 = EncryptionConfig {
         algorithm: EncryptionAlgorithm::Aes256Gcm,
@@ -237,7 +267,9 @@ fn test_aes256gcm_wrong_key_fails() {
 
 #[test]
 fn test_aes256gcm_unique_nonces() {
-    use velocity_workflow_engine::auth_v2::{EncryptionAtRest, EncryptionConfig, EncryptionAlgorithm};
+    use velocity_workflow_engine::auth_v2::{
+        EncryptionAlgorithm, EncryptionAtRest, EncryptionConfig,
+    };
 
     let config = EncryptionConfig {
         algorithm: EncryptionAlgorithm::Aes256Gcm,
@@ -250,7 +282,10 @@ fn test_aes256gcm_unique_nonces() {
     let ct1 = enc.encrypt(b"same data");
     let ct2 = enc.encrypt(b"same data");
 
-    assert_ne!(ct1, ct2, "Same plaintext should produce different ciphertexts (unique nonces)");
+    assert_ne!(
+        ct1, ct2,
+        "Same plaintext should produce different ciphertexts (unique nonces)"
+    );
 
     // Both should decrypt to the same plaintext
     assert_eq!(enc.decrypt(&ct1).unwrap(), b"same data");
@@ -261,33 +296,35 @@ fn test_aes256gcm_unique_nonces() {
 
 #[test]
 fn test_dashmap_concurrent_writers_no_deadlock() {
-    use std::thread;
-    use std::sync::Arc;
     use dashmap::DashMap;
+    use std::sync::Arc;
+    use std::thread;
 
     let map: Arc<DashMap<u64, String>> = Arc::new(DashMap::new());
     let num_threads = 16;
     let ops_per_thread = 1000;
 
-    let handles: Vec<_> = (0..num_threads).map(|t| {
-        let map = map.clone();
-        thread::spawn(move || {
-            for i in 0..ops_per_thread {
-                let key = (t * ops_per_thread + i) as u64;
-                map.insert(key, format!("value-{}-{}", t, i));
-            }
-            // Read back
-            for i in 0..ops_per_thread {
-                let key = (t * ops_per_thread + i) as u64;
-                assert!(map.get(&key).is_some(), "Key {} should exist", key);
-            }
-            // Remove half
-            for i in 0..ops_per_thread / 2 {
-                let key = (t * ops_per_thread + i) as u64;
-                map.remove(&key);
-            }
+    let handles: Vec<_> = (0..num_threads)
+        .map(|t| {
+            let map = map.clone();
+            thread::spawn(move || {
+                for i in 0..ops_per_thread {
+                    let key = (t * ops_per_thread + i) as u64;
+                    map.insert(key, format!("value-{}-{}", t, i));
+                }
+                // Read back
+                for i in 0..ops_per_thread {
+                    let key = (t * ops_per_thread + i) as u64;
+                    assert!(map.get(&key).is_some(), "Key {} should exist", key);
+                }
+                // Remove half
+                for i in 0..ops_per_thread / 2 {
+                    let key = (t * ops_per_thread + i) as u64;
+                    map.remove(&key);
+                }
+            })
         })
-    }).collect();
+        .collect();
 
     for h in handles {
         h.join().expect("Thread should not panic");
@@ -299,31 +336,33 @@ fn test_dashmap_concurrent_writers_no_deadlock() {
 
 #[test]
 fn test_dashmap_entry_api_under_contention() {
-    use std::thread;
-    use std::sync::Arc;
     use dashmap::DashMap;
+    use std::sync::Arc;
+    use std::thread;
 
     let map: Arc<DashMap<u64, u64>> = Arc::new(DashMap::new());
     let num_threads = 8;
     let ops_per_thread = 500;
 
     // All threads try to insert the same keys (contention on same shards)
-    let handles: Vec<_> = (0..num_threads).map(|t| {
-        let map = map.clone();
-        thread::spawn(move || {
-            for i in 0..ops_per_thread {
-                let key = i as u64; // Same keys across threads
-                match map.entry(key) {
-                    dashmap::mapref::entry::Entry::Occupied(mut e) => {
-                        *e.get_mut() += t as u64;
-                    }
-                    dashmap::mapref::entry::Entry::Vacant(e) => {
-                        e.insert(t as u64);
+    let handles: Vec<_> = (0..num_threads)
+        .map(|t| {
+            let map = map.clone();
+            thread::spawn(move || {
+                for i in 0..ops_per_thread {
+                    let key = i as u64; // Same keys across threads
+                    match map.entry(key) {
+                        dashmap::mapref::entry::Entry::Occupied(mut e) => {
+                            *e.get_mut() += t as u64;
+                        }
+                        dashmap::mapref::entry::Entry::Vacant(e) => {
+                            e.insert(t as u64);
+                        }
                     }
                 }
-            }
+            })
         })
-    }).collect();
+        .collect();
 
     for h in handles {
         h.join().unwrap();
@@ -407,7 +446,10 @@ fn test_string_interner_deduplication() {
     let s3 = interner.intern("workflow_type_b"); // Different string
 
     assert_eq!(s1, s2, "Same string should get same InternedString");
-    assert_ne!(s1, s3, "Different strings should get different InternedStrings");
+    assert_ne!(
+        s1, s3,
+        "Different strings should get different InternedStrings"
+    );
 
     // Resolve back
     assert_eq!(interner.resolve(s1), "workflow_type_a");
@@ -439,7 +481,8 @@ fn test_engine_wal_recovery_with_versioned_header() {
 
     // Create engine with WAL, start some workflows
     {
-        let engine = WorkflowEngine::with_wal(wal_path.to_str().unwrap(), 64 * 1024 * 1024).unwrap();
+        let engine =
+            WorkflowEngine::with_wal(wal_path.to_str().unwrap(), 64 * 1024 * 1024).unwrap();
         let key1 = engine.start_workflow(1, 1, 100, 10, 3, None);
         engine.complete_step(key1, 0, b"step0".to_vec());
         engine.complete_step(key1, 1, b"step1".to_vec());
@@ -450,7 +493,8 @@ fn test_engine_wal_recovery_with_versioned_header() {
 
     // Create new engine from same WAL — should recover
     {
-        let engine = WorkflowEngine::with_wal(wal_path.to_str().unwrap(), 64 * 1024 * 1024).unwrap();
+        let engine =
+            WorkflowEngine::with_wal(wal_path.to_str().unwrap(), 64 * 1024 * 1024).unwrap();
         // Recovered workflows should be accessible
         assert!(engine.workflow_count() >= 0); // At minimum, no crash
     }
@@ -468,7 +512,9 @@ fn test_wal_sync_durability() {
     // Write and sync
     {
         let mut writer = WalWriter::open(&wal_path).unwrap();
-        writer.append_event(WalEventType::WorkflowStarted, 1, vec![42]).unwrap();
+        writer
+            .append_event(WalEventType::WorkflowStarted, 1, vec![42])
+            .unwrap();
         writer.sync().unwrap(); // Force fsync
     }
 

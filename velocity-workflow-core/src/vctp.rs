@@ -113,8 +113,7 @@ impl VctpPacket {
             return None;
         }
         let payload = buf[VCTP_HEADER_SIZE..payload_end].to_vec();
-        let checksum =
-            u32::from_le_bytes(buf[payload_end..payload_end + 4].try_into().ok()?);
+        let checksum = u32::from_le_bytes(buf[payload_end..payload_end + 4].try_into().ok()?);
         let packet = Self {
             header,
             payload,
@@ -310,7 +309,11 @@ impl VctpRetransmitTracker {
     /// Process an ACK, removing the acknowledged packet from pending.
     /// Returns the measured RTT if the packet was found.
     pub fn process_ack(&mut self, ack_sequence: u64, now_ms: u64) -> Option<u64> {
-        if let Some(pos) = self.pending.iter().position(|(seq, _, _, _)| *seq == ack_sequence) {
+        if let Some(pos) = self
+            .pending
+            .iter()
+            .position(|(seq, _, _, _)| *seq == ack_sequence)
+        {
             let (_, _, send_time, _) = self.pending.remove(pos);
             let rtt = now_ms.saturating_sub(send_time);
             // Exponential weighted moving average RTT update

@@ -27,8 +27,8 @@ pub use durable::{DurableContext, TransientContext, WorkflowHandle, WorkflowStat
 pub use postgres_adapter::{PostgresAdapter, PostgresConfig};
 pub use storage::{InMemoryStorage, StorageBackend, StorageError};
 
-use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -124,10 +124,18 @@ impl EmbeddedEngine {
     /// Initialize the engine (run migrations, etc.).
     pub fn init(&self) -> Result<(), EmbeddedError> {
         if self.config.auto_migrate {
-            let storage = self.storage.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
-            storage.init_schema().map_err(|e| EmbeddedError::Storage(e.to_string()))?;
+            let storage = self
+                .storage
+                .lock()
+                .map_err(|_| EmbeddedError::LockPoisoned)?;
+            storage
+                .init_schema()
+                .map_err(|e| EmbeddedError::Storage(e.to_string()))?;
         }
-        *self.running.lock().map_err(|_| EmbeddedError::LockPoisoned)? = true;
+        *self
+            .running
+            .lock()
+            .map_err(|_| EmbeddedError::LockPoisoned)? = true;
         Ok(())
     }
 
@@ -151,7 +159,10 @@ impl EmbeddedEngine {
     {
         // Check for existing workflow
         {
-            let workflows = self.workflows.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
+            let workflows = self
+                .workflows
+                .lock()
+                .map_err(|_| EmbeddedError::LockPoisoned)?;
             if let Some(existing) = workflows.get(workflow_id) {
                 match existing.status {
                     WorkflowStatus::Completed => {
@@ -192,7 +203,10 @@ impl EmbeddedEngine {
         };
 
         {
-            let mut workflows = self.workflows.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
+            let mut workflows = self
+                .workflows
+                .lock()
+                .map_err(|_| EmbeddedError::LockPoisoned)?;
             workflows.insert(workflow_id.to_string(), record);
         }
 
@@ -209,7 +223,10 @@ impl EmbeddedEngine {
                 let output_value = serde_json::to_value(&output)
                     .map_err(|e| EmbeddedError::Serialization(e.to_string()))?;
 
-                let mut workflows = self.workflows.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
+                let mut workflows = self
+                    .workflows
+                    .lock()
+                    .map_err(|_| EmbeddedError::LockPoisoned)?;
                 if let Some(record) = workflows.get_mut(workflow_id) {
                     record.status = WorkflowStatus::Completed;
                     record.output = Some(output_value.clone());
@@ -224,22 +241,25 @@ impl EmbeddedEngine {
                 Ok(WorkflowHandle::completed(workflow_id.to_string(), output))
             }
             Err(err) => {
-                let mut workflows = self.workflows.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
+                let mut workflows = self
+                    .workflows
+                    .lock()
+                    .map_err(|_| EmbeddedError::LockPoisoned)?;
                 if let Some(record) = workflows.get_mut(workflow_id) {
                     record.status = WorkflowStatus::Failed;
                     record.error = Some(err.to_string());
                     record.updated_at = current_time_ms();
                 }
-                Ok(WorkflowHandle::failed(workflow_id.to_string(), err.to_string()))
+                Ok(WorkflowHandle::failed(
+                    workflow_id.to_string(),
+                    err.to_string(),
+                ))
             }
         }
     }
 
     /// Execute a transient (non-durable) function.
-    pub async fn execute_transient<F, Fut, O>(
-        &self,
-        handler: F,
-    ) -> Result<O, EmbeddedError>
+    pub async fn execute_transient<F, Fut, O>(&self, handler: F) -> Result<O, EmbeddedError>
     where
         F: FnOnce(TransientContext) -> Fut,
         Fut: std::future::Future<Output = Result<O, EmbeddedError>>,
@@ -256,7 +276,10 @@ impl EmbeddedEngine {
 
     /// List all workflows.
     pub fn list_workflows(&self) -> Vec<WorkflowRecord> {
-        let workflows = self.workflows.lock().ok()
+        let workflows = self
+            .workflows
+            .lock()
+            .ok()
             .map(|g| g.values().cloned().collect())
             .unwrap_or_default();
         workflows
@@ -266,9 +289,18 @@ impl EmbeddedEngine {
     pub fn stats(&self) -> EngineStats {
         let workflows = self.workflows.lock().unwrap_or_else(|e| e.into_inner());
         let total = workflows.len();
-        let running = workflows.values().filter(|w| w.status == WorkflowStatus::Running).count();
-        let completed = workflows.values().filter(|w| w.status == WorkflowStatus::Completed).count();
-        let failed = workflows.values().filter(|w| w.status == WorkflowStatus::Failed).count();
+        let running = workflows
+            .values()
+            .filter(|w| w.status == WorkflowStatus::Running)
+            .count();
+        let completed = workflows
+            .values()
+            .filter(|w| w.status == WorkflowStatus::Completed)
+            .count();
+        let failed = workflows
+            .values()
+            .filter(|w| w.status == WorkflowStatus::Failed)
+            .count();
 
         EngineStats {
             total_workflows: total,
@@ -281,7 +313,10 @@ impl EmbeddedEngine {
 
     /// Shut down the engine.
     pub fn shutdown(&self) -> Result<(), EmbeddedError> {
-        *self.running.lock().map_err(|_| EmbeddedError::LockPoisoned)? = false;
+        *self
+            .running
+            .lock()
+            .map_err(|_| EmbeddedError::LockPoisoned)? = false;
         Ok(())
     }
 }
@@ -386,9 +421,12 @@ mod tests {
         engine.init().unwrap();
 
         let handle = engine
-            .execute("wf-1", "greet", "World".to_string(), |_ctx, input: String| async move {
-                Ok(format!("Hello, {}!", input))
-            })
+            .execute(
+                "wf-1",
+                "greet",
+                "World".to_string(),
+                |_ctx, input: String| async move { Ok(format!("Hello, {}!", input)) },
+            )
             .await
             .unwrap();
 
@@ -422,17 +460,23 @@ mod tests {
         engine.init().unwrap();
 
         let h1 = engine
-            .execute("wf-idem", "fn", "x".to_string(), |_ctx, input: String| async move {
-                Ok(format!("done: {}", input))
-            })
+            .execute(
+                "wf-idem",
+                "fn",
+                "x".to_string(),
+                |_ctx, input: String| async move { Ok(format!("done: {}", input)) },
+            )
             .await
             .unwrap();
 
         // Second call with same ID returns cached result
         let h2 = engine
-            .execute("wf-idem", "fn", "x".to_string(), |_ctx, input: String| async move {
-                Ok(format!("done: {}", input))
-            })
+            .execute(
+                "wf-idem",
+                "fn",
+                "x".to_string(),
+                |_ctx, input: String| async move { Ok(format!("done: {}", input)) },
+            )
             .await
             .unwrap();
 
@@ -445,9 +489,14 @@ mod tests {
         engine.init().unwrap();
 
         let handle = engine
-            .execute("wf-fail", "fail_fn", "x".to_string(), |_ctx, _: String| async move {
-                Err::<String, _>(EmbeddedError::Execution("intentional".to_string()))
-            })
+            .execute(
+                "wf-fail",
+                "fail_fn",
+                "x".to_string(),
+                |_ctx, _: String| async move {
+                    Err::<String, _>(EmbeddedError::Execution("intentional".to_string()))
+                },
+            )
             .await
             .unwrap();
 
@@ -474,9 +523,12 @@ mod tests {
         engine.init().unwrap();
 
         engine
-            .execute("wf-status", "fn", "a".to_string(), |_ctx, _: String| async {
-                Ok("done".to_string())
-            })
+            .execute(
+                "wf-status",
+                "fn",
+                "a".to_string(),
+                |_ctx, _: String| async { Ok("done".to_string()) },
+            )
             .await
             .unwrap();
 
@@ -491,11 +543,15 @@ mod tests {
         engine.init().unwrap();
 
         engine
-            .execute("wf-a", "fn1", "a".to_string(), |_ctx, _: String| async { Ok("a".to_string()) })
+            .execute("wf-a", "fn1", "a".to_string(), |_ctx, _: String| async {
+                Ok("a".to_string())
+            })
             .await
             .unwrap();
         engine
-            .execute("wf-b", "fn2", "b".to_string(), |_ctx, _: String| async { Ok("b".to_string()) })
+            .execute("wf-b", "fn2", "b".to_string(), |_ctx, _: String| async {
+                Ok("b".to_string())
+            })
             .await
             .unwrap();
 
@@ -509,7 +565,9 @@ mod tests {
         engine.init().unwrap();
 
         engine
-            .execute("wf-s1", "fn", "x".to_string(), |_ctx, _: String| async { Ok("ok".to_string()) })
+            .execute("wf-s1", "fn", "x".to_string(), |_ctx, _: String| async {
+                Ok("ok".to_string())
+            })
             .await
             .unwrap();
         let _ = engine

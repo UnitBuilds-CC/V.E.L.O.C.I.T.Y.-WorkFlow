@@ -806,15 +806,14 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req
-            .send()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let resp = req.send().map_err(|e| io::Error::other(e.to_string()))?;
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(io::Error::other(
-                format!("S3 PUT failed: {}", resp.status()),
-            ))
+            Err(io::Error::other(format!(
+                "S3 PUT failed: {}",
+                resp.status()
+            )))
         }
     }
 
@@ -828,9 +827,7 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req
-            .send()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let resp = req.send().map_err(|e| io::Error::other(e.to_string()))?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -838,13 +835,12 @@ impl CloudStorageAdapter for S3Adapter {
             ));
         }
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("S3 GET failed: {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "S3 GET failed: {}",
+                resp.status()
+            )));
         }
-        let bytes = resp
-            .bytes()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let bytes = resp.bytes().map_err(|e| io::Error::other(e.to_string()))?;
         deserialize_record_binary(&bytes)
     }
 
@@ -858,9 +854,7 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req
-            .send()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let resp = req.send().map_err(|e| io::Error::other(e.to_string()))?;
         Ok(resp.status().is_success() || resp.status() == reqwest::StatusCode::NO_CONTENT)
     }
 
@@ -875,17 +869,14 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req
-            .send()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let resp = req.send().map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("S3 LIST failed: {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "S3 LIST failed: {}",
+                resp.status()
+            )));
         }
-        let body = resp
-            .text()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let body = resp.text().map_err(|e| io::Error::other(e.to_string()))?;
 
         // Parse XML response for <Key> elements
         let mut records = Vec::new();
@@ -926,17 +917,14 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req
-            .send()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let resp = req.send().map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("S3 LIST failed: {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "S3 LIST failed: {}",
+                resp.status()
+            )));
         }
-        let body = resp
-            .text()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let body = resp.text().map_err(|e| io::Error::other(e.to_string()))?;
 
         let mut deleted = 0;
         let mut search_from = 0;
@@ -951,10 +939,9 @@ impl CloudStorageAdapter for S3Adapter {
                     if let Ok(wk) = wk_str.parse::<u64>() {
                         // Try to retrieve and check archived_at_ms
                         if let Ok(record) = self.retrieve(wk) {
-                            if record.archived_at_ms < cutoff
-                                && self.delete(wk).unwrap_or(false) {
-                                    deleted += 1;
-                                }
+                            if record.archived_at_ms < cutoff && self.delete(wk).unwrap_or(false) {
+                                deleted += 1;
+                            }
                         }
                     }
                 }
@@ -975,17 +962,14 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req
-            .send()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let resp = req.send().map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("S3 LIST failed: {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "S3 LIST failed: {}",
+                resp.status()
+            )));
         }
-        let body = resp
-            .text()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let body = resp.text().map_err(|e| io::Error::other(e.to_string()))?;
 
         // Count <Key> occurrences
         let count = body.matches("<Key>").count();
@@ -1052,9 +1036,10 @@ impl CloudStorageAdapter for GcsAdapter {
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(io::Error::other(
-                format!("GCS upload failed: {}", resp.status()),
-            ))
+            Err(io::Error::other(format!(
+                "GCS upload failed: {}",
+                resp.status()
+            )))
         }
     }
 
@@ -1075,13 +1060,12 @@ impl CloudStorageAdapter for GcsAdapter {
             ));
         }
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("GCS GET failed: {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "GCS GET failed: {}",
+                resp.status()
+            )));
         }
-        let bytes = resp
-            .bytes()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let bytes = resp.bytes().map_err(|e| io::Error::other(e.to_string()))?;
         deserialize_record_binary(&bytes)
     }
 
@@ -1106,13 +1090,12 @@ impl CloudStorageAdapter for GcsAdapter {
             .send()
             .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("GCS LIST failed: {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "GCS LIST failed: {}",
+                resp.status()
+            )));
         }
-        let body = resp
-            .text()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let body = resp.text().map_err(|e| io::Error::other(e.to_string()))?;
 
         // Parse JSON response for object names
         let mut records = Vec::new();
@@ -1152,13 +1135,12 @@ impl CloudStorageAdapter for GcsAdapter {
             .send()
             .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("GCS LIST failed: {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "GCS LIST failed: {}",
+                resp.status()
+            )));
         }
-        let body = resp
-            .text()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let body = resp.text().map_err(|e| io::Error::other(e.to_string()))?;
 
         let mut deleted = 0;
         let mut search_from = 0;
@@ -1172,10 +1154,9 @@ impl CloudStorageAdapter for GcsAdapter {
                 {
                     if let Ok(wk) = wk_str.parse::<u64>() {
                         if let Ok(record) = self.retrieve(wk) {
-                            if record.archived_at_ms < cutoff
-                                && self.delete(wk).unwrap_or(false) {
-                                    deleted += 1;
-                                }
+                            if record.archived_at_ms < cutoff && self.delete(wk).unwrap_or(false) {
+                                deleted += 1;
+                            }
                         }
                     }
                 }
@@ -1196,13 +1177,12 @@ impl CloudStorageAdapter for GcsAdapter {
             .send()
             .map_err(|e| io::Error::other(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::other(
-                format!("GCS LIST failed: {}", resp.status()),
-            ));
+            return Err(io::Error::other(format!(
+                "GCS LIST failed: {}",
+                resp.status()
+            )));
         }
-        let body = resp
-            .text()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        let body = resp.text().map_err(|e| io::Error::other(e.to_string()))?;
         let count = body.matches("\"name\":").count();
         Ok(count)
     }

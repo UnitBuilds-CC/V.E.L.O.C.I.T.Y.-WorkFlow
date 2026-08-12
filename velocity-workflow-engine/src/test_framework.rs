@@ -75,7 +75,12 @@ impl TestWorkflowEnvironment {
     }
 
     /// Mock all activities for a workflow type to return the same result.
-    pub fn mock_all_activities(&mut self, workflow_type_id: u64, total_steps: u32, result: Vec<u8>) {
+    pub fn mock_all_activities(
+        &mut self,
+        workflow_type_id: u64,
+        total_steps: u32,
+        result: Vec<u8>,
+    ) {
         for step in 0..total_steps {
             self.activity_mocks.insert(
                 (workflow_type_id, step),
@@ -102,7 +107,12 @@ impl TestWorkflowEnvironment {
         input: Option<Vec<u8>>,
     ) -> u64 {
         self.engine.start_workflow(
-            workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, input,
+            workflow_id,
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            total_steps,
+            input,
         )
     }
 
@@ -118,7 +128,13 @@ impl TestWorkflowEnvironment {
         attrs: HashMap<String, SearchAttributeValue>,
     ) -> u64 {
         self.engine.start_workflow_with_attrs(
-            workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, input, attrs,
+            workflow_id,
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            total_steps,
+            input,
+            attrs,
         )
     }
 
@@ -133,7 +149,12 @@ impl TestWorkflowEnvironment {
         input: Option<Vec<u8>>,
     ) -> u64 {
         self.engine.start_child_workflow(
-            parent_key, child_workflow_id, workflow_type_id, task_queue_hash, total_steps, input,
+            parent_key,
+            child_workflow_id,
+            workflow_type_id,
+            task_queue_hash,
+            total_steps,
+            input,
         )
     }
 
@@ -166,12 +187,14 @@ impl TestWorkflowEnvironment {
 
     /// Send a signal to a workflow.
     pub fn signal_workflow(&self, workflow_key: u64, signal_name_id: u64, payload: Vec<u8>) {
-        self.engine.signal_workflow(workflow_key, signal_name_id, payload);
+        self.engine
+            .signal_workflow(workflow_key, signal_name_id, payload);
     }
 
     /// Send an update to a workflow.
     pub fn update_workflow(&self, workflow_key: u64, update_name_id: u64, payload: Vec<u8>) {
-        self.engine.update_workflow(workflow_key, update_name_id, payload);
+        self.engine
+            .update_workflow(workflow_key, update_name_id, payload);
     }
 
     // ─── Assertions & Inspection ─────────────────────────────────────
@@ -227,7 +250,11 @@ impl TestWorkflowEnvironment {
     /// Assert workflow status.
     pub fn assert_status(&self, workflow_key: u64, expected: WorkflowStatus) {
         let actual = self.get_status(workflow_key);
-        assert_eq!(actual, expected, "Workflow {} status mismatch", workflow_key);
+        assert_eq!(
+            actual, expected,
+            "Workflow {} status mismatch",
+            workflow_key
+        );
     }
 
     /// Assert workflow is completed.
@@ -249,10 +276,16 @@ impl TestWorkflowEnvironment {
     pub fn assert_step_result(&self, workflow_key: u64, step: u32, expected: &[u8]) {
         assert!(
             self.is_step_completed(workflow_key, step),
-            "Step {} should be completed for workflow {}", step, workflow_key
+            "Step {} should be completed for workflow {}",
+            step,
+            workflow_key
         );
         let actual = self.get_step_result(workflow_key, step).unwrap_or_default();
-        assert_eq!(actual, expected, "Step {} result mismatch for workflow {}", step, workflow_key);
+        assert_eq!(
+            actual, expected,
+            "Step {} result mismatch for workflow {}",
+            step, workflow_key
+        );
     }
 
     /// Assert workflow count.
@@ -444,7 +477,10 @@ mod tests {
     fn test_search_attributes_in_test() {
         let env = TestWorkflowEnvironment::new();
         let mut attrs = HashMap::new();
-        attrs.insert("OrderId".to_string(), SearchAttributeValue::String("ORD-123".to_string()));
+        attrs.insert(
+            "OrderId".to_string(),
+            SearchAttributeValue::String("ORD-123".to_string()),
+        );
         let key = env.start_workflow_with_attrs(1, 100, 0, 42, 3, None, attrs);
         env.assert_running(key);
         let vis = env.engine().visibility().list_by_search_attribute(

@@ -206,9 +206,21 @@ impl WorkflowRecord {
                 .flat_map(|w| w.to_le_bytes())
                 .collect(),
             status: ctx.status,
-            step_results: ctx.step_results.iter().map(|(k, v)| (k as u32, v.clone())).collect(),
-            signal_buffer: ctx.signal_buffer.iter().map(|(k, v)| (k, v.clone())).collect(),
-            update_buffer: ctx.update_buffer.iter().map(|(k, v)| (k, v.clone())).collect(),
+            step_results: ctx
+                .step_results
+                .iter()
+                .map(|(k, v)| (k as u32, v.clone()))
+                .collect(),
+            signal_buffer: ctx
+                .signal_buffer
+                .iter()
+                .map(|(k, v)| (k, v.clone()))
+                .collect(),
+            update_buffer: ctx
+                .update_buffer
+                .iter()
+                .map(|(k, v)| (k, v.clone()))
+                .collect(),
             input_data: ctx.input_data.clone(),
             result_data: ctx.result_data.clone(),
             parent_key: ctx.parent_key,
@@ -1399,7 +1411,9 @@ impl SqliteStore {
         };
         if let Ok(json) = serde_json::to_string(&serde) {
             if std::fs::write(path, json).is_err() {
-                return Err(DatabaseError::QueryError("Failed to write SQLite file".into()));
+                return Err(DatabaseError::QueryError(
+                    "Failed to write SQLite file".into(),
+                ));
             }
         }
         Ok(())
@@ -1534,9 +1548,11 @@ impl DatabaseAdapter for SqliteAdapter {
 
     fn load_workflow(&self, key: u64) -> DatabaseResult<WorkflowRecord> {
         let store = self.store.read().unwrap();
-        store.workflows.get(&key).cloned().ok_or({
-            DatabaseError::NotFound(key)
-        })
+        store
+            .workflows
+            .get(&key)
+            .cloned()
+            .ok_or({ DatabaseError::NotFound(key) })
     }
 
     fn delete_workflow(&self, key: u64) -> DatabaseResult<()> {
@@ -1576,7 +1592,11 @@ impl DatabaseAdapter for SqliteAdapter {
         results.sort_by_key(|r| r.workflow_key);
         let start = offset as usize;
         let end = start + limit as usize;
-        Ok(results.into_iter().skip(start).take(end - start.min(end)).collect())
+        Ok(results
+            .into_iter()
+            .skip(start)
+            .take(end - start.min(end))
+            .collect())
     }
 
     fn save_event(
@@ -1622,7 +1642,11 @@ impl DatabaseAdapter for SqliteAdapter {
 
     fn load_search_attributes(&self, key: u64) -> DatabaseResult<SearchAttributes> {
         let store = self.store.read().unwrap();
-        Ok(store.search_attributes.get(&key).cloned().unwrap_or_default())
+        Ok(store
+            .search_attributes
+            .get(&key)
+            .cloned()
+            .unwrap_or_default())
     }
 
     fn update_workflow_status(&self, key: u64, status: WorkflowStatus) -> DatabaseResult<()> {

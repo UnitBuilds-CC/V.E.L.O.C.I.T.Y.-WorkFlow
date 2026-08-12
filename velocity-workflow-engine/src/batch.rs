@@ -333,7 +333,8 @@ impl BatchExecutor {
     /// List all batch operations with their status and results.
     pub fn list_all(&self) -> Vec<(u64, BatchStatus, Option<BatchResult>)> {
         let batches = self.batches.lock().unwrap();
-        batches.iter()
+        batches
+            .iter()
             .map(|(id, entry)| (*id, entry.status, entry.result.clone()))
             .collect()
     }

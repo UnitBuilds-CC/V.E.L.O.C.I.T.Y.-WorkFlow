@@ -35,7 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Re-run if any proto file changes
     for proto in protos {
-        println!("cargo:rerun-if-changed={}", proto_root.join(proto).display());
+        println!(
+            "cargo:rerun-if-changed={}",
+            proto_root.join(proto).display()
+        );
     }
 
     Ok(())

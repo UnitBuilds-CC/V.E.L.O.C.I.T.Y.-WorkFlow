@@ -256,8 +256,7 @@ impl WorkflowCircuitBreaker {
             total_allowed: self.total_allowed,
             times_opened: self.times_opened,
             rejection_rate: if self.total_allowed + self.total_rejected > 0 {
-                self.total_rejected as f64
-                    / (self.total_allowed + self.total_rejected) as f64
+                self.total_rejected as f64 / (self.total_allowed + self.total_rejected) as f64
             } else {
                 0.0
             },

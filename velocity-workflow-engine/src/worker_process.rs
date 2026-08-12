@@ -62,7 +62,8 @@ impl WorkerProcess {
 
     /// Available task slots.
     pub fn available_slots(&self) -> u64 {
-        self.max_concurrent_tasks.saturating_sub(self.in_flight_tasks)
+        self.max_concurrent_tasks
+            .saturating_sub(self.in_flight_tasks)
     }
 
     /// Duration since last heartbeat.
@@ -324,7 +325,10 @@ impl WorkerProcessManager {
         let channel = Arc::new(StreamingPollChannel::new(process_id));
 
         self.processes.write().unwrap().insert(process_id, process);
-        self.channels.write().unwrap().insert(process_id, channel.clone());
+        self.channels
+            .write()
+            .unwrap()
+            .insert(process_id, channel.clone());
 
         let mut stats = self.stats.write().unwrap();
         stats.total_registered += 1;
@@ -340,9 +344,15 @@ impl WorkerProcessManager {
             let mut stats = self.stats.write().unwrap();
             stats.total_deregistered += 1;
             match process.status {
-                ProcessStatus::Active => stats.active_processes = stats.active_processes.saturating_sub(1),
-                ProcessStatus::Draining => stats.draining_processes = stats.draining_processes.saturating_sub(1),
-                ProcessStatus::Disconnected => stats.disconnected_processes = stats.disconnected_processes.saturating_sub(1),
+                ProcessStatus::Active => {
+                    stats.active_processes = stats.active_processes.saturating_sub(1)
+                }
+                ProcessStatus::Draining => {
+                    stats.draining_processes = stats.draining_processes.saturating_sub(1)
+                }
+                ProcessStatus::Disconnected => {
+                    stats.disconnected_processes = stats.disconnected_processes.saturating_sub(1)
+                }
                 _ => {}
             }
         }
@@ -436,8 +446,7 @@ impl WorkerProcessManager {
         let mut stale = Vec::new();
 
         for process in processes.values_mut() {
-            if process.status == ProcessStatus::Active
-                && process.last_heartbeat.elapsed() > timeout
+            if process.status == ProcessStatus::Active && process.last_heartbeat.elapsed() > timeout
             {
                 process.status = ProcessStatus::Disconnected;
                 process.health_score = 0;
@@ -501,7 +510,8 @@ impl WorkerProcessManager {
                 0
             };
 
-            let score = process.available_slots() * 100 + (process.health_score + sticky_bonus) as u64;
+            let score =
+                process.available_slots() * 100 + (process.health_score + sticky_bonus) as u64;
             let health = process.health_score + sticky_bonus;
 
             if best.is_none() || score > best.unwrap().1 {
@@ -566,13 +576,8 @@ impl WorkerProcessManager {
 
     /// Gracefully shut down all workers: drain, wait for in-flight, then deregister.
     pub fn shutdown_all(&self) -> usize {
-        let process_ids: Vec<WorkerProcessId> = self
-            .processes
-            .read()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect();
+        let process_ids: Vec<WorkerProcessId> =
+            self.processes.read().unwrap().keys().copied().collect();
 
         let mut drained = 0;
         for pid in &process_ids {
@@ -772,10 +777,8 @@ mod tests {
         let mgr = WorkerProcessManager::default();
         mgr.register("w1", &["q1".into(), "q2".into()], "v1", "default")
             .unwrap();
-        mgr.register("w2", &["q2".into()], "v1", "default")
-            .unwrap();
-        mgr.register("w3", &["q3".into()], "v1", "default")
-            .unwrap();
+        mgr.register("w2", &["q2".into()], "v1", "default").unwrap();
+        mgr.register("w3", &["q3".into()], "v1", "default").unwrap();
 
         let q2_workers = mgr.list_processes_for_queue("q2");
         assert_eq!(q2_workers.len(), 2);
@@ -801,9 +804,7 @@ mod tests {
     #[test]
     fn test_worker_success_rate() {
         let mgr = WorkerProcessManager::default();
-        let (pid, _) = mgr
-            .register("w1", &["q1".into()], "v1", "default")
-            .unwrap();
+        let (pid, _) = mgr.register("w1", &["q1".into()], "v1", "default").unwrap();
 
         mgr.record_task_dispatched(pid);
         mgr.record_task_completed(pid);
@@ -832,9 +833,7 @@ mod tests {
     #[test]
     fn test_update_health_scores() {
         let mgr = WorkerProcessManager::default();
-        let (pid, _) = mgr
-            .register("w1", &["q1".into()], "v1", "default")
-            .unwrap();
+        let (pid, _) = mgr.register("w1", &["q1".into()], "v1", "default").unwrap();
 
         // Fresh heartbeat → high score
         mgr.update_health_scores();

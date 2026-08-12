@@ -26,6 +26,7 @@ use crate::dynamic_config::DynamicConfig;
 use crate::event_history::HistoryStore;
 use crate::hardware_integration::HardwareAbstractionLayer;
 use crate::heartbeat::HeartbeatTracker;
+use crate::matching_service::{MatchTask, MatchingService, MatchingServiceConfig};
 use crate::memo::MemoStore;
 use crate::metrics::MetricsRegistry;
 use crate::namespace::NamespaceRegistry;
@@ -35,7 +36,6 @@ use crate::patch::PatchRegistry;
 use crate::payload_codec::CodecChain;
 use crate::query_handler::QueryRegistry;
 use crate::rate_limiter::RateLimiter;
-use crate::matching_service::{MatchTask, MatchingService, MatchingServiceConfig};
 use crate::replay::ReplayEngine;
 use crate::replication_transport::ReplicationTransport;
 use crate::saga::SagaOrchestrator;
@@ -45,8 +45,8 @@ use crate::task_queue::{TaskItem, TaskKind, TaskQueue};
 use crate::timer_engine::TimerEngine;
 use crate::visibility::{VisibilityIndex, WorkflowExecutionInfo};
 use crate::wal::{WalEventType, WalManager};
-use crate::worker_registry::WorkerRegistry;
 use crate::worker_process::WorkerProcessManager;
+use crate::worker_registry::WorkerRegistry;
 use crate::worker_versioning::WorkerVersioning;
 use crate::workflow_reset::{ResetReason, WorkflowResetter};
 
@@ -440,12 +440,20 @@ impl WorkflowEngine {
             replication_transport: Arc::new(ReplicationTransport::new()),
             hal: RwLock::new(HardwareAbstractionLayer::with_simulated_hardware()),
             db_adapter: None,
-            dependency_graph: Arc::new(crate::workflow_dependency_graph::WorkflowDependencyGraph::new()),
+            dependency_graph: Arc::new(
+                crate::workflow_dependency_graph::WorkflowDependencyGraph::new(),
+            ),
             deployment_pipeline: Arc::new(crate::deployment_pipeline::DeploymentPipeline::new()),
-            execution_tracker: Arc::new(crate::workflow_execution_tracker::WorkflowExecutionTracker::new()),
+            execution_tracker: Arc::new(
+                crate::workflow_execution_tracker::WorkflowExecutionTracker::new(),
+            ),
             circuit_breaker: Arc::new(crate::circuit_breaker::CircuitBreakerRegistry::new()),
-            concurrency_limiter: Arc::new(crate::concurrency_limiter::WorkflowConcurrencyLimiter::default()),
-            change_version_registry: Arc::new(crate::workflow_change_versioning::ChangeVersionRegistry::new()),
+            concurrency_limiter: Arc::new(
+                crate::concurrency_limiter::WorkflowConcurrencyLimiter::default(),
+            ),
+            change_version_registry: Arc::new(
+                crate::workflow_change_versioning::ChangeVersionRegistry::new(),
+            ),
         }
     }
 
@@ -497,12 +505,20 @@ impl WorkflowEngine {
             replication_transport: Arc::new(ReplicationTransport::new()),
             hal: RwLock::new(HardwareAbstractionLayer::with_simulated_hardware()),
             db_adapter: None,
-            dependency_graph: Arc::new(crate::workflow_dependency_graph::WorkflowDependencyGraph::new()),
+            dependency_graph: Arc::new(
+                crate::workflow_dependency_graph::WorkflowDependencyGraph::new(),
+            ),
             deployment_pipeline: Arc::new(crate::deployment_pipeline::DeploymentPipeline::new()),
-            execution_tracker: Arc::new(crate::workflow_execution_tracker::WorkflowExecutionTracker::new()),
+            execution_tracker: Arc::new(
+                crate::workflow_execution_tracker::WorkflowExecutionTracker::new(),
+            ),
             circuit_breaker: Arc::new(crate::circuit_breaker::CircuitBreakerRegistry::new()),
-            concurrency_limiter: Arc::new(crate::concurrency_limiter::WorkflowConcurrencyLimiter::default()),
-            change_version_registry: Arc::new(crate::workflow_change_versioning::ChangeVersionRegistry::new()),
+            concurrency_limiter: Arc::new(
+                crate::concurrency_limiter::WorkflowConcurrencyLimiter::default(),
+            ),
+            change_version_registry: Arc::new(
+                crate::workflow_change_versioning::ChangeVersionRegistry::new(),
+            ),
         })
     }
 
@@ -516,14 +532,15 @@ impl WorkflowEngine {
     /// Should be called once after engine construction.
     pub fn init_timers(&self) {
         let history = self.history_store.clone();
-        self.timer_engine.set_fire_callback(Box::new(move |workflow_key, timer_id| {
-            // Zero-alloc: encode timer_id directly as fixed-size bytes
-            history.record_event(
-                workflow_key,
-                crate::event_history::HistoryEventType::TimerFired,
-                timer_id.to_le_bytes().to_vec(),
-            );
-        }));
+        self.timer_engine
+            .set_fire_callback(Box::new(move |workflow_key, timer_id| {
+                // Zero-alloc: encode timer_id directly as fixed-size bytes
+                history.record_event(
+                    workflow_key,
+                    crate::event_history::HistoryEventType::TimerFired,
+                    timer_id.to_le_bytes().to_vec(),
+                );
+            }));
     }
 
     /// Purge completed workflows that exceed their namespace's retention period.
@@ -546,7 +563,9 @@ impl WorkflowEngine {
             }
 
             // Look up namespace retention
-            let retention_ms = self.namespaces.get(info.namespace_id)
+            let retention_ms = self
+                .namespaces
+                .get(info.namespace_id)
                 .map(|cfg| cfg.retention_period.as_millis() as u64)
                 .unwrap_or(7 * 24 * 60 * 60 * 1000); // default 7-day retention
 
@@ -617,7 +636,9 @@ impl WorkflowEngine {
     /// Recover workflow state by replaying the WAL from disk.
     pub fn recover_from_wal(&self) -> Result<(usize, usize), String> {
         let wal = self.wal.as_ref().ok_or("WAL not enabled")?;
-        let records = wal.replay_all().map_err(|e| format!("WAL replay failed: {}", e))?;
+        let records = wal
+            .replay_all()
+            .map_err(|e| format!("WAL replay failed: {}", e))?;
         let total = records.len();
         let mut recovered_workflows = 0usize;
 
@@ -625,14 +646,24 @@ impl WorkflowEngine {
             let key = record.workflow_key;
             match record.event_type {
                 WalEventType::WorkflowStarted => {
-                    if record.data.len() < 36 { continue; }
+                    if record.data.len() < 36 {
+                        continue;
+                    }
                     let workflow_id = u64::from_le_bytes(record.data[0..8].try_into().unwrap());
-                    let workflow_type_id = u64::from_le_bytes(record.data[8..16].try_into().unwrap());
+                    let workflow_type_id =
+                        u64::from_le_bytes(record.data[8..16].try_into().unwrap());
                     let namespace_id = u64::from_le_bytes(record.data[16..24].try_into().unwrap());
-                    let task_queue_hash = u64::from_le_bytes(record.data[24..32].try_into().unwrap());
+                    let task_queue_hash =
+                        u64::from_le_bytes(record.data[24..32].try_into().unwrap());
                     let total_steps = u32::from_le_bytes(record.data[32..36].try_into().unwrap());
                     if let dashmap::mapref::entry::Entry::Vacant(e) = self.workflows.entry(key) {
-                        let mut ctx = WorkflowContext::new(workflow_id, key & 0xFFFFFFFF, workflow_type_id, task_queue_hash, total_steps);
+                        let mut ctx = WorkflowContext::new(
+                            workflow_id,
+                            key & 0xFFFFFFFF,
+                            workflow_type_id,
+                            task_queue_hash,
+                            total_steps,
+                        );
                         ctx.namespace_id = namespace_id;
                         e.insert(ctx);
                         recovered_workflows += 1;
@@ -649,19 +680,36 @@ impl WorkflowEngine {
                 WalEventType::SignalReceived => {
                     if let Some(mut ctx) = self.workflows.get_mut(&key) {
                         if record.data.len() >= 8 {
-                            let signal_name_id = u64::from_le_bytes(record.data[0..8].try_into().unwrap());
+                            let signal_name_id =
+                                u64::from_le_bytes(record.data[0..8].try_into().unwrap());
                             ctx.signal(signal_name_id, record.data[8..].to_vec());
                         }
                     }
                 }
                 WalEventType::WorkflowCompleted => {
                     if let Some(mut ctx) = self.workflows.get_mut(&key) {
-                        ctx.complete(if record.data.is_empty() { None } else { Some(record.data.clone()) });
+                        ctx.complete(if record.data.is_empty() {
+                            None
+                        } else {
+                            Some(record.data.clone())
+                        });
                     }
                 }
-                WalEventType::WorkflowFailed => { if let Some(mut ctx) = self.workflows.get_mut(&key) { ctx.fail(); } }
-                WalEventType::WorkflowCanceled => { if let Some(mut ctx) = self.workflows.get_mut(&key) { ctx.cancel(); } }
-                WalEventType::WorkflowTerminated => { if let Some(mut ctx) = self.workflows.get_mut(&key) { ctx.terminate(); } }
+                WalEventType::WorkflowFailed => {
+                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
+                        ctx.fail();
+                    }
+                }
+                WalEventType::WorkflowCanceled => {
+                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
+                        ctx.cancel();
+                    }
+                }
+                WalEventType::WorkflowTerminated => {
+                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
+                        ctx.terminate();
+                    }
+                }
                 _ => {}
             }
         }
@@ -685,7 +733,19 @@ impl WorkflowEngine {
                     namespace_id: ctx.namespace_id,
                     status: ctx.status,
                     start_time_ms: 0,
-                    close_time_ms: if matches!(ctx.status, WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Canceled | WorkflowStatus::Terminated | WorkflowStatus::ContinuedAsNew | WorkflowStatus::TimedOut) { Some(0) } else { None },
+                    close_time_ms: if matches!(
+                        ctx.status,
+                        WorkflowStatus::Completed
+                            | WorkflowStatus::Failed
+                            | WorkflowStatus::Canceled
+                            | WorkflowStatus::Terminated
+                            | WorkflowStatus::ContinuedAsNew
+                            | WorkflowStatus::TimedOut
+                    ) {
+                        Some(0)
+                    } else {
+                        None
+                    },
                     task_queue_hash: ctx.task_queue_hash,
                     search_attributes: HashMap::new(),
                     memo: HashMap::new(),
@@ -697,16 +757,31 @@ impl WorkflowEngine {
         for record in &records {
             let key = record.workflow_key;
             let hist_type = match record.event_type {
-                WalEventType::WorkflowStarted => crate::event_history::HistoryEventType::WorkflowStarted,
-                WalEventType::StepCompleted => crate::event_history::HistoryEventType::StepCompleted,
-                WalEventType::SignalReceived => crate::event_history::HistoryEventType::SignalReceived,
-                WalEventType::WorkflowCompleted => crate::event_history::HistoryEventType::WorkflowCompleted,
-                WalEventType::WorkflowFailed => crate::event_history::HistoryEventType::WorkflowFailed,
-                WalEventType::WorkflowCanceled => crate::event_history::HistoryEventType::WorkflowCanceled,
-                WalEventType::WorkflowTerminated => crate::event_history::HistoryEventType::WorkflowTerminated,
+                WalEventType::WorkflowStarted => {
+                    crate::event_history::HistoryEventType::WorkflowStarted
+                }
+                WalEventType::StepCompleted => {
+                    crate::event_history::HistoryEventType::StepCompleted
+                }
+                WalEventType::SignalReceived => {
+                    crate::event_history::HistoryEventType::SignalReceived
+                }
+                WalEventType::WorkflowCompleted => {
+                    crate::event_history::HistoryEventType::WorkflowCompleted
+                }
+                WalEventType::WorkflowFailed => {
+                    crate::event_history::HistoryEventType::WorkflowFailed
+                }
+                WalEventType::WorkflowCanceled => {
+                    crate::event_history::HistoryEventType::WorkflowCanceled
+                }
+                WalEventType::WorkflowTerminated => {
+                    crate::event_history::HistoryEventType::WorkflowTerminated
+                }
                 _ => continue,
             };
-            self.history_store.record_event(key, hist_type, record.data.clone());
+            self.history_store
+                .record_event(key, hist_type, record.data.clone());
         }
 
         // Verify determinism via replay engine
@@ -716,22 +791,24 @@ impl WorkflowEngine {
             let history = self.history_store.get_history(key).unwrap_or_default();
             if !history.is_empty() {
                 let result = self.replay_engine.replay(key, &history, None);
-                if result.success { verified += 1; }
+                if result.success {
+                    verified += 1;
+                }
             }
         }
 
-        self.metrics_registry.inc_counter("velocity_wal_recovery_records");
+        self.metrics_registry
+            .inc_counter("velocity_wal_recovery_records");
         for _ in 0..verified {
-            self.metrics_registry.inc_counter("velocity_wal_recovery_verified");
+            self.metrics_registry
+                .inc_counter("velocity_wal_recovery_verified");
         }
 
         Ok((total, recovered_workflows))
     }
 
     /// Access the workflows map for concurrent reads/writes (DashMap — sharded, lock-free).
-    pub fn workflows_write(
-        &self,
-    ) -> &DashMap<u64, WorkflowContext> {
+    pub fn workflows_write(&self) -> &DashMap<u64, WorkflowContext> {
         &self.workflows
     }
 
@@ -803,22 +880,30 @@ impl WorkflowEngine {
     pub fn saga_orchestrator(&self) -> &Arc<SagaOrchestrator> {
         &self.saga_orchestrator
     }
-    pub fn dependency_graph(&self) -> &Arc<crate::workflow_dependency_graph::WorkflowDependencyGraph> {
+    pub fn dependency_graph(
+        &self,
+    ) -> &Arc<crate::workflow_dependency_graph::WorkflowDependencyGraph> {
         &self.dependency_graph
     }
     pub fn deployment_pipeline(&self) -> &Arc<crate::deployment_pipeline::DeploymentPipeline> {
         &self.deployment_pipeline
     }
-    pub fn execution_tracker(&self) -> &Arc<crate::workflow_execution_tracker::WorkflowExecutionTracker> {
+    pub fn execution_tracker(
+        &self,
+    ) -> &Arc<crate::workflow_execution_tracker::WorkflowExecutionTracker> {
         &self.execution_tracker
     }
     pub fn circuit_breaker(&self) -> &Arc<crate::circuit_breaker::CircuitBreakerRegistry> {
         &self.circuit_breaker
     }
-    pub fn concurrency_limiter(&self) -> &Arc<crate::concurrency_limiter::WorkflowConcurrencyLimiter> {
+    pub fn concurrency_limiter(
+        &self,
+    ) -> &Arc<crate::concurrency_limiter::WorkflowConcurrencyLimiter> {
         &self.concurrency_limiter
     }
-    pub fn change_version_registry(&self) -> &Arc<crate::workflow_change_versioning::ChangeVersionRegistry> {
+    pub fn change_version_registry(
+        &self,
+    ) -> &Arc<crate::workflow_change_versioning::ChangeVersionRegistry> {
         &self.change_version_registry
     }
     pub fn partition_manager(&self) -> &Arc<PartitionManager> {
@@ -940,8 +1025,13 @@ impl WorkflowEngine {
         max_supported: i32,
         is_replay: bool,
     ) -> crate::workflow_change_versioning::VersionResult {
-        self.change_version_registry
-            .get_version(workflow_key, change_id, min_supported, max_supported, is_replay)
+        self.change_version_registry.get_version(
+            workflow_key,
+            change_id,
+            min_supported,
+            max_supported,
+            is_replay,
+        )
     }
 
     /// Start a new workflow execution. Creates the context, slab header, and schedules
@@ -1410,7 +1500,10 @@ impl WorkflowEngine {
 
         // Record deployment pipeline metrics if an active deployment exists
         {
-            let wf_type_id = self.workflows.get(&workflow_key).map_or(0, |c| c.workflow_type_id);
+            let wf_type_id = self
+                .workflows
+                .get(&workflow_key)
+                .map_or(0, |c| c.workflow_type_id);
             let wf_type = format!("wf_type_{}", wf_type_id);
             if let Some(dep_id) = self.deployment_pipeline.get_active_deployment_id(&wf_type) {
                 self.deployment_pipeline.record_execution(dep_id, true, 0);
@@ -1425,7 +1518,8 @@ impl WorkflowEngine {
         self.dependency_graph.remove_workflow(workflow_key);
 
         // Clean up change version registry
-        self.change_version_registry.unregister_workflow(workflow_key);
+        self.change_version_registry
+            .unregister_workflow(workflow_key);
 
         if let Some(wal) = &self.wal {
             // Persist result payload for crash durability
@@ -1455,7 +1549,10 @@ impl WorkflowEngine {
 
         // Record deployment pipeline failure metrics
         {
-            let wf_type_id = self.workflows.get(&workflow_key).map_or(0, |c| c.workflow_type_id);
+            let wf_type_id = self
+                .workflows
+                .get(&workflow_key)
+                .map_or(0, |c| c.workflow_type_id);
             let wf_type = format!("wf_type_{}", wf_type_id);
             if let Some(dep_id) = self.deployment_pipeline.get_active_deployment_id(&wf_type) {
                 self.deployment_pipeline.record_execution(dep_id, false, 0);
@@ -1470,7 +1567,8 @@ impl WorkflowEngine {
         self.dependency_graph.remove_workflow(workflow_key);
 
         // Clean up change version registry
-        self.change_version_registry.unregister_workflow(workflow_key);
+        self.change_version_registry
+            .unregister_workflow(workflow_key);
 
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowFailed, workflow_key, vec![]);
@@ -1498,14 +1596,18 @@ impl WorkflowEngine {
 
         // Track cancellation in execution tracker
         {
-            let wf_type_id = self.workflows.get(&workflow_key).map_or(0, |c| c.workflow_type_id);
+            let wf_type_id = self
+                .workflows
+                .get(&workflow_key)
+                .map_or(0, |c| c.workflow_type_id);
             self.execution_tracker.record_cancellation(wf_type_id);
         }
         // Remove from dependency graph tracking
         self.dependency_graph.remove_workflow(workflow_key);
 
         // Clean up change version registry
-        self.change_version_registry.unregister_workflow(workflow_key);
+        self.change_version_registry
+            .unregister_workflow(workflow_key);
 
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowCanceled, workflow_key, vec![]);
@@ -1533,14 +1635,18 @@ impl WorkflowEngine {
 
         // Track termination in execution tracker
         {
-            let wf_type_id = self.workflows.get(&workflow_key).map_or(0, |c| c.workflow_type_id);
+            let wf_type_id = self
+                .workflows
+                .get(&workflow_key)
+                .map_or(0, |c| c.workflow_type_id);
             self.execution_tracker.record_termination(wf_type_id);
         }
         // Remove from dependency graph tracking
         self.dependency_graph.remove_workflow(workflow_key);
 
         // Clean up change version registry
-        self.change_version_registry.unregister_workflow(workflow_key);
+        self.change_version_registry
+            .unregister_workflow(workflow_key);
 
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowTerminated, workflow_key, vec![]);
@@ -1572,7 +1678,11 @@ impl WorkflowEngine {
                 input_data: ctx.input_data.clone(),
                 result_data: ctx.result_data.clone(),
                 step_count: ctx.slab.total_steps,
-                step_results: ctx.step_results.iter().map(|(k, v)| (k as u32, v.clone())).collect(),
+                step_results: ctx
+                    .step_results
+                    .iter()
+                    .map(|(k, v)| (k as u32, v.clone()))
+                    .collect(),
                 event_count: ctx.event_sequence,
                 archived_at_ms: 0,
                 start_time_ms: 0,
@@ -1683,7 +1793,10 @@ impl WorkflowEngine {
     /// Create a backup: WAL snapshot + JSON export of all workflow states.
     ///
     /// Returns `(snapshot_path, json_export_path)`.
-    pub fn backup(&self, backup_dir: impl AsRef<std::path::Path>) -> std::io::Result<(std::path::PathBuf, std::path::PathBuf)> {
+    pub fn backup(
+        &self,
+        backup_dir: impl AsRef<std::path::Path>,
+    ) -> std::io::Result<(std::path::PathBuf, std::path::PathBuf)> {
         let dir = backup_dir.as_ref();
         std::fs::create_dir_all(dir)?;
 
@@ -1691,7 +1804,10 @@ impl WorkflowEngine {
         let snapshot_path = if let Some(wal) = &self.wal {
             wal.snapshot(dir)?
         } else {
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "WAL not enabled"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "WAL not enabled",
+            ));
         };
 
         // 2. JSON export of workflow states
@@ -1722,7 +1838,10 @@ impl WorkflowEngine {
             "workflows": workflows_json,
         });
 
-        std::fs::write(&json_path, serde_json::to_string_pretty(&backup_json).unwrap_or_default())?;
+        std::fs::write(
+            &json_path,
+            serde_json::to_string_pretty(&backup_json).unwrap_or_default(),
+        )?;
 
         Ok((snapshot_path, json_path))
     }
@@ -1977,8 +2096,7 @@ impl WorkflowEngine {
 
                 // Clear step results after the reset point
                 // (In a full implementation, we'd replay from event history)
-                ctx.step_results
-                    .retain(|&step, _| step < reset_to_event_id);
+                ctx.step_results.retain(|&step, _| step < reset_to_event_id);
 
                 // Reset the slab bitmask for steps after the reset point
                 for step in reset_to_event_id..ctx.slab.total_steps as u64 {
@@ -2167,24 +2285,46 @@ impl WorkflowEngine {
                 .duration_since(ctx.start_time);
 
             (
-                ctx.workflow_id, ctx.run_id, ctx.workflow_type_id, ctx.namespace_id,
-                ctx.status, ctx.start_time, ctx.close_time, execution_duration,
-                pending_activities, child_keys, pending_signals,
-                ctx.slab.total_steps, ctx.slab.step_bitmask.count_completed(),
+                ctx.workflow_id,
+                ctx.run_id,
+                ctx.workflow_type_id,
+                ctx.namespace_id,
+                ctx.status,
+                ctx.start_time,
+                ctx.close_time,
+                execution_duration,
+                pending_activities,
+                child_keys,
+                pending_signals,
+                ctx.slab.total_steps,
+                ctx.slab.step_bitmask.count_completed(),
                 ctx.parent_key,
             )
         }; // DashMap read guard released here
 
-        let (workflow_id, run_id, workflow_type_id, namespace_id,
-            status, start_time, close_time, execution_duration,
-            pending_activities, child_keys, pending_signals,
-            total_steps, completed_steps, parent_key) = ctx_data;
+        let (
+            workflow_id,
+            run_id,
+            workflow_type_id,
+            namespace_id,
+            status,
+            start_time,
+            close_time,
+            execution_duration,
+            pending_activities,
+            child_keys,
+            pending_signals,
+            total_steps,
+            completed_steps,
+            parent_key,
+        ) = ctx_data;
 
         // Resolve child statuses (separate lookups — no lock held on parent)
         let pending_children: Vec<PendingChildInfo> = child_keys
             .iter()
             .map(|&child_key| {
-                let child_status = self.workflows
+                let child_status = self
+                    .workflows
                     .get(&child_key)
                     .map(|c| c.status)
                     .unwrap_or(WorkflowStatus::Void);

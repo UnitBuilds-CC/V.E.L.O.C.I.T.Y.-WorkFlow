@@ -42,10 +42,7 @@ pub enum QueryExpr {
         values: Vec<QueryValue>,
     },
     /// LIKE: field LIKE pattern
-    Like {
-        field: String,
-        pattern: String,
-    },
+    Like { field: String, pattern: String },
     /// IS NULL check
     IsNull(String),
     /// IS NOT NULL check

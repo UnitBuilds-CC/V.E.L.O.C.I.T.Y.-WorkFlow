@@ -268,13 +268,17 @@ impl VirtualObjectRuntime {
         }
 
         // Validate object type and handler exist
-        let handlers = self.object_types.get(object_type).ok_or_else(|| {
-            VirtualObjectError::UnknownObjectType(object_type.to_string())
-        })?;
+        let handlers = self
+            .object_types
+            .get(object_type)
+            .ok_or_else(|| VirtualObjectError::UnknownObjectType(object_type.to_string()))?;
 
-        let _handler = handlers.iter().find(|h| h.name == handler_name).ok_or_else(|| {
-            VirtualObjectError::UnknownHandler(format!("{}/{}", object_type, handler_name))
-        })?;
+        let _handler = handlers
+            .iter()
+            .find(|h| h.name == handler_name)
+            .ok_or_else(|| {
+                VirtualObjectError::UnknownHandler(format!("{}/{}", object_type, handler_name))
+            })?;
 
         let object_key = ObjectKey::new(object_type, key);
         let full_key = object_key.full_key();
@@ -309,7 +313,10 @@ impl VirtualObjectRuntime {
         self.key_state.entry(full_key.clone()).or_default();
 
         // Queue the invocation for this key
-        self.key_queues.entry(full_key.clone()).or_default().push_back(invocation_id);
+        self.key_queues
+            .entry(full_key.clone())
+            .or_default()
+            .push_back(invocation_id);
 
         // Try to dispatch (if key is free)
         self.try_dispatch(&full_key);
@@ -344,7 +351,9 @@ impl VirtualObjectRuntime {
         entry_type: JournalEntryType,
         input: Vec<u8>,
     ) -> Result<u32, VirtualObjectError> {
-        let inv = self.invocations.get_mut(&invocation_id)
+        let inv = self
+            .invocations
+            .get_mut(&invocation_id)
             .ok_or(VirtualObjectError::UnknownInvocation(invocation_id))?;
 
         let sequence = inv.next_sequence;
@@ -369,7 +378,9 @@ impl VirtualObjectRuntime {
         sequence: u32,
         output: Vec<u8>,
     ) -> Result<(), VirtualObjectError> {
-        let inv = self.invocations.get_mut(&invocation_id)
+        let inv = self
+            .invocations
+            .get_mut(&invocation_id)
             .ok_or(VirtualObjectError::UnknownInvocation(invocation_id))?;
 
         if let Some(entry) = inv.journal.iter_mut().find(|e| e.sequence == sequence) {
@@ -398,7 +409,9 @@ impl VirtualObjectRuntime {
         value: Vec<u8>,
     ) -> Result<(), VirtualObjectError> {
         let full_key = format!("{}/{}", object_type, key);
-        let state = self.key_state.get_mut(&full_key)
+        let state = self
+            .key_state
+            .get_mut(&full_key)
             .ok_or(VirtualObjectError::UnknownKey(full_key))?;
 
         state.entries.insert(state_key.to_string(), value);
@@ -415,7 +428,9 @@ impl VirtualObjectRuntime {
         state_key: &str,
     ) -> Result<(), VirtualObjectError> {
         let full_key = format!("{}/{}", object_type, key);
-        let state = self.key_state.get_mut(&full_key)
+        let state = self
+            .key_state
+            .get_mut(&full_key)
             .ok_or(VirtualObjectError::UnknownKey(full_key))?;
 
         state.entries.remove(state_key);
@@ -440,7 +455,9 @@ impl VirtualObjectRuntime {
         invocation_id: u64,
         output: Vec<u8>,
     ) -> Result<(), VirtualObjectError> {
-        let inv = self.invocations.get_mut(&invocation_id)
+        let inv = self
+            .invocations
+            .get_mut(&invocation_id)
             .ok_or(VirtualObjectError::UnknownInvocation(invocation_id))?;
 
         let full_key = inv.target.full_key();
@@ -464,7 +481,9 @@ impl VirtualObjectRuntime {
         invocation_id: u64,
         error: String,
     ) -> Result<(), VirtualObjectError> {
-        let inv = self.invocations.get_mut(&invocation_id)
+        let inv = self
+            .invocations
+            .get_mut(&invocation_id)
             .ok_or(VirtualObjectError::UnknownInvocation(invocation_id))?;
 
         let full_key = inv.target.full_key();
@@ -484,7 +503,9 @@ impl VirtualObjectRuntime {
 
     /// Suspend an invocation (awaiting external input).
     pub fn suspend_invocation(&mut self, invocation_id: u64) -> Result<(), VirtualObjectError> {
-        let inv = self.invocations.get_mut(&invocation_id)
+        let inv = self
+            .invocations
+            .get_mut(&invocation_id)
             .ok_or(VirtualObjectError::UnknownInvocation(invocation_id))?;
 
         inv.state = HandlerState::Suspended;
@@ -494,13 +515,16 @@ impl VirtualObjectRuntime {
 
     /// Resume a suspended invocation.
     pub fn resume_invocation(&mut self, invocation_id: u64) -> Result<(), VirtualObjectError> {
-        let inv = self.invocations.get_mut(&invocation_id)
+        let inv = self
+            .invocations
+            .get_mut(&invocation_id)
             .ok_or(VirtualObjectError::UnknownInvocation(invocation_id))?;
 
         if inv.state != HandlerState::Suspended {
-            return Err(VirtualObjectError::InvalidStateTransition(
-                format!("Cannot resume invocation in state {:?}", inv.state),
-            ));
+            return Err(VirtualObjectError::InvalidStateTransition(format!(
+                "Cannot resume invocation in state {:?}",
+                inv.state
+            )));
         }
 
         inv.state = HandlerState::Running;
@@ -511,11 +535,10 @@ impl VirtualObjectRuntime {
     // ─── Awakeables ────────────────────────────────────────────────────────
 
     /// Create an awakeable for an invocation.
-    pub fn create_awakeable(
-        &mut self,
-        invocation_id: u64,
-    ) -> Result<String, VirtualObjectError> {
-        let inv = self.invocations.get(&invocation_id)
+    pub fn create_awakeable(&mut self, invocation_id: u64) -> Result<String, VirtualObjectError> {
+        let inv = self
+            .invocations
+            .get(&invocation_id)
             .ok_or(VirtualObjectError::UnknownInvocation(invocation_id))?;
 
         let awakeable_id = format!("awk_{}_{}", invocation_id, self.awakeables.len());
@@ -538,11 +561,15 @@ impl VirtualObjectRuntime {
         awakeable_id: &str,
         value: Vec<u8>,
     ) -> Result<u64, VirtualObjectError> {
-        let awk = self.awakeables.get_mut(awakeable_id)
+        let awk = self
+            .awakeables
+            .get_mut(awakeable_id)
             .ok_or_else(|| VirtualObjectError::UnknownAwakeable(awakeable_id.to_string()))?;
 
         if awk.resolved {
-            return Err(VirtualObjectError::AlreadyResolved(awakeable_id.to_string()));
+            return Err(VirtualObjectError::AlreadyResolved(
+                awakeable_id.to_string(),
+            ));
         }
 
         awk.resolved = true;
@@ -553,7 +580,8 @@ impl VirtualObjectRuntime {
         if let Some(inv) = self.invocations.get_mut(&owner_id) {
             if inv.state == HandlerState::Suspended {
                 inv.state = HandlerState::Running;
-                self.stats.suspended_invocations = self.stats.suspended_invocations.saturating_sub(1);
+                self.stats.suspended_invocations =
+                    self.stats.suspended_invocations.saturating_sub(1);
             }
         }
 
@@ -566,11 +594,15 @@ impl VirtualObjectRuntime {
         awakeable_id: &str,
         error: String,
     ) -> Result<u64, VirtualObjectError> {
-        let awk = self.awakeables.get_mut(awakeable_id)
+        let awk = self
+            .awakeables
+            .get_mut(awakeable_id)
             .ok_or_else(|| VirtualObjectError::UnknownAwakeable(awakeable_id.to_string()))?;
 
         if awk.resolved {
-            return Err(VirtualObjectError::AlreadyResolved(awakeable_id.to_string()));
+            return Err(VirtualObjectError::AlreadyResolved(
+                awakeable_id.to_string(),
+            ));
         }
 
         awk.resolved = true;
@@ -581,7 +613,8 @@ impl VirtualObjectRuntime {
         if let Some(inv) = self.invocations.get_mut(&owner_id) {
             if inv.state == HandlerState::Suspended {
                 inv.state = HandlerState::Running;
-                self.stats.suspended_invocations = self.stats.suspended_invocations.saturating_sub(1);
+                self.stats.suspended_invocations =
+                    self.stats.suspended_invocations.saturating_sub(1);
             }
         }
 
@@ -676,34 +709,40 @@ mod tests {
 
     fn test_runtime() -> VirtualObjectRuntime {
         let mut rt = VirtualObjectRuntime::new();
-        rt.register_object_type("ChatAgent", vec![
-            HandlerDefinition {
-                name: "message".to_string(),
-                handler_kind: HandlerKind::Workflow,
-                input_schema: None,
-                output_schema: None,
-            },
-            HandlerDefinition {
-                name: "get_history".to_string(),
-                handler_kind: HandlerKind::Shared,
-                input_schema: None,
-                output_schema: None,
-            },
-        ]);
-        rt.register_object_type("ShoppingCart", vec![
-            HandlerDefinition {
-                name: "add_item".to_string(),
-                handler_kind: HandlerKind::Service,
-                input_schema: None,
-                output_schema: None,
-            },
-            HandlerDefinition {
-                name: "checkout".to_string(),
-                handler_kind: HandlerKind::Workflow,
-                input_schema: None,
-                output_schema: None,
-            },
-        ]);
+        rt.register_object_type(
+            "ChatAgent",
+            vec![
+                HandlerDefinition {
+                    name: "message".to_string(),
+                    handler_kind: HandlerKind::Workflow,
+                    input_schema: None,
+                    output_schema: None,
+                },
+                HandlerDefinition {
+                    name: "get_history".to_string(),
+                    handler_kind: HandlerKind::Shared,
+                    input_schema: None,
+                    output_schema: None,
+                },
+            ],
+        );
+        rt.register_object_type(
+            "ShoppingCart",
+            vec![
+                HandlerDefinition {
+                    name: "add_item".to_string(),
+                    handler_kind: HandlerKind::Service,
+                    input_schema: None,
+                    output_schema: None,
+                },
+                HandlerDefinition {
+                    name: "checkout".to_string(),
+                    handler_kind: HandlerKind::Workflow,
+                    input_schema: None,
+                    output_schema: None,
+                },
+            ],
+        );
         rt
     }
 
@@ -719,7 +758,9 @@ mod tests {
     #[test]
     fn test_invoke_handler() {
         let mut rt = test_runtime();
-        let id = rt.invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None).unwrap();
+        let id = rt
+            .invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None)
+            .unwrap();
         assert_eq!(id, 1);
 
         let inv = rt.get_invocation(id).unwrap();
@@ -732,16 +773,22 @@ mod tests {
         let mut rt = test_runtime();
 
         // First invocation runs immediately
-        let id1 = rt.invoke("ChatAgent", "session-1", "message", b"msg1".to_vec(), None).unwrap();
+        let id1 = rt
+            .invoke("ChatAgent", "session-1", "message", b"msg1".to_vec(), None)
+            .unwrap();
         assert_eq!(rt.get_invocation(id1).unwrap().state, HandlerState::Running);
 
         // Second invocation on same key is queued
-        let id2 = rt.invoke("ChatAgent", "session-1", "message", b"msg2".to_vec(), None).unwrap();
+        let id2 = rt
+            .invoke("ChatAgent", "session-1", "message", b"msg2".to_vec(), None)
+            .unwrap();
         assert_eq!(rt.get_invocation(id2).unwrap().state, HandlerState::Queued);
         assert_eq!(rt.key_queue_depth("ChatAgent", "session-1"), 1);
 
         // Invocation on different key runs in parallel
-        let id3 = rt.invoke("ChatAgent", "session-2", "message", b"msg3".to_vec(), None).unwrap();
+        let id3 = rt
+            .invoke("ChatAgent", "session-2", "message", b"msg3".to_vec(), None)
+            .unwrap();
         assert_eq!(rt.get_invocation(id3).unwrap().state, HandlerState::Running);
     }
 
@@ -749,26 +796,39 @@ mod tests {
     fn test_complete_dispatches_next() {
         let mut rt = test_runtime();
 
-        let id1 = rt.invoke("ChatAgent", "session-1", "message", b"msg1".to_vec(), None).unwrap();
-        let id2 = rt.invoke("ChatAgent", "session-1", "message", b"msg2".to_vec(), None).unwrap();
+        let id1 = rt
+            .invoke("ChatAgent", "session-1", "message", b"msg1".to_vec(), None)
+            .unwrap();
+        let id2 = rt
+            .invoke("ChatAgent", "session-1", "message", b"msg2".to_vec(), None)
+            .unwrap();
 
         // Complete first — second should start
         rt.complete_invocation(id1, b"reply1".to_vec()).unwrap();
-        assert_eq!(rt.get_invocation(id1).unwrap().state, HandlerState::Completed);
+        assert_eq!(
+            rt.get_invocation(id1).unwrap().state,
+            HandlerState::Completed
+        );
         assert_eq!(rt.get_invocation(id2).unwrap().state, HandlerState::Running);
     }
 
     #[test]
     fn test_state_operations() {
         let mut rt = test_runtime();
-        let _id = rt.invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None).unwrap();
+        let _id = rt
+            .invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None)
+            .unwrap();
 
         // State starts empty
         assert!(rt.state_get("ChatAgent", "session-1", "history").is_none());
 
         // Set state
-        rt.state_set("ChatAgent", "session-1", "history", b"[msg1,msg2]".to_vec()).unwrap();
-        assert_eq!(rt.state_get("ChatAgent", "session-1", "history").unwrap(), b"[msg1,msg2]");
+        rt.state_set("ChatAgent", "session-1", "history", b"[msg1,msg2]".to_vec())
+            .unwrap();
+        assert_eq!(
+            rt.state_get("ChatAgent", "session-1", "history").unwrap(),
+            b"[msg1,msg2]"
+        );
 
         // Clear state
         rt.state_clear("ChatAgent", "session-1", "history").unwrap();
@@ -778,22 +838,50 @@ mod tests {
     #[test]
     fn test_state_isolation_between_keys() {
         let mut rt = test_runtime();
-        let _id1 = rt.invoke("ChatAgent", "session-1", "message", b"a".to_vec(), None).unwrap();
-        let _id2 = rt.invoke("ChatAgent", "session-2", "message", b"b".to_vec(), None).unwrap();
+        let _id1 = rt
+            .invoke("ChatAgent", "session-1", "message", b"a".to_vec(), None)
+            .unwrap();
+        let _id2 = rt
+            .invoke("ChatAgent", "session-2", "message", b"b".to_vec(), None)
+            .unwrap();
 
-        rt.state_set("ChatAgent", "session-1", "history", b"history-1".to_vec()).unwrap();
-        rt.state_set("ChatAgent", "session-2", "history", b"history-2".to_vec()).unwrap();
+        rt.state_set("ChatAgent", "session-1", "history", b"history-1".to_vec())
+            .unwrap();
+        rt.state_set("ChatAgent", "session-2", "history", b"history-2".to_vec())
+            .unwrap();
 
-        assert_eq!(rt.state_get("ChatAgent", "session-1", "history").unwrap(), b"history-1");
-        assert_eq!(rt.state_get("ChatAgent", "session-2", "history").unwrap(), b"history-2");
+        assert_eq!(
+            rt.state_get("ChatAgent", "session-1", "history").unwrap(),
+            b"history-1"
+        );
+        assert_eq!(
+            rt.state_get("ChatAgent", "session-2", "history").unwrap(),
+            b"history-2"
+        );
     }
 
     #[test]
     fn test_idempotency() {
         let mut rt = test_runtime();
 
-        let id1 = rt.invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), Some("idem-1".to_string())).unwrap();
-        let id2 = rt.invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), Some("idem-1".to_string())).unwrap();
+        let id1 = rt
+            .invoke(
+                "ChatAgent",
+                "session-1",
+                "message",
+                b"hello".to_vec(),
+                Some("idem-1".to_string()),
+            )
+            .unwrap();
+        let id2 = rt
+            .invoke(
+                "ChatAgent",
+                "session-1",
+                "message",
+                b"hello".to_vec(),
+                Some("idem-1".to_string()),
+            )
+            .unwrap();
 
         // Same idempotency key returns same invocation
         assert_eq!(id1, id2);
@@ -803,11 +891,23 @@ mod tests {
     #[test]
     fn test_journal_operations() {
         let mut rt = test_runtime();
-        let id = rt.invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None).unwrap();
+        let id = rt
+            .invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None)
+            .unwrap();
 
         // Append journal entries
-        let seq0 = rt.append_journal(id, JournalEntryType::DurableStep, b"step1".to_vec()).unwrap();
-        let seq1 = rt.append_journal(id, JournalEntryType::StateGet { state_key: "history".to_string() }, vec![]).unwrap();
+        let seq0 = rt
+            .append_journal(id, JournalEntryType::DurableStep, b"step1".to_vec())
+            .unwrap();
+        let seq1 = rt
+            .append_journal(
+                id,
+                JournalEntryType::StateGet {
+                    state_key: "history".to_string(),
+                },
+                vec![],
+            )
+            .unwrap();
 
         assert_eq!(seq0, 0);
         assert_eq!(seq1, 1);
@@ -825,10 +925,15 @@ mod tests {
     #[test]
     fn test_suspend_and_resume() {
         let mut rt = test_runtime();
-        let id = rt.invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None).unwrap();
+        let id = rt
+            .invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None)
+            .unwrap();
 
         rt.suspend_invocation(id).unwrap();
-        assert_eq!(rt.get_invocation(id).unwrap().state, HandlerState::Suspended);
+        assert_eq!(
+            rt.get_invocation(id).unwrap().state,
+            HandlerState::Suspended
+        );
         assert_eq!(rt.stats().suspended_invocations, 1);
 
         rt.resume_invocation(id).unwrap();
@@ -839,7 +944,9 @@ mod tests {
     #[test]
     fn test_awakeable_lifecycle() {
         let mut rt = test_runtime();
-        let id = rt.invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None).unwrap();
+        let id = rt
+            .invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None)
+            .unwrap();
 
         // Create awakeable
         let awk_id = rt.create_awakeable(id).unwrap();
@@ -851,13 +958,16 @@ mod tests {
         // Resolve awakeable (external system)
         let owner = rt.resolve_awakeable(&awk_id, b"approved".to_vec()).unwrap();
         assert_eq!(owner, id);
-        assert_eq!(rt.get_invocation(id).unwrap().state, HandlerState::Running); // Resumed!
+        assert_eq!(rt.get_invocation(id).unwrap().state, HandlerState::Running);
+        // Resumed!
     }
 
     #[test]
     fn test_awakeable_rejection() {
         let mut rt = test_runtime();
-        let id = rt.invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None).unwrap();
+        let id = rt
+            .invoke("ChatAgent", "session-1", "message", b"hello".to_vec(), None)
+            .unwrap();
 
         let awk_id = rt.create_awakeable(id).unwrap();
         rt.suspend_invocation(id).unwrap();
@@ -885,8 +995,12 @@ mod tests {
     fn test_fail_dispatches_next() {
         let mut rt = test_runtime();
 
-        let id1 = rt.invoke("ChatAgent", "session-1", "message", b"msg1".to_vec(), None).unwrap();
-        let id2 = rt.invoke("ChatAgent", "session-1", "message", b"msg2".to_vec(), None).unwrap();
+        let id1 = rt
+            .invoke("ChatAgent", "session-1", "message", b"msg1".to_vec(), None)
+            .unwrap();
+        let id2 = rt
+            .invoke("ChatAgent", "session-1", "message", b"msg2".to_vec(), None)
+            .unwrap();
 
         // Fail first — second should start
         rt.fail_invocation(id1, "error".to_string()).unwrap();
@@ -899,8 +1013,12 @@ mod tests {
         let mut rt = test_runtime();
 
         // Different object types run in parallel
-        let id1 = rt.invoke("ChatAgent", "session-1", "message", b"a".to_vec(), None).unwrap();
-        let id2 = rt.invoke("ShoppingCart", "cart-1", "add_item", b"item".to_vec(), None).unwrap();
+        let id1 = rt
+            .invoke("ChatAgent", "session-1", "message", b"a".to_vec(), None)
+            .unwrap();
+        let id2 = rt
+            .invoke("ShoppingCart", "cart-1", "add_item", b"item".to_vec(), None)
+            .unwrap();
 
         assert_eq!(rt.get_invocation(id1).unwrap().state, HandlerState::Running);
         assert_eq!(rt.get_invocation(id2).unwrap().state, HandlerState::Running);
@@ -910,9 +1028,15 @@ mod tests {
     fn test_stats() {
         let mut rt = test_runtime();
 
-        let id1 = rt.invoke("ChatAgent", "s1", "message", b"a".to_vec(), None).unwrap();
-        let _id2 = rt.invoke("ChatAgent", "s1", "message", b"b".to_vec(), None).unwrap();
-        let _id3 = rt.invoke("ChatAgent", "s2", "message", b"c".to_vec(), None).unwrap();
+        let id1 = rt
+            .invoke("ChatAgent", "s1", "message", b"a".to_vec(), None)
+            .unwrap();
+        let _id2 = rt
+            .invoke("ChatAgent", "s1", "message", b"b".to_vec(), None)
+            .unwrap();
+        let _id3 = rt
+            .invoke("ChatAgent", "s2", "message", b"c".to_vec(), None)
+            .unwrap();
 
         rt.complete_invocation(id1, b"done".to_vec()).unwrap();
 

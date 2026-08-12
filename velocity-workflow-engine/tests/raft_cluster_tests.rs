@@ -298,7 +298,10 @@ fn test_commit_index_cannot_go_backwards() {
 
     // Trying to go backwards should be a no-op
     node.advance_commit(1);
-    assert!(node.commit_index() >= 3, "Commit index should not go backwards");
+    assert!(
+        node.commit_index() >= 3,
+        "Commit index should not go backwards"
+    );
 }
 
 // ============================================================================
@@ -575,7 +578,11 @@ fn test_raft_event_type_variants() {
     // All variants should be distinct (check by pairwise comparison)
     for i in 0..events.len() {
         for j in (i + 1)..events.len() {
-            assert_ne!(events[i], events[j], "Variants at {} and {} should differ", i, j);
+            assert_ne!(
+                events[i], events[j],
+                "Variants at {} and {} should differ",
+                i, j
+            );
         }
     }
     assert_eq!(events.len(), 10);

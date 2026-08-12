@@ -9,11 +9,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use velocity_workflow_engine::queue_processing::{
-    QueueProcessorConfig, QueueProcessorStatus, QueueProcessorStats,
-    ReplicationQueueProcessor, ReplicationQueueTask, ReplicationQueueTaskType,
-    TaskExecutionResult, TimerQueueProcessor, TimerQueueTask, TimerQueueTaskType,
-    TransferQueueProcessor, TransferQueueTask, TransferQueueTaskType,
-    VisibilityQueueProcessor, VisibilityQueueTask, VisibilityQueueTaskType,
+    QueueProcessorConfig, QueueProcessorStats, QueueProcessorStatus, ReplicationQueueProcessor,
+    ReplicationQueueTask, ReplicationQueueTaskType, TaskExecutionResult, TimerQueueProcessor,
+    TimerQueueTask, TimerQueueTaskType, TransferQueueProcessor, TransferQueueTask,
+    TransferQueueTaskType, VisibilityQueueProcessor, VisibilityQueueTask, VisibilityQueueTaskType,
 };
 
 fn default_queue_config() -> QueueProcessorConfig {
@@ -469,9 +468,7 @@ fn test_visibility_queue_depth() {
         status: 1,
         start_time_ms: now_ms(),
         close_time_ms: None,
-        search_attributes: HashMap::from([
-            ("key".to_string(), b"value".to_vec()),
-        ]),
+        search_attributes: HashMap::from([("key".to_string(), b"value".to_vec())]),
         created_at_ms: now_ms(),
     });
     assert_eq!(processor.depth(), 1);
@@ -603,7 +600,10 @@ fn test_queue_config_custom() {
 fn test_queue_processor_status_enum() {
     assert_ne!(QueueProcessorStatus::Idle, QueueProcessorStatus::Running);
     assert_ne!(QueueProcessorStatus::Running, QueueProcessorStatus::Stopped);
-    assert_ne!(QueueProcessorStatus::Paused, QueueProcessorStatus::ShuttingDown);
+    assert_ne!(
+        QueueProcessorStatus::Paused,
+        QueueProcessorStatus::ShuttingDown
+    );
     assert_eq!(QueueProcessorStatus::Idle, QueueProcessorStatus::Idle);
 }
 

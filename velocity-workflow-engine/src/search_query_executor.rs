@@ -14,8 +14,8 @@
 use crate::engine::WorkflowStatus;
 use crate::search_query::{CompareOp, QueryExpr, QueryValue};
 use crate::visibility::{
-    PaginatedResult, PageToken, SearchAttributeValue, SortField, SortOrder,
-    VisibilityIndex, WorkflowExecutionInfo,
+    PageToken, PaginatedResult, SearchAttributeValue, SortField, SortOrder, VisibilityIndex,
+    WorkflowExecutionInfo,
 };
 
 // ─── Query Executor ────────────────────────────────────────────────────────
@@ -70,11 +70,8 @@ impl<'a> SearchQueryExecutor<'a> {
 
         // Paginate
         let offset = page_token.map_or(0, |t| t.offset);
-        let page: Vec<WorkflowExecutionInfo> = results
-            .into_iter()
-            .skip(offset)
-            .take(page_size)
-            .collect();
+        let page: Vec<WorkflowExecutionInfo> =
+            results.into_iter().skip(offset).take(page_size).collect();
 
         let next_token = if offset + page.len() < total_count {
             Some(PageToken {
@@ -120,12 +117,8 @@ impl<'a> SearchQueryExecutor<'a> {
                     None => false,
                 }
             }
-            QueryExpr::And(left, right) => {
-                self.evaluate(left, info) && self.evaluate(right, info)
-            }
-            QueryExpr::Or(left, right) => {
-                self.evaluate(left, info) || self.evaluate(right, info)
-            }
+            QueryExpr::And(left, right) => self.evaluate(left, info) && self.evaluate(right, info),
+            QueryExpr::Or(left, right) => self.evaluate(left, info) || self.evaluate(right, info),
             QueryExpr::Not(inner) => !self.evaluate(inner, info),
             QueryExpr::Between { field, low, high } => {
                 let field_val = self.resolve_field(field, info);
@@ -140,7 +133,9 @@ impl<'a> SearchQueryExecutor<'a> {
             QueryExpr::In { field, values } => {
                 let field_val = self.resolve_field(field, info);
                 match field_val {
-                    Some(fv) => values.iter().any(|v| compare_values(&fv, &CompareOp::Eq, v)),
+                    Some(fv) => values
+                        .iter()
+                        .any(|v| compare_values(&fv, &CompareOp::Eq, v)),
                     None => false,
                 }
             }
@@ -157,24 +152,16 @@ impl<'a> SearchQueryExecutor<'a> {
     }
 
     /// Resolve a field name to a comparable value.
-    fn resolve_field(
-        &self,
-        field: &str,
-        info: &WorkflowExecutionInfo,
-    ) -> Option<ComparableValue> {
+    fn resolve_field(&self, field: &str, info: &WorkflowExecutionInfo) -> Option<ComparableValue> {
         match field {
             "WorkflowId" | "WorkflowID" => {
                 Some(ComparableValue::String(info.workflow_id.to_string()))
             }
-            "RunId" | "RunID" => {
-                Some(ComparableValue::String(info.run_id.to_string()))
-            }
+            "RunId" | "RunID" => Some(ComparableValue::String(info.run_id.to_string())),
             "WorkflowType" | "WorkflowTypeId" | "WorkflowType_id" => {
                 Some(ComparableValue::Integer(info.workflow_type_id as i64))
             }
-            "NamespaceId" | "Namespace" => {
-                Some(ComparableValue::Integer(info.namespace_id as i64))
-            }
+            "NamespaceId" | "Namespace" => Some(ComparableValue::Integer(info.namespace_id as i64)),
             "ExecutionStatus" | "Status" => {
                 let status_str = status_to_string(info.status);
                 Some(ComparableValue::String(status_str))
@@ -182,9 +169,9 @@ impl<'a> SearchQueryExecutor<'a> {
             "StartTime" | "ExecutionTime" | "StartTimestamp" => {
                 Some(ComparableValue::Integer(info.start_time_ms as i64))
             }
-            "CloseTime" | "CloseTimestamp" => {
-                info.close_time_ms.map(|t| ComparableValue::Integer(t as i64))
-            }
+            "CloseTime" | "CloseTimestamp" => info
+                .close_time_ms
+                .map(|t| ComparableValue::Integer(t as i64)),
             "TaskQueue" | "TaskQueueHash" => {
                 Some(ComparableValue::Integer(info.task_queue_hash as i64))
             }
@@ -219,31 +206,28 @@ enum ComparableValue {
 fn compare_values(field: &ComparableValue, op: &CompareOp, query: &QueryValue) -> bool {
     let result = match (field, query) {
         // String comparisons
-        (ComparableValue::String(fs), QueryValue::String(qs)) => {
-            Some(fs.cmp(qs))
-        }
+        (ComparableValue::String(fs), QueryValue::String(qs)) => Some(fs.cmp(qs)),
         (ComparableValue::String(fs), QueryValue::Integer(qi)) => {
             // Try to parse string as integer for comparison
             fs.parse::<i64>().ok().map(|fi| fi.cmp(qi))
         }
         // Integer comparisons
-        (ComparableValue::Integer(fi), QueryValue::Integer(qi)) => {
-            Some(fi.cmp(qi))
-        }
-        (ComparableValue::Integer(fi), QueryValue::Double(qd)) => {
-            Some((*fi as f64).partial_cmp(qd).unwrap_or(std::cmp::Ordering::Equal))
-        }
+        (ComparableValue::Integer(fi), QueryValue::Integer(qi)) => Some(fi.cmp(qi)),
+        (ComparableValue::Integer(fi), QueryValue::Double(qd)) => Some(
+            (*fi as f64)
+                .partial_cmp(qd)
+                .unwrap_or(std::cmp::Ordering::Equal),
+        ),
         // Double comparisons
         (ComparableValue::Double(fd), QueryValue::Double(qd)) => {
             Some(fd.partial_cmp(qd).unwrap_or(std::cmp::Ordering::Equal))
         }
-        (ComparableValue::Double(fd), QueryValue::Integer(qi)) => {
-            Some(fd.partial_cmp(&(*qi as f64)).unwrap_or(std::cmp::Ordering::Equal))
-        }
+        (ComparableValue::Double(fd), QueryValue::Integer(qi)) => Some(
+            fd.partial_cmp(&(*qi as f64))
+                .unwrap_or(std::cmp::Ordering::Equal),
+        ),
         // Bool comparisons
-        (ComparableValue::Bool(fb), QueryValue::Bool(qb)) => {
-            Some(fb.cmp(qb))
-        }
+        (ComparableValue::Bool(fb), QueryValue::Bool(qb)) => Some(fb.cmp(qb)),
         // Cross-type: integer field vs string query (e.g., status = 'Running')
         (ComparableValue::String(fs), QueryValue::Bool(qb)) => {
             let fs_lower = fs.to_lowercase();
@@ -322,7 +306,7 @@ fn status_to_string(status: WorkflowStatus) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::visibility::{WorkflowExecutionInfo, VisibilityIndex};
+    use crate::visibility::{VisibilityIndex, WorkflowExecutionInfo};
     use std::collections::HashMap;
 
     fn make_info(
@@ -389,9 +373,7 @@ mod tests {
         let index = make_index();
         let executor = SearchQueryExecutor::new(&index);
 
-        let results = executor
-            .execute_string("WorkflowType = 1")
-            .unwrap();
+        let results = executor.execute_string("WorkflowType = 1").unwrap();
         assert_eq!(results.len(), 2);
     }
 
@@ -456,9 +438,7 @@ mod tests {
         let index = make_index();
         let executor = SearchQueryExecutor::new(&index);
 
-        let results = executor
-            .execute_string("CloseTime IS NULL")
-            .unwrap();
+        let results = executor.execute_string("CloseTime IS NULL").unwrap();
         assert_eq!(results.len(), 2); // Only running workflows have null close time
     }
 
@@ -467,9 +447,7 @@ mod tests {
         let index = make_index();
         let executor = SearchQueryExecutor::new(&index);
 
-        let results = executor
-            .execute_string("CloseTime IS NOT NULL")
-            .unwrap();
+        let results = executor.execute_string("CloseTime IS NOT NULL").unwrap();
         assert_eq!(results.len(), 3);
     }
 
@@ -530,10 +508,8 @@ mod tests {
             "OrderId".to_string(),
             SearchAttributeValue::String("ORD-12345".to_string()),
         );
-        info.search_attributes.insert(
-            "Amount".to_string(),
-            SearchAttributeValue::Integer(5000),
-        );
+        info.search_attributes
+            .insert("Amount".to_string(), SearchAttributeValue::Integer(5000));
         index.register(info);
 
         let mut info2 = make_info(2, 200, 1, 10, WorkflowStatus::Running);
@@ -541,25 +517,20 @@ mod tests {
             "OrderId".to_string(),
             SearchAttributeValue::String("ORD-67890".to_string()),
         );
-        info2.search_attributes.insert(
-            "Amount".to_string(),
-            SearchAttributeValue::Integer(3000),
-        );
+        info2
+            .search_attributes
+            .insert("Amount".to_string(), SearchAttributeValue::Integer(3000));
         index.register(info2);
 
         let executor = SearchQueryExecutor::new(&index);
 
         // String attribute
-        let results = executor
-            .execute_string("OrderId = 'ORD-12345'")
-            .unwrap();
+        let results = executor.execute_string("OrderId = 'ORD-12345'").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].workflow_key, 1);
 
         // Numeric attribute
-        let results = executor
-            .execute_string("Amount > 4000")
-            .unwrap();
+        let results = executor.execute_string("Amount > 4000").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].workflow_key, 1);
     }
@@ -609,9 +580,7 @@ mod tests {
         let index = make_index();
         let executor = SearchQueryExecutor::new(&index);
 
-        let results = executor
-            .execute_string("WorkflowId = '300'")
-            .unwrap();
+        let results = executor.execute_string("WorkflowId = '300'").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].workflow_key, 3);
     }
@@ -621,9 +590,7 @@ mod tests {
         let index = make_index();
         let executor = SearchQueryExecutor::new(&index);
 
-        let results = executor
-            .execute_string("WorkflowType > 1")
-            .unwrap();
+        let results = executor.execute_string("WorkflowType > 1").unwrap();
         assert_eq!(results.len(), 3); // types 2 and 3
     }
 
@@ -632,9 +599,7 @@ mod tests {
         let index = make_index();
         let executor = SearchQueryExecutor::new(&index);
 
-        let results = executor
-            .execute_string("WorkflowType <= 2")
-            .unwrap();
+        let results = executor.execute_string("WorkflowType <= 2").unwrap();
         assert_eq!(results.len(), 4); // types 1 and 2
     }
 
@@ -655,9 +620,7 @@ mod tests {
         let index = make_index();
         let executor = SearchQueryExecutor::new(&index);
 
-        let results = executor
-            .execute_string("WorkflowType = 999")
-            .unwrap();
+        let results = executor.execute_string("WorkflowType = 999").unwrap();
         assert!(results.is_empty());
     }
 

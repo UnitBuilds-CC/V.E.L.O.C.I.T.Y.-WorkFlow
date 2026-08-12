@@ -6,7 +6,7 @@
 //! - Deep /health endpoint
 //! - Enhanced /metrics endpoint
 
-use velocity_workflow_engine::auth_v2::{EncryptionAtRest, EncryptionConfig, EncryptionAlgorithm};
+use velocity_workflow_engine::auth_v2::{EncryptionAlgorithm, EncryptionAtRest, EncryptionConfig};
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Encryption Key Rotation Tests
@@ -176,8 +176,8 @@ fn test_max_body_size_constant_is_reasonable() {
     // This tests the constant is in a reasonable range
     // The actual constant is in the dev-server binary, but we test the concept
     let max: usize = 10 * 1024 * 1024; // 10 MB
-    assert!(max >= 1_048_576);     // at least 1 MB
-    assert!(max <= 104_857_600);   // at most 100 MB
+    assert!(max >= 1_048_576); // at least 1 MB
+    assert!(max <= 104_857_600); // at most 100 MB
 }
 
 #[test]

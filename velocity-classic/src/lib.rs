@@ -37,9 +37,7 @@ use std::sync::{Arc, Mutex};
 // ─── Re-exports ──────────────────────────────────────────────────────────────
 
 // Re-export core engine types
-pub use velocity_workflow_engine::{
-    WorkflowEngine, TaskQueue,
-};
+pub use velocity_workflow_engine::{TaskQueue, WorkflowEngine};
 
 // ─── Classic Config ──────────────────────────────────────────────────────────
 
@@ -472,14 +470,18 @@ mod tests {
     impl Workflow for TestWorkflow {
         type Input = String;
         type Output = String;
-        fn name() -> &'static str { "TestWorkflow" }
+        fn name() -> &'static str {
+            "TestWorkflow"
+        }
     }
 
     struct TestActivity;
     impl Activity for TestActivity {
         type Input = u32;
         type Output = u32;
-        fn name() -> &'static str { "TestActivity" }
+        fn name() -> &'static str {
+            "TestActivity"
+        }
     }
 
     #[test]
@@ -549,13 +551,17 @@ mod tests {
         let client = ClassicClient::new(ClassicConfig::default());
         client.start_workflow("wf-1", "TestWorkflow", serde_json::json!("input"));
 
-        assert!(client.signal_workflow("wf-1", "approve", serde_json::json!(true)).is_ok());
+        assert!(client
+            .signal_workflow("wf-1", "approve", serde_json::json!(true))
+            .is_ok());
     }
 
     #[test]
     fn test_classic_client_signal_nonexistent() {
         let client = ClassicClient::new(ClassicConfig::default());
-        assert!(client.signal_workflow("wf-999", "approve", serde_json::json!(true)).is_err());
+        assert!(client
+            .signal_workflow("wf-999", "approve", serde_json::json!(true))
+            .is_err());
     }
 
     #[test]
@@ -593,7 +599,10 @@ mod tests {
         let mut memo = Memo::new();
         memo.set("description", serde_json::json!("test workflow"));
 
-        assert_eq!(memo.get("description"), Some(&serde_json::json!("test workflow")));
+        assert_eq!(
+            memo.get("description"),
+            Some(&serde_json::json!("test workflow"))
+        );
         assert_eq!(memo.get("missing"), None);
     }
 

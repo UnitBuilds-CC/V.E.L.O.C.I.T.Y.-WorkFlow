@@ -352,7 +352,14 @@ impl WorkflowDependencyGraph {
 
         for &node in outgoing.keys() {
             if !visited.contains(&node) {
-                self.dfs_cycle(node, &outgoing, &mut visited, &mut in_stack, &mut path, &mut cycles);
+                self.dfs_cycle(
+                    node,
+                    &outgoing,
+                    &mut visited,
+                    &mut in_stack,
+                    &mut path,
+                    &mut cycles,
+                );
             }
         }
 
@@ -687,7 +694,10 @@ mod tests {
         );
 
         let deps = graph.get_dependencies(1);
-        assert_eq!(deps[0].metadata.as_deref(), Some("child workflow: ProcessOrder"));
+        assert_eq!(
+            deps[0].metadata.as_deref(),
+            Some("child workflow: ProcessOrder")
+        );
     }
 
     #[test]
@@ -699,6 +709,9 @@ mod tests {
         assert_eq!(DependencyType::AwaitingCompletion.as_str(), "awaiting");
         assert_eq!(DependencyType::ContinuedAsNew.as_str(), "continued_as_new");
         assert_eq!(DependencyType::SagaStep.as_str(), "saga_step");
-        assert_eq!(DependencyType::SagaCompensation.as_str(), "saga_compensation");
+        assert_eq!(
+            DependencyType::SagaCompensation.as_str(),
+            "saga_compensation"
+        );
     }
 }

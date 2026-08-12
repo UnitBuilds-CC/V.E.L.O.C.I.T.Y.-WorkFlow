@@ -8,9 +8,9 @@
 //! - DashMap concurrent insert/remove consistency
 
 use proptest::prelude::*;
-use velocity_workflow_engine::zero_alloc::{SlotMap, SlotVec};
 use velocity_workflow_engine::string_interner::StringInterner;
-use velocity_workflow_engine::wal::{WalRecord, WalEventType};
+use velocity_workflow_engine::wal::{WalEventType, WalRecord};
+use velocity_workflow_engine::zero_alloc::{SlotMap, SlotVec};
 
 // ── WAL Record Roundtrip ────────────────────────────────────────────────────
 

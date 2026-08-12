@@ -24,7 +24,9 @@ pub use engine::{
     BenchmarkEngine, BenchmarkResult, EngineConfig, EngineKind, GrpcAdapter, ServerMetrics,
     TemporalAdapter, VelocityAdapter,
 };
-pub use http_adapter::{HttpAdapter, HttpBenchmarkResult, HttpEngineConfig, HttpEngineKind, HttpOperationResult};
+pub use http_adapter::{
+    HttpAdapter, HttpBenchmarkResult, HttpEngineConfig, HttpEngineKind, HttpOperationResult,
+};
 pub use http_workloads::{HttpWorkloadDefinition, HttpWorkloadKind};
 pub use metrics::{
     AggregateMetrics, LatencyBucket, MetricsCollector, MetricsSnapshot, SignificanceTest,

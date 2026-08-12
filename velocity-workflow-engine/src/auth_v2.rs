@@ -662,7 +662,10 @@ impl EncryptionAtRest {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let state = self.state.read().unwrap();
-        let ciphertext = state.cipher.encrypt(nonce, data).expect("AES-256-GCM encryption failed");
+        let ciphertext = state
+            .cipher
+            .encrypt(nonce, data)
+            .expect("AES-256-GCM encryption failed");
 
         let mut output = Vec::with_capacity(1 + 32 + 12 + ciphertext.len());
 
@@ -759,9 +762,17 @@ impl EncryptionAtRest {
             };
 
             let new_kid = sha256_hex(new_key_id.as_bytes());
-            format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                new_kid[0], new_kid[1], new_kid[2], new_kid[3],
-                new_kid[4], new_kid[5], new_kid[6], new_kid[7])
+            format!(
+                "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                new_kid[0],
+                new_kid[1],
+                new_kid[2],
+                new_kid[3],
+                new_kid[4],
+                new_kid[5],
+                new_kid[6],
+                new_kid[7]
+            )
         };
 
         // Update rotation timestamp and reset nonce counter

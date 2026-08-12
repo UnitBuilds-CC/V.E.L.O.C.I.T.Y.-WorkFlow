@@ -186,12 +186,10 @@ impl DurablePromiseRuntime {
     }
 
     /// Resolve a durable promise with a value.
-    pub fn resolve(
-        &mut self,
-        id: &str,
-        value: Vec<u8>,
-    ) -> Result<(), PromiseError> {
-        let promise = self.promises.get_mut(id)
+    pub fn resolve(&mut self, id: &str, value: Vec<u8>) -> Result<(), PromiseError> {
+        let promise = self
+            .promises
+            .get_mut(id)
             .ok_or_else(|| PromiseError::NotFound(id.to_string()))?;
 
         if promise.state != PromiseState::Pending {
@@ -209,12 +207,10 @@ impl DurablePromiseRuntime {
     }
 
     /// Reject a durable promise with an error.
-    pub fn reject(
-        &mut self,
-        id: &str,
-        error: String,
-    ) -> Result<(), PromiseError> {
-        let promise = self.promises.get_mut(id)
+    pub fn reject(&mut self, id: &str, error: String) -> Result<(), PromiseError> {
+        let promise = self
+            .promises
+            .get_mut(id)
             .ok_or_else(|| PromiseError::NotFound(id.to_string()))?;
 
         if promise.state != PromiseState::Pending {
@@ -238,17 +234,23 @@ impl DurablePromiseRuntime {
 
     /// Check if a promise is resolved.
     pub fn is_resolved(&self, id: &str) -> bool {
-        self.promises.get(id).is_some_and(|p| p.state == PromiseState::Resolved)
+        self.promises
+            .get(id)
+            .is_some_and(|p| p.state == PromiseState::Resolved)
     }
 
     /// Check if a promise is rejected.
     pub fn is_rejected(&self, id: &str) -> bool {
-        self.promises.get(id).is_some_and(|p| p.state == PromiseState::Rejected)
+        self.promises
+            .get(id)
+            .is_some_and(|p| p.state == PromiseState::Rejected)
     }
 
     /// Check if a promise is pending.
     pub fn is_pending(&self, id: &str) -> bool {
-        self.promises.get(id).is_some_and(|p| p.state == PromiseState::Pending)
+        self.promises
+            .get(id)
+            .is_some_and(|p| p.state == PromiseState::Pending)
     }
 
     // ─── Await / Wait ──────────────────────────────────────────────────────
@@ -261,13 +263,19 @@ impl DurablePromiseRuntime {
         }
 
         let waiter_id = self.next_waiter_id.fetch_add(1, Ordering::Relaxed);
-        self.waiters.entry(id.to_string()).or_default().push(waiter_id);
+        self.waiters
+            .entry(id.to_string())
+            .or_default()
+            .push(waiter_id);
         Ok(waiter_id)
     }
 
     /// Check if a waiter has been notified (promise resolved/rejected).
     pub fn check_waiter(&self, id: &str, _waiter_id: u64) -> Option<PromiseState> {
-        self.promises.get(id).map(|p| p.state).filter(|s| *s != PromiseState::Pending)
+        self.promises
+            .get(id)
+            .map(|p| p.state)
+            .filter(|s| *s != PromiseState::Pending)
     }
 
     /// Get the waiters that should be notified for a promise.
@@ -279,31 +287,36 @@ impl DurablePromiseRuntime {
 
     /// List all pending promises.
     pub fn list_pending(&self) -> Vec<&DurablePromise> {
-        self.promises.values().filter(|p| p.state == PromiseState::Pending).collect()
+        self.promises
+            .values()
+            .filter(|p| p.state == PromiseState::Pending)
+            .collect()
     }
 
     /// List promises by tag.
     pub fn list_by_tag(&self, tag_key: &str, tag_value: &str) -> Vec<&DurablePromise> {
-        self.promises.values()
+        self.promises
+            .values()
             .filter(|p| p.tags.get(tag_key).is_some_and(|v| v == tag_value))
             .collect()
     }
 
     /// List promises with a given state.
     pub fn list_by_state(&self, state: PromiseState) -> Vec<&DurablePromise> {
-        self.promises.values().filter(|p| p.state == state).collect()
+        self.promises
+            .values()
+            .filter(|p| p.state == state)
+            .collect()
     }
 
     /// Clean up completed promises older than the given age.
     pub fn cleanup(&mut self, max_age_ms: u64) -> u64 {
         let before = self.promises.len();
-        self.promises.retain(|_, p| {
-            match p.state {
-                PromiseState::Resolved | PromiseState::Rejected => {
-                    p.completed_ms == 0 || p.completed_ms > max_age_ms
-                }
-                _ => true,
+        self.promises.retain(|_, p| match p.state {
+            PromiseState::Resolved | PromiseState::Rejected => {
+                p.completed_ms == 0 || p.completed_ms > max_age_ms
             }
+            _ => true,
         });
         let cleaned = (before - self.promises.len()) as u64;
         self.stats.total_cleaned_up += cleaned;
@@ -366,7 +379,8 @@ mod tests {
     fn test_reject() {
         let mut rt = DurablePromiseRuntime::new();
         rt.create("promise-1", None, None, HashMap::new()).unwrap();
-        rt.reject("promise-1", "denied by admin".to_string()).unwrap();
+        rt.reject("promise-1", "denied by admin".to_string())
+            .unwrap();
 
         let p = rt.get("promise-1").unwrap();
         assert_eq!(p.state, PromiseState::Rejected);
@@ -404,7 +418,10 @@ mod tests {
         rt.resolve("promise-1", b"done".to_vec()).unwrap();
 
         // Now waiter should see resolved state
-        assert_eq!(rt.check_waiter("promise-1", waiter_id), Some(PromiseState::Resolved));
+        assert_eq!(
+            rt.check_waiter("promise-1", waiter_id),
+            Some(PromiseState::Resolved)
+        );
 
         // Get notified waiters
         let notified = rt.notify_waiters("promise-1");
@@ -485,12 +502,17 @@ mod tests {
     #[test]
     fn test_completion_callback() {
         let mut rt = DurablePromiseRuntime::new();
-        let p = rt.create(
-            "webhook-1",
-            Some("https://example.com/callback".to_string()),
-            None,
-            HashMap::new(),
-        ).unwrap();
-        assert_eq!(p.completion_callback.as_ref().unwrap(), "https://example.com/callback");
+        let p = rt
+            .create(
+                "webhook-1",
+                Some("https://example.com/callback".to_string()),
+                None,
+                HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            p.completion_callback.as_ref().unwrap(),
+            "https://example.com/callback"
+        );
     }
 }

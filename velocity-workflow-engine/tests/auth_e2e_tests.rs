@@ -198,13 +198,12 @@ fn test_api_key_manager_create_key() {
 #[test]
 fn test_api_key_manager_validate_key() {
     let manager = ApiKeyManager::new();
-    let raw_key = manager
-        .create_api_key(
-            "validate-test",
-            "default",
-            vec![ApiPermission::WorkflowRead],
-            0,
-        );
+    let raw_key = manager.create_api_key(
+        "validate-test",
+        "default",
+        vec![ApiPermission::WorkflowRead],
+        0,
+    );
 
     let info = manager.validate_api_key(&raw_key);
     assert!(info.is_some());
@@ -224,13 +223,12 @@ fn test_api_key_manager_invalid_key() {
 #[test]
 fn test_api_key_manager_revoke_key() {
     let manager = ApiKeyManager::new();
-    let raw_key = manager
-        .create_api_key(
-            "revoke-test",
-            "default",
-            vec![ApiPermission::WorkflowRead],
-            0,
-        );
+    let raw_key = manager.create_api_key(
+        "revoke-test",
+        "default",
+        vec![ApiPermission::WorkflowRead],
+        0,
+    );
 
     assert!(manager.validate_api_key(&raw_key).is_some());
     let revoked = manager.revoke_api_key(&raw_key);
@@ -248,10 +246,8 @@ fn test_api_key_manager_revoke_nonexistent() {
 #[test]
 fn test_api_key_manager_list_keys() {
     let manager = ApiKeyManager::new();
-    manager
-        .create_api_key("key-1", "default", vec![ApiPermission::WorkflowRead], 0);
-    manager
-        .create_api_key("key-2", "default", vec![ApiPermission::WorkflowWrite], 0);
+    manager.create_api_key("key-1", "default", vec![ApiPermission::WorkflowRead], 0);
+    manager.create_api_key("key-2", "default", vec![ApiPermission::WorkflowWrite], 0);
 
     let keys = manager.list_api_keys("default");
     assert_eq!(keys.len(), 2);
@@ -260,10 +256,8 @@ fn test_api_key_manager_list_keys() {
 #[test]
 fn test_api_key_manager_list_keys_namespace_isolation() {
     let manager = ApiKeyManager::new();
-    manager
-        .create_api_key("key-1", "ns-a", vec![ApiPermission::WorkflowRead], 0);
-    manager
-        .create_api_key("key-2", "ns-b", vec![ApiPermission::WorkflowRead], 0);
+    manager.create_api_key("key-1", "ns-a", vec![ApiPermission::WorkflowRead], 0);
+    manager.create_api_key("key-2", "ns-b", vec![ApiPermission::WorkflowRead], 0);
 
     let keys_a = manager.list_api_keys("ns-a");
     let keys_b = manager.list_api_keys("ns-b");
@@ -277,24 +271,21 @@ fn test_api_key_manager_list_keys_namespace_isolation() {
 fn test_api_key_manager_key_count() {
     let manager = ApiKeyManager::new();
     assert_eq!(manager.key_count(), 0);
-    manager
-        .create_api_key("key-1", "default", vec![ApiPermission::WorkflowRead], 0);
+    manager.create_api_key("key-1", "default", vec![ApiPermission::WorkflowRead], 0);
     assert_eq!(manager.key_count(), 1);
-    manager
-        .create_api_key("key-2", "ns-b", vec![ApiPermission::WorkflowWrite], 0);
+    manager.create_api_key("key-2", "ns-b", vec![ApiPermission::WorkflowWrite], 0);
     assert_eq!(manager.key_count(), 2);
 }
 
 #[test]
 fn test_api_key_manager_rotate_key() {
     let manager = ApiKeyManager::new();
-    let raw_key = manager
-        .create_api_key(
-            "rotate-test",
-            "default",
-            vec![ApiPermission::WorkflowRead],
-            0,
-        );
+    let raw_key = manager.create_api_key(
+        "rotate-test",
+        "default",
+        vec![ApiPermission::WorkflowRead],
+        0,
+    );
 
     let new_key = manager.rotate_api_key(&raw_key);
     assert!(new_key.is_some());
@@ -330,20 +321,19 @@ fn test_api_permission_variants() {
 #[test]
 fn test_api_key_with_all_permissions() {
     let manager = ApiKeyManager::new();
-    let raw_key = manager
-        .create_api_key(
-            "admin-key",
-            "default",
-            vec![
-                ApiPermission::WorkflowRead,
-                ApiPermission::WorkflowWrite,
-                ApiPermission::WorkflowAdmin,
-                ApiPermission::NamespaceRead,
-                ApiPermission::NamespaceWrite,
-                ApiPermission::SystemAdmin,
-            ],
-            0,
-        );
+    let raw_key = manager.create_api_key(
+        "admin-key",
+        "default",
+        vec![
+            ApiPermission::WorkflowRead,
+            ApiPermission::WorkflowWrite,
+            ApiPermission::WorkflowAdmin,
+            ApiPermission::NamespaceRead,
+            ApiPermission::NamespaceWrite,
+            ApiPermission::SystemAdmin,
+        ],
+        0,
+    );
 
     let info = manager.validate_api_key(&raw_key).unwrap();
     assert_eq!(info.permissions.len(), 6);
@@ -430,10 +420,10 @@ fn test_encryption_at_rest_decrypt_invalid_data() {
 fn test_namespace_isolation_api_keys() {
     let manager = ApiKeyManager::new();
 
-    let key_a = manager
-        .create_api_key("key-a", "namespace-a", vec![ApiPermission::WorkflowRead], 0);
-    let key_b = manager
-        .create_api_key("key-b", "namespace-b", vec![ApiPermission::WorkflowRead], 0);
+    let key_a =
+        manager.create_api_key("key-a", "namespace-a", vec![ApiPermission::WorkflowRead], 0);
+    let key_b =
+        manager.create_api_key("key-b", "namespace-b", vec![ApiPermission::WorkflowRead], 0);
 
     let info_a = manager.validate_api_key(&key_a).unwrap();
     let info_b = manager.validate_api_key(&key_b).unwrap();

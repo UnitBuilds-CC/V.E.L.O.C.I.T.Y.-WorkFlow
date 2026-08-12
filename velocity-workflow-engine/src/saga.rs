@@ -302,7 +302,13 @@ impl SagaExecutionLog {
         Self::default()
     }
 
-    pub fn log(&mut self, saga_id: u64, entry_type: SagaLogEntryType, step_index: Option<usize>, details: String) {
+    pub fn log(
+        &mut self,
+        saga_id: u64,
+        entry_type: SagaLogEntryType,
+        step_index: Option<usize>,
+        details: String,
+    ) {
         let entry = SagaLogEntry {
             entry_id: self.next_entry_id,
             saga_id,
@@ -362,7 +368,12 @@ impl EnhancedSagaOrchestrator {
     pub fn create_saga(&self, workflow_key: u64, steps: Vec<SagaStepDefinition>) -> u64 {
         let saga_id = self.inner.create_saga(workflow_key, steps);
         let mut log = SagaExecutionLog::new();
-        log.log(saga_id, SagaLogEntryType::SagaCreated, None, format!("workflow_key={}", workflow_key));
+        log.log(
+            saga_id,
+            SagaLogEntryType::SagaCreated,
+            None,
+            format!("workflow_key={}", workflow_key),
+        );
         self.logs.write().unwrap().insert(saga_id, log);
         saga_id
     }
@@ -373,7 +384,12 @@ impl EnhancedSagaOrchestrator {
         if ok {
             let mut logs = self.logs.write().unwrap();
             if let Some(log) = logs.get_mut(&saga_id) {
-                log.log(saga_id, SagaLogEntryType::StepCompleted, Some(step_index), String::new());
+                log.log(
+                    saga_id,
+                    SagaLogEntryType::StepCompleted,
+                    Some(step_index),
+                    String::new(),
+                );
             }
         }
         ok
@@ -383,7 +399,12 @@ impl EnhancedSagaOrchestrator {
     pub fn start_step(&self, saga_id: u64, step_index: usize) -> bool {
         let mut logs = self.logs.write().unwrap();
         if let Some(log) = logs.get_mut(&saga_id) {
-            log.log(saga_id, SagaLogEntryType::StepStarted, Some(step_index), String::new());
+            log.log(
+                saga_id,
+                SagaLogEntryType::StepStarted,
+                Some(step_index),
+                String::new(),
+            );
         }
         true
     }
@@ -392,8 +413,18 @@ impl EnhancedSagaOrchestrator {
     pub fn fail_step(&self, saga_id: u64, step_index: usize) -> Vec<(u64, Option<Vec<u8>>)> {
         let mut logs = self.logs.write().unwrap();
         if let Some(log) = logs.get_mut(&saga_id) {
-            log.log(saga_id, SagaLogEntryType::StepFailed, Some(step_index), String::new());
-            log.log(saga_id, SagaLogEntryType::CompensationStarted, None, format!("failed_step={}", step_index));
+            log.log(
+                saga_id,
+                SagaLogEntryType::StepFailed,
+                Some(step_index),
+                String::new(),
+            );
+            log.log(
+                saga_id,
+                SagaLogEntryType::CompensationStarted,
+                None,
+                format!("failed_step={}", step_index),
+            );
         }
         self.inner.fail_step(saga_id, step_index)
     }
@@ -403,12 +434,23 @@ impl EnhancedSagaOrchestrator {
         self.inner.complete_compensation(saga_id, step_index);
         let mut logs = self.logs.write().unwrap();
         if let Some(log) = logs.get_mut(&saga_id) {
-            log.log(saga_id, SagaLogEntryType::CompensationCompleted, Some(step_index), String::new());
+            log.log(
+                saga_id,
+                SagaLogEntryType::CompensationCompleted,
+                Some(step_index),
+                String::new(),
+            );
         }
     }
 
     /// Create a nested saga — a child saga attached to a parent step.
-    pub fn create_nested_saga(&self, parent_saga_id: u64, parent_step_index: usize, workflow_key: u64, steps: Vec<SagaStepDefinition>) -> u64 {
+    pub fn create_nested_saga(
+        &self,
+        parent_saga_id: u64,
+        parent_step_index: usize,
+        workflow_key: u64,
+        steps: Vec<SagaStepDefinition>,
+    ) -> u64 {
         let child_saga_id = self.create_saga(workflow_key, steps);
         self.nested_refs.write().unwrap().push(NestedSagaRef {
             parent_saga_id,
@@ -425,7 +467,9 @@ impl EnhancedSagaOrchestrator {
 
     /// Get nested saga IDs for a parent saga.
     pub fn get_nested_sagas(&self, parent_saga_id: u64) -> Vec<u64> {
-        self.nested_refs.read().unwrap()
+        self.nested_refs
+            .read()
+            .unwrap()
             .iter()
             .filter(|r| r.parent_saga_id == parent_saga_id)
             .map(|r| r.child_saga_id)
@@ -573,7 +617,10 @@ mod tests {
         let saga_id = orch.create_saga(42, steps);
         let log = orch.get_log(saga_id).unwrap();
         assert_eq!(log.entry_count(), 1);
-        assert!(matches!(log.entries[0].entry_type, SagaLogEntryType::SagaCreated));
+        assert!(matches!(
+            log.entries[0].entry_type,
+            SagaLogEntryType::SagaCreated
+        ));
     }
 
     #[test]
@@ -590,8 +637,14 @@ mod tests {
 
         let log = orch.get_log(saga_id).unwrap();
         assert_eq!(log.entry_count(), 3); // Created + Started + Completed
-        assert!(matches!(log.entries[1].entry_type, SagaLogEntryType::StepStarted));
-        assert!(matches!(log.entries[2].entry_type, SagaLogEntryType::StepCompleted));
+        assert!(matches!(
+            log.entries[1].entry_type,
+            SagaLogEntryType::StepStarted
+        ));
+        assert!(matches!(
+            log.entries[2].entry_type,
+            SagaLogEntryType::StepCompleted
+        ));
     }
 
     #[test]
@@ -606,8 +659,14 @@ mod tests {
         orch.fail_step(saga_id, 1);
 
         let log = orch.get_log(saga_id).unwrap();
-        let has_failed = log.entries.iter().any(|e| matches!(e.entry_type, SagaLogEntryType::StepFailed));
-        let has_comp_start = log.entries.iter().any(|e| matches!(e.entry_type, SagaLogEntryType::CompensationStarted));
+        let has_failed = log
+            .entries
+            .iter()
+            .any(|e| matches!(e.entry_type, SagaLogEntryType::StepFailed));
+        let has_comp_start = log
+            .entries
+            .iter()
+            .any(|e| matches!(e.entry_type, SagaLogEntryType::CompensationStarted));
         assert!(has_failed);
         assert!(has_comp_start);
     }

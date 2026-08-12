@@ -18,5 +18,7 @@ pub use crdt::PNCounter;
 pub use ffi::*;
 pub use nda::NdaHeader;
 pub use slab::SlabHeader;
-pub use vctp::{AimdController, VctpAck, VctpCipher, VctpPacket, VctpPacketHeader, VctpRetransmitTracker};
+pub use vctp::{
+    AimdController, VctpAck, VctpCipher, VctpPacket, VctpPacketHeader, VctpRetransmitTracker,
+};
 pub use wal::wal_append_step;

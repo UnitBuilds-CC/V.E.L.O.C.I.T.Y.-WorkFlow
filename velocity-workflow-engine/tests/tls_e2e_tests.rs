@@ -29,11 +29,12 @@ fn generate_self_signed_cert(cn: &str) -> (Vec<u8>, Vec<u8>) {
         .distinguished_name
         .push(rcgen::DnType::CommonName, cn);
     let ia5 = rcgen::Ia5String::try_from(cn.to_string()).unwrap();
-    params
-        .subject_alt_names
-        .push(rcgen::SanType::DnsName(ia5));
+    params.subject_alt_names.push(rcgen::SanType::DnsName(ia5));
     let cert = params.self_signed(&key_pair).unwrap();
-    (cert.pem().into_bytes(), key_pair.serialize_pem().into_bytes())
+    (
+        cert.pem().into_bytes(),
+        key_pair.serialize_pem().into_bytes(),
+    )
 }
 
 /// Generate a CA cert and a server cert signed by that CA.
@@ -159,24 +160,16 @@ fn test_client_tls_config_server_only() {
 #[test]
 fn test_self_signed_cert_generation() {
     let (cert_pem, key_pem) = generate_self_signed_cert("localhost");
-    assert!(
-        String::from_utf8_lossy(&cert_pem).contains("BEGIN CERTIFICATE")
-    );
-    assert!(
-        String::from_utf8_lossy(&key_pem).contains("PRIVATE KEY")
-    );
+    assert!(String::from_utf8_lossy(&cert_pem).contains("BEGIN CERTIFICATE"));
+    assert!(String::from_utf8_lossy(&key_pem).contains("PRIVATE KEY"));
 }
 
 #[test]
 fn test_ca_signed_cert_generation() {
     let (ca_pem, server_cert_pem, server_key_pem) = generate_ca_signed_certs("localhost");
     assert!(String::from_utf8_lossy(&ca_pem).contains("BEGIN CERTIFICATE"));
-    assert!(
-        String::from_utf8_lossy(&server_cert_pem).contains("BEGIN CERTIFICATE")
-    );
-    assert!(
-        String::from_utf8_lossy(&server_key_pem).contains("PRIVATE KEY")
-    );
+    assert!(String::from_utf8_lossy(&server_cert_pem).contains("BEGIN CERTIFICATE"));
+    assert!(String::from_utf8_lossy(&server_key_pem).contains("PRIVATE KEY"));
     // CA and server certs should be different
     assert_ne!(ca_pem, server_cert_pem);
 }
@@ -350,9 +343,7 @@ fn test_tls_config_invalid_cert_data() {
     assert!(!path.is_empty());
     let content = std::fs::read(&path).unwrap();
     assert!(!content.is_empty());
-    assert!(
-        !String::from_utf8_lossy(&content).contains("BEGIN CERTIFICATE")
-    );
+    assert!(!String::from_utf8_lossy(&content).contains("BEGIN CERTIFICATE"));
     cleanup_temp_dir();
 }
 
@@ -427,9 +418,7 @@ fn test_non_tls_connection_to_closed_port_fails() {
 fn test_cert_chain_validation_concept() {
     let (ca_pem, server_cert_pem, _server_key_pem) = generate_ca_signed_certs("localhost");
     assert!(String::from_utf8_lossy(&ca_pem).contains("BEGIN CERTIFICATE"));
-    assert!(
-        String::from_utf8_lossy(&server_cert_pem).contains("BEGIN CERTIFICATE")
-    );
+    assert!(String::from_utf8_lossy(&server_cert_pem).contains("BEGIN CERTIFICATE"));
 }
 
 #[test]

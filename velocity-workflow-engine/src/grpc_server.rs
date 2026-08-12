@@ -31,12 +31,14 @@ use std::sync::Mutex as StdMutex;
 
 use tonic::{Request, Response, Status};
 
+use crate::batch::BatchStatus;
 use crate::engine::{WorkflowEngine, WorkflowStatus};
-use crate::matching_engine::{MatchingEngine, TaskQueueId, TaskQueueKind, TaskQueueType, MatchTask as MeMatchTask};
+use crate::matching_engine::{
+    MatchTask as MeMatchTask, MatchingEngine, TaskQueueId, TaskQueueKind, TaskQueueType,
+};
 use crate::namespace::NamespaceError;
 use crate::task_queue::TaskKind;
 use crate::visibility::WorkflowExecutionInfo;
-use crate::batch::BatchStatus;
 
 // Include the generated protobuf/gRPC code.
 // The build.rs compiles protos into src/grpc/ when the grpc feature is enabled.
@@ -44,11 +46,11 @@ pub mod velocity_proto {
     tonic::include_proto!("velocity.v1");
 }
 
-use velocity_proto::workflow_service_server::{WorkflowService, WorkflowServiceServer};
 use velocity_proto::health_service_server::{HealthService, HealthServiceServer};
 use velocity_proto::history_service_server::{HistoryService, HistoryServiceServer};
 use velocity_proto::matching_service_server::{MatchingService, MatchingServiceServer};
 use velocity_proto::worker_service_server::{WorkerService, WorkerServiceServer};
+use velocity_proto::workflow_service_server::{WorkflowService, WorkflowServiceServer};
 use velocity_proto::*;
 
 // ─── Error Mapping ─────────────────────────────────────────────────────────────
@@ -106,22 +108,44 @@ fn execution_info_to_proto(info: &WorkflowExecutionInfo) -> WorkflowExecutionInf
     let search_attributes = if info.search_attributes.is_empty() {
         None
     } else {
-        let indexed_fields: std::collections::HashMap<String, velocity_proto::SearchAttributeValue> = info
+        let indexed_fields: std::collections::HashMap<
+            String,
+            velocity_proto::SearchAttributeValue,
+        > = info
             .search_attributes
             .iter()
             .map(|(k, v)| {
                 let proto_val = match v {
-                    crate::visibility::SearchAttributeValue::String(s) => velocity_proto::search_attribute_value::Value::StringValue(s.clone()),
-                    crate::visibility::SearchAttributeValue::Integer(i) => velocity_proto::search_attribute_value::Value::IntegerValue(*i),
-                    crate::visibility::SearchAttributeValue::Double(d) => velocity_proto::search_attribute_value::Value::DoubleValue(*d),
-                    crate::visibility::SearchAttributeValue::Bool(b) => velocity_proto::search_attribute_value::Value::BoolValue(*b),
-                    crate::visibility::SearchAttributeValue::DateTime(ms) => velocity_proto::search_attribute_value::Value::DatetimeValue(prost_types::Timestamp {
-                        seconds: (*ms / 1000) as i64,
-                        nanos: ((*ms % 1000) * 1_000_000) as i32,
-                    }),
-                    crate::visibility::SearchAttributeValue::Keyword(k) => velocity_proto::search_attribute_value::Value::KeywordValue(k.clone()),
+                    crate::visibility::SearchAttributeValue::String(s) => {
+                        velocity_proto::search_attribute_value::Value::StringValue(s.clone())
+                    }
+                    crate::visibility::SearchAttributeValue::Integer(i) => {
+                        velocity_proto::search_attribute_value::Value::IntegerValue(*i)
+                    }
+                    crate::visibility::SearchAttributeValue::Double(d) => {
+                        velocity_proto::search_attribute_value::Value::DoubleValue(*d)
+                    }
+                    crate::visibility::SearchAttributeValue::Bool(b) => {
+                        velocity_proto::search_attribute_value::Value::BoolValue(*b)
+                    }
+                    crate::visibility::SearchAttributeValue::DateTime(ms) => {
+                        velocity_proto::search_attribute_value::Value::DatetimeValue(
+                            prost_types::Timestamp {
+                                seconds: (*ms / 1000) as i64,
+                                nanos: ((*ms % 1000) * 1_000_000) as i32,
+                            },
+                        )
+                    }
+                    crate::visibility::SearchAttributeValue::Keyword(k) => {
+                        velocity_proto::search_attribute_value::Value::KeywordValue(k.clone())
+                    }
                 };
-                (k.clone(), velocity_proto::SearchAttributeValue { value: Some(proto_val) })
+                (
+                    k.clone(),
+                    velocity_proto::SearchAttributeValue {
+                        value: Some(proto_val),
+                    },
+                )
             })
             .collect();
         Some(velocity_proto::SearchAttributes { indexed_fields })
@@ -135,7 +159,14 @@ fn execution_info_to_proto(info: &WorkflowExecutionInfo) -> WorkflowExecutionInf
             .memo
             .iter()
             .map(|(k, v)| {
-                (k.clone(), velocity_proto::Payload { data: v.clone(), encoding: 0, metadata: std::collections::HashMap::new() })
+                (
+                    k.clone(),
+                    velocity_proto::Payload {
+                        data: v.clone(),
+                        encoding: 0,
+                        metadata: std::collections::HashMap::new(),
+                    },
+                )
             })
             .collect();
         Some(velocity_proto::Memo { fields })
@@ -279,7 +310,9 @@ impl WorkflowService for WorkflowServiceImpl {
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         if workflow_id == 0 {
-            return Err(Status::invalid_argument("workflow_id is required and must be non-zero"));
+            return Err(Status::invalid_argument(
+                "workflow_id is required and must be non-zero",
+            ));
         }
         if req.workflow_type.is_none() {
             return Err(Status::invalid_argument("workflow_type is required"));
@@ -301,32 +334,43 @@ impl WorkflowService for WorkflowServiceImpl {
                     .filter_map(|(k, v)| {
                         v.value.map(|val| {
                             let attr_val = match val {
-                                velocity_proto::search_attribute_value::Value::StringValue(s) => crate::visibility::SearchAttributeValue::String(s),
-                                velocity_proto::search_attribute_value::Value::IntegerValue(i) => crate::visibility::SearchAttributeValue::Integer(i),
-                                velocity_proto::search_attribute_value::Value::DoubleValue(d) => crate::visibility::SearchAttributeValue::Double(d),
-                                velocity_proto::search_attribute_value::Value::BoolValue(b) => crate::visibility::SearchAttributeValue::Bool(b),
-                                velocity_proto::search_attribute_value::Value::DatetimeValue(ts) => crate::visibility::SearchAttributeValue::DateTime(
+                                velocity_proto::search_attribute_value::Value::StringValue(s) => {
+                                    crate::visibility::SearchAttributeValue::String(s)
+                                }
+                                velocity_proto::search_attribute_value::Value::IntegerValue(i) => {
+                                    crate::visibility::SearchAttributeValue::Integer(i)
+                                }
+                                velocity_proto::search_attribute_value::Value::DoubleValue(d) => {
+                                    crate::visibility::SearchAttributeValue::Double(d)
+                                }
+                                velocity_proto::search_attribute_value::Value::BoolValue(b) => {
+                                    crate::visibility::SearchAttributeValue::Bool(b)
+                                }
+                                velocity_proto::search_attribute_value::Value::DatetimeValue(
+                                    ts,
+                                ) => crate::visibility::SearchAttributeValue::DateTime(
                                     (ts.seconds as u64) * 1000 + (ts.nanos as u64) / 1_000_000,
                                 ),
-                                velocity_proto::search_attribute_value::Value::KeywordValue(k) => crate::visibility::SearchAttributeValue::Keyword(k),
+                                velocity_proto::search_attribute_value::Value::KeywordValue(k) => {
+                                    crate::visibility::SearchAttributeValue::Keyword(k)
+                                }
                             };
                             (k, attr_val)
                         })
                     })
                     .collect();
-                if fields.is_empty() { None } else { Some(fields) }
+                if fields.is_empty() {
+                    None
+                } else {
+                    Some(fields)
+                }
             })
             .unwrap_or_default();
 
         // Convert memo from proto to engine format
         let memo_fields: HashMap<String, Vec<u8>> = req
             .memo
-            .map(|m| {
-                m.fields
-                    .into_iter()
-                    .map(|(k, v)| (k, v.data))
-                    .collect()
-            })
+            .map(|m| m.fields.into_iter().map(|(k, v)| (k, v.data)).collect())
             .unwrap_or_default();
 
         let key = self.engine.start_workflow_with_attrs(
@@ -350,7 +394,11 @@ impl WorkflowService for WorkflowServiceImpl {
         }
 
         // Enforce concurrency limits per workflow type and namespace
-        match self.engine.concurrency_limiter().acquire(key, workflow_type_id, namespace_id, 0) {
+        match self
+            .engine
+            .concurrency_limiter()
+            .acquire(key, workflow_type_id, namespace_id, 0)
+        {
             crate::concurrency_limiter::AcquireResult::Acquired => { /* proceed */ }
             crate::concurrency_limiter::AcquireResult::Rejected => {
                 // Rollback the workflow start
@@ -371,7 +419,11 @@ impl WorkflowService for WorkflowServiceImpl {
         };
 
         // Schedule initial workflow task in the matching engine for worker dispatch
-        let tq_name = req.task_queue.as_ref().map(|t| t.name.as_str()).unwrap_or("");
+        let tq_name = req
+            .task_queue
+            .as_ref()
+            .map(|t| t.name.as_str())
+            .unwrap_or("");
         if !tq_name.is_empty() {
             let tq_id = TaskQueueId::new(
                 "default",
@@ -379,17 +431,20 @@ impl WorkflowService for WorkflowServiceImpl {
                 TaskQueueKind::Normal,
                 TaskQueueType::Workflow,
             );
-            self.matching.add_task(&tq_id, MeMatchTask {
-                task_id: now_millis(),
-                namespace_id: "default".to_string(),
-                workflow_id: workflow_id.to_string(),
-                run_id: run_id.to_string(),
-                task_type: TaskQueueType::Workflow,
-                scheduled_time: now_millis(),
-                priority: 0,
-                forwarding_info: None,
-                version: 0,
-            });
+            self.matching.add_task(
+                &tq_id,
+                MeMatchTask {
+                    task_id: now_millis(),
+                    namespace_id: "default".to_string(),
+                    workflow_id: workflow_id.to_string(),
+                    run_id: run_id.to_string(),
+                    task_type: TaskQueueType::Workflow,
+                    scheduled_time: now_millis(),
+                    priority: 0,
+                    forwarding_info: None,
+                    version: 0,
+                },
+            );
         }
 
         // Record workflow started event in history store
@@ -626,7 +681,8 @@ impl WorkflowService for WorkflowServiceImpl {
 
         let infos = if !req.query.is_empty() {
             // Use the search query executor for SQL-like query strings
-            let executor = crate::search_query_executor::SearchQueryExecutor::new(self.engine.visibility());
+            let executor =
+                crate::search_query_executor::SearchQueryExecutor::new(self.engine.visibility());
             match executor.execute_string(&req.query) {
                 Ok(results) => results,
                 Err(e) => {
@@ -650,12 +706,16 @@ impl WorkflowService for WorkflowServiceImpl {
 
             // Apply time range filter if specified
             if req.start_time_min.is_some() || req.start_time_max.is_some() {
-                let min_ms = req.start_time_min.as_ref().map(|t| {
-                    (t.seconds as u64) * 1000 + (t.nanos as u64) / 1_000_000
-                }).unwrap_or(0);
-                let max_ms = req.start_time_max.as_ref().map(|t| {
-                    (t.seconds as u64) * 1000 + (t.nanos as u64) / 1_000_000
-                }).unwrap_or(u64::MAX);
+                let min_ms = req
+                    .start_time_min
+                    .as_ref()
+                    .map(|t| (t.seconds as u64) * 1000 + (t.nanos as u64) / 1_000_000)
+                    .unwrap_or(0);
+                let max_ms = req
+                    .start_time_max
+                    .as_ref()
+                    .map(|t| (t.seconds as u64) * 1000 + (t.nanos as u64) / 1_000_000)
+                    .unwrap_or(u64::MAX);
                 results.retain(|info| info.start_time_ms >= min_ms && info.start_time_ms <= max_ms);
             }
 
@@ -722,7 +782,11 @@ impl WorkflowService for WorkflowServiceImpl {
         }
 
         // Retrieve real history events from the engine's history store
-        let engine_events = self.engine.history_store().get_history(key).unwrap_or_default();
+        let engine_events = self
+            .engine
+            .history_store()
+            .get_history(key)
+            .unwrap_or_default();
         let events: Vec<velocity_proto::HistoryEvent> = engine_events
             .iter()
             .map(|e| velocity_proto::HistoryEvent {
@@ -770,9 +834,11 @@ impl WorkflowService for WorkflowServiceImpl {
             // Long-poll: wait for a task with timeout (use spawn_blocking to avoid blocking async runtime)
             let engine = self.engine.clone();
             let timeout = std::time::Duration::from_millis(long_poll_timeout_ms as u64);
-            tokio::task::spawn_blocking(move || engine.task_queue().poll_timeout(task_queue_hash, timeout))
-                .await
-                .unwrap_or(None)
+            tokio::task::spawn_blocking(move || {
+                engine.task_queue().poll_timeout(task_queue_hash, timeout)
+            })
+            .await
+            .unwrap_or(None)
         } else {
             // Non-blocking: return immediately
             self.engine.task_queue().try_poll(task_queue_hash)
@@ -790,10 +856,17 @@ impl WorkflowService for WorkflowServiceImpl {
                 };
 
                 // Store task_token → workflow_key mapping for command processing
-                self.task_tokens.lock().unwrap().insert(task.task_id, task.workflow_key);
+                self.task_tokens
+                    .lock()
+                    .unwrap()
+                    .insert(task.task_id, task.workflow_key);
 
                 // Build history events for deterministic replay
-                let engine_events = self.engine.history_store().get_history(task.workflow_key).unwrap_or_default();
+                let engine_events = self
+                    .engine
+                    .history_store()
+                    .get_history(task.workflow_key)
+                    .unwrap_or_default();
                 let history_events: Vec<velocity_proto::HistoryEvent> = engine_events
                     .iter()
                     .map(|e| velocity_proto::HistoryEvent {
@@ -823,7 +896,9 @@ impl WorkflowService for WorkflowServiceImpl {
                         name: workflow_type_id.to_string(),
                         type_id: workflow_type_id,
                     }),
-                    history: Some(velocity_proto::History { events: history_events }),
+                    history: Some(velocity_proto::History {
+                        events: history_events,
+                    }),
                     workflow_key: task.workflow_key,
                     step_index: task.step_index,
                     attempt: task.attempt as i32,
@@ -855,9 +930,11 @@ impl WorkflowService for WorkflowServiceImpl {
             // Long-poll: wait for a task with timeout (use spawn_blocking to avoid blocking async runtime)
             let engine = self.engine.clone();
             let timeout = std::time::Duration::from_millis(long_poll_timeout_ms as u64);
-            tokio::task::spawn_blocking(move || engine.task_queue().poll_timeout(task_queue_hash, timeout))
-                .await
-                .unwrap_or(None)
+            tokio::task::spawn_blocking(move || {
+                engine.task_queue().poll_timeout(task_queue_hash, timeout)
+            })
+            .await
+            .unwrap_or(None)
         } else {
             // Non-blocking: return immediately
             self.engine.task_queue().try_poll(task_queue_hash)
@@ -892,7 +969,9 @@ impl WorkflowService for WorkflowServiceImpl {
                 );
 
                 // Retrieve activity input payload from the engine
-                let input = self.engine.get_activity_input(task.workflow_key, task.step_index)
+                let input = self
+                    .engine
+                    .get_activity_input(task.workflow_key, task.step_index)
                     .map(|data| velocity_proto::Payload {
                         data,
                         encoding: 0,
@@ -929,7 +1008,10 @@ impl WorkflowService for WorkflowServiceImpl {
         let req = request.into_inner();
 
         // Resolve workflow_key from task_token
-        let workflow_key = self.task_tokens.lock().unwrap()
+        let workflow_key = self
+            .task_tokens
+            .lock()
+            .unwrap()
             .remove(&req.task_token)
             .ok_or_else(|| Status::invalid_argument("invalid task_token"))?;
 
@@ -947,7 +1029,9 @@ impl WorkflowService for WorkflowServiceImpl {
                         );
                         // Release concurrency slot
                         if let Some(ctx) = self.engine.workflows_write().get(&workflow_key) {
-                            self.engine.concurrency_limiter().release(ctx.workflow_type_id, ctx.namespace_id);
+                            self.engine
+                                .concurrency_limiter()
+                                .release(ctx.workflow_type_id, ctx.namespace_id);
                         }
                     }
                     velocity_proto::command::Attributes::FailWorkflow(c) => {
@@ -955,18 +1039,24 @@ impl WorkflowService for WorkflowServiceImpl {
                         self.engine.history_store().record_event(
                             workflow_key,
                             crate::event_history::HistoryEventType::WorkflowFailed,
-                            c.failure.as_ref().map(|p| p.data.clone()).unwrap_or_default(),
+                            c.failure
+                                .as_ref()
+                                .map(|p| p.data.clone())
+                                .unwrap_or_default(),
                         );
                         // Release concurrency slot
                         if let Some(ctx) = self.engine.workflows_write().get(&workflow_key) {
-                            self.engine.concurrency_limiter().release(ctx.workflow_type_id, ctx.namespace_id);
+                            self.engine
+                                .concurrency_limiter()
+                                .release(ctx.workflow_type_id, ctx.namespace_id);
                         }
                     }
                     velocity_proto::command::Attributes::ScheduleActivity(c) => {
                         let activity_id = c.activity_type.as_ref().map(|a| a.type_id).unwrap_or(0);
                         let step = self.engine.get_status(workflow_key) as u32; // use status as step counter
                         let input = c.input.as_ref().map(|p| p.data.clone()).unwrap_or_default();
-                        self.engine.schedule_activity(workflow_key, step, activity_id, input);
+                        self.engine
+                            .schedule_activity(workflow_key, step, activity_id, input);
                         self.engine.history_store().record_event(
                             workflow_key,
                             crate::event_history::HistoryEventType::ActivityScheduled,
@@ -974,9 +1064,11 @@ impl WorkflowService for WorkflowServiceImpl {
                         );
                     }
                     velocity_proto::command::Attributes::StartTimer(c) => {
-                        let delay = c.start_to_fire_timeout.as_ref().map(|d| {
-                            std::time::Duration::new(d.seconds as u64, d.nanos as u32)
-                        }).unwrap_or(std::time::Duration::from_secs(1));
+                        let delay = c
+                            .start_to_fire_timeout
+                            .as_ref()
+                            .map(|d| std::time::Duration::new(d.seconds as u64, d.nanos as u32))
+                            .unwrap_or(std::time::Duration::from_secs(1));
                         self.engine.timer_engine().schedule(workflow_key, delay);
                         self.engine.history_store().record_event(
                             workflow_key,
@@ -986,14 +1078,20 @@ impl WorkflowService for WorkflowServiceImpl {
                     }
                     velocity_proto::command::Attributes::SignalExternal(c) => {
                         // Route signal to the target workflow
-                        let target_wf_id = c.execution.as_ref()
+                        let target_wf_id = c
+                            .execution
+                            .as_ref()
                             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
                             .unwrap_or(0);
                         let target_key = Self::workflow_key(workflow_key >> 32, target_wf_id);
-                        let signal_name_id = c.signal_name.as_bytes().iter()
+                        let signal_name_id = c
+                            .signal_name
+                            .as_bytes()
+                            .iter()
                             .fold(0u64, |acc, &b| acc.wrapping_mul(31).wrapping_add(b as u64));
                         let payload = c.input.as_ref().map(|p| p.data.clone()).unwrap_or_default();
-                        self.engine.signal_workflow(target_key, signal_name_id, payload);
+                        self.engine
+                            .signal_workflow(target_key, signal_name_id, payload);
                         self.engine.history_store().record_event(
                             target_key,
                             crate::event_history::HistoryEventType::SignalReceived,
@@ -1001,32 +1099,54 @@ impl WorkflowService for WorkflowServiceImpl {
                         );
                     }
                     velocity_proto::command::Attributes::StartChildWorkflow(c) => {
-                        let child_wf_id = c.workflow_id.as_ref()
+                        let child_wf_id = c
+                            .workflow_id
+                            .as_ref()
                             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
                             .unwrap_or(0);
-                        let child_type_id = c.workflow_type.as_ref().map(|t| t.type_id).unwrap_or(0);
+                        let child_type_id =
+                            c.workflow_type.as_ref().map(|t| t.type_id).unwrap_or(0);
                         let child_tq_hash = c.task_queue.as_ref().map(|tq| tq.hash).unwrap_or(0);
                         let child_input = c.input.as_ref().map(|p| p.data.clone());
                         let total_steps = c.total_steps;
                         let child_key = self.engine.start_child_workflow(
-                            workflow_key, child_wf_id, child_type_id, child_tq_hash, total_steps, child_input,
+                            workflow_key,
+                            child_wf_id,
+                            child_type_id,
+                            child_tq_hash,
+                            total_steps,
+                            child_input,
                         );
                         // Schedule initial workflow task in matching engine for the child
                         let tq_name = c.task_queue.as_ref().map(|t| t.name.as_str()).unwrap_or("");
                         if !tq_name.is_empty() {
-                            let tq_id = TaskQueueId::new("default", tq_name, TaskQueueKind::Normal, TaskQueueType::Workflow);
-                            let child_run_id = { self.engine.workflows_write().get(&child_key).map(|ctx| ctx.run_id).unwrap_or(0) };
-                            self.matching.add_task(&tq_id, MeMatchTask {
-                                task_id: now_millis(),
-                                namespace_id: "default".to_string(),
-                                workflow_id: child_wf_id.to_string(),
-                                run_id: child_run_id.to_string(),
-                                task_type: TaskQueueType::Workflow,
-                                scheduled_time: now_millis(),
-                                priority: 0,
-                                forwarding_info: None,
-                                version: 0,
-                            });
+                            let tq_id = TaskQueueId::new(
+                                "default",
+                                tq_name,
+                                TaskQueueKind::Normal,
+                                TaskQueueType::Workflow,
+                            );
+                            let child_run_id = {
+                                self.engine
+                                    .workflows_write()
+                                    .get(&child_key)
+                                    .map(|ctx| ctx.run_id)
+                                    .unwrap_or(0)
+                            };
+                            self.matching.add_task(
+                                &tq_id,
+                                MeMatchTask {
+                                    task_id: now_millis(),
+                                    namespace_id: "default".to_string(),
+                                    workflow_id: child_wf_id.to_string(),
+                                    run_id: child_run_id.to_string(),
+                                    task_type: TaskQueueType::Workflow,
+                                    scheduled_time: now_millis(),
+                                    priority: 0,
+                                    forwarding_info: None,
+                                    version: 0,
+                                },
+                            );
                         }
                         self.engine.history_store().record_event(
                             workflow_key,
@@ -1048,19 +1168,33 @@ impl WorkflowService for WorkflowServiceImpl {
                         // Schedule initial workflow task for the new run
                         let tq_name = c.task_queue.as_ref().map(|t| t.name.as_str()).unwrap_or("");
                         if !tq_name.is_empty() {
-                            let tq_id = TaskQueueId::new("default", tq_name, TaskQueueKind::Normal, TaskQueueType::Workflow);
-                            let new_run_id = { self.engine.workflows_write().get(&new_key).map(|ctx| ctx.run_id).unwrap_or(0) };
-                            self.matching.add_task(&tq_id, MeMatchTask {
-                                task_id: now_millis(),
-                                namespace_id: "default".to_string(),
-                                workflow_id: new_key.to_string(),
-                                run_id: new_run_id.to_string(),
-                                task_type: TaskQueueType::Workflow,
-                                scheduled_time: now_millis(),
-                                priority: 0,
-                                forwarding_info: None,
-                                version: 0,
-                            });
+                            let tq_id = TaskQueueId::new(
+                                "default",
+                                tq_name,
+                                TaskQueueKind::Normal,
+                                TaskQueueType::Workflow,
+                            );
+                            let new_run_id = {
+                                self.engine
+                                    .workflows_write()
+                                    .get(&new_key)
+                                    .map(|ctx| ctx.run_id)
+                                    .unwrap_or(0)
+                            };
+                            self.matching.add_task(
+                                &tq_id,
+                                MeMatchTask {
+                                    task_id: now_millis(),
+                                    namespace_id: "default".to_string(),
+                                    workflow_id: new_key.to_string(),
+                                    run_id: new_run_id.to_string(),
+                                    task_type: TaskQueueType::Workflow,
+                                    scheduled_time: now_millis(),
+                                    priority: 0,
+                                    forwarding_info: None,
+                                    version: 0,
+                                },
+                            );
                         }
                     }
                 }
@@ -1085,7 +1219,8 @@ impl WorkflowService for WorkflowServiceImpl {
             return Err(Status::not_found("workflow not found"));
         }
 
-        self.engine.complete_activity(workflow_key, step, result.clone());
+        self.engine
+            .complete_activity(workflow_key, step, result.clone());
 
         // Record ActivityCompleted in history
         self.engine.history_store().record_event(
@@ -1095,7 +1230,9 @@ impl WorkflowService for WorkflowServiceImpl {
         );
 
         // Complete heartbeat tracking if registered
-        self.engine.heartbeat_tracker().complete(workflow_key, step as u64);
+        self.engine
+            .heartbeat_tracker()
+            .complete(workflow_key, step as u64);
 
         Ok(Response::new(RespondActivityTaskCompletedResponse {}))
     }
@@ -1118,7 +1255,11 @@ impl WorkflowService for WorkflowServiceImpl {
         let retried = self.engine.fail_activity_with_retry(workflow_key, step);
 
         // Record ActivityFailed in history
-        let failure_data = req.failure.as_ref().map(|p| p.data.clone()).unwrap_or_default();
+        let failure_data = req
+            .failure
+            .as_ref()
+            .map(|p| p.data.clone())
+            .unwrap_or_default();
         self.engine.history_store().record_event(
             workflow_key,
             crate::event_history::HistoryEventType::ActivityFailed,
@@ -1126,7 +1267,9 @@ impl WorkflowService for WorkflowServiceImpl {
         );
 
         // Fail heartbeat tracking if registered
-        self.engine.heartbeat_tracker().fail(workflow_key, step as u64);
+        self.engine
+            .heartbeat_tracker()
+            .fail(workflow_key, step as u64);
 
         if !retried {
             self.engine.fail_workflow(workflow_key);
@@ -1173,10 +1316,8 @@ impl WorkflowService for WorkflowServiceImpl {
             }
             // Apply retention period if specified
             if let Some(retention) = &req.workflow_execution_retention_period {
-                config.retention_period = std::time::Duration::new(
-                    retention.seconds as u64,
-                    retention.nanos as u32,
-                );
+                config.retention_period =
+                    std::time::Duration::new(retention.seconds as u64, retention.nanos as u32);
             }
             // Re-register with updated config (delete + re-register)
             let _ = self.engine.namespaces().delete(ns_id);
@@ -1362,7 +1503,8 @@ impl WorkflowService for WorkflowServiceImpl {
 
         let count = if !req.query.is_empty() {
             // Use search query executor for filtered count
-            let executor = crate::search_query_executor::SearchQueryExecutor::new(self.engine.visibility());
+            let executor =
+                crate::search_query_executor::SearchQueryExecutor::new(self.engine.visibility());
             match executor.execute_string(&req.query) {
                 Ok(results) => results.len() as i64,
                 Err(e) => {
@@ -1389,7 +1531,8 @@ impl WorkflowService for WorkflowServiceImpl {
 
         // Support SQL-like query strings, otherwise return all workflows
         let infos = if !req.query.is_empty() {
-            let executor = crate::search_query_executor::SearchQueryExecutor::new(self.engine.visibility());
+            let executor =
+                crate::search_query_executor::SearchQueryExecutor::new(self.engine.visibility());
             match executor.execute_string(&req.query) {
                 Ok(results) => results,
                 Err(e) => {
@@ -1401,7 +1544,11 @@ impl WorkflowService for WorkflowServiceImpl {
         };
 
         // Cursor-based pagination
-        let page_size = if req.page_size > 0 { req.page_size as usize } else { 100 };
+        let page_size = if req.page_size > 0 {
+            req.page_size as usize
+        } else {
+            100
+        };
         let offset = if req.next_page_token.is_empty() {
             0
         } else {
@@ -1450,7 +1597,10 @@ impl WorkflowService for WorkflowServiceImpl {
         // Verify the workflow exists
         let status = self.engine.get_status(workflow_key);
         if status == WorkflowStatus::Void {
-            return Err(Status::not_found(format!("workflow '{}' not found", wf_exec.workflow_id)));
+            return Err(Status::not_found(format!(
+                "workflow '{}' not found",
+                wf_exec.workflow_id
+            )));
         }
 
         // Reset the workflow to the specified event ID
@@ -1468,7 +1618,10 @@ impl WorkflowService for WorkflowServiceImpl {
         );
 
         // Generate a new run ID
-        let new_run_id = format!("reset-{}-{}", wf_exec.workflow_id, req.workflow_task_finish_event_id);
+        let new_run_id = format!(
+            "reset-{}-{}",
+            wf_exec.workflow_id, req.workflow_task_finish_event_id
+        );
         Ok(Response::new(ResetWorkflowExecutionResponse {
             run_id: new_run_id,
         }))
@@ -1495,7 +1648,10 @@ impl WorkflowService for WorkflowServiceImpl {
         // Verify the workflow is running
         let status = self.engine.get_status(workflow_key);
         if status == WorkflowStatus::Void {
-            return Err(Status::not_found(format!("workflow '{}' not found", wf_exec.workflow_id)));
+            return Err(Status::not_found(format!(
+                "workflow '{}' not found",
+                wf_exec.workflow_id
+            )));
         }
         if status != WorkflowStatus::Running {
             return Err(Status::failed_precondition("workflow is not running"));
@@ -1533,12 +1689,32 @@ impl WorkflowService for WorkflowServiceImpl {
                 // Parse cron expression into CalendarSpec
                 let parts: Vec<&str> = spec.cron_expression.split_whitespace().collect();
                 crate::schedules::CalendarSpec {
-                    second: if parts.len() > 5 { parts[0].to_string() } else { "0".into() },
+                    second: if parts.len() > 5 {
+                        parts[0].to_string()
+                    } else {
+                        "0".into()
+                    },
                     minute: parts.first().unwrap_or(&"*").to_string(),
-                    hour: if parts.len() > 1 { parts[1].to_string() } else { "*".into() },
-                    day_of_month: if parts.len() > 2 { parts[2].to_string() } else { "*".into() },
-                    month: if parts.len() > 3 { parts[3].to_string() } else { "*".into() },
-                    day_of_week: if parts.len() > 4 { parts[4].to_string() } else { "*".into() },
+                    hour: if parts.len() > 1 {
+                        parts[1].to_string()
+                    } else {
+                        "*".into()
+                    },
+                    day_of_month: if parts.len() > 2 {
+                        parts[2].to_string()
+                    } else {
+                        "*".into()
+                    },
+                    month: if parts.len() > 3 {
+                        parts[3].to_string()
+                    } else {
+                        "*".into()
+                    },
+                    day_of_week: if parts.len() > 4 {
+                        parts[4].to_string()
+                    } else {
+                        "*".into()
+                    },
                     comment: spec.cron_expression.clone(),
                 }
             } else if !spec.calendar_spec.is_empty() {
@@ -1563,7 +1739,9 @@ impl WorkflowService for WorkflowServiceImpl {
         };
 
         // Parse overlap policy
-        let overlap = req.policies.as_ref()
+        let overlap = req
+            .policies
+            .as_ref()
             .map(|p| match p.overlap_policy {
                 0 => crate::schedules::OverlapPolicy::Skip,
                 1 => crate::schedules::OverlapPolicy::BufferOne,
@@ -1574,10 +1752,16 @@ impl WorkflowService for WorkflowServiceImpl {
             })
             .unwrap_or(crate::schedules::OverlapPolicy::Skip);
 
-        let jitter = req.spec.as_ref().map(|s| s.jitter_seconds as u64).unwrap_or(0);
+        let jitter = req
+            .spec
+            .as_ref()
+            .map(|s| s.jitter_seconds as u64)
+            .unwrap_or(0);
 
         // Extract workflow type and namespace from the action
-        let (workflow_type_id, task_queue_hash) = req.action.as_ref()
+        let (workflow_type_id, task_queue_hash) = req
+            .action
+            .as_ref()
             .and_then(|a| a.start_workflow.as_ref())
             .map(|sw| {
                 let wt_id = sw.workflow_type.as_ref().map(|t| t.type_id).unwrap_or(0);
@@ -1612,11 +1796,18 @@ impl WorkflowService for WorkflowServiceImpl {
             return Err(Status::invalid_argument("schedule_id is required"));
         }
 
-        let sched_key: u64 = req.schedule_id.parse()
+        let sched_key: u64 = req
+            .schedule_id
+            .parse()
             .map_err(|_| Status::invalid_argument("invalid schedule_id"))?;
 
-        let entry = self.engine.schedule_manager().get(sched_key)
-            .ok_or_else(|| Status::not_found(format!("schedule '{}' not found", req.schedule_id)))?;
+        let entry = self
+            .engine
+            .schedule_manager()
+            .get(sched_key)
+            .ok_or_else(|| {
+                Status::not_found(format!("schedule '{}' not found", req.schedule_id))
+            })?;
 
         // Convert engine ScheduleState to proto
         let state_status = match entry.state {
@@ -1665,7 +1856,11 @@ impl WorkflowService for WorkflowServiceImpl {
         let req = request.into_inner();
         let entries = self.engine.schedule_manager().list();
 
-        let page_size = if req.page_size > 0 { req.page_size as usize } else { 100 };
+        let page_size = if req.page_size > 0 {
+            req.page_size as usize
+        } else {
+            100
+        };
         let schedule_entries: Vec<ScheduleListEntry> = entries
             .iter()
             .take(page_size)
@@ -1711,11 +1906,16 @@ impl WorkflowService for WorkflowServiceImpl {
         if req.schedule_id.is_empty() {
             return Err(Status::invalid_argument("schedule_id is required"));
         }
-        let sched_key: u64 = req.schedule_id.parse()
+        let sched_key: u64 = req
+            .schedule_id
+            .parse()
             .map_err(|_| Status::invalid_argument("invalid schedule_id"))?;
 
         if !self.engine.schedule_manager().delete(sched_key) {
-            return Err(Status::not_found(format!("schedule '{}' not found", req.schedule_id)));
+            return Err(Status::not_found(format!(
+                "schedule '{}' not found",
+                req.schedule_id
+            )));
         }
         Ok(Response::new(DeleteScheduleResponse {}))
     }
@@ -1728,12 +1928,19 @@ impl WorkflowService for WorkflowServiceImpl {
         if req.schedule_id.is_empty() {
             return Err(Status::invalid_argument("schedule_id is required"));
         }
-        let sched_key: u64 = req.schedule_id.parse()
+        let sched_key: u64 = req
+            .schedule_id
+            .parse()
             .map_err(|_| Status::invalid_argument("invalid schedule_id"))?;
 
         // Verify the schedule exists
-        let _entry = self.engine.schedule_manager().get(sched_key)
-            .ok_or_else(|| Status::not_found(format!("schedule '{}' not found", req.schedule_id)))?;
+        let _entry = self
+            .engine
+            .schedule_manager()
+            .get(sched_key)
+            .ok_or_else(|| {
+                Status::not_found(format!("schedule '{}' not found", req.schedule_id))
+            })?;
 
         // Update overlap policy if provided
         if let Some(policies) = &req.policies {
@@ -1745,7 +1952,9 @@ impl WorkflowService for WorkflowServiceImpl {
                 4 => crate::schedules::OverlapPolicy::AllowAll,
                 _ => crate::schedules::OverlapPolicy::Skip,
             };
-            self.engine.schedule_manager().update_overlap_policy(sched_key, overlap);
+            self.engine
+                .schedule_manager()
+                .update_overlap_policy(sched_key, overlap);
         }
 
         Ok(Response::new(UpdateScheduleResponse {
@@ -1760,7 +1969,7 @@ impl WorkflowService for WorkflowServiceImpl {
         request: Request<StartBatchOperationRequest>,
     ) -> Result<Response<StartBatchOperationResponse>, Status> {
         let req = request.into_inner();
-        
+
         // Validate required fields
         if req.namespace.is_empty() {
             return Err(Status::invalid_argument("namespace is required"));
@@ -1779,7 +1988,9 @@ impl WorkflowService for WorkflowServiceImpl {
                     .filter(|info| info.status == WorkflowStatus::Running)
                     .map(|info| info.workflow_key)
                     .collect();
-                self.engine.batch_executor().submit_terminate(&self.engine, running_keys)
+                self.engine
+                    .batch_executor()
+                    .submit_terminate(&self.engine, running_keys)
             }
             1 => {
                 // Cancel: similar to terminate but cancel instead
@@ -1790,24 +2001,40 @@ impl WorkflowService for WorkflowServiceImpl {
                     .filter(|info| info.status == WorkflowStatus::Running)
                     .map(|info| info.workflow_key)
                     .collect();
-                self.engine.batch_executor().submit_cancel(&self.engine, running_keys)
+                self.engine
+                    .batch_executor()
+                    .submit_cancel(&self.engine, running_keys)
             }
             2 => {
                 // Signal: signal all running workflows matching the query
                 if req.signal_name.is_empty() {
-                    return Err(Status::invalid_argument("signal_name is required for signal operation"));
+                    return Err(Status::invalid_argument(
+                        "signal_name is required for signal operation",
+                    ));
                 }
-                let signal_name_id = req.signal_name.as_bytes().iter()
+                let signal_name_id = req
+                    .signal_name
+                    .as_bytes()
+                    .iter()
                     .fold(0u64, |acc, &b| acc.wrapping_mul(31).wrapping_add(b as u64));
-                let payload = req.signal_input.as_ref().map(|p| p.data.clone()).unwrap_or_default();
-                
+                let payload = req
+                    .signal_input
+                    .as_ref()
+                    .map(|p| p.data.clone())
+                    .unwrap_or_default();
+
                 let all_workflows = self.engine.visibility().list_all();
                 let running_keys: Vec<u64> = all_workflows
                     .iter()
                     .filter(|info| info.status == WorkflowStatus::Running)
                     .map(|info| info.workflow_key)
                     .collect();
-                self.engine.batch_executor().submit_signal(&self.engine, running_keys, signal_name_id, payload)
+                self.engine.batch_executor().submit_signal(
+                    &self.engine,
+                    running_keys,
+                    signal_name_id,
+                    payload,
+                )
             }
             3 => {
                 // Query status: query status of all running workflows
@@ -1817,7 +2044,9 @@ impl WorkflowService for WorkflowServiceImpl {
                     .filter(|info| info.status == WorkflowStatus::Running)
                     .map(|info| info.workflow_key)
                     .collect();
-                self.engine.batch_executor().submit_query_status(&self.engine, running_keys)
+                self.engine
+                    .batch_executor()
+                    .submit_query_status(&self.engine, running_keys)
             }
             _ => return Err(Status::invalid_argument("invalid operation type")),
         };
@@ -1832,12 +2061,19 @@ impl WorkflowService for WorkflowServiceImpl {
         request: Request<DescribeBatchOperationRequest>,
     ) -> Result<Response<DescribeBatchOperationResponse>, Status> {
         let req = request.into_inner();
-        
-        let batch_id: u64 = req.job_id.parse()
+
+        let batch_id: u64 = req
+            .job_id
+            .parse()
             .map_err(|_| Status::invalid_argument("invalid job_id"))?;
 
-        let result = self.engine.batch_executor().get_result(batch_id)
-            .ok_or_else(|| Status::not_found(format!("batch operation '{}' not found", req.job_id)))?;
+        let result = self
+            .engine
+            .batch_executor()
+            .get_result(batch_id)
+            .ok_or_else(|| {
+                Status::not_found(format!("batch operation '{}' not found", req.job_id))
+            })?;
 
         Ok(Response::new(DescribeBatchOperationResponse {
             job_id: req.job_id,
@@ -1857,10 +2093,10 @@ impl WorkflowService for WorkflowServiceImpl {
         request: Request<ListBatchOperationsRequest>,
     ) -> Result<Response<ListBatchOperationsResponse>, Status> {
         let _req = request.into_inner();
-        
+
         // List all batch operations from the batch executor
         let all_batches = self.engine.batch_executor().list_all();
-        
+
         let operations: Vec<BatchOperationInfo> = all_batches
             .iter()
             .map(|(id, status, result)| {
@@ -1881,7 +2117,7 @@ impl WorkflowService for WorkflowServiceImpl {
                 }
             })
             .collect();
-        
+
         Ok(Response::new(ListBatchOperationsResponse {
             operations,
             next_page_token: vec![],
@@ -1949,7 +2185,9 @@ impl HealthService for HealthServiceImpl {
                 timestamp: None,
             }))
             .await;
-        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
+            rx,
+        )))
     }
 }
 
@@ -2000,7 +2238,9 @@ impl HistoryService for HistoryServiceImpl {
         request: Request<HistStartWorkflowExecutionRequest>,
     ) -> Result<Response<HistStartWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
-        let execution = req.execution.ok_or_else(|| Status::invalid_argument("execution required"))?;
+        let execution = req
+            .execution
+            .ok_or_else(|| Status::invalid_argument("execution required"))?;
         let wf_id: u64 = execution.workflow_id.parse().unwrap_or(0);
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2017,7 +2257,9 @@ impl HistoryService for HistoryServiceImpl {
         request: Request<HistGetMutableStateRequest>,
     ) -> Result<Response<HistGetMutableStateResponse>, Status> {
         let req = request.into_inner();
-        let execution = req.execution.ok_or_else(|| Status::invalid_argument("execution required"))?;
+        let execution = req
+            .execution
+            .ok_or_else(|| Status::invalid_argument("execution required"))?;
         let wf_id: u64 = execution.workflow_id.parse().unwrap_or(0);
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2045,7 +2287,9 @@ impl HistoryService for HistoryServiceImpl {
         request: Request<HistPollMutableStateRequest>,
     ) -> Result<Response<HistPollMutableStateResponse>, Status> {
         let req = request.into_inner();
-        let execution = req.execution.ok_or_else(|| Status::invalid_argument("execution required"))?;
+        let execution = req
+            .execution
+            .ok_or_else(|| Status::invalid_argument("execution required"))?;
         let wf_id: u64 = execution.workflow_id.parse().unwrap_or(0);
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2070,7 +2314,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistResetStickyTaskQueueResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2090,22 +2336,37 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistDescribeWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
 
-        let desc = self.engine.describe_workflow(key)
+        let desc = self
+            .engine
+            .describe_workflow(key)
             .ok_or_else(|| Status::not_found(format!("workflow {} not found", wf_id)))?;
 
         // Convert pending activities to proto
-        let pending_activities: Vec<velocity_proto::PendingActivityInfo> = desc.pending_activities.iter().map(|a| {
-            velocity_proto::PendingActivityInfo {
-                activity_type: Some(ActivityType { name: String::new(), type_id: a.activity_id }),
+        let pending_activities: Vec<velocity_proto::PendingActivityInfo> = desc
+            .pending_activities
+            .iter()
+            .map(|a| velocity_proto::PendingActivityInfo {
+                activity_type: Some(ActivityType {
+                    name: String::new(),
+                    type_id: a.activity_id,
+                }),
                 activity_id: a.activity_id.to_string(),
                 state: format!("{:?}", a.state),
-                heartbeat_details: if a.heartbeat_details.is_empty() { None } else {
-                    Some(velocity_proto::Payload { data: a.heartbeat_details.clone(), encoding: 0, metadata: HashMap::new() })
+                heartbeat_details: if a.heartbeat_details.is_empty() {
+                    None
+                } else {
+                    Some(velocity_proto::Payload {
+                        data: a.heartbeat_details.clone(),
+                        encoding: 0,
+                        metadata: HashMap::new(),
+                    })
                 },
                 last_heartbeat_time: None,
                 attempt: a.attempt as i32,
@@ -2114,19 +2375,21 @@ impl HistoryService for HistoryServiceImpl {
                 last_started_time: None,
                 expiration_time: None,
                 retry_policy: None,
-            }
-        }).collect();
+            })
+            .collect();
 
         // Convert pending children to proto
-        let pending_children: Vec<velocity_proto::PendingChildExecutionInfo> = desc.pending_children.iter().map(|c| {
-            velocity_proto::PendingChildExecutionInfo {
+        let pending_children: Vec<velocity_proto::PendingChildExecutionInfo> = desc
+            .pending_children
+            .iter()
+            .map(|c| velocity_proto::PendingChildExecutionInfo {
                 workflow_id: c.workflow_key.to_string(),
                 run_id: String::new(),
                 workflow_type: String::new(),
                 initiated_id: c.workflow_key as i64,
                 parent_close_policy: 0,
-            }
-        }).collect();
+            })
+            .collect();
 
         // Build execution info
         let execution_info = velocity_proto::WorkflowExecutionInfo {
@@ -2134,11 +2397,19 @@ impl HistoryService for HistoryServiceImpl {
                 workflow_id: desc.workflow_id.to_string(),
                 run_id: desc.run_id.to_string(),
             }),
-            r#type: Some(WorkflowType { name: String::new(), type_id: desc.workflow_type_id }),
+            r#type: Some(WorkflowType {
+                name: String::new(),
+                type_id: desc.workflow_type_id,
+            }),
             start_time: None,
             close_time: None,
             status: status_to_proto(desc.status),
-            history_length: self.engine.history_store().get_history(key).map(|h| h.len()).unwrap_or(0) as i64,
+            history_length: self
+                .engine
+                .history_store()
+                .get_history(key)
+                .map(|h| h.len())
+                .unwrap_or(0) as i64,
             namespace: String::new(),
             namespace_id: desc.namespace_id,
             task_queue: None,
@@ -2153,7 +2424,10 @@ impl HistoryService for HistoryServiceImpl {
 
         Ok(Response::new(HistDescribeWorkflowExecutionResponse {
             execution_config: Some(WorkflowExecutionConfig {
-                workflow_type: Some(WorkflowType { name: String::new(), type_id: desc.workflow_type_id }),
+                workflow_type: Some(WorkflowType {
+                    name: String::new(),
+                    type_id: desc.workflow_type_id,
+                }),
                 task_queue: None,
                 workflow_execution_timeout: None,
                 workflow_run_timeout: None,
@@ -2178,7 +2452,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistRecordWorkflowTaskStartedResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2208,7 +2484,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistRecordActivityTaskStartedResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2272,13 +2550,16 @@ impl HistoryService for HistoryServiceImpl {
         // Parse task_token to derive workflow_key and step
         let token: u64 = req.task_token.parse().unwrap_or(0);
         let workflow_key = (ns_id << 32) | (token & 0xFFFFFFFF);
-        self.engine.complete_activity(workflow_key, 0, req.result.clone());
+        self.engine
+            .complete_activity(workflow_key, 0, req.result.clone());
         self.engine.history_store().record_event(
             workflow_key,
             crate::event_history::HistoryEventType::ActivityCompleted,
             req.result,
         );
-        self.engine.heartbeat_tracker().complete(workflow_key, token);
+        self.engine
+            .heartbeat_tracker()
+            .complete(workflow_key, token);
         Ok(Response::new(HistRespondActivityTaskCompletedResponse {}))
     }
 
@@ -2333,11 +2614,19 @@ impl HistoryService for HistoryServiceImpl {
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
         let token: u64 = req.task_token.parse().unwrap_or(0);
         let workflow_key = (ns_id << 32) | (token & 0xFFFFFFFF);
-        let heartbeat_details = if req.details.is_empty() { None } else { Some(req.details) };
-        self.engine.heartbeat_tracker().record_heartbeat(workflow_key, token, heartbeat_details);
+        let heartbeat_details = if req.details.is_empty() {
+            None
+        } else {
+            Some(req.details)
+        };
+        self.engine
+            .heartbeat_tracker()
+            .record_heartbeat(workflow_key, token, heartbeat_details);
         // Check if cancellation was requested for this activity
         let cancel_requested = matches!(
-            self.engine.heartbeat_tracker().get_state(workflow_key, token),
+            self.engine
+                .heartbeat_tracker()
+                .get_state(workflow_key, token),
             Some(crate::heartbeat::HeartbeatState::Cancelled)
         );
         Ok(Response::new(HistRecordActivityTaskHeartbeatResponse {
@@ -2350,7 +2639,9 @@ impl HistoryService for HistoryServiceImpl {
         request: Request<RequestCancelWorkflowExecutionRequest>,
     ) -> Result<Response<RequestCancelWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
-        let execution = req.execution.ok_or_else(|| Status::invalid_argument("execution required"))?;
+        let execution = req
+            .execution
+            .ok_or_else(|| Status::invalid_argument("execution required"))?;
         let wf_id: u64 = execution.workflow_id.parse().unwrap_or(0);
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2364,7 +2655,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<SignalWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace.parse().unwrap_or(0);
-        let wf_id = req.workflow_execution.as_ref()
+        let wf_id = req
+            .workflow_execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2372,7 +2665,11 @@ impl HistoryService for HistoryServiceImpl {
         if status == WorkflowStatus::Void {
             return Err(Status::not_found(format!("workflow {} not found", wf_id)));
         }
-        self.engine.signal_workflow(key, req.signal_name_id, req.input.map(|p| p.data).unwrap_or_default());
+        self.engine.signal_workflow(
+            key,
+            req.signal_name_id,
+            req.input.map(|p| p.data).unwrap_or_default(),
+        );
         self.engine.history_store().record_event(
             key,
             crate::event_history::HistoryEventType::SignalReceived,
@@ -2387,16 +2684,29 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<SignalWithStartWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace.parse().unwrap_or(0);
-        let wf_id = req.workflow_execution.as_ref()
+        let wf_id = req
+            .workflow_execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let wf_type_id = req.workflow_type.as_ref().map(|t| t.type_id).unwrap_or(0);
         let tq_hash = req.task_queue.as_ref().map(|t| t.hash).unwrap_or(0);
         let (key, was_started) = self.engine.signal_with_start(
-            wf_id, wf_type_id, ns_id, tq_hash, req.total_steps, req.signal_name_id,
+            wf_id,
+            wf_type_id,
+            ns_id,
+            tq_hash,
+            req.total_steps,
+            req.signal_name_id,
             req.signal_input.map(|p| p.data).unwrap_or_default(),
         );
-        let run_id = { self.engine.workflows_write().get(&key).map(|c| c.run_id).unwrap_or(0) };
+        let run_id = {
+            self.engine
+                .workflows_write()
+                .get(&key)
+                .map(|c| c.run_id)
+                .unwrap_or(0)
+        };
         Ok(Response::new(SignalWithStartWorkflowExecutionResponse {
             workflow_execution: Some(WorkflowExecution {
                 workflow_id: wf_id.to_string(),
@@ -2413,7 +2723,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistRemoveSignalMutableStateResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2433,7 +2745,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<TerminateWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace.parse().unwrap_or(0);
-        let wf_id = req.workflow_execution.as_ref()
+        let wf_id = req
+            .workflow_execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2456,7 +2770,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<DeleteWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2474,7 +2790,9 @@ impl HistoryService for HistoryServiceImpl {
         } else {
             self.resolve_namespace(&req.namespace)?
         };
-        let wf_id = req.workflow_execution.as_ref()
+        let wf_id = req
+            .workflow_execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2496,7 +2814,9 @@ impl HistoryService for HistoryServiceImpl {
         );
         // Generate a new run ID
         let new_run_id = format!("reset-{}-{}", wf_id, reset_event_id);
-        Ok(Response::new(ResetWorkflowExecutionResponse { run_id: new_run_id }))
+        Ok(Response::new(ResetWorkflowExecutionResponse {
+            run_id: new_run_id,
+        }))
     }
 
     async fn schedule_workflow_task(
@@ -2505,7 +2825,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistScheduleWorkflowTaskResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2514,19 +2836,33 @@ impl HistoryService for HistoryServiceImpl {
             return Err(Status::not_found(format!("workflow {} not found", wf_id)));
         }
         // Schedule a workflow task in the matching engine
-        let run_id = { self.engine.workflows_write().get(&key).map(|c| c.run_id).unwrap_or(0) };
-        let tq_id = TaskQueueId::new("default", "__workflow_tasks", TaskQueueKind::Normal, TaskQueueType::Workflow);
-        self.matching.add_task(&tq_id, MeMatchTask {
-            task_id: now_millis(),
-            namespace_id: req.namespace_id,
-            workflow_id: wf_id.to_string(),
-            run_id: run_id.to_string(),
-            task_type: TaskQueueType::Workflow,
-            scheduled_time: now_millis(),
-            priority: 0,
-            forwarding_info: None,
-            version: 0,
-        });
+        let run_id = {
+            self.engine
+                .workflows_write()
+                .get(&key)
+                .map(|c| c.run_id)
+                .unwrap_or(0)
+        };
+        let tq_id = TaskQueueId::new(
+            "default",
+            "__workflow_tasks",
+            TaskQueueKind::Normal,
+            TaskQueueType::Workflow,
+        );
+        self.matching.add_task(
+            &tq_id,
+            MeMatchTask {
+                task_id: now_millis(),
+                namespace_id: req.namespace_id,
+                workflow_id: wf_id.to_string(),
+                run_id: run_id.to_string(),
+                task_type: TaskQueueType::Workflow,
+                scheduled_time: now_millis(),
+                priority: 0,
+                forwarding_info: None,
+                version: 0,
+            },
+        );
         Ok(Response::new(HistScheduleWorkflowTaskResponse {}))
     }
 
@@ -2536,13 +2872,18 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistRecordChildExecutionCompletedResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let parent_wf_id = req.parent_execution.as_ref()
+        let parent_wf_id = req
+            .parent_execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let parent_key = Self::workflow_key(ns_id, parent_wf_id);
         let status = self.engine.get_status(parent_key);
         if status == WorkflowStatus::Void {
-            return Err(Status::not_found(format!("parent workflow {} not found", parent_wf_id)));
+            return Err(Status::not_found(format!(
+                "parent workflow {} not found",
+                parent_wf_id
+            )));
         }
         // Record child completion in parent's history
         self.engine.history_store().record_event(
@@ -2559,23 +2900,34 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistVerifyChildExecutionCompletionRecordedResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let parent_wf_id = req.parent_execution.as_ref()
+        let parent_wf_id = req
+            .parent_execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let parent_key = Self::workflow_key(ns_id, parent_wf_id);
         let status = self.engine.get_status(parent_key);
         if status == WorkflowStatus::Void {
-            return Err(Status::not_found(format!("parent workflow {} not found", parent_wf_id)));
+            return Err(Status::not_found(format!(
+                "parent workflow {} not found",
+                parent_wf_id
+            )));
         }
         // Verify that the child completion was recorded in parent's history
-        let events = self.engine.history_store().get_history(parent_key).unwrap_or_default();
+        let events = self
+            .engine
+            .history_store()
+            .get_history(parent_key)
+            .unwrap_or_default();
         let has_completion = events.iter().any(|e| {
             e.event_type == crate::event_history::HistoryEventType::ChildWorkflowCompleted
         });
         if !has_completion {
             return Err(Status::not_found("child execution completion not recorded"));
         }
-        Ok(Response::new(HistVerifyChildExecutionCompletionRecordedResponse {}))
+        Ok(Response::new(
+            HistVerifyChildExecutionCompletionRecordedResponse {},
+        ))
     }
 
     async fn replicate_events_v2(
@@ -2584,7 +2936,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistReplicateEventsV2Response>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2613,7 +2967,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistSyncActivityResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2625,7 +2981,11 @@ impl HistoryService for HistoryServiceImpl {
         self.engine.history_store().record_event(
             key,
             crate::event_history::HistoryEventType::ActivityStarted,
-            format!("scheduled_event_id={},attempt={}", req.scheduled_event_id, req.attempt).into_bytes(),
+            format!(
+                "scheduled_event_id={},attempt={}",
+                req.scheduled_event_id, req.attempt
+            )
+            .into_bytes(),
         );
         Ok(Response::new(HistSyncActivityResponse {}))
     }
@@ -2636,16 +2996,21 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<DescribeMutableStateResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
-        let desc = self.engine.describe_workflow(key)
+        let desc = self
+            .engine
+            .describe_workflow(key)
             .ok_or_else(|| Status::not_found(format!("workflow {} not found", wf_id)))?;
         let state_bytes = format!(
             "{{\"workflow_id\":{},\"run_id\":{},\"status\":{:?},\"steps\":{}/{}\"}}",
             desc.workflow_id, desc.run_id, desc.status, desc.completed_steps, desc.total_steps
-        ).into_bytes();
+        )
+        .into_bytes();
         Ok(Response::new(DescribeMutableStateResponse {
             shard_id: "0".to_string(),
             history_addr: String::new(),
@@ -2658,14 +3023,18 @@ impl HistoryService for HistoryServiceImpl {
         &self,
         _request: Request<GetReplicationMessagesRequest>,
     ) -> Result<Response<GetReplicationMessagesResponse>, Status> {
-        Ok(Response::new(GetReplicationMessagesResponse { shard_messages: vec![] }))
+        Ok(Response::new(GetReplicationMessagesResponse {
+            shard_messages: vec![],
+        }))
     }
 
     async fn get_dlq_replication_messages(
         &self,
         _request: Request<GetDlqReplicationMessagesRequest>,
     ) -> Result<Response<GetDlqReplicationMessagesResponse>, Status> {
-        Ok(Response::new(GetDlqReplicationMessagesResponse { tasks: vec![] }))
+        Ok(Response::new(GetDlqReplicationMessagesResponse {
+            tasks: vec![],
+        }))
     }
 
     async fn query_workflow(
@@ -2674,7 +3043,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistQueryWorkflowResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2684,12 +3055,18 @@ impl HistoryService for HistoryServiceImpl {
         }
         // Parse query_type as numeric ID for the query registry
         let query_name_id: u64 = req.query_type.parse().unwrap_or(0);
-        match self.engine.execute_query(key, query_name_id, &req.query_args) {
+        match self
+            .engine
+            .execute_query(key, query_name_id, &req.query_args)
+        {
             Some(result) => Ok(Response::new(HistQueryWorkflowResponse {
                 result,
                 query_rejected: None,
             })),
-            None => Err(Status::not_found(format!("query handler for {} not registered", req.query_type))),
+            None => Err(Status::not_found(format!(
+                "query handler for {} not registered",
+                req.query_type
+            ))),
         }
     }
 
@@ -2699,7 +3076,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<ReapplyEventsResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2708,8 +3087,13 @@ impl HistoryService for HistoryServiceImpl {
             return Err(Status::not_found(format!("workflow {} not found", wf_id)));
         }
         for event in &req.events {
-            let payload = event.details.as_ref().map(|p| p.data.clone()).unwrap_or_default();
-            self.engine.signal_workflow(key, event.event_type.len() as u64, payload.clone());
+            let payload = event
+                .details
+                .as_ref()
+                .map(|p| p.data.clone())
+                .unwrap_or_default();
+            self.engine
+                .signal_workflow(key, event.event_type.len() as u64, payload.clone());
             self.engine.history_store().record_event(
                 key,
                 crate::event_history::HistoryEventType::SignalReceived,
@@ -2725,7 +3109,10 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<GetDlqMessagesResponse>, Status> {
         let _req = request.into_inner();
         // DLQ is empty in single-node mode — return proper empty response
-        Ok(Response::new(GetDlqMessagesResponse { messages: vec![], replication_tasks: vec![] }))
+        Ok(Response::new(GetDlqMessagesResponse {
+            messages: vec![],
+            replication_tasks: vec![],
+        }))
     }
 
     async fn purge_dlq_messages(
@@ -2752,7 +3139,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<RefreshWorkflowTasksResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2760,18 +3149,26 @@ impl HistoryService for HistoryServiceImpl {
         if status == WorkflowStatus::Void {
             return Err(Status::not_found(format!("workflow {} not found", wf_id)));
         }
-        let tq_id = TaskQueueId::new("default", &format!("wf-{}", wf_id), TaskQueueKind::Normal, TaskQueueType::Workflow);
-        let _ = self.matching.add_task(&tq_id, MeMatchTask {
-            task_id: 0,
-            namespace_id: req.namespace_id,
-            workflow_id: wf_id.to_string(),
-            run_id: String::new(),
-            task_type: TaskQueueType::Workflow,
-            scheduled_time: now_millis(),
-            priority: 0,
-            forwarding_info: None,
-            version: 0,
-        });
+        let tq_id = TaskQueueId::new(
+            "default",
+            &format!("wf-{}", wf_id),
+            TaskQueueKind::Normal,
+            TaskQueueType::Workflow,
+        );
+        let _ = self.matching.add_task(
+            &tq_id,
+            MeMatchTask {
+                task_id: 0,
+                namespace_id: req.namespace_id,
+                workflow_id: wf_id.to_string(),
+                run_id: String::new(),
+                task_type: TaskQueueType::Workflow,
+                scheduled_time: now_millis(),
+                priority: 0,
+                forwarding_info: None,
+                version: 0,
+            },
+        );
         Ok(Response::new(RefreshWorkflowTasksResponse {}))
     }
 
@@ -2781,7 +3178,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<GenerateLastHistoryReplicationTasksResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2794,7 +3193,9 @@ impl HistoryService for HistoryServiceImpl {
             crate::event_history::HistoryEventType::MarkerRecorded,
             b"replication_tasks_generated".to_vec(),
         );
-        Ok(Response::new(GenerateLastHistoryReplicationTasksResponse {}))
+        Ok(Response::new(
+            GenerateLastHistoryReplicationTasksResponse {},
+        ))
     }
 
     async fn get_shard(
@@ -2829,13 +3230,25 @@ impl HistoryService for HistoryServiceImpl {
         let req = request.into_inner();
         // Return history events from all workflows as tasks
         let all_workflows = self.engine.visibility().list_all();
-        let batch_size = if req.batch_size > 0 { req.batch_size as usize } else { 100 };
+        let batch_size = if req.batch_size > 0 {
+            req.batch_size as usize
+        } else {
+            100
+        };
         let mut tasks = Vec::new();
         for info in &all_workflows {
-            if tasks.len() >= batch_size { break; }
-            let events = self.engine.history_store().get_history(info.workflow_key).unwrap_or_default();
+            if tasks.len() >= batch_size {
+                break;
+            }
+            let events = self
+                .engine
+                .history_store()
+                .get_history(info.workflow_key)
+                .unwrap_or_default();
             for e in events {
-                if tasks.len() >= batch_size { break; }
+                if tasks.len() >= batch_size {
+                    break;
+                }
                 tasks.push(velocity_proto::InternalTask {
                     namespace_id: info.namespace_id as i64,
                     task_id: e.event_id as i64,
@@ -2845,7 +3258,10 @@ impl HistoryService for HistoryServiceImpl {
                 });
             }
         }
-        Ok(Response::new(ListHistoryTasksResponse { tasks, next_page_token: vec![] }))
+        Ok(Response::new(ListHistoryTasksResponse {
+            tasks,
+            next_page_token: vec![],
+        }))
     }
 
     async fn remove_task(
@@ -2864,14 +3280,28 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<GetWorkflowExecutionRawHistoryV2Response>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
-        let engine_events = self.engine.history_store().get_history(key).unwrap_or_default();
+        let engine_events = self
+            .engine
+            .history_store()
+            .get_history(key)
+            .unwrap_or_default();
         let start = req.start_event_id as u64;
-        let end = if req.end_event_id > 0 { req.end_event_id as u64 } else { u64::MAX };
-        let page_size = if req.maximum_page_size > 0 { req.maximum_page_size as usize } else { 100 };
+        let end = if req.end_event_id > 0 {
+            req.end_event_id as u64
+        } else {
+            u64::MAX
+        };
+        let page_size = if req.maximum_page_size > 0 {
+            req.maximum_page_size as usize
+        } else {
+            100
+        };
         let events: Vec<velocity_proto::HistoryEvent> = engine_events
             .iter()
             .filter(|e| e.event_id >= start && e.event_id < end)
@@ -2881,12 +3311,21 @@ impl HistoryService for HistoryServiceImpl {
                 event_time: None,
                 event_type: format!("{:?}", e.event_type),
                 task_id: e.workflow_key,
-                details: if e.payload.is_empty() { None } else {
-                    Some(velocity_proto::Payload { data: e.payload.clone(), encoding: 0, metadata: std::collections::HashMap::new() })
+                details: if e.payload.is_empty() {
+                    None
+                } else {
+                    Some(velocity_proto::Payload {
+                        data: e.payload.clone(),
+                        encoding: 0,
+                        metadata: std::collections::HashMap::new(),
+                    })
                 },
             })
             .collect();
-        Ok(Response::new(GetWorkflowExecutionRawHistoryV2Response { history_events: events, next_page_token: vec![] }))
+        Ok(Response::new(GetWorkflowExecutionRawHistoryV2Response {
+            history_events: events,
+            next_page_token: vec![],
+        }))
     }
 
     async fn get_workflow_execution_history(
@@ -2895,12 +3334,22 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistGetWorkflowExecutionHistoryResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
-        let engine_events = self.engine.history_store().get_history(key).unwrap_or_default();
-        let page_size = if req.maximum_page_size > 0 { req.maximum_page_size as usize } else { 100 };
+        let engine_events = self
+            .engine
+            .history_store()
+            .get_history(key)
+            .unwrap_or_default();
+        let page_size = if req.maximum_page_size > 0 {
+            req.maximum_page_size as usize
+        } else {
+            100
+        };
         let events: Vec<velocity_proto::HistoryEvent> = engine_events
             .iter()
             .take(page_size)
@@ -2909,7 +3358,9 @@ impl HistoryService for HistoryServiceImpl {
                 event_time: None,
                 event_type: format!("{:?}", e.event_type),
                 task_id: e.workflow_key,
-                details: if e.payload.is_empty() { None } else {
+                details: if e.payload.is_empty() {
+                    None
+                } else {
                     Some(velocity_proto::Payload {
                         data: e.payload.clone(),
                         encoding: 0,
@@ -2931,13 +3382,23 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistGetWorkflowExecutionHistoryReverseResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
-        let mut engine_events = self.engine.history_store().get_history(key).unwrap_or_default();
+        let mut engine_events = self
+            .engine
+            .history_store()
+            .get_history(key)
+            .unwrap_or_default();
         engine_events.reverse();
-        let page_size = if req.maximum_page_size > 0 { req.maximum_page_size as usize } else { 100 };
+        let page_size = if req.maximum_page_size > 0 {
+            req.maximum_page_size as usize
+        } else {
+            100
+        };
         let events: Vec<velocity_proto::HistoryEvent> = engine_events
             .iter()
             .take(page_size)
@@ -2946,7 +3407,9 @@ impl HistoryService for HistoryServiceImpl {
                 event_time: None,
                 event_type: format!("{:?}", e.event_type),
                 task_id: e.workflow_key,
-                details: if e.payload.is_empty() { None } else {
+                details: if e.payload.is_empty() {
+                    None
+                } else {
                     Some(velocity_proto::Payload {
                         data: e.payload.clone(),
                         encoding: 0,
@@ -2955,10 +3418,12 @@ impl HistoryService for HistoryServiceImpl {
                 },
             })
             .collect();
-        Ok(Response::new(HistGetWorkflowExecutionHistoryReverseResponse {
-            history_events: events,
-            next_page_token: vec![],
-        }))
+        Ok(Response::new(
+            HistGetWorkflowExecutionHistoryReverseResponse {
+                history_events: events,
+                next_page_token: vec![],
+            },
+        ))
     }
 
     async fn force_delete_workflow_execution(
@@ -2967,7 +3432,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistForceDeleteWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -2987,14 +3454,28 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<GetWorkflowExecutionRawHistoryResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
-        let engine_events = self.engine.history_store().get_history(key).unwrap_or_default();
+        let engine_events = self
+            .engine
+            .history_store()
+            .get_history(key)
+            .unwrap_or_default();
         let start = req.start_event_id as u64;
-        let end = if req.end_event_id > 0 { req.end_event_id as u64 } else { u64::MAX };
-        let page_size = if req.maximum_page_size > 0 { req.maximum_page_size as usize } else { 100 };
+        let end = if req.end_event_id > 0 {
+            req.end_event_id as u64
+        } else {
+            u64::MAX
+        };
+        let page_size = if req.maximum_page_size > 0 {
+            req.maximum_page_size as usize
+        } else {
+            100
+        };
         let events: Vec<velocity_proto::HistoryEvent> = engine_events
             .iter()
             .filter(|e| e.event_id >= start && e.event_id < end)
@@ -3004,19 +3485,31 @@ impl HistoryService for HistoryServiceImpl {
                 event_time: None,
                 event_type: format!("{:?}", e.event_type),
                 task_id: e.workflow_key,
-                details: if e.payload.is_empty() { None } else {
-                    Some(velocity_proto::Payload { data: e.payload.clone(), encoding: 0, metadata: std::collections::HashMap::new() })
+                details: if e.payload.is_empty() {
+                    None
+                } else {
+                    Some(velocity_proto::Payload {
+                        data: e.payload.clone(),
+                        encoding: 0,
+                        metadata: std::collections::HashMap::new(),
+                    })
                 },
             })
             .collect();
-        Ok(Response::new(GetWorkflowExecutionRawHistoryResponse { history_events: events, next_page_token: vec![] }))
+        Ok(Response::new(GetWorkflowExecutionRawHistoryResponse {
+            history_events: events,
+            next_page_token: vec![],
+        }))
     }
 
     async fn list_queued_messages(
         &self,
         _request: Request<ListQueuedMessagesRequest>,
     ) -> Result<Response<ListQueuedMessagesResponse>, Status> {
-        Ok(Response::new(ListQueuedMessagesResponse { messages: vec![], next_page_token: vec![] }))
+        Ok(Response::new(ListQueuedMessagesResponse {
+            messages: vec![],
+            next_page_token: vec![],
+        }))
     }
 
     async fn invoke_state_machine_method(
@@ -3025,7 +3518,9 @@ impl HistoryService for HistoryServiceImpl {
     ) -> Result<Response<HistInvokeStateMachineMethodResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = Self::workflow_key(ns_id, wf_id);
@@ -3037,10 +3532,16 @@ impl HistoryService for HistoryServiceImpl {
         self.engine.history_store().record_event(
             key,
             crate::event_history::HistoryEventType::MarkerRecorded,
-            format!("sm_type={},sm_id={},method={}", req.state_machine_type, req.state_machine_id, req.method).into_bytes(),
+            format!(
+                "sm_type={},sm_id={},method={}",
+                req.state_machine_type, req.state_machine_id, req.method
+            )
+            .into_bytes(),
         );
         // Echo input as output for the state machine method
-        Ok(Response::new(HistInvokeStateMachineMethodResponse { output: req.input }))
+        Ok(Response::new(HistInvokeStateMachineMethodResponse {
+            output: req.input,
+        }))
     }
 }
 
@@ -3089,7 +3590,11 @@ impl MatchingService for MatchingServiceImpl {
         request: Request<PollActivityTaskQueueRequest>,
     ) -> Result<Response<PollActivityTaskQueueResponse>, Status> {
         let req = request.into_inner();
-        let tq_name = req.task_queue.as_ref().map(|t| t.name.as_str()).unwrap_or("");
+        let tq_name = req
+            .task_queue
+            .as_ref()
+            .map(|t| t.name.as_str())
+            .unwrap_or("");
         if tq_name.is_empty() {
             return Err(Status::invalid_argument("task_queue name is required"));
         }
@@ -3104,12 +3609,15 @@ impl MatchingService for MatchingServiceImpl {
         let build_id = req.build_id.clone();
 
         // Register the poller with build ID versioning
-        self.matching.register_poller(&id, crate::matching_engine::PollerInfo {
-            poller_id: poller_id.clone(),
-            identity: poller_id.clone(),
-            last_poll_time: Self::now_millis(),
-            rate_per_second: 0.0,
-        });
+        self.matching.register_poller(
+            &id,
+            crate::matching_engine::PollerInfo {
+                poller_id: poller_id.clone(),
+                identity: poller_id.clone(),
+                last_poll_time: Self::now_millis(),
+                rate_per_second: 0.0,
+            },
+        );
 
         // Update version if build_id is provided
         if !build_id.is_empty() {
@@ -3121,10 +3629,11 @@ impl MatchingService for MatchingServiceImpl {
         let long_poll_timeout_ms = req.long_poll_timeout_ms;
         let task = if long_poll_timeout_ms > 0 {
             // Long-poll: periodically check for tasks until timeout
-            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(long_poll_timeout_ms as u64);
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_millis(long_poll_timeout_ms as u64);
             let poll_interval = std::time::Duration::from_millis(50); // Check every 50ms
             let mut interval = tokio::time::interval(poll_interval);
-            
+
             loop {
                 interval.tick().await;
                 if let Some(task) = self.matching.poll_task(&id, &poller_id) {
@@ -3146,7 +3655,10 @@ impl MatchingService for MatchingServiceImpl {
                     workflow_id: task.workflow_id,
                     run_id: task.run_id,
                 }),
-                activity_type: Some(ActivityType { name: String::new(), type_id: 0 }),
+                activity_type: Some(ActivityType {
+                    name: String::new(),
+                    type_id: 0,
+                }),
                 input: None,
                 workflow_key: 0,
                 step_index: 0,
@@ -3164,7 +3676,11 @@ impl MatchingService for MatchingServiceImpl {
         request: Request<PollWorkflowTaskQueueRequest>,
     ) -> Result<Response<PollWorkflowTaskQueueResponse>, Status> {
         let req = request.into_inner();
-        let tq_name = req.task_queue.as_ref().map(|t| t.name.as_str()).unwrap_or("");
+        let tq_name = req
+            .task_queue
+            .as_ref()
+            .map(|t| t.name.as_str())
+            .unwrap_or("");
         if tq_name.is_empty() {
             return Err(Status::invalid_argument("task_queue name is required"));
         }
@@ -3178,12 +3694,15 @@ impl MatchingService for MatchingServiceImpl {
         let poller_id = req.identity.clone();
         let build_id = req.build_id.clone();
 
-        self.matching.register_poller(&id, crate::matching_engine::PollerInfo {
-            poller_id: poller_id.clone(),
-            identity: poller_id.clone(),
-            last_poll_time: Self::now_millis(),
-            rate_per_second: 0.0,
-        });
+        self.matching.register_poller(
+            &id,
+            crate::matching_engine::PollerInfo {
+                poller_id: poller_id.clone(),
+                identity: poller_id.clone(),
+                last_poll_time: Self::now_millis(),
+                rate_per_second: 0.0,
+            },
+        );
 
         // Update version if build_id is provided
         if !build_id.is_empty() {
@@ -3195,10 +3714,11 @@ impl MatchingService for MatchingServiceImpl {
         let long_poll_timeout_ms = req.long_poll_timeout_ms;
         let task = if long_poll_timeout_ms > 0 {
             // Long-poll: periodically check for tasks until timeout
-            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(long_poll_timeout_ms as u64);
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_millis(long_poll_timeout_ms as u64);
             let poll_interval = std::time::Duration::from_millis(50); // Check every 50ms
             let mut interval = tokio::time::interval(poll_interval);
-            
+
             loop {
                 interval.tick().await;
                 if let Some(task) = self.matching.poll_task(&id, &poller_id) {
@@ -3220,7 +3740,10 @@ impl MatchingService for MatchingServiceImpl {
                     workflow_id: task.workflow_id,
                     run_id: task.run_id,
                 }),
-                workflow_type: Some(WorkflowType { name: String::new(), type_id: 0 }),
+                workflow_type: Some(WorkflowType {
+                    name: String::new(),
+                    type_id: 0,
+                }),
                 history: None,
                 workflow_key: 0,
                 step_index: 0,
@@ -3235,10 +3758,24 @@ impl MatchingService for MatchingServiceImpl {
         request: Request<MatchAddActivityTaskRequest>,
     ) -> Result<Response<MatchAddActivityTaskResponse>, Status> {
         let req = request.into_inner();
-        let kind = if req.task_queue.ends_with("__sticky") { TaskQueueKind::Sticky } else { TaskQueueKind::Normal };
+        let kind = if req.task_queue.ends_with("__sticky") {
+            TaskQueueKind::Sticky
+        } else {
+            TaskQueueKind::Normal
+        };
         let id = Self::task_queue_id(&req.task_queue, kind, TaskQueueType::Activity);
-        let wf_id = req.execution.as_ref().map(|e| e.workflow_id.as_str()).unwrap_or("").to_string();
-        let run_id = req.execution.as_ref().map(|e| e.run_id.as_str()).unwrap_or("").to_string();
+        let wf_id = req
+            .execution
+            .as_ref()
+            .map(|e| e.workflow_id.as_str())
+            .unwrap_or("")
+            .to_string();
+        let run_id = req
+            .execution
+            .as_ref()
+            .map(|e| e.run_id.as_str())
+            .unwrap_or("")
+            .to_string();
         let task = MeMatchTask {
             task_id: Self::now_millis(),
             namespace_id: req.namespace_id,
@@ -3259,10 +3796,24 @@ impl MatchingService for MatchingServiceImpl {
         request: Request<MatchAddWorkflowTaskRequest>,
     ) -> Result<Response<MatchAddWorkflowTaskResponse>, Status> {
         let req = request.into_inner();
-        let kind = if req.task_queue.ends_with("__sticky") { TaskQueueKind::Sticky } else { TaskQueueKind::Normal };
+        let kind = if req.task_queue.ends_with("__sticky") {
+            TaskQueueKind::Sticky
+        } else {
+            TaskQueueKind::Normal
+        };
         let id = Self::task_queue_id(&req.task_queue, kind, TaskQueueType::Workflow);
-        let wf_id = req.execution.as_ref().map(|e| e.workflow_id.as_str()).unwrap_or("").to_string();
-        let run_id = req.execution.as_ref().map(|e| e.run_id.as_str()).unwrap_or("").to_string();
+        let wf_id = req
+            .execution
+            .as_ref()
+            .map(|e| e.workflow_id.as_str())
+            .unwrap_or("")
+            .to_string();
+        let run_id = req
+            .execution
+            .as_ref()
+            .map(|e| e.run_id.as_str())
+            .unwrap_or("")
+            .to_string();
         let task = MeMatchTask {
             task_id: Self::now_millis(),
             namespace_id: req.namespace_id,
@@ -3284,7 +3835,9 @@ impl MatchingService for MatchingServiceImpl {
     ) -> Result<Response<MatchingQueryWorkflowResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
@@ -3293,12 +3846,18 @@ impl MatchingService for MatchingServiceImpl {
             return Err(Status::not_found(format!("workflow {} not found", wf_id)));
         }
         let query_name_id: u64 = req.query_type.parse().unwrap_or(0);
-        match self.engine.execute_query(key, query_name_id, &req.query_args) {
+        match self
+            .engine
+            .execute_query(key, query_name_id, &req.query_args)
+        {
             Some(result) => Ok(Response::new(MatchingQueryWorkflowResponse {
                 result,
                 query_rejected: None,
             })),
-            None => Err(Status::not_found(format!("query handler for {} not registered", req.query_type))),
+            None => Err(Status::not_found(format!(
+                "query handler for {} not registered",
+                req.query_type
+            ))),
         }
     }
 
@@ -3321,17 +3880,25 @@ impl MatchingService for MatchingServiceImpl {
         request: Request<MatchDescribeTaskQueueRequest>,
     ) -> Result<Response<MatchDescribeTaskQueueResponse>, Status> {
         let req = request.into_inner();
-        let qt = if req.task_queue_type == 1 { TaskQueueType::Activity } else { TaskQueueType::Workflow };
+        let qt = if req.task_queue_type == 1 {
+            TaskQueueType::Activity
+        } else {
+            TaskQueueType::Workflow
+        };
         let id = Self::task_queue_id(&req.task_queue, TaskQueueKind::Normal, qt);
         let tq = self.matching.get_or_create_queue(&id);
 
-        let pollers = tq.pollers.read().unwrap().iter().map(|p| {
-            velocity_proto::PollerInfo {
+        let pollers = tq
+            .pollers
+            .read()
+            .unwrap()
+            .iter()
+            .map(|p| velocity_proto::PollerInfo {
                 identity: p.identity.clone(),
                 last_access_time: None,
                 rate_per_second: p.rate_per_second as f32,
-            }
-        }).collect();
+            })
+            .collect();
 
         let status = TaskQueueStatus {
             backlog_count: tq.pending_count() as i64,
@@ -3387,7 +3954,11 @@ impl MatchingService for MatchingServiceImpl {
         if req.task_queue.is_empty() {
             return Err(Status::invalid_argument("task_queue is required"));
         }
-        let id = Self::task_queue_id(&req.task_queue, TaskQueueKind::Normal, TaskQueueType::Workflow);
+        let id = Self::task_queue_id(
+            &req.task_queue,
+            TaskQueueKind::Normal,
+            TaskQueueType::Workflow,
+        );
         let tq = self.matching.get_or_create_queue(&id);
 
         match req.operation {
@@ -3413,7 +3984,9 @@ impl MatchingService for MatchingServiceImpl {
             }
         }
 
-        Ok(Response::new(MatchUpdateWorkerBuildIdCompatibilityResponse {}))
+        Ok(Response::new(
+            MatchUpdateWorkerBuildIdCompatibilityResponse {},
+        ))
     }
 
     async fn get_worker_build_id_compatibility(
@@ -3424,13 +3997,22 @@ impl MatchingService for MatchingServiceImpl {
         if req.task_queue.is_empty() {
             return Err(Status::invalid_argument("task_queue is required"));
         }
-        let id = Self::task_queue_id(&req.task_queue, TaskQueueKind::Normal, TaskQueueType::Workflow);
+        let id = Self::task_queue_id(
+            &req.task_queue,
+            TaskQueueKind::Normal,
+            TaskQueueType::Workflow,
+        );
         let tq = self.matching.get_or_create_queue(&id);
         let vd = tq.version_data.read().unwrap();
 
         // Convert version branches to proto build ID sets
-        let max_sets = if req.max_sets > 0 { req.max_sets as usize } else { vd.version_branches.len() };
-        let major_version_sets: Vec<WorkerBuildIdSet> = vd.version_branches
+        let max_sets = if req.max_sets > 0 {
+            req.max_sets as usize
+        } else {
+            vd.version_branches.len()
+        };
+        let major_version_sets: Vec<WorkerBuildIdSet> = vd
+            .version_branches
             .iter()
             .take(max_sets)
             .map(|branch| WorkerBuildIdSet {
@@ -3438,7 +4020,9 @@ impl MatchingService for MatchingServiceImpl {
             })
             .collect();
 
-        Ok(Response::new(MatchGetWorkerBuildIdCompatibilityResponse { major_version_sets }))
+        Ok(Response::new(MatchGetWorkerBuildIdCompatibilityResponse {
+            major_version_sets,
+        }))
     }
 
     async fn update_task_queue_user_data(
@@ -3459,7 +4043,9 @@ impl MatchingService for MatchingServiceImpl {
         &self,
         _request: Request<MatchCheckTaskQueueUserDataPropagationRequest>,
     ) -> Result<Response<MatchCheckTaskQueueUserDataPropagationResponse>, Status> {
-        Ok(Response::new(MatchCheckTaskQueueUserDataPropagationResponse {}))
+        Ok(Response::new(
+            MatchCheckTaskQueueUserDataPropagationResponse {},
+        ))
     }
 
     async fn get_task_queue_metadata(
@@ -3469,13 +4055,23 @@ impl MatchingService for MatchingServiceImpl {
         let req = request.into_inner();
         let tq_name = &req.task_queue;
         if tq_name.is_empty() {
-            return Ok(Response::new(MatchGetTaskQueueMetadataResponse { metadata: None }));
+            return Ok(Response::new(MatchGetTaskQueueMetadataResponse {
+                metadata: None,
+            }));
         }
-        let qt = if req.task_queue_type == 1 { TaskQueueType::Activity } else { TaskQueueType::Workflow };
+        let qt = if req.task_queue_type == 1 {
+            TaskQueueType::Activity
+        } else {
+            TaskQueueType::Workflow
+        };
         let id = Self::task_queue_id(tq_name, TaskQueueKind::Normal, qt);
         let tq = self.matching.get_or_create_queue(&id);
         let pending = tq.pending_count() as i64;
-        Ok(Response::new(MatchGetTaskQueueMetadataResponse { metadata: Some(TaskQueueMetadata { max_tasks_per_second: pending }) }))
+        Ok(Response::new(MatchGetTaskQueueMetadataResponse {
+            metadata: Some(TaskQueueMetadata {
+                max_tasks_per_second: pending,
+            }),
+        }))
     }
 
     async fn apply_nexus_task(
@@ -3496,7 +4092,10 @@ pub struct WorkerServiceImpl {
 
 impl WorkerServiceImpl {
     pub fn new(engine: Arc<WorkflowEngine>) -> Self {
-        Self { engine: engine.clone(), matching: Arc::new(MatchingEngine::new()) }
+        Self {
+            engine: engine.clone(),
+            matching: Arc::new(MatchingEngine::new()),
+        }
     }
 
     pub fn with_matching(engine: Arc<WorkflowEngine>, matching: Arc<MatchingEngine>) -> Self {
@@ -3545,11 +4144,18 @@ impl WorkerService for WorkerServiceImpl {
         _request: Request<WorkerDescribeHistoryHostRequest>,
     ) -> Result<Response<WorkerDescribeHistoryHostResponse>, Status> {
         let workflow_count = self.engine.visibility().count() as i32;
-        let running_count = self.engine.visibility().list_by_status(WorkflowStatus::Running).len() as i32;
+        let running_count = self
+            .engine
+            .visibility()
+            .list_by_status(WorkflowStatus::Running)
+            .len() as i32;
         Ok(Response::new(WorkerDescribeHistoryHostResponse {
             shard_count: 1,
             owned_shard_ids: vec![0],
-            namespace_cache_state: format!("active(workflows={},running={})", workflow_count, running_count),
+            namespace_cache_state: format!(
+                "active(workflows={},running={})",
+                workflow_count, running_count
+            ),
             shard_controller_state: "active".into(),
             address: String::new(),
         }))
@@ -3561,11 +4167,17 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetWorkflowExecutionRawHistoryV2Response>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
-        let engine_events = self.engine.history_store().get_history(key).unwrap_or_default();
+        let engine_events = self
+            .engine
+            .history_store()
+            .get_history(key)
+            .unwrap_or_default();
         let events: Vec<velocity_proto::HistoryEvent> = engine_events
             .iter()
             .map(|e| velocity_proto::HistoryEvent {
@@ -3573,7 +4185,9 @@ impl WorkerService for WorkerServiceImpl {
                 event_time: None,
                 event_type: format!("{:?}", e.event_type),
                 task_id: e.workflow_key,
-                details: if e.payload.is_empty() { None } else {
+                details: if e.payload.is_empty() {
+                    None
+                } else {
                     Some(velocity_proto::Payload {
                         data: e.payload.clone(),
                         encoding: 0,
@@ -3594,11 +4208,17 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetWorkflowExecutionRawHistoryResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
-        let engine_events = self.engine.history_store().get_history(key).unwrap_or_default();
+        let engine_events = self
+            .engine
+            .history_store()
+            .get_history(key)
+            .unwrap_or_default();
         let events: Vec<velocity_proto::HistoryEvent> = engine_events
             .iter()
             .map(|e| velocity_proto::HistoryEvent {
@@ -3606,7 +4226,9 @@ impl WorkerService for WorkerServiceImpl {
                 event_time: None,
                 event_type: format!("{:?}", e.event_type),
                 task_id: e.workflow_key,
-                details: if e.payload.is_empty() { None } else {
+                details: if e.payload.is_empty() {
+                    None
+                } else {
                     Some(velocity_proto::Payload {
                         data: e.payload.clone(),
                         encoding: 0,
@@ -3634,11 +4256,15 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<DescribeMutableStateResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
-        let desc = self.engine.describe_workflow(key)
+        let desc = self
+            .engine
+            .describe_workflow(key)
             .ok_or_else(|| Status::not_found(format!("workflow {} not found", wf_id)))?;
         // Serialize mutable state as a compact JSON-like representation
         let state_bytes = format!(
@@ -3658,21 +4284,27 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<GetReplicationMessagesRequest>,
     ) -> Result<Response<GetReplicationMessagesResponse>, Status> {
-        Ok(Response::new(GetReplicationMessagesResponse { shard_messages: vec![] }))
+        Ok(Response::new(GetReplicationMessagesResponse {
+            shard_messages: vec![],
+        }))
     }
 
     async fn get_namespace_replication_messages(
         &self,
         _request: Request<WorkerGetNamespaceReplicationMessagesRequest>,
     ) -> Result<Response<WorkerGetNamespaceReplicationMessagesResponse>, Status> {
-        Ok(Response::new(WorkerGetNamespaceReplicationMessagesResponse { messages: vec![] }))
+        Ok(Response::new(
+            WorkerGetNamespaceReplicationMessagesResponse { messages: vec![] },
+        ))
     }
 
     async fn get_dlq_replication_messages(
         &self,
         _request: Request<GetDlqReplicationMessagesRequest>,
     ) -> Result<Response<GetDlqReplicationMessagesResponse>, Status> {
-        Ok(Response::new(GetDlqReplicationMessagesResponse { tasks: vec![] }))
+        Ok(Response::new(GetDlqReplicationMessagesResponse {
+            tasks: vec![],
+        }))
     }
 
     async fn reapply_events(
@@ -3681,7 +4313,9 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<ReapplyEventsResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
@@ -3692,8 +4326,13 @@ impl WorkerService for WorkerServiceImpl {
         // Reapply each event as a signal on the workflow
         for event in &req.events {
             let signal_name = event.event_type.clone();
-            let payload = event.details.as_ref().map(|p| p.data.clone()).unwrap_or_default();
-            self.engine.signal_workflow(key, signal_name.len() as u64, payload.clone());
+            let payload = event
+                .details
+                .as_ref()
+                .map(|p| p.data.clone())
+                .unwrap_or_default();
+            self.engine
+                .signal_workflow(key, signal_name.len() as u64, payload.clone());
             self.engine.history_store().record_event(
                 key,
                 crate::event_history::HistoryEventType::SignalReceived,
@@ -3709,7 +4348,9 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<RefreshWorkflowTasksResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
@@ -3718,18 +4359,26 @@ impl WorkerService for WorkerServiceImpl {
             return Err(Status::not_found(format!("workflow {} not found", wf_id)));
         }
         // Re-schedule a workflow task for this workflow in the matching engine
-        let tq_id = TaskQueueId::new("default", &format!("wf-{}", wf_id), TaskQueueKind::Normal, TaskQueueType::Workflow);
-        let _ = self.matching.add_task(&tq_id, MeMatchTask {
-            task_id: 0,
-            namespace_id: req.namespace_id,
-            workflow_id: wf_id.to_string(),
-            run_id: String::new(),
-            task_type: TaskQueueType::Workflow,
-            scheduled_time: now_millis(),
-            priority: 0,
-            forwarding_info: None,
-            version: 0,
-        });
+        let tq_id = TaskQueueId::new(
+            "default",
+            &format!("wf-{}", wf_id),
+            TaskQueueKind::Normal,
+            TaskQueueType::Workflow,
+        );
+        let _ = self.matching.add_task(
+            &tq_id,
+            MeMatchTask {
+                task_id: 0,
+                namespace_id: req.namespace_id,
+                workflow_id: wf_id.to_string(),
+                run_id: String::new(),
+                task_type: TaskQueueType::Workflow,
+                scheduled_time: now_millis(),
+                priority: 0,
+                forwarding_info: None,
+                version: 0,
+            },
+        );
         Ok(Response::new(RefreshWorkflowTasksResponse {}))
     }
 
@@ -3739,7 +4388,9 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<DeleteWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
@@ -3756,7 +4407,10 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<ListQueuedMessagesRequest>,
     ) -> Result<Response<ListQueuedMessagesResponse>, Status> {
-        Ok(Response::new(ListQueuedMessagesResponse { messages: vec![], next_page_token: vec![] }))
+        Ok(Response::new(ListQueuedMessagesResponse {
+            messages: vec![],
+            next_page_token: vec![],
+        }))
     }
 
     async fn purge_dlq_messages(
@@ -3777,7 +4431,10 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<GetDlqMessagesRequest>,
     ) -> Result<Response<GetDlqMessagesResponse>, Status> {
-        Ok(Response::new(GetDlqMessagesResponse { messages: vec![], replication_tasks: vec![] }))
+        Ok(Response::new(GetDlqMessagesResponse {
+            messages: vec![],
+            replication_tasks: vec![],
+        }))
     }
 
     async fn rebuild_mutable_state(
@@ -3786,7 +4443,9 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<WorkerRebuildMutableStateResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
@@ -3795,11 +4454,10 @@ impl WorkerService for WorkerServiceImpl {
             return Err(Status::not_found(format!("workflow {} not found", wf_id)));
         }
         // Rebuild mutable state by replaying the event history
-        let _result = self.engine.replay_engine().replay_from_store(
-            key,
-            self.engine.history_store(),
-            None,
-        );
+        let _result =
+            self.engine
+                .replay_engine()
+                .replay_from_store(key, self.engine.history_store(), None);
         Ok(Response::new(WorkerRebuildMutableStateResponse {}))
     }
 
@@ -3809,7 +4467,9 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<WorkerImportWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         if wf_id == 0 {
@@ -3833,7 +4493,9 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<WorkerDeleteDlqTasksRequest>,
     ) -> Result<Response<WorkerDeleteDlqTasksResponse>, Status> {
-        Ok(Response::new(WorkerDeleteDlqTasksResponse { messages_deleted: 0 }))
+        Ok(Response::new(WorkerDeleteDlqTasksResponse {
+            messages_deleted: 0,
+        }))
     }
 
     async fn list_history_tasks(
@@ -3842,13 +4504,25 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<ListHistoryTasksResponse>, Status> {
         let req = request.into_inner();
         let all_workflows = self.engine.visibility().list_all();
-        let batch_size = if req.batch_size > 0 { req.batch_size as usize } else { 100 };
+        let batch_size = if req.batch_size > 0 {
+            req.batch_size as usize
+        } else {
+            100
+        };
         let mut tasks = Vec::new();
         for info in &all_workflows {
-            if tasks.len() >= batch_size { break; }
-            let events = self.engine.history_store().get_history(info.workflow_key).unwrap_or_default();
+            if tasks.len() >= batch_size {
+                break;
+            }
+            let events = self
+                .engine
+                .history_store()
+                .get_history(info.workflow_key)
+                .unwrap_or_default();
             for e in events {
-                if tasks.len() >= batch_size { break; }
+                if tasks.len() >= batch_size {
+                    break;
+                }
                 tasks.push(velocity_proto::InternalTask {
                     namespace_id: info.namespace_id as i64,
                     task_id: e.event_id as i64,
@@ -3858,7 +4532,10 @@ impl WorkerService for WorkerServiceImpl {
                 });
             }
         }
-        Ok(Response::new(ListHistoryTasksResponse { tasks, next_page_token: vec![] }))
+        Ok(Response::new(ListHistoryTasksResponse {
+            tasks,
+            next_page_token: vec![],
+        }))
     }
 
     async fn remove_task(
@@ -3945,7 +4622,9 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<WorkerSyncWorkflowStateResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
@@ -3970,7 +4649,9 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GenerateLastHistoryReplicationTasksResponse>, Status> {
         let req = request.into_inner();
         let ns_id: u64 = req.namespace_id.parse().unwrap_or(0);
-        let wf_id = req.execution.as_ref()
+        let wf_id = req
+            .execution
+            .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
         let key = (ns_id << 32) | wf_id;
@@ -3983,7 +4664,9 @@ impl WorkerService for WorkerServiceImpl {
             crate::event_history::HistoryEventType::MarkerRecorded,
             b"replication_tasks_generated".to_vec(),
         );
-        Ok(Response::new(GenerateLastHistoryReplicationTasksResponse {}))
+        Ok(Response::new(
+            GenerateLastHistoryReplicationTasksResponse {},
+        ))
     }
 
     async fn get_cluster_info(
@@ -4007,11 +4690,20 @@ impl WorkerService for WorkerServiceImpl {
         _request: Request<WorkerListTablesRequest>,
     ) -> Result<Response<WorkerListTablesResponse>, Status> {
         let tables = vec![
-            "workflows".into(), "execution_history".into(), "visibility".into(),
-            "namespaces".into(), "schedules".into(), "search_attributes".into(),
-            "task_queues".into(), "dlq_messages".into(), "timers".into(),
+            "workflows".into(),
+            "execution_history".into(),
+            "visibility".into(),
+            "namespaces".into(),
+            "schedules".into(),
+            "search_attributes".into(),
+            "task_queues".into(),
+            "dlq_messages".into(),
+            "timers".into(),
         ];
-        Ok(Response::new(WorkerListTablesResponse { tables, next_page_token: vec![] }))
+        Ok(Response::new(WorkerListTablesResponse {
+            tables,
+            next_page_token: vec![],
+        }))
     }
 
     async fn create_namespace(
@@ -4020,7 +4712,9 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<WorkerCreateNamespaceResponse>, Status> {
         let req = request.into_inner();
         let ns_id = self.engine.namespaces().register_auto(&req.namespace);
-        Ok(Response::new(WorkerCreateNamespaceResponse { namespace_id: ns_id.to_string() }))
+        Ok(Response::new(WorkerCreateNamespaceResponse {
+            namespace_id: ns_id.to_string(),
+        }))
     }
 
     async fn update_namespace(
@@ -4046,12 +4740,21 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let tq_name = &req.task_queue;
         if tq_name.is_empty() {
-            return Ok(Response::new(WorkerGetTaskQueueMetadataResponse { max_tasks_per_second: 0 }));
+            return Ok(Response::new(WorkerGetTaskQueueMetadataResponse {
+                max_tasks_per_second: 0,
+            }));
         }
-        let id = TaskQueueId::new("default", tq_name, TaskQueueKind::Normal, TaskQueueType::Workflow);
+        let id = TaskQueueId::new(
+            "default",
+            tq_name,
+            TaskQueueKind::Normal,
+            TaskQueueType::Workflow,
+        );
         let tq = self.matching.get_or_create_queue(&id);
         let pending = tq.pending_count() as i64;
-        Ok(Response::new(WorkerGetTaskQueueMetadataResponse { max_tasks_per_second: pending }))
+        Ok(Response::new(WorkerGetTaskQueueMetadataResponse {
+            max_tasks_per_second: pending,
+        }))
     }
 }
 
@@ -4081,7 +4784,10 @@ pub async fn run_server(
     match engine.recover_from_wal() {
         Ok((recovered, total)) => {
             if total > 0 {
-                println!("WAL recovery: restored {} workflows from {} records", recovered, total);
+                println!(
+                    "WAL recovery: restored {} workflows from {} records",
+                    recovered, total
+                );
             }
         }
         Err(e) => {
@@ -4558,7 +5264,11 @@ mod tests {
                 type_id: 1,
                 name: "Test".into(),
             }),
-            task_queue: Some(velocity_proto::TaskQueue { hash: 1, name: "q".into(), kind: 0 }),
+            task_queue: Some(velocity_proto::TaskQueue {
+                hash: 1,
+                name: "q".into(),
+                kind: 0,
+            }),
             total_steps: 10,
             input: None,
             ..Default::default()
@@ -4639,13 +5349,23 @@ mod tests {
         let svc = WorkflowServiceImpl::new(engine.clone());
 
         // First create a schedule to get a valid ID
-        let create_resp = svc.create_schedule(req(CreateScheduleRequest {
-            namespace: "default".into(),
-            schedule_id: "my-schedule".into(),
-            spec: Some(ScheduleSpec { cron_expression: "*/5 * * * *".into(), ..Default::default() }),
-            action: None, policies: None, identity: "test".into(), request_id: "r-1".into(),
-            memo: None, search_attributes: None,
-        })).await.unwrap();
+        let create_resp = svc
+            .create_schedule(req(CreateScheduleRequest {
+                namespace: "default".into(),
+                schedule_id: "my-schedule".into(),
+                spec: Some(ScheduleSpec {
+                    cron_expression: "*/5 * * * *".into(),
+                    ..Default::default()
+                }),
+                action: None,
+                policies: None,
+                identity: "test".into(),
+                request_id: "r-1".into(),
+                memo: None,
+                search_attributes: None,
+            }))
+            .await
+            .unwrap();
         let sched_id = create_resp.into_inner().schedule_id;
 
         let request = req(DescribeScheduleRequest {
@@ -4666,13 +5386,20 @@ mod tests {
         let svc = WorkflowServiceImpl::new(engine.clone());
 
         // Create a schedule first
-        let _ = svc.create_schedule(req(CreateScheduleRequest {
-            namespace: "default".into(),
-            schedule_id: "list-test".into(),
-            spec: None, action: None, policies: None,
-            identity: "test".into(), request_id: "r-1".into(),
-            memo: None, search_attributes: None,
-        })).await.unwrap();
+        let _ = svc
+            .create_schedule(req(CreateScheduleRequest {
+                namespace: "default".into(),
+                schedule_id: "list-test".into(),
+                spec: None,
+                action: None,
+                policies: None,
+                identity: "test".into(),
+                request_id: "r-1".into(),
+                memo: None,
+                search_attributes: None,
+            }))
+            .await
+            .unwrap();
 
         let request = req(ListSchedulesRequest {
             namespace: "default".into(),
@@ -4691,13 +5418,20 @@ mod tests {
         let svc = WorkflowServiceImpl::new(engine.clone());
 
         // Create a schedule first
-        let create_resp = svc.create_schedule(req(CreateScheduleRequest {
-            namespace: "default".into(),
-            schedule_id: "del-test".into(),
-            spec: None, action: None, policies: None,
-            identity: "test".into(), request_id: "r-1".into(),
-            memo: None, search_attributes: None,
-        })).await.unwrap();
+        let create_resp = svc
+            .create_schedule(req(CreateScheduleRequest {
+                namespace: "default".into(),
+                schedule_id: "del-test".into(),
+                spec: None,
+                action: None,
+                policies: None,
+                identity: "test".into(),
+                request_id: "r-1".into(),
+                memo: None,
+                search_attributes: None,
+            }))
+            .await
+            .unwrap();
         let sched_id = create_resp.into_inner().schedule_id;
 
         let request = req(DeleteScheduleRequest {
@@ -4719,13 +5453,20 @@ mod tests {
         let svc = WorkflowServiceImpl::new(engine.clone());
 
         // Create a schedule first
-        let create_resp = svc.create_schedule(req(CreateScheduleRequest {
-            namespace: "default".into(),
-            schedule_id: "upd-test".into(),
-            spec: None, action: None, policies: None,
-            identity: "test".into(), request_id: "r-1".into(),
-            memo: None, search_attributes: None,
-        })).await.unwrap();
+        let create_resp = svc
+            .create_schedule(req(CreateScheduleRequest {
+                namespace: "default".into(),
+                schedule_id: "upd-test".into(),
+                spec: None,
+                action: None,
+                policies: None,
+                identity: "test".into(),
+                request_id: "r-1".into(),
+                memo: None,
+                search_attributes: None,
+            }))
+            .await
+            .unwrap();
         let sched_id = create_resp.into_inner().schedule_id;
 
         let request = req(UpdateScheduleRequest {
@@ -4733,7 +5474,10 @@ mod tests {
             schedule_id: sched_id.clone(),
             spec: None,
             action: None,
-            policies: Some(SchedulePolicies { overlap_policy: 2, ..Default::default() }),
+            policies: Some(SchedulePolicies {
+                overlap_policy: 2,
+                ..Default::default()
+            }),
             identity: "test".into(),
             request_id: "r-1".into(),
         });
@@ -4744,7 +5488,10 @@ mod tests {
         // Verify the overlap policy was updated
         let key: u64 = sched_id.parse().unwrap();
         let entry = engine.schedule_manager().get(key).unwrap();
-        assert_eq!(entry.overlap_policy, crate::schedules::OverlapPolicy::BufferAll);
+        assert_eq!(
+            entry.overlap_policy,
+            crate::schedules::OverlapPolicy::BufferAll
+        );
     }
 
     // ─── Integration Test: End-to-end workflow with matching engine ─────────────
@@ -4777,7 +5524,11 @@ mod tests {
             ..Default::default()
         });
 
-        let start_resp = wf_svc.start_workflow_execution(start_req).await.unwrap().into_inner();
+        let start_resp = wf_svc
+            .start_workflow_execution(start_req)
+            .await
+            .unwrap()
+            .into_inner();
         assert!(start_resp.started);
         assert!(start_resp.workflow_key > 0);
 
@@ -4786,7 +5537,10 @@ mod tests {
         assert!(history.is_some());
         let events = history.unwrap();
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].event_type, crate::event_history::HistoryEventType::WorkflowStarted);
+        assert_eq!(
+            events[0].event_type,
+            crate::event_history::HistoryEventType::WorkflowStarted
+        );
 
         // 3. Poll for workflow task via MatchingService — should get the task
         let poll_req = req(PollWorkflowTaskQueueRequest {
@@ -4801,7 +5555,11 @@ mod tests {
             long_poll_timeout_ms: 0,
         });
 
-        let poll_resp = match_svc.poll_workflow_task_queue(poll_req).await.unwrap().into_inner();
+        let poll_resp = match_svc
+            .poll_workflow_task_queue(poll_req)
+            .await
+            .unwrap()
+            .into_inner();
         assert!(poll_resp.task_token > 0, "should have received a task");
         let exec = poll_resp.workflow_execution.unwrap();
         assert_eq!(exec.workflow_id, "9001");
@@ -4818,8 +5576,15 @@ mod tests {
             build_id: String::new(),
             long_poll_timeout_ms: 0,
         });
-        let poll_resp2 = match_svc.poll_workflow_task_queue(poll_req2).await.unwrap().into_inner();
-        assert_eq!(poll_resp2.task_token, 0, "no more tasks should be available");
+        let poll_resp2 = match_svc
+            .poll_workflow_task_queue(poll_req2)
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(
+            poll_resp2.task_token, 0,
+            "no more tasks should be available"
+        );
 
         // 5. Describe the task queue — should show stats
         let desc_req = req(MatchDescribeTaskQueueRequest {
@@ -4828,9 +5593,20 @@ mod tests {
             task_queue_type: 0, // Workflow
             include_task_queue_status: true,
         });
-        let desc_resp = match_svc.describe_task_queue(desc_req).await.unwrap().into_inner();
-        assert!(!desc_resp.pollers.is_empty(), "should have registered pollers");
-        assert_eq!(desc_resp.task_queue_status.unwrap().backlog_count, 0, "all tasks consumed");
+        let desc_resp = match_svc
+            .describe_task_queue(desc_req)
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(
+            !desc_resp.pollers.is_empty(),
+            "should have registered pollers"
+        );
+        assert_eq!(
+            desc_resp.task_queue_status.unwrap().backlog_count,
+            0,
+            "all tasks consumed"
+        );
 
         // 6. Get workflow history via WorkflowService
         let hist_req = req(GetWorkflowExecutionHistoryRequest {
@@ -4844,7 +5620,11 @@ mod tests {
             wait_new_event: false,
             history_event_filter_type: 0,
         });
-        let hist_resp = wf_svc.get_workflow_execution_history(hist_req).await.unwrap().into_inner();
+        let hist_resp = wf_svc
+            .get_workflow_execution_history(hist_req)
+            .await
+            .unwrap()
+            .into_inner();
         let history = hist_resp.history.unwrap();
         assert_eq!(history.events.len(), 1);
         assert_eq!(history.events[0].event_type, "WorkflowStarted");
@@ -4884,8 +5664,15 @@ mod tests {
             build_id: String::new(),
             long_poll_timeout_ms: 0,
         });
-        let poll_resp = match_svc.poll_activity_task_queue(poll_req).await.unwrap().into_inner();
-        assert!(poll_resp.task_token > 0, "should have received the activity task");
+        let poll_resp = match_svc
+            .poll_activity_task_queue(poll_req)
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(
+            poll_resp.task_token > 0,
+            "should have received the activity task"
+        );
         let exec = poll_resp.workflow_execution.unwrap();
         assert_eq!(exec.workflow_id, "5001");
     }
@@ -4918,23 +5705,34 @@ mod tests {
             total_steps: 1,
             ..Default::default()
         });
-        let start_resp = wf_svc.start_workflow_execution(start_req).await.unwrap().into_inner();
+        let start_resp = wf_svc
+            .start_workflow_execution(start_req)
+            .await
+            .unwrap()
+            .into_inner();
         let workflow_key = start_resp.workflow_key;
 
         // 2. Poll for the workflow task via the engine's task queue
-        let poll_resp = wf_svc.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue {
-                name: "cmd-queue".to_string(),
-                hash: 0,
-                kind: 0,
-            }),
-            identity: "worker-1".to_string(),
-            build_id: String::new(),
-            long_poll_timeout_ms: 0,
-        })).await.unwrap().into_inner();
+        let poll_resp = wf_svc
+            .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "cmd-queue".to_string(),
+                    hash: 0,
+                    kind: 0,
+                }),
+                identity: "worker-1".to_string(),
+                build_id: String::new(),
+                long_poll_timeout_ms: 0,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
         let task_token = poll_resp.task_token;
-        assert!(task_token > 0 || start_resp.workflow_key > 0, "should have a task or workflow");
+        assert!(
+            task_token > 0 || start_resp.workflow_key > 0,
+            "should have a task or workflow"
+        );
 
         // If we got a task token from the engine's task queue, use it
         // Otherwise, use the workflow_key directly (engine may use task_id=0)
@@ -4964,7 +5762,11 @@ mod tests {
             namespace: "default".to_string(),
         });
         let complete_resp = wf_svc.respond_workflow_task_completed(complete_req).await;
-        assert!(complete_resp.is_ok(), "complete should succeed: {:?}", complete_resp.err());
+        assert!(
+            complete_resp.is_ok(),
+            "complete should succeed: {:?}",
+            complete_resp.err()
+        );
 
         // 4. Verify workflow is now completed
         let status = engine.get_status(workflow_key);
@@ -4972,9 +5774,19 @@ mod tests {
 
         // 5. Verify history has both WorkflowStarted and WorkflowCompleted events
         let events = engine.history_store().get_history(workflow_key).unwrap();
-        assert!(events.len() >= 2, "should have at least 2 events, got {}", events.len());
-        assert_eq!(events[0].event_type, crate::event_history::HistoryEventType::WorkflowStarted);
-        assert_eq!(events[1].event_type, crate::event_history::HistoryEventType::WorkflowCompleted);
+        assert!(
+            events.len() >= 2,
+            "should have at least 2 events, got {}",
+            events.len()
+        );
+        assert_eq!(
+            events[0].event_type,
+            crate::event_history::HistoryEventType::WorkflowStarted
+        );
+        assert_eq!(
+            events[1].event_type,
+            crate::event_history::HistoryEventType::WorkflowCompleted
+        );
     }
 
     // ─── Integration Test: Signal workflow records history ─────────────────
@@ -5006,14 +5818,27 @@ mod tests {
             header: None,
         });
         let signal_resp = wf_svc.signal_workflow_execution(signal_req).await;
-        assert!(signal_resp.is_ok(), "signal should succeed: {:?}", signal_resp.err());
+        assert!(
+            signal_resp.is_ok(),
+            "signal should succeed: {:?}",
+            signal_resp.err()
+        );
 
         // 3. Verify history has WorkflowStarted and SignalReceived events
         let events = engine.history_store().get_history(workflow_key).unwrap();
-        assert!(events.len() >= 2, "should have at least 2 events (started + signal), got {}", events.len());
-        assert_eq!(events[0].event_type, crate::event_history::HistoryEventType::WorkflowStarted);
+        assert!(
+            events.len() >= 2,
+            "should have at least 2 events (started + signal), got {}",
+            events.len()
+        );
+        assert_eq!(
+            events[0].event_type,
+            crate::event_history::HistoryEventType::WorkflowStarted
+        );
         // Find the SignalReceived event
-        let has_signal = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::SignalReceived);
+        let has_signal = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::SignalReceived);
         assert!(has_signal, "should have SignalReceived event in history");
     }
 
@@ -5049,12 +5874,21 @@ mod tests {
             step_index: 1,
         });
         let complete_resp = wf_svc.respond_activity_task_completed(complete_req).await;
-        assert!(complete_resp.is_ok(), "activity complete should succeed: {:?}", complete_resp.err());
+        assert!(
+            complete_resp.is_ok(),
+            "activity complete should succeed: {:?}",
+            complete_resp.err()
+        );
 
         // 4. Verify history has ActivityCompleted event
         let events = engine.history_store().get_history(workflow_key).unwrap();
-        let has_activity_completed = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::ActivityCompleted);
-        assert!(has_activity_completed, "should have ActivityCompleted event in history");
+        let has_activity_completed = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::ActivityCompleted);
+        assert!(
+            has_activity_completed,
+            "should have ActivityCompleted event in history"
+        );
     }
 
     // ─── Integration Test: Activity failure records history ────────────────
@@ -5084,20 +5918,34 @@ mod tests {
             step_index: 1,
         });
         let fail_resp = wf_svc.respond_activity_task_failed(fail_req).await;
-        assert!(fail_resp.is_ok(), "activity fail should succeed: {:?}", fail_resp.err());
+        assert!(
+            fail_resp.is_ok(),
+            "activity fail should succeed: {:?}",
+            fail_resp.err()
+        );
 
         // 4. Verify history has ActivityFailed event
         let events = engine.history_store().get_history(workflow_key).unwrap();
-        let has_activity_failed = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::ActivityFailed);
-        assert!(has_activity_failed, "should have ActivityFailed event in history");
+        let has_activity_failed = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::ActivityFailed);
+        assert!(
+            has_activity_failed,
+            "should have ActivityFailed event in history"
+        );
 
         // 5. Workflow should be failed (no retry policy, so permanent failure)
         let status = engine.get_status(workflow_key);
         assert_eq!(status, WorkflowStatus::Failed);
 
         // 6. Verify WorkflowFailed event is also in history
-        let has_workflow_failed = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowFailed);
-        assert!(has_workflow_failed, "should have WorkflowFailed event in history");
+        let has_workflow_failed = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowFailed);
+        assert!(
+            has_workflow_failed,
+            "should have WorkflowFailed event in history"
+        );
     }
 
     // ─── Integration Test: HistoryService heartbeat flow ───────────────────
@@ -5114,7 +5962,9 @@ mod tests {
         // The HistoryService derives workflow_key as (ns_id << 32) | (token & 0xFFFFFFFF)
         // So we use the workflow_key as the token to ensure alignment
         let token = workflow_key.to_string();
-        engine.heartbeat_tracker().register(workflow_key, workflow_key, 5000, 3);
+        engine
+            .heartbeat_tracker()
+            .register(workflow_key, workflow_key, 5000, 3);
 
         // 3. Record a heartbeat via HistoryService
         let hb_req = req(HistRecordActivityTaskHeartbeatRequest {
@@ -5123,11 +5973,19 @@ mod tests {
             identity: "worker-1".to_string(),
             namespace_id: "0".to_string(),
         });
-        let hb_resp = hist_svc.record_activity_task_heartbeat(hb_req).await.unwrap();
-        assert!(!hb_resp.into_inner().cancel_requested, "cancel should not be requested");
+        let hb_resp = hist_svc
+            .record_activity_task_heartbeat(hb_req)
+            .await
+            .unwrap();
+        assert!(
+            !hb_resp.into_inner().cancel_requested,
+            "cancel should not be requested"
+        );
 
         // 4. Verify heartbeat was recorded
-        let state = engine.heartbeat_tracker().get_state(workflow_key, workflow_key);
+        let state = engine
+            .heartbeat_tracker()
+            .get_state(workflow_key, workflow_key);
         assert_eq!(state, Some(crate::heartbeat::HeartbeatState::Active));
 
         // 5. Complete the activity via HistoryService
@@ -5138,10 +5996,16 @@ mod tests {
             namespace_id: "0".to_string(),
         });
         let complete_resp = hist_svc.respond_activity_task_completed(complete_req).await;
-        assert!(complete_resp.is_ok(), "should succeed: {:?}", complete_resp.err());
+        assert!(
+            complete_resp.is_ok(),
+            "should succeed: {:?}",
+            complete_resp.err()
+        );
 
         // 6. Verify heartbeat state is now Completed
-        let state = engine.heartbeat_tracker().get_state(workflow_key, workflow_key);
+        let state = engine
+            .heartbeat_tracker()
+            .get_state(workflow_key, workflow_key);
         assert_eq!(state, Some(crate::heartbeat::HeartbeatState::Completed));
     }
 
@@ -5174,17 +6038,25 @@ mod tests {
             header: None,
         });
         let signal_resp = hist_svc.signal_workflow_execution(signal_req).await;
-        assert!(signal_resp.is_ok(), "signal should succeed: {:?}", signal_resp.err());
+        assert!(
+            signal_resp.is_ok(),
+            "signal should succeed: {:?}",
+            signal_resp.err()
+        );
 
         // 3. Verify history has SignalReceived event
         let events = engine.history_store().get_history(workflow_key).unwrap();
-        let has_signal = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::SignalReceived);
+        let has_signal = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::SignalReceived);
         assert!(has_signal, "should have SignalReceived in history");
 
         // 4. Register a query handler and query via HistoryService
-        engine.register_query_handler(workflow_key, 1, Box::new(|args: &[u8]| {
-            args.iter().map(|b| b * 2).collect()
-        }));
+        engine.register_query_handler(
+            workflow_key,
+            1,
+            Box::new(|args: &[u8]| args.iter().map(|b| b * 2).collect()),
+        );
 
         let query_req = req(HistQueryWorkflowRequest {
             namespace_id: "0".to_string(),
@@ -5196,8 +6068,16 @@ mod tests {
             query_args: vec![5, 10, 15],
             query_reject_condition: 0,
         });
-        let query_resp = hist_svc.query_workflow(query_req).await.unwrap().into_inner();
-        assert_eq!(query_resp.result, vec![10, 20, 30], "query should return doubled values");
+        let query_resp = hist_svc
+            .query_workflow(query_req)
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(
+            query_resp.result,
+            vec![10, 20, 30],
+            "query should return doubled values"
+        );
     }
 
     // ─── Integration Test: HistoryService get_workflow_execution_history ───
@@ -5224,8 +6104,15 @@ mod tests {
             history_event_filter_type: 0,
             skip_archival: false,
         });
-        let resp = hist_svc.get_workflow_execution_history(req).await.unwrap().into_inner();
-        assert!(resp.history_events.len() >= 2, "should have at least 2 events");
+        let resp = hist_svc
+            .get_workflow_execution_history(req)
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(
+            resp.history_events.len() >= 2,
+            "should have at least 2 events"
+        );
         assert!(!resp.archived);
     }
 
@@ -5252,14 +6139,20 @@ mod tests {
             details: None,
         });
         let term_resp = hist_svc.terminate_workflow_execution(term_req).await;
-        assert!(term_resp.is_ok(), "terminate should succeed: {:?}", term_resp.err());
+        assert!(
+            term_resp.is_ok(),
+            "terminate should succeed: {:?}",
+            term_resp.err()
+        );
 
         // 3. Verify workflow is terminated
         assert_eq!(engine.get_status(workflow_key), WorkflowStatus::Terminated);
 
         // 4. Verify history has WorkflowTerminated event
         let events = engine.history_store().get_history(workflow_key).unwrap();
-        let has_terminated = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowTerminated);
+        let has_terminated = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowTerminated);
         assert!(has_terminated, "should have WorkflowTerminated in history");
     }
 
@@ -5289,7 +6182,11 @@ mod tests {
         // Store the task token mapping manually since poll via engine task_queue
         // doesn't go through matching
         let task_token = parent_key;
-        wf_svc.task_tokens.lock().unwrap().insert(task_token, parent_key);
+        wf_svc
+            .task_tokens
+            .lock()
+            .unwrap()
+            .insert(task_token, parent_key);
 
         // 3. Respond with StartChildWorkflow command
         let complete_req = req(RespondWorkflowTaskCompletedRequest {
@@ -5333,13 +6230,22 @@ mod tests {
 
         // 4. Verify parent has ChildWorkflowStarted event in history
         let events = engine.history_store().get_history(parent_key).unwrap();
-        let has_child_started = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::ChildWorkflowStarted);
-        assert!(has_child_started, "parent should have ChildWorkflowStarted in history");
+        let has_child_started = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::ChildWorkflowStarted);
+        assert!(
+            has_child_started,
+            "parent should have ChildWorkflowStarted in history"
+        );
 
         // 5. Verify child workflow was actually started
         let child_key = (0u64 << 32) | 11002u64;
         let child_status = engine.get_status(child_key);
-        assert_eq!(child_status, WorkflowStatus::Running, "child workflow should be running");
+        assert_eq!(
+            child_status,
+            WorkflowStatus::Running,
+            "child workflow should be running"
+        );
     }
 
     // ─── Integration Test: Continue-as-new via command processing ────────────
@@ -5354,7 +6260,11 @@ mod tests {
         let workflow_key = engine.start_workflow(12001, 1, 0, 0, 5, None);
 
         // 2. Store the task token mapping
-        wf_svc.task_tokens.lock().unwrap().insert(workflow_key, workflow_key);
+        wf_svc
+            .task_tokens
+            .lock()
+            .unwrap()
+            .insert(workflow_key, workflow_key);
 
         // 3. Respond with ContinueAsNew command
         let complete_req = req(RespondWorkflowTaskCompletedRequest {
@@ -5390,12 +6300,21 @@ mod tests {
 
         // 4. Verify original workflow is ContinuedAsNew
         let status = engine.get_status(workflow_key);
-        assert_eq!(status, WorkflowStatus::ContinuedAsNew, "original should be ContinuedAsNew");
+        assert_eq!(
+            status,
+            WorkflowStatus::ContinuedAsNew,
+            "original should be ContinuedAsNew"
+        );
 
         // 5. Verify history has WorkflowContinuedAsNew event
         let events = engine.history_store().get_history(workflow_key).unwrap();
-        let has_continued = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowContinuedAsNew);
-        assert!(has_continued, "should have WorkflowContinuedAsNew in history");
+        let has_continued = events.iter().any(|e| {
+            e.event_type == crate::event_history::HistoryEventType::WorkflowContinuedAsNew
+        });
+        assert!(
+            has_continued,
+            "should have WorkflowContinuedAsNew in history"
+        );
     }
 
     // ─── Integration Test: Signal external workflow via command ──────────────
@@ -5411,7 +6330,11 @@ mod tests {
         let receiver_key = engine.start_workflow(13002, 1, 0, 0, 5, None);
 
         // 2. Store the task token mapping for sender
-        wf_svc.task_tokens.lock().unwrap().insert(sender_key, sender_key);
+        wf_svc
+            .task_tokens
+            .lock()
+            .unwrap()
+            .insert(sender_key, sender_key);
 
         // 3. Respond with SignalExternal command from sender to receiver
         let complete_req = req(RespondWorkflowTaskCompletedRequest {
@@ -5441,7 +6364,9 @@ mod tests {
 
         // 4. Verify receiver has SignalReceived in history
         let events = engine.history_store().get_history(receiver_key).unwrap();
-        let has_signal = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::SignalReceived);
+        let has_signal = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::SignalReceived);
         assert!(has_signal, "receiver should have SignalReceived in history");
     }
 
@@ -5469,7 +6394,12 @@ mod tests {
         match_svc.add_workflow_task(add_req).await.unwrap();
 
         // 2. Verify the task is in the sticky queue (not the normal queue)
-        let sticky_id = TaskQueueId::new("default", sticky_name, TaskQueueKind::Sticky, TaskQueueType::Workflow);
+        let sticky_id = TaskQueueId::new(
+            "default",
+            sticky_name,
+            TaskQueueKind::Sticky,
+            TaskQueueType::Workflow,
+        );
         assert_eq!(matching.get_or_create_queue(&sticky_id).pending_count(), 1);
 
         // 3. Poll from the sticky queue via poll_workflow_task_queue
@@ -5486,7 +6416,10 @@ mod tests {
         });
         let resp = match_svc.poll_workflow_task_queue(poll_req).await.unwrap();
         let inner = resp.into_inner();
-        assert!(inner.task_token > 0, "should match a task from sticky queue");
+        assert!(
+            inner.task_token > 0,
+            "should match a task from sticky queue"
+        );
         assert_eq!(inner.workflow_execution.unwrap().workflow_id, "1001");
     }
 
@@ -5506,7 +6439,10 @@ mod tests {
                 AddNewBuildIdInNewDefaultSet { new_build_id: "build-v1.0".into() }
             )),
         });
-        match_svc.update_worker_build_id_compatibility(update_req).await.unwrap();
+        match_svc
+            .update_worker_build_id_compatibility(update_req)
+            .await
+            .unwrap();
 
         // 2. Add another compatible version
         let update_req2 = req(MatchUpdateWorkerBuildIdCompatibilityRequest {
@@ -5520,7 +6456,10 @@ mod tests {
                 }
             )),
         });
-        match_svc.update_worker_build_id_compatibility(update_req2).await.unwrap();
+        match_svc
+            .update_worker_build_id_compatibility(update_req2)
+            .await
+            .unwrap();
 
         // 3. Get build ID compatibility and verify
         let get_req = req(MatchGetWorkerBuildIdCompatibilityRequest {
@@ -5528,7 +6467,10 @@ mod tests {
             task_queue: "versioned-queue".into(),
             max_sets: 10,
         });
-        let resp = match_svc.get_worker_build_id_compatibility(get_req).await.unwrap();
+        let resp = match_svc
+            .get_worker_build_id_compatibility(get_req)
+            .await
+            .unwrap();
         let sets = resp.into_inner().major_version_sets;
         assert_eq!(sets.len(), 2, "should have 2 version branches");
         assert!(sets[0].build_ids.contains(&"build-v1.0".to_string()));
@@ -5543,87 +6485,116 @@ mod tests {
         let wf_svc = WorkflowServiceImpl::new(engine.clone());
 
         // 1. Create a schedule
-        let create_resp = wf_svc.create_schedule(req(CreateScheduleRequest {
-            namespace: "default".into(),
-            schedule_id: "hourly-report".into(),
-            spec: Some(ScheduleSpec {
-                interval_seconds: 3600,
-                jitter_seconds: 30,
-                ..Default::default()
-            }),
-            action: Some(ScheduleAction {
-                start_workflow: Some(StartWorkflowExecutionRequest {
-                    namespace: "default".into(),
-                    workflow_execution: Some(velocity_proto::WorkflowExecution {
-                        workflow_id: String::new(),
-                        run_id: String::new(),
-                    }),
-                    workflow_type: Some(velocity_proto::WorkflowType { name: "ReportWorkflow".into(), type_id: 99 }),
-                    task_queue: Some(velocity_proto::TaskQueue { name: "reports".into(), hash: 42, kind: 0 }),
-                    input: None,
-                    workflow_execution_timeout: None,
-                    workflow_run_timeout: None,
-                    workflow_task_timeout: None,
-                    identity: String::new(),
-                    request_id: String::new(),
-                    retry_policy: None,
-                    cron_schedule: String::new(),
-                    memo: None,
-                    search_attributes: None,
-                    header: None,
-                    parent_close_policy: 0,
-                    total_steps: 0,
+        let create_resp = wf_svc
+            .create_schedule(req(CreateScheduleRequest {
+                namespace: "default".into(),
+                schedule_id: "hourly-report".into(),
+                spec: Some(ScheduleSpec {
+                    interval_seconds: 3600,
+                    jitter_seconds: 30,
+                    ..Default::default()
                 }),
-            }),
-            policies: Some(SchedulePolicies { overlap_policy: 0, ..Default::default() }),
-            identity: "scheduler".into(),
-            request_id: "req-1".into(),
-            memo: None,
-            search_attributes: None,
-        })).await.unwrap();
+                action: Some(ScheduleAction {
+                    start_workflow: Some(StartWorkflowExecutionRequest {
+                        namespace: "default".into(),
+                        workflow_execution: Some(velocity_proto::WorkflowExecution {
+                            workflow_id: String::new(),
+                            run_id: String::new(),
+                        }),
+                        workflow_type: Some(velocity_proto::WorkflowType {
+                            name: "ReportWorkflow".into(),
+                            type_id: 99,
+                        }),
+                        task_queue: Some(velocity_proto::TaskQueue {
+                            name: "reports".into(),
+                            hash: 42,
+                            kind: 0,
+                        }),
+                        input: None,
+                        workflow_execution_timeout: None,
+                        workflow_run_timeout: None,
+                        workflow_task_timeout: None,
+                        identity: String::new(),
+                        request_id: String::new(),
+                        retry_policy: None,
+                        cron_schedule: String::new(),
+                        memo: None,
+                        search_attributes: None,
+                        header: None,
+                        parent_close_policy: 0,
+                        total_steps: 0,
+                    }),
+                }),
+                policies: Some(SchedulePolicies {
+                    overlap_policy: 0,
+                    ..Default::default()
+                }),
+                identity: "scheduler".into(),
+                request_id: "req-1".into(),
+                memo: None,
+                search_attributes: None,
+            }))
+            .await
+            .unwrap();
         let sched_id = create_resp.into_inner().schedule_id;
         let sched_key: u64 = sched_id.parse().unwrap();
 
         // 2. Describe the schedule
-        let desc_resp = wf_svc.describe_schedule(req(DescribeScheduleRequest {
-            namespace: "default".into(),
-            schedule_id: sched_id.clone(),
-        })).await.unwrap();
+        let desc_resp = wf_svc
+            .describe_schedule(req(DescribeScheduleRequest {
+                namespace: "default".into(),
+                schedule_id: sched_id.clone(),
+            }))
+            .await
+            .unwrap();
         let desc = desc_resp.into_inner();
         assert_eq!(desc.schedule_id, sched_id);
         assert_eq!(desc.state.as_ref().unwrap().status, 0); // active
         assert!(desc.policies.is_some());
 
         // 3. List schedules
-        let list_resp = wf_svc.list_schedules(req(ListSchedulesRequest {
-            namespace: "default".into(),
-            page_size: 10,
-            next_page_token: vec![],
-            query: String::new(),
-        })).await.unwrap();
+        let list_resp = wf_svc
+            .list_schedules(req(ListSchedulesRequest {
+                namespace: "default".into(),
+                page_size: 10,
+                next_page_token: vec![],
+                query: String::new(),
+            }))
+            .await
+            .unwrap();
         assert_eq!(list_resp.into_inner().schedules.len(), 1);
 
         // 4. Update overlap policy
-        let update_resp = wf_svc.update_schedule(req(UpdateScheduleRequest {
-            namespace: "default".into(),
-            schedule_id: sched_id.clone(),
-            spec: None,
-            action: None,
-            policies: Some(SchedulePolicies { overlap_policy: 3, ..Default::default() }),
-            identity: "admin".into(),
-            request_id: "req-2".into(),
-        })).await;
+        let update_resp = wf_svc
+            .update_schedule(req(UpdateScheduleRequest {
+                namespace: "default".into(),
+                schedule_id: sched_id.clone(),
+                spec: None,
+                action: None,
+                policies: Some(SchedulePolicies {
+                    overlap_policy: 3,
+                    ..Default::default()
+                }),
+                identity: "admin".into(),
+                request_id: "req-2".into(),
+            }))
+            .await;
         assert!(update_resp.is_ok());
         // Verify update took effect
         let entry = engine.schedule_manager().get(sched_key).unwrap();
-        assert_eq!(entry.overlap_policy, crate::schedules::OverlapPolicy::TerminateOther);
+        assert_eq!(
+            entry.overlap_policy,
+            crate::schedules::OverlapPolicy::TerminateOther
+        );
 
         // 5. Delete the schedule
-        let del_resp = wf_svc.delete_schedule(req(DeleteScheduleRequest {
-            namespace: "default".into(),
-            schedule_id: sched_id,
-            identity: "admin".into(),
-        })).await;
+        let del_resp = wf_svc
+            .delete_schedule(req(DeleteScheduleRequest {
+                namespace: "default".into(),
+                schedule_id: sched_id,
+                identity: "admin".into(),
+            }))
+            .await;
         assert!(del_resp.is_ok());
         assert_eq!(engine.schedule_manager().count(), 0);
     }
@@ -5646,7 +6617,9 @@ mod tests {
         // Default config has 4 partitions
         assert_eq!(inner.workflow_task_queue_partitions.len(), 4);
         assert_eq!(inner.activity_task_queue_partitions.len(), 4);
-        assert!(inner.workflow_task_queue_partitions[0].key.contains("partition_0"));
+        assert!(inner.workflow_task_queue_partitions[0]
+            .key
+            .contains("partition_0"));
     }
 
     // ─── E2E: Replay Engine Determinism Verification ────────────────────────
@@ -5658,22 +6631,41 @@ mod tests {
         let key = engine.start_workflow(9001, 1, 0, 42, 5, None);
         engine.complete_step(key, 0, vec![1, 2, 3]);
         engine.complete_step(key, 1, vec![4, 5, 6]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::WorkflowStarted, vec![]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::StepCompleted, vec![1, 2, 3]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::StepCompleted, vec![4, 5, 6]);
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::WorkflowStarted,
+            vec![],
+        );
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::StepCompleted,
+            vec![1, 2, 3],
+        );
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::StepCompleted,
+            vec![4, 5, 6],
+        );
 
         // Verify determinism: replay the same history twice
-        let is_deterministic = engine.replay_engine().verify_determinism(key, &engine.history_store().get_history(key).unwrap_or_default());
+        let is_deterministic = engine.replay_engine().verify_determinism(
+            key,
+            &engine.history_store().get_history(key).unwrap_or_default(),
+        );
         assert!(is_deterministic, "replay should be deterministic");
 
         // Replay from store and check result
-        let result = engine.replay_engine().replay_from_store(key, engine.history_store(), None);
+        let result = engine
+            .replay_engine()
+            .replay_from_store(key, engine.history_store(), None);
         assert!(result.success);
         assert!(result.events_replayed > 0);
         assert!(result.determinism_checksum > 0);
 
         // Replay again and compare checksums
-        let result2 = engine.replay_engine().replay_from_store(key, engine.history_store(), None);
+        let result2 = engine
+            .replay_engine()
+            .replay_from_store(key, engine.history_store(), None);
         assert_eq!(result.determinism_checksum, result2.determinism_checksum);
         assert!(ReplayEngine::compare_replay_results(&result, &result2));
     }
@@ -5691,13 +6683,16 @@ mod tests {
         engine.complete_step(key, 1, vec![2]);
 
         // Describe mutable state via WorkerService
-        let resp = worker_svc.describe_mutable_state(req(DescribeMutableStateRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "9101".to_string(),
-                run_id: String::new(),
-            }),
-        })).await.unwrap();
+        let resp = worker_svc
+            .describe_mutable_state(req(DescribeMutableStateRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "9101".to_string(),
+                    run_id: String::new(),
+                }),
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         // mutable_state should contain serialized description
         assert!(!inner.mutable_state.is_empty());
@@ -5716,17 +6711,27 @@ mod tests {
         // Start a workflow and record history
         let key = engine.start_workflow(9201, 1, 0, 42, 5, None);
         engine.complete_step(key, 0, vec![10, 20]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::WorkflowStarted, vec![]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::StepCompleted, vec![10, 20]);
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::WorkflowStarted,
+            vec![],
+        );
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::StepCompleted,
+            vec![10, 20],
+        );
 
         // Rebuild mutable state via replay
-        let resp = worker_svc.rebuild_mutable_state(req(WorkerRebuildMutableStateRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "9201".to_string(),
-                run_id: String::new(),
-            }),
-        })).await;
+        let resp = worker_svc
+            .rebuild_mutable_state(req(WorkerRebuildMutableStateRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "9201".to_string(),
+                    run_id: String::new(),
+                }),
+            }))
+            .await;
         assert!(resp.is_ok());
 
         // Verify replay cache was populated
@@ -5745,19 +6750,29 @@ mod tests {
         engine.start_workflow(9301, 1, 0, 42, 5, None);
 
         // Refresh workflow tasks — should re-schedule a task in the matching engine
-        let resp = worker_svc.refresh_workflow_tasks(req(RefreshWorkflowTasksRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "9301".to_string(),
-                run_id: String::new(),
-            }),
-        })).await;
+        let resp = worker_svc
+            .refresh_workflow_tasks(req(RefreshWorkflowTasksRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "9301".to_string(),
+                    run_id: String::new(),
+                }),
+            }))
+            .await;
         assert!(resp.is_ok());
 
         // Verify a task was added to the matching engine
-        let tq_id = TaskQueueId::new("default", "wf-9301", TaskQueueKind::Normal, TaskQueueType::Workflow);
+        let tq_id = TaskQueueId::new(
+            "default",
+            "wf-9301",
+            TaskQueueKind::Normal,
+            TaskQueueType::Workflow,
+        );
         let task = matching.poll_task(&tq_id, "test-worker");
-        assert!(task.is_some(), "matching engine should have a task after refresh");
+        assert!(
+            task.is_some(),
+            "matching engine should have a task after refresh"
+        );
     }
 
     // ─── E2E: WorkerService Import Workflow Execution ──────────────────────
@@ -5768,20 +6783,26 @@ mod tests {
         let worker_svc = WorkerServiceImpl::new(engine.clone());
 
         // Import a workflow execution
-        let resp = worker_svc.import_workflow_execution(req(WorkerImportWorkflowExecutionRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "9401".to_string(),
-                run_id: String::new(),
-            }),
-            workflow_state: vec![0xDE, 0xAD, 0xBE, 0xEF],
-        })).await;
+        let resp = worker_svc
+            .import_workflow_execution(req(WorkerImportWorkflowExecutionRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "9401".to_string(),
+                    run_id: String::new(),
+                }),
+                workflow_state: vec![0xDE, 0xAD, 0xBE, 0xEF],
+            }))
+            .await;
         assert!(resp.is_ok());
 
         // Verify the workflow exists
         let key = (0u64 << 32) | 9401u64;
         let status = engine.get_status(key);
-        assert_ne!(status, WorkflowStatus::Void, "imported workflow should exist");
+        assert_ne!(
+            status,
+            WorkflowStatus::Void,
+            "imported workflow should exist"
+        );
 
         // Verify history was recorded
         let history = engine.history_store().get_history(key).unwrap_or_default();
@@ -5803,32 +6824,48 @@ mod tests {
         engine.complete_workflow(key_9501, Some(vec![]));
 
         // List all running workflows
-        let resp = wf_svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 100,
-            status_filter: WorkflowExecutionStatus::Running as i32,
-            ..Default::default()
-        })).await.unwrap();
+        let resp = wf_svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 100,
+                status_filter: WorkflowExecutionStatus::Running as i32,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         assert_eq!(inner.executions.len(), 2, "should have 2 running workflows");
 
         // List completed workflows
-        let resp2 = wf_svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 100,
-            status_filter: WorkflowExecutionStatus::Completed as i32,
-            ..Default::default()
-        })).await.unwrap();
+        let resp2 = wf_svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 100,
+                status_filter: WorkflowExecutionStatus::Completed as i32,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         assert_eq!(resp2.into_inner().executions.len(), 1);
 
         // List by type filter
-        let resp3 = wf_svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 100,
-            type_filter: Some(velocity_proto::WorkflowType { name: String::new(), type_id: 1 }),
-            ..Default::default()
-        })).await.unwrap();
-        assert_eq!(resp3.into_inner().executions.len(), 2, "type_id=1 should match 2 workflows");
+        let resp3 = wf_svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 100,
+                type_filter: Some(velocity_proto::WorkflowType {
+                    name: String::new(),
+                    type_id: 1,
+                }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp3.into_inner().executions.len(),
+            2,
+            "type_id=1 should match 2 workflows"
+        );
     }
 
     // ─── E2E: Describe Cluster Returns Real Stats ──────────────────────────
@@ -5844,13 +6881,21 @@ mod tests {
         engine.namespaces().register_auto("test-ns");
 
         // Describe cluster
-        let resp = worker_svc.describe_cluster(req(WorkerDescribeClusterRequest {
-            cluster_name: String::new(),
-        })).await.unwrap();
+        let resp = worker_svc
+            .describe_cluster(req(WorkerDescribeClusterRequest {
+                cluster_name: String::new(),
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         assert_eq!(inner.cluster_name, "velocity-default");
         assert!(inner.version_info.contains_key("workflows"));
-        let wf_count: u64 = inner.version_info.get("workflows").unwrap().parse().unwrap();
+        let wf_count: u64 = inner
+            .version_info
+            .get("workflows")
+            .unwrap()
+            .parse()
+            .unwrap();
         assert!(wf_count >= 2, "should report at least 2 workflows");
     }
 
@@ -5865,43 +6910,56 @@ mod tests {
         engine.start_workflow(9701, 1, 0, 42, 5, None);
 
         // Reapply events
-        let resp = worker_svc.reapply_events(req(ReapplyEventsRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "9701".to_string(),
-                run_id: String::new(),
-            }),
-            events: vec![
-                velocity_proto::HistoryEvent {
-                    event_id: 100,
-                    event_time: None,
-                    event_type: "signalA".to_string(),
-                    task_id: 0,
-                    details: Some(velocity_proto::Payload { data: vec![1, 2], encoding: 0, metadata: HashMap::new() }),
-                },
-                velocity_proto::HistoryEvent {
-                    event_id: 101,
-                    event_time: None,
-                    event_type: "signalB".to_string(),
-                    task_id: 0,
-                    details: None,
-                },
-            ],
-        })).await;
+        let resp = worker_svc
+            .reapply_events(req(ReapplyEventsRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "9701".to_string(),
+                    run_id: String::new(),
+                }),
+                events: vec![
+                    velocity_proto::HistoryEvent {
+                        event_id: 100,
+                        event_time: None,
+                        event_type: "signalA".to_string(),
+                        task_id: 0,
+                        details: Some(velocity_proto::Payload {
+                            data: vec![1, 2],
+                            encoding: 0,
+                            metadata: HashMap::new(),
+                        }),
+                    },
+                    velocity_proto::HistoryEvent {
+                        event_id: 101,
+                        event_time: None,
+                        event_type: "signalB".to_string(),
+                        task_id: 0,
+                        details: None,
+                    },
+                ],
+            }))
+            .await;
         assert!(resp.is_ok());
 
         // Verify history recorded the signals
         let key = (0u64 << 32) | 9701u64;
         let history = engine.history_store().get_history(key).unwrap_or_default();
-        let signal_events: Vec<_> = history.iter().filter(|e| e.event_type == crate::event_history::HistoryEventType::SignalReceived).collect();
-        assert_eq!(signal_events.len(), 2, "should have 2 signal events from reapply");
+        let signal_events: Vec<_> = history
+            .iter()
+            .filter(|e| e.event_type == crate::event_history::HistoryEventType::SignalReceived)
+            .collect();
+        assert_eq!(
+            signal_events.len(),
+            2,
+            "should have 2 signal events from reapply"
+        );
     }
 
     // ─── E2E: WAL Record Encode/Decode Roundtrip ──────────────────────────
 
     #[tokio::test]
     async fn test_e2e_wal_record_roundtrip() {
-        use crate::wal::{WalRecord, WalEventType};
+        use crate::wal::{WalEventType, WalRecord};
         use std::io::Cursor;
 
         // Create a WAL record and encode it
@@ -5925,18 +6983,39 @@ mod tests {
         engine.complete_step(key, 0, vec![1]);
         engine.complete_step(key, 1, vec![2]);
         engine.complete_step(key, 2, vec![3]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::WorkflowStarted, vec![]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::StepCompleted, vec![1]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::StepCompleted, vec![2]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::StepCompleted, vec![3]);
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::WorkflowStarted,
+            vec![],
+        );
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::StepCompleted,
+            vec![1],
+        );
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::StepCompleted,
+            vec![2],
+        );
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::StepCompleted,
+            vec![3],
+        );
 
         // Replay only up to event 3
-        let partial = engine.replay_engine().replay_from_store(key, engine.history_store(), Some(3));
+        let partial =
+            engine
+                .replay_engine()
+                .replay_from_store(key, engine.history_store(), Some(3));
         assert!(partial.success);
         assert_eq!(partial.replayed_to_event_id, 3);
 
         // Replay the full history
-        let full = engine.replay_engine().replay_from_store(key, engine.history_store(), None);
+        let full = engine
+            .replay_engine()
+            .replay_from_store(key, engine.history_store(), None);
         assert!(full.success);
         assert!(full.events_replayed >= partial.events_replayed);
     }
@@ -5953,47 +7032,53 @@ mod tests {
         engine.start_workflow(9901, 1, 0, 42, 5, None);
 
         // Record workflow task started
-        let resp = hist_svc.record_workflow_task_started(req(HistRecordWorkflowTaskStartedRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "9901".to_string(),
-                run_id: String::new(),
-            }),
-            schedule_event_id: 1,
-            task_token: "token-123".to_string(),
-            poller_identity: "worker-1".to_string(),
-        })).await;
+        let resp = hist_svc
+            .record_workflow_task_started(req(HistRecordWorkflowTaskStartedRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "9901".to_string(),
+                    run_id: String::new(),
+                }),
+                schedule_event_id: 1,
+                task_token: "token-123".to_string(),
+                poller_identity: "worker-1".to_string(),
+            }))
+            .await;
         assert!(resp.is_ok());
         let inner = resp.unwrap().into_inner();
         assert!(inner.started_event_id >= 0);
         assert!(inner.next_event_id > inner.started_event_id);
 
         // Record activity task started
-        let resp2 = hist_svc.record_activity_task_started(req(HistRecordActivityTaskStartedRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "9901".to_string(),
-                run_id: String::new(),
-            }),
-            schedule_event_id: 5,
-            task_token: "token-456".to_string(),
-            poller_identity: "worker-2".to_string(),
-        })).await;
+        let resp2 = hist_svc
+            .record_activity_task_started(req(HistRecordActivityTaskStartedRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "9901".to_string(),
+                    run_id: String::new(),
+                }),
+                schedule_event_id: 5,
+                task_token: "token-456".to_string(),
+                poller_identity: "worker-2".to_string(),
+            }))
+            .await;
         assert!(resp2.is_ok());
         let inner2 = resp2.unwrap().into_inner();
         assert_eq!(inner2.scheduled_event_id, 5);
 
         // Verify non-existent workflow returns NOT_FOUND
-        let resp3 = hist_svc.record_workflow_task_started(req(HistRecordWorkflowTaskStartedRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "9999".to_string(),
-                run_id: String::new(),
-            }),
-            schedule_event_id: 0,
-            task_token: "token".to_string(),
-            poller_identity: "worker".to_string(),
-        })).await;
+        let resp3 = hist_svc
+            .record_workflow_task_started(req(HistRecordWorkflowTaskStartedRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "9999".to_string(),
+                    run_id: String::new(),
+                }),
+                schedule_event_id: 0,
+                task_token: "token".to_string(),
+                poller_identity: "worker".to_string(),
+            }))
+            .await;
         assert!(resp3.is_err());
         assert_eq!(resp3.unwrap_err().code(), tonic::Code::NotFound);
     }
@@ -6010,21 +7095,37 @@ mod tests {
         engine.start_workflow(9952, 2, 0, 42, 1, None);
         engine.namespaces().register_auto("stats-ns");
 
-        let resp = wf_svc.get_system_info(req(GetSystemInfoRequest {})).await.unwrap();
+        let resp = wf_svc
+            .get_system_info(req(GetSystemInfoRequest {}))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         let sys_info = inner.system_info.unwrap();
         let server = sys_info.server.as_ref().unwrap();
 
         // Verify new features are advertised
         assert!(server.supported_features.contains(&"schedules".to_string()));
-        assert!(server.supported_features.contains(&"sticky_queues".to_string()));
-        assert!(server.supported_features.contains(&"build_id_versioning".to_string()));
-        assert!(server.supported_features.contains(&"deterministic_replay".to_string()));
-        assert!(server.supported_features.contains(&"wal_recovery".to_string()));
-        assert!(server.supported_features.contains(&"visibility_queries".to_string()));
+        assert!(server
+            .supported_features
+            .contains(&"sticky_queues".to_string()));
+        assert!(server
+            .supported_features
+            .contains(&"build_id_versioning".to_string()));
+        assert!(server
+            .supported_features
+            .contains(&"deterministic_replay".to_string()));
+        assert!(server
+            .supported_features
+            .contains(&"wal_recovery".to_string()));
+        assert!(server
+            .supported_features
+            .contains(&"visibility_queries".to_string()));
 
         // Verify runtime stats are included
-        let has_workflow_stat = server.supported_features.iter().any(|f| f.starts_with("workflows:") && !f.ends_with(":0"));
+        let has_workflow_stat = server
+            .supported_features
+            .iter()
+            .any(|f| f.starts_with("workflows:") && !f.ends_with(":0"));
         assert!(has_workflow_stat, "should report non-zero workflow count");
 
         // Verify eager_workflow_start is now enabled
@@ -6045,13 +7146,15 @@ mod tests {
         assert_eq!(engine.get_status(key), WorkflowStatus::Running);
 
         // Force delete via HistoryService
-        let resp = hist_svc.force_delete_workflow_execution(req(HistForceDeleteWorkflowExecutionRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "14001".to_string(),
-                run_id: String::new(),
-            }),
-        })).await;
+        let resp = hist_svc
+            .force_delete_workflow_execution(req(HistForceDeleteWorkflowExecutionRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "14001".to_string(),
+                    run_id: String::new(),
+                }),
+            }))
+            .await;
         assert!(resp.is_ok());
 
         // Verify workflow is terminated
@@ -6059,7 +7162,9 @@ mod tests {
 
         // Verify history has WorkflowTerminated event
         let events = engine.history_store().get_history(key).unwrap();
-        let has_terminated = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowTerminated);
+        let has_terminated = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowTerminated);
         assert!(has_terminated, "should have WorkflowTerminated in history");
     }
 
@@ -6074,24 +7179,37 @@ mod tests {
         // Start a workflow and record events
         let key = engine.start_workflow(14101, 1, 0, 42, 5, None);
         engine.complete_step(key, 0, vec![10]);
-        engine.history_store().record_event(key, crate::event_history::HistoryEventType::StepCompleted, vec![10]);
+        engine.history_store().record_event(
+            key,
+            crate::event_history::HistoryEventType::StepCompleted,
+            vec![10],
+        );
 
         // Get raw history v2
-        let resp = hist_svc.get_workflow_execution_raw_history_v2(req(GetWorkflowExecutionRawHistoryV2Request {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "14101".to_string(),
-                run_id: String::new(),
-            }),
-            start_event_id: 0,
-            end_event_id: 100,
-            maximum_page_size: 50,
-            next_page_token: vec![],
-            ..Default::default()
-        })).await.unwrap();
+        let resp = hist_svc
+            .get_workflow_execution_raw_history_v2(req(GetWorkflowExecutionRawHistoryV2Request {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "14101".to_string(),
+                    run_id: String::new(),
+                }),
+                start_event_id: 0,
+                end_event_id: 100,
+                maximum_page_size: 50,
+                next_page_token: vec![],
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
-        assert!(inner.history_events.len() >= 2, "should have at least 2 events");
-        assert!(inner.next_page_token.is_empty(), "no pagination needed for small history");
+        assert!(
+            inner.history_events.len() >= 2,
+            "should have at least 2 events"
+        );
+        assert!(
+            inner.next_page_token.is_empty(),
+            "no pagination needed for small history"
+        );
     }
 
     // ─── E2E: HistoryService List History Tasks ──────────────────────────
@@ -6107,15 +7225,21 @@ mod tests {
         engine.start_workflow(14202, 2, 0, 42, 1, None);
 
         // List history tasks
-        let resp = hist_svc.list_history_tasks(req(ListHistoryTasksRequest {
-            shard_id: 0,
-            task_queue_type: 1,
-            task_range: None,
-            batch_size: 10,
-            next_page_token: vec![],
-        })).await.unwrap();
+        let resp = hist_svc
+            .list_history_tasks(req(ListHistoryTasksRequest {
+                shard_id: 0,
+                task_queue_type: 1,
+                task_range: None,
+                batch_size: 10,
+                next_page_token: vec![],
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
-        assert!(!inner.tasks.is_empty(), "should have tasks from workflow histories");
+        assert!(
+            !inner.tasks.is_empty(),
+            "should have tasks from workflow histories"
+        );
         assert!(inner.tasks[0].task_id > 0, "task_id should be positive");
     }
 
@@ -6129,7 +7253,10 @@ mod tests {
 
         engine.start_workflow(14301, 1, 0, 42, 1, None);
 
-        let resp = hist_svc.get_shard(req(GetShardRequest { shard_id: 0 })).await.unwrap();
+        let resp = hist_svc
+            .get_shard(req(GetShardRequest { shard_id: 0 }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         assert!(inner.shard.is_some(), "should return shard info");
         let shard = inner.shard.unwrap();
@@ -6147,7 +7274,10 @@ mod tests {
         engine.start_workflow(14401, 1, 0, 42, 1, None);
         engine.start_workflow(14402, 2, 0, 42, 1, None);
 
-        let resp = worker_svc.get_shard(req(GetShardRequest { shard_id: 1 })).await.unwrap();
+        let resp = worker_svc
+            .get_shard(req(GetShardRequest { shard_id: 1 }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         let shard = inner.shard.unwrap();
         assert_eq!(shard.shard_id, 1);
@@ -6161,11 +7291,14 @@ mod tests {
         let engine = Arc::new(WorkflowEngine::new());
         let worker_svc = WorkerServiceImpl::new(engine.clone());
 
-        let resp = worker_svc.list_tables(req(WorkerListTablesRequest {
-            database: String::new(),
-            page_size: 100,
-            next_page_token: vec![],
-        })).await.unwrap();
+        let resp = worker_svc
+            .list_tables(req(WorkerListTablesRequest {
+                database: String::new(),
+                page_size: 100,
+                next_page_token: vec![],
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         assert!(!inner.tables.is_empty(), "should list database tables");
         assert!(inner.tables.contains(&"workflows".to_string()));
@@ -6180,10 +7313,13 @@ mod tests {
         let engine = Arc::new(WorkflowEngine::new());
         let worker_svc = WorkerServiceImpl::new(engine.clone());
 
-        let resp = worker_svc.list_clusters(req(WorkerListClustersRequest {
-            page_size: 100,
-            next_page_token: vec![],
-        })).await.unwrap();
+        let resp = worker_svc
+            .list_clusters(req(WorkerListClustersRequest {
+                page_size: 100,
+                next_page_token: vec![],
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         assert_eq!(inner.clusters.len(), 1, "should have local cluster");
         assert_eq!(inner.clusters[0].cluster_name, "velocity-default");
@@ -6202,7 +7338,10 @@ mod tests {
         let add_req = req(MatchAddWorkflowTaskRequest {
             namespace_id: "default".into(),
             task_queue: "metadata-test-queue".into(),
-            execution: Some(WorkflowExecution { workflow_id: "14501".into(), run_id: "r1".into() }),
+            execution: Some(WorkflowExecution {
+                workflow_id: "14501".into(),
+                run_id: "r1".into(),
+            }),
             scheduled_event_id: 0,
             schedule_to_start_timeout: None,
             version_directive: None,
@@ -6210,14 +7349,20 @@ mod tests {
         match_svc.add_workflow_task(add_req).await.unwrap();
 
         // Get metadata
-        let resp = match_svc.get_task_queue_metadata(req(MatchGetTaskQueueMetadataRequest {
-            namespace_id: "default".into(),
-            task_queue: "metadata-test-queue".into(),
-            task_queue_type: 0,
-        })).await.unwrap();
+        let resp = match_svc
+            .get_task_queue_metadata(req(MatchGetTaskQueueMetadataRequest {
+                namespace_id: "default".into(),
+                task_queue: "metadata-test-queue".into(),
+                task_queue_type: 0,
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
         assert!(inner.metadata.is_some(), "should return metadata");
-        assert!(inner.metadata.unwrap().max_tasks_per_second > 0, "should have pending tasks");
+        assert!(
+            inner.metadata.unwrap().max_tasks_per_second > 0,
+            "should have pending tasks"
+        );
     }
 
     // ─── E2E: WorkerService Generate Replication Tasks ────────────────────
@@ -6229,29 +7374,39 @@ mod tests {
 
         engine.start_workflow(14601, 1, 0, 42, 5, None);
 
-        let resp = worker_svc.generate_last_history_replication_tasks(req(GenerateLastHistoryReplicationTasksRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "14601".to_string(),
-                run_id: String::new(),
-            }),
-        })).await;
+        let resp = worker_svc
+            .generate_last_history_replication_tasks(req(
+                GenerateLastHistoryReplicationTasksRequest {
+                    namespace_id: "0".to_string(),
+                    execution: Some(velocity_proto::WorkflowExecution {
+                        workflow_id: "14601".to_string(),
+                        run_id: String::new(),
+                    }),
+                },
+            ))
+            .await;
         assert!(resp.is_ok());
 
         // Verify marker was recorded in history
         let key = (0u64 << 32) | 14601u64;
         let events = engine.history_store().get_history(key).unwrap();
-        let has_marker = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::MarkerRecorded);
+        let has_marker = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::MarkerRecorded);
         assert!(has_marker, "should have replication marker in history");
 
         // Non-existent workflow should fail
-        let resp2 = worker_svc.generate_last_history_replication_tasks(req(GenerateLastHistoryReplicationTasksRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "99999".to_string(),
-                run_id: String::new(),
-            }),
-        })).await;
+        let resp2 = worker_svc
+            .generate_last_history_replication_tasks(req(
+                GenerateLastHistoryReplicationTasksRequest {
+                    namespace_id: "0".to_string(),
+                    execution: Some(velocity_proto::WorkflowExecution {
+                        workflow_id: "99999".to_string(),
+                        run_id: String::new(),
+                    }),
+                },
+            ))
+            .await;
         assert!(resp2.is_err());
         assert_eq!(resp2.unwrap_err().code(), tonic::Code::NotFound);
     }
@@ -6269,32 +7424,50 @@ mod tests {
 
         // Start 2 workflows of type 100 — should succeed
         for i in 15001..15003 {
-            let resp = wf_svc.start_workflow_execution(req(StartWorkflowExecutionRequest {
-                namespace: "default".to_string(),
-                workflow_execution: Some(velocity_proto::WorkflowExecution {
-                    workflow_id: i.to_string(),
-                    run_id: String::new(),
-                }),
-                workflow_type: Some(velocity_proto::WorkflowType { name: "LimitedType".into(), type_id: 100 }),
-                task_queue: Some(velocity_proto::TaskQueue { name: "limiter-q".into(), hash: 0, kind: 0 }),
-                total_steps: 1,
-                ..Default::default()
-            })).await;
+            let resp = wf_svc
+                .start_workflow_execution(req(StartWorkflowExecutionRequest {
+                    namespace: "default".to_string(),
+                    workflow_execution: Some(velocity_proto::WorkflowExecution {
+                        workflow_id: i.to_string(),
+                        run_id: String::new(),
+                    }),
+                    workflow_type: Some(velocity_proto::WorkflowType {
+                        name: "LimitedType".into(),
+                        type_id: 100,
+                    }),
+                    task_queue: Some(velocity_proto::TaskQueue {
+                        name: "limiter-q".into(),
+                        hash: 0,
+                        kind: 0,
+                    }),
+                    total_steps: 1,
+                    ..Default::default()
+                }))
+                .await;
             assert!(resp.is_ok(), "workflow {} should start", i);
         }
 
         // 3rd workflow of same type should be rejected
-        let resp3 = wf_svc.start_workflow_execution(req(StartWorkflowExecutionRequest {
-            namespace: "default".to_string(),
-            workflow_execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "15003".to_string(),
-                run_id: String::new(),
-            }),
-            workflow_type: Some(velocity_proto::WorkflowType { name: "LimitedType".into(), type_id: 100 }),
-            task_queue: Some(velocity_proto::TaskQueue { name: "limiter-q".into(), hash: 0, kind: 0 }),
-            total_steps: 1,
-            ..Default::default()
-        })).await;
+        let resp3 = wf_svc
+            .start_workflow_execution(req(StartWorkflowExecutionRequest {
+                namespace: "default".to_string(),
+                workflow_execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "15003".to_string(),
+                    run_id: String::new(),
+                }),
+                workflow_type: Some(velocity_proto::WorkflowType {
+                    name: "LimitedType".into(),
+                    type_id: 100,
+                }),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "limiter-q".into(),
+                    hash: 0,
+                    kind: 0,
+                }),
+                total_steps: 1,
+                ..Default::default()
+            }))
+            .await;
         assert!(resp3.is_err(), "3rd workflow should be rejected");
         assert_eq!(resp3.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
@@ -6302,17 +7475,26 @@ mod tests {
         assert_eq!(engine.concurrency_limiter().active_for_type(100), 2);
 
         // A different workflow type should still be allowed
-        let resp4 = wf_svc.start_workflow_execution(req(StartWorkflowExecutionRequest {
-            namespace: "default".to_string(),
-            workflow_execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "15004".to_string(),
-                run_id: String::new(),
-            }),
-            workflow_type: Some(velocity_proto::WorkflowType { name: "OtherType".into(), type_id: 200 }),
-            task_queue: Some(velocity_proto::TaskQueue { name: "limiter-q".into(), hash: 0, kind: 0 }),
-            total_steps: 1,
-            ..Default::default()
-        })).await;
+        let resp4 = wf_svc
+            .start_workflow_execution(req(StartWorkflowExecutionRequest {
+                namespace: "default".to_string(),
+                workflow_execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "15004".to_string(),
+                    run_id: String::new(),
+                }),
+                workflow_type: Some(velocity_proto::WorkflowType {
+                    name: "OtherType".into(),
+                    type_id: 200,
+                }),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "limiter-q".into(),
+                    hash: 0,
+                    kind: 0,
+                }),
+                total_steps: 1,
+                ..Default::default()
+            }))
+            .await;
         assert!(resp4.is_ok(), "different type should not be limited");
     }
 
@@ -6326,38 +7508,45 @@ mod tests {
 
         engine.start_workflow(16001, 1, 0, 42, 5, None);
 
-        let resp = hist_svc.invoke_state_machine_method(req(HistInvokeStateMachineMethodRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "16001".to_string(),
-                run_id: String::new(),
-            }),
-            state_machine_type: 1,
-            state_machine_id: 42,
-            method: 3,
-            input: vec![0xDE, 0xAD],
-        })).await.unwrap();
+        let resp = hist_svc
+            .invoke_state_machine_method(req(HistInvokeStateMachineMethodRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "16001".to_string(),
+                    run_id: String::new(),
+                }),
+                state_machine_type: 1,
+                state_machine_id: 42,
+                method: 3,
+                input: vec![0xDE, 0xAD],
+            }))
+            .await
+            .unwrap();
         // Should echo input as output
         assert_eq!(resp.into_inner().output, vec![0xDE, 0xAD]);
 
         // Verify marker was recorded in history
         let key = (0u64 << 32) | 16001u64;
         let events = engine.history_store().get_history(key).unwrap();
-        let has_marker = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::MarkerRecorded);
+        let has_marker = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::MarkerRecorded);
         assert!(has_marker, "should have state machine invocation marker");
 
         // Non-existent workflow should fail
-        let resp2 = hist_svc.invoke_state_machine_method(req(HistInvokeStateMachineMethodRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "99999".to_string(),
-                run_id: String::new(),
-            }),
-            state_machine_type: 1,
-            state_machine_id: 1,
-            method: 1,
-            input: vec![],
-        })).await;
+        let resp2 = hist_svc
+            .invoke_state_machine_method(req(HistInvokeStateMachineMethodRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "99999".to_string(),
+                    run_id: String::new(),
+                }),
+                state_machine_type: 1,
+                state_machine_id: 1,
+                method: 1,
+                input: vec![],
+            }))
+            .await;
         assert!(resp2.is_err());
         assert_eq!(resp2.unwrap_err().code(), tonic::Code::NotFound);
     }
@@ -6371,20 +7560,24 @@ mod tests {
 
         engine.start_workflow(16101, 1, 0, 42, 5, None);
 
-        let resp = worker_svc.sync_workflow_state(req(WorkerSyncWorkflowStateRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "16101".to_string(),
-                run_id: String::new(),
-            }),
-            replication_state: vec![1, 2, 3, 4],
-        })).await;
+        let resp = worker_svc
+            .sync_workflow_state(req(WorkerSyncWorkflowStateRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "16101".to_string(),
+                    run_id: String::new(),
+                }),
+                replication_state: vec![1, 2, 3, 4],
+            }))
+            .await;
         assert!(resp.is_ok());
 
         // Verify replication state was recorded in history
         let key = (0u64 << 32) | 16101u64;
         let events = engine.history_store().get_history(key).unwrap();
-        let has_marker = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::MarkerRecorded);
+        let has_marker = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::MarkerRecorded);
         assert!(has_marker, "should have replication state marker");
     }
 
@@ -6397,13 +7590,15 @@ mod tests {
 
         engine.start_workflow(16201, 1, 0, 42, 5, None);
 
-        let resp = worker_svc.delete_workflow_execution(req(DeleteWorkflowExecutionRequest {
-            namespace_id: "0".to_string(),
-            execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "16201".to_string(),
-                run_id: String::new(),
-            }),
-        })).await;
+        let resp = worker_svc
+            .delete_workflow_execution(req(DeleteWorkflowExecutionRequest {
+                namespace_id: "0".to_string(),
+                execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "16201".to_string(),
+                    run_id: String::new(),
+                }),
+            }))
+            .await;
         assert!(resp.is_ok());
 
         let key = (0u64 << 32) | 16201u64;
@@ -6411,8 +7606,13 @@ mod tests {
 
         // Verify history has WorkflowTerminated event
         let events = engine.history_store().get_history(key).unwrap();
-        let has_terminated = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowTerminated);
-        assert!(has_terminated, "delete should record WorkflowTerminated in history");
+        let has_terminated = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowTerminated);
+        assert!(
+            has_terminated,
+            "delete should record WorkflowTerminated in history"
+        );
     }
 
     // ─── E2E: Timer Engine Records TimerFired in History ──────────────────
@@ -6431,7 +7631,9 @@ mod tests {
         let key = engine.start_workflow(17001, 1, 0, 42, 5, None);
 
         // Schedule a short timer (50ms)
-        let timer_id = engine.timer_engine().schedule(key, std::time::Duration::from_millis(50));
+        let timer_id = engine
+            .timer_engine()
+            .schedule(key, std::time::Duration::from_millis(50));
         assert!(timer_id > 0);
 
         // Wait for the timer to fire
@@ -6439,8 +7641,13 @@ mod tests {
 
         // Verify TimerFired event was recorded in history
         let events = engine.history_store().get_history(key).unwrap();
-        let has_timer_fired = events.iter().any(|e| e.event_type == crate::event_history::HistoryEventType::TimerFired);
-        assert!(has_timer_fired, "timer engine should record TimerFired in history");
+        let has_timer_fired = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::TimerFired);
+        assert!(
+            has_timer_fired,
+            "timer engine should record TimerFired in history"
+        );
     }
 
     // ─── E2E: List with Time Range Filter ──────────────────────────────────
@@ -6456,7 +7663,9 @@ mod tests {
 
         // List with time range covering everything (last hour)
         let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let one_hour_ago = prost_types::Timestamp {
             seconds: (now - 3600) as i64,
             nanos: 0,
@@ -6466,25 +7675,37 @@ mod tests {
             nanos: 0,
         };
 
-        let resp = svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 100,
-            start_time_min: Some(one_hour_ago),
-            start_time_max: Some(future),
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 100,
+                start_time_min: Some(one_hour_ago),
+                start_time_max: Some(future),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         assert_eq!(resp.into_inner().executions.len(), 3);
 
         // List with time range in the past (should return nothing)
-        let past_start = prost_types::Timestamp { seconds: 0, nanos: 0 };
-        let past_end = prost_types::Timestamp { seconds: 1, nanos: 0 };
-        let resp2 = svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 100,
-            start_time_min: Some(past_start),
-            start_time_max: Some(past_end),
-            ..Default::default()
-        })).await.unwrap();
+        let past_start = prost_types::Timestamp {
+            seconds: 0,
+            nanos: 0,
+        };
+        let past_end = prost_types::Timestamp {
+            seconds: 1,
+            nanos: 0,
+        };
+        let resp2 = svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 100,
+                start_time_min: Some(past_start),
+                start_time_max: Some(past_end),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         assert_eq!(resp2.into_inner().executions.len(), 0);
     }
 
@@ -6500,33 +7721,42 @@ mod tests {
         }
 
         // Page 1: size 2
-        let resp1 = svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 2,
-            ..Default::default()
-        })).await.unwrap();
+        let resp1 = svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 2,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let inner1 = resp1.into_inner();
         assert_eq!(inner1.executions.len(), 2);
         assert!(!inner1.next_page_token.is_empty(), "should have next page");
 
         // Page 2: use token
-        let resp2 = svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 2,
-            next_page_token: inner1.next_page_token,
-            ..Default::default()
-        })).await.unwrap();
+        let resp2 = svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 2,
+                next_page_token: inner1.next_page_token,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let inner2 = resp2.into_inner();
         assert_eq!(inner2.executions.len(), 2);
         assert!(!inner2.next_page_token.is_empty(), "should have next page");
 
         // Page 3: last page
-        let resp3 = svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 2,
-            next_page_token: inner2.next_page_token,
-            ..Default::default()
-        })).await.unwrap();
+        let resp3 = svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 2,
+                next_page_token: inner2.next_page_token,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let inner3 = resp3.into_inner();
         assert_eq!(inner3.executions.len(), 1);
         assert!(inner3.next_page_token.is_empty(), "no more pages");
@@ -6544,20 +7774,25 @@ mod tests {
         svc.engine.start_workflow(18203, 1, 0, 42, 1, None);
 
         // Scan with query filtering by WorkflowType
-        let resp = svc.scan_workflow_executions(req(ScanWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 100,
-            query: "NamespaceId = 0".to_string(),
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .scan_workflow_executions(req(ScanWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 100,
+                query: "NamespaceId = 0".to_string(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         assert_eq!(resp.into_inner().executions.len(), 3);
 
         // Scan with invalid query
-        let err = svc.scan_workflow_executions(req(ScanWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            query: "INVALID SYNTAX".to_string(),
-            ..Default::default()
-        })).await;
+        let err = svc
+            .scan_workflow_executions(req(ScanWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                query: "INVALID SYNTAX".to_string(),
+                ..Default::default()
+            }))
+            .await;
         assert!(err.is_err());
     }
 
@@ -6588,7 +7823,7 @@ mod tests {
             workflow_type_id: 1,
             namespace_id: 0,
             status: WorkflowStatus::Completed,
-            start_time_ms: 1000, // epoch = 1 second
+            start_time_ms: 1000,       // epoch = 1 second
             close_time_ms: Some(2000), // epoch = 2 seconds — very old
             task_queue_hash: 42,
             search_attributes: std::collections::HashMap::new(),
@@ -6609,15 +7844,24 @@ mod tests {
         let svc = test_service();
         svc.engine.start_workflow(18401, 1, 0, 42, 1, None);
 
-        let resp = svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 10,
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 10,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let execs = resp.into_inner().executions;
         assert_eq!(execs.len(), 1);
-        assert!(execs[0].start_time.is_some(), "start_time should be populated");
-        assert!(execs[0].start_time.as_ref().unwrap().seconds > 0, "start_time should be non-zero");
+        assert!(
+            execs[0].start_time.is_some(),
+            "start_time should be populated"
+        );
+        assert!(
+            execs[0].start_time.as_ref().unwrap().seconds > 0,
+            "start_time should be non-zero"
+        );
     }
 
     // ─── E2E: Namespace Retention Configuration ────────────────────────────
@@ -6627,25 +7871,39 @@ mod tests {
         let svc = test_service();
 
         // Register namespace with 30-day retention
-        let resp = svc.register_namespace(req(RegisterNamespaceRequest {
-            namespace: "retention-test".to_string(),
-            description: "test retention".to_string(),
-            workflow_execution_retention_period: Some(prost_types::Duration {
-                seconds: 30 * 24 * 3600,
-                nanos: 0,
-            }),
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .register_namespace(req(RegisterNamespaceRequest {
+                namespace: "retention-test".to_string(),
+                description: "test retention".to_string(),
+                workflow_execution_retention_period: Some(prost_types::Duration {
+                    seconds: 30 * 24 * 3600,
+                    nanos: 0,
+                }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let ns_id = resp.into_inner().namespace_id;
 
         // Describe namespace and verify retention
-        let desc = svc.describe_namespace(req(DescribeNamespaceRequest {
-            namespace: "retention-test".to_string(),
-            namespace_id: 0,
-        })).await.unwrap();
+        let desc = svc
+            .describe_namespace(req(DescribeNamespaceRequest {
+                namespace: "retention-test".to_string(),
+                namespace_id: 0,
+            }))
+            .await
+            .unwrap();
         let info = desc.into_inner().namespace_info.unwrap();
-        let retention_secs = info.retention_period.as_ref().map(|d| d.seconds).unwrap_or(0);
-        assert_eq!(retention_secs, 30 * 24 * 3600, "retention should be 30 days");
+        let retention_secs = info
+            .retention_period
+            .as_ref()
+            .map(|d| d.seconds)
+            .unwrap_or(0);
+        assert_eq!(
+            retention_secs,
+            30 * 24 * 3600,
+            "retention should be 30 days"
+        );
 
         // Start and complete a workflow in this namespace
         let key = svc.engine.start_workflow(19001, 1, ns_id, 42, 1, None);
@@ -6664,51 +7922,76 @@ mod tests {
 
         // Start workflow with search attributes
         let mut indexed_fields = std::collections::HashMap::new();
-        indexed_fields.insert("env".to_string(), velocity_proto::SearchAttributeValue {
-            value: Some(velocity_proto::search_attribute_value::Value::KeywordValue("production".into())),
-        });
-        indexed_fields.insert("priority".to_string(), velocity_proto::SearchAttributeValue {
-            value: Some(velocity_proto::search_attribute_value::Value::IntegerValue(5)),
-        });
+        indexed_fields.insert(
+            "env".to_string(),
+            velocity_proto::SearchAttributeValue {
+                value: Some(velocity_proto::search_attribute_value::Value::KeywordValue(
+                    "production".into(),
+                )),
+            },
+        );
+        indexed_fields.insert(
+            "priority".to_string(),
+            velocity_proto::SearchAttributeValue {
+                value: Some(velocity_proto::search_attribute_value::Value::IntegerValue(
+                    5,
+                )),
+            },
+        );
 
-        let resp = svc.start_workflow_execution(req(StartWorkflowExecutionRequest {
-            namespace: "default".to_string(),
-            workflow_execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "19101".to_string(),
-                run_id: String::new(),
-            }),
-            workflow_type: Some(velocity_proto::WorkflowType {
-                name: "TestWorkflow".to_string(),
-                type_id: 1,
-            }),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 42, kind: 0 }),
-            total_steps: 1,
-            search_attributes: Some(velocity_proto::SearchAttributes { indexed_fields }),
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .start_workflow_execution(req(StartWorkflowExecutionRequest {
+                namespace: "default".to_string(),
+                workflow_execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "19101".to_string(),
+                    run_id: String::new(),
+                }),
+                workflow_type: Some(velocity_proto::WorkflowType {
+                    name: "TestWorkflow".to_string(),
+                    type_id: 1,
+                }),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 42,
+                    kind: 0,
+                }),
+                total_steps: 1,
+                search_attributes: Some(velocity_proto::SearchAttributes { indexed_fields }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let key = resp.into_inner().workflow_key;
 
         // Describe and verify search attributes are returned
-        let desc = svc.describe_workflow_execution(req(DescribeWorkflowExecutionRequest {
-            namespace: "default".to_string(),
-            workflow_execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "19101".to_string(),
-                run_id: String::new(),
-            }),
-        })).await.unwrap();
+        let desc = svc
+            .describe_workflow_execution(req(DescribeWorkflowExecutionRequest {
+                namespace: "default".to_string(),
+                workflow_execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "19101".to_string(),
+                    run_id: String::new(),
+                }),
+            }))
+            .await
+            .unwrap();
         let exec_info = desc.into_inner().execution_info.unwrap();
-        let sa = exec_info.search_attributes.expect("search_attributes should be present");
+        let sa = exec_info
+            .search_attributes
+            .expect("search_attributes should be present");
         assert_eq!(sa.indexed_fields.len(), 2);
         assert!(sa.indexed_fields.contains_key("env"));
         assert!(sa.indexed_fields.contains_key("priority"));
 
         // List with query filtering by search attribute
-        let list_resp = svc.list_workflow_executions(req(ListWorkflowExecutionsRequest {
-            namespace: "default".to_string(),
-            page_size: 100,
-            query: "WorkflowType = 1".to_string(),
-            ..Default::default()
-        })).await.unwrap();
+        let list_resp = svc
+            .list_workflow_executions(req(ListWorkflowExecutionsRequest {
+                namespace: "default".to_string(),
+                page_size: 100,
+                query: "WorkflowType = 1".to_string(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         assert_eq!(list_resp.into_inner().executions.len(), 1);
     }
 
@@ -6720,36 +8003,51 @@ mod tests {
 
         // Start workflow with memo
         let mut memo_fields = std::collections::HashMap::new();
-        memo_fields.insert("owner".to_string(), velocity_proto::Payload {
-            data: b"alice".to_vec(),
-            encoding: 0,
-            metadata: std::collections::HashMap::new(),
-        });
+        memo_fields.insert(
+            "owner".to_string(),
+            velocity_proto::Payload {
+                data: b"alice".to_vec(),
+                encoding: 0,
+                metadata: std::collections::HashMap::new(),
+            },
+        );
 
-        let resp = svc.start_workflow_execution(req(StartWorkflowExecutionRequest {
-            namespace: "default".to_string(),
-            workflow_execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "19201".to_string(),
-                run_id: String::new(),
-            }),
-            workflow_type: Some(velocity_proto::WorkflowType {
-                name: "MemoWorkflow".to_string(),
-                type_id: 2,
-            }),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 42, kind: 0 }),
-            total_steps: 1,
-            memo: Some(velocity_proto::Memo { fields: memo_fields }),
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .start_workflow_execution(req(StartWorkflowExecutionRequest {
+                namespace: "default".to_string(),
+                workflow_execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "19201".to_string(),
+                    run_id: String::new(),
+                }),
+                workflow_type: Some(velocity_proto::WorkflowType {
+                    name: "MemoWorkflow".to_string(),
+                    type_id: 2,
+                }),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 42,
+                    kind: 0,
+                }),
+                total_steps: 1,
+                memo: Some(velocity_proto::Memo {
+                    fields: memo_fields,
+                }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
 
         // Describe and verify memo is returned
-        let desc = svc.describe_workflow_execution(req(DescribeWorkflowExecutionRequest {
-            namespace: "default".to_string(),
-            workflow_execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "19201".to_string(),
-                run_id: String::new(),
-            }),
-        })).await.unwrap();
+        let desc = svc
+            .describe_workflow_execution(req(DescribeWorkflowExecutionRequest {
+                namespace: "default".to_string(),
+                workflow_execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "19201".to_string(),
+                    run_id: String::new(),
+                }),
+            }))
+            .await
+            .unwrap();
         let exec_info = desc.into_inner().execution_info.unwrap();
         let memo = exec_info.memo.expect("memo should be present");
         assert_eq!(memo.fields.len(), 1);
@@ -6767,16 +8065,25 @@ mod tests {
         let key = svc.engine.start_workflow(19301, 42, 0, 10, 3, None);
 
         // Poll the task queue
-        let resp = svc.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-            identity: "test-worker".to_string(),
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 10,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
 
         // Verify workflow type is populated
-        let wt = inner.workflow_type.expect("workflow_type should be present");
+        let wt = inner
+            .workflow_type
+            .expect("workflow_type should be present");
         assert_eq!(wt.type_id, 42, "workflow type_id should match");
 
         // Verify history events are present
@@ -6800,19 +8107,27 @@ mod tests {
 
         // Schedule an activity with input payload
         let activity_input = b"hello-activity-input".to_vec();
-        svc.engine.schedule_activity(wf_key, 0, 100, activity_input.clone());
+        svc.engine
+            .schedule_activity(wf_key, 0, 100, activity_input.clone());
 
         // Verify the engine stores the input
         let retrieved = svc.engine.get_activity_input(wf_key, 0);
         assert_eq!(retrieved, Some(activity_input.clone()));
 
         // Poll the activity task queue
-        let resp = svc.poll_activity_task_queue(req(PollActivityTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-            identity: "test-worker".to_string(),
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .poll_activity_task_queue(req(PollActivityTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 10,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let inner = resp.into_inner();
 
         // Verify input is propagated to the poll response
@@ -6820,15 +8135,21 @@ mod tests {
         assert_eq!(payload.data, activity_input);
 
         // Verify timestamps are populated
-        assert!(inner.scheduled_time.is_some(), "scheduled_time should be set");
+        assert!(
+            inner.scheduled_time.is_some(),
+            "scheduled_time should be set"
+        );
         assert!(inner.started_time.is_some(), "started_time should be set");
 
         // Verify history has ActivityStarted event
         let events = svc.engine.history_store().get_history(wf_key).unwrap();
-        let has_activity_started = events.iter().any(|e| {
-            e.event_type == crate::event_history::HistoryEventType::ActivityStarted
-        });
-        assert!(has_activity_started, "should have ActivityStarted in history");
+        let has_activity_started = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::ActivityStarted);
+        assert!(
+            has_activity_started,
+            "should have ActivityStarted in history"
+        );
     }
 
     // ─── E2E: Activity Without Input ───────────────────────────────────────
@@ -6845,13 +8166,23 @@ mod tests {
         assert_eq!(svc.engine.get_activity_input(wf_key, 0), None);
 
         // Poll should return None for input
-        let resp = svc.poll_activity_task_queue(req(PollActivityTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-            identity: "test-worker".to_string(),
-            ..Default::default()
-        })).await.unwrap();
-        assert!(resp.into_inner().input.is_none(), "empty input should be None");
+        let resp = svc
+            .poll_activity_task_queue(req(PollActivityTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 10,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+        assert!(
+            resp.into_inner().input.is_none(),
+            "empty input should be None"
+        );
     }
 
     // ─── E2E: Long-Poll Workflow Task Queue ─────────────────────────────────
@@ -6865,18 +8196,28 @@ mod tests {
 
         // Long-poll with 5 second timeout — should return immediately since task is available
         let start = std::time::Instant::now();
-        let resp = svc.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-            identity: "test-worker".to_string(),
-            long_poll_timeout_ms: 5000,
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 10,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                long_poll_timeout_ms: 5000,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let elapsed = start.elapsed();
 
         let inner = resp.into_inner();
         assert!(inner.task_token > 0, "should have a task token");
-        assert!(elapsed.as_millis() < 1000, "should return immediately when task available");
+        assert!(
+            elapsed.as_millis() < 1000,
+            "should return immediately when task available"
+        );
     }
 
     #[tokio::test]
@@ -6885,19 +8226,29 @@ mod tests {
 
         // Long-poll with 100ms timeout on empty queue — should timeout and return empty
         let start = std::time::Instant::now();
-        let resp = svc.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 99, kind: 0 }),
-            identity: "test-worker".to_string(),
-            long_poll_timeout_ms: 100,
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 99,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                long_poll_timeout_ms: 100,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let elapsed = start.elapsed();
 
         let inner = resp.into_inner();
         assert_eq!(inner.task_token, 0, "should have no task token");
         assert!(elapsed.as_millis() >= 90, "should wait for timeout");
-        assert!(elapsed.as_millis() < 500, "should not wait longer than timeout");
+        assert!(
+            elapsed.as_millis() < 500,
+            "should not wait longer than timeout"
+        );
     }
 
     #[tokio::test]
@@ -6914,13 +8265,20 @@ mod tests {
 
         // Long-poll with 2 second timeout — should wake up when task arrives
         let start = std::time::Instant::now();
-        let resp = svc.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-            identity: "test-worker".to_string(),
-            long_poll_timeout_ms: 2000,
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 10,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                long_poll_timeout_ms: 2000,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let elapsed = start.elapsed();
 
         let inner = resp.into_inner();
@@ -6938,17 +8296,25 @@ mod tests {
         // Start workflow and schedule activity
         let wf_key = svc.engine.start_workflow(19603, 1, 0, 10, 3, None);
         let _wf_task = svc.engine.task_queue().try_poll(10); // drain workflow task
-        svc.engine.schedule_activity(wf_key, 0, 100, b"test".to_vec());
+        svc.engine
+            .schedule_activity(wf_key, 0, 100, b"test".to_vec());
 
         // Long-poll should return immediately
         let start = std::time::Instant::now();
-        let resp = svc.poll_activity_task_queue(req(PollActivityTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-            identity: "test-worker".to_string(),
-            long_poll_timeout_ms: 5000,
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .poll_activity_task_queue(req(PollActivityTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 10,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                long_poll_timeout_ms: 5000,
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let elapsed = start.elapsed();
 
         let inner = resp.into_inner();
@@ -6964,7 +8330,7 @@ mod tests {
 
         // Start a workflow and complete some steps
         let wf_key = svc.engine.start_workflow(19701, 1, 0, 10, 5, None);
-        
+
         // Simulate completing steps 0, 1, 2
         svc.engine.complete_step(wf_key, 0, b"step0".to_vec());
         svc.engine.complete_step(wf_key, 1, b"step1".to_vec());
@@ -6992,9 +8358,18 @@ mod tests {
         assert!(!inner.run_id.is_empty(), "should have a new run_id");
 
         // Verify step 0 is still completed, but steps 1 and 2 are cleared
-        assert!(svc.engine.is_step_completed(wf_key, 0), "step 0 should still be completed");
-        assert!(!svc.engine.is_step_completed(wf_key, 1), "step 1 should be cleared");
-        assert!(!svc.engine.is_step_completed(wf_key, 2), "step 2 should be cleared");
+        assert!(
+            svc.engine.is_step_completed(wf_key, 0),
+            "step 0 should still be completed"
+        );
+        assert!(
+            !svc.engine.is_step_completed(wf_key, 1),
+            "step 1 should be cleared"
+        );
+        assert!(
+            !svc.engine.is_step_completed(wf_key, 2),
+            "step 2 should be cleared"
+        );
 
         // Verify workflow is back to Running status
         assert_eq!(svc.engine.get_status(wf_key), WorkflowStatus::Running);
@@ -7024,9 +8399,9 @@ mod tests {
 
         // Verify history has WorkflowReset event
         let events = svc.engine.history_store().get_history(wf_key).unwrap();
-        let has_reset_event = events.iter().any(|e| {
-            e.event_type == crate::event_history::HistoryEventType::WorkflowReset
-        });
+        let has_reset_event = events
+            .iter()
+            .any(|e| e.event_type == crate::event_history::HistoryEventType::WorkflowReset);
         assert!(has_reset_event, "should have WorkflowReset in history");
     }
 
@@ -7059,18 +8434,28 @@ mod tests {
 
         // Negative timeout should behave as non-blocking (return immediately)
         let start = std::time::Instant::now();
-        let resp = svc.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 99, kind: 0 }),
-            identity: "test-worker".to_string(),
-            long_poll_timeout_ms: -1, // negative = non-blocking
-            ..Default::default()
-        })).await.unwrap();
+        let resp = svc
+            .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 99,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                long_poll_timeout_ms: -1, // negative = non-blocking
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
         let elapsed = start.elapsed();
 
         let inner = resp.into_inner();
         assert_eq!(inner.task_token, 0, "should have no task");
-        assert!(elapsed.as_millis() < 100, "should return immediately for negative timeout");
+        assert!(
+            elapsed.as_millis() < 100,
+            "should return immediately for negative timeout"
+        );
     }
 
     #[tokio::test]
@@ -7083,13 +8468,21 @@ mod tests {
         for _i in 0..3 {
             let svc_clone = svc.clone();
             let handle = tokio::spawn(async move {
-                svc_clone.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-                    namespace: "default".to_string(),
-                    task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-                    identity: "worker".to_string(),
-                    long_poll_timeout_ms: 2000,
-                    ..Default::default()
-                })).await.unwrap().into_inner()
+                svc_clone
+                    .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                        namespace: "default".to_string(),
+                        task_queue: Some(velocity_proto::TaskQueue {
+                            name: "tq".into(),
+                            hash: 10,
+                            kind: 0,
+                        }),
+                        identity: "worker".to_string(),
+                        long_poll_timeout_ms: 2000,
+                        ..Default::default()
+                    }))
+                    .await
+                    .unwrap()
+                    .into_inner()
             });
             handles.push(handle);
         }
@@ -7140,24 +8533,41 @@ mod tests {
 
         // Start a workflow (enqueues WorkflowTask) and schedule activity (enqueues ActivityTask)
         let wf_key = svc.engine.start_workflow(19803, 1, 0, 10, 3, None);
-        svc.engine.schedule_activity(wf_key, 0, 100, b"input".to_vec());
+        svc.engine
+            .schedule_activity(wf_key, 0, 100, b"input".to_vec());
 
         // Poll workflow task queue - should get WorkflowTask
-        let wf_resp = svc.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-            identity: "test-worker".to_string(),
-            ..Default::default()
-        })).await.unwrap().into_inner();
+        let wf_resp = svc
+            .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 10,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
         assert!(wf_resp.task_token > 0, "should get workflow task");
 
         // Poll activity task queue - should get ActivityTask
-        let act_resp = svc.poll_activity_task_queue(req(PollActivityTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: Some(velocity_proto::TaskQueue { name: "tq".into(), hash: 10, kind: 0 }),
-            identity: "test-worker".to_string(),
-            ..Default::default()
-        })).await.unwrap().into_inner();
+        let act_resp = svc
+            .poll_activity_task_queue(req(PollActivityTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: Some(velocity_proto::TaskQueue {
+                    name: "tq".into(),
+                    hash: 10,
+                    kind: 0,
+                }),
+                identity: "test-worker".to_string(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
         assert!(act_resp.task_token > 0, "should get activity task");
 
         // Verify the activity task has the correct input
@@ -7171,15 +8581,20 @@ mod tests {
     async fn test_e2e_start_workflow_missing_namespace() {
         let svc = test_service();
 
-        let resp = svc.start_workflow_execution(req(StartWorkflowExecutionRequest {
-            namespace: String::new(), // empty = invalid
-            workflow_execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "20001".to_string(),
-                run_id: String::new(),
-            }),
-            workflow_type: Some(velocity_proto::WorkflowType { name: "test".into(), type_id: 1 }),
-            ..Default::default()
-        })).await;
+        let resp = svc
+            .start_workflow_execution(req(StartWorkflowExecutionRequest {
+                namespace: String::new(), // empty = invalid
+                workflow_execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "20001".to_string(),
+                    run_id: String::new(),
+                }),
+                workflow_type: Some(velocity_proto::WorkflowType {
+                    name: "test".into(),
+                    type_id: 1,
+                }),
+                ..Default::default()
+            }))
+            .await;
 
         assert!(resp.is_err(), "should fail for missing namespace");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::InvalidArgument);
@@ -7189,12 +8604,17 @@ mod tests {
     async fn test_e2e_start_workflow_missing_workflow_id() {
         let svc = test_service();
 
-        let resp = svc.start_workflow_execution(req(StartWorkflowExecutionRequest {
-            namespace: "default".to_string(),
-            workflow_execution: None, // missing = invalid
-            workflow_type: Some(velocity_proto::WorkflowType { name: "test".into(), type_id: 1 }),
-            ..Default::default()
-        })).await;
+        let resp = svc
+            .start_workflow_execution(req(StartWorkflowExecutionRequest {
+                namespace: "default".to_string(),
+                workflow_execution: None, // missing = invalid
+                workflow_type: Some(velocity_proto::WorkflowType {
+                    name: "test".into(),
+                    type_id: 1,
+                }),
+                ..Default::default()
+            }))
+            .await;
 
         assert!(resp.is_err(), "should fail for missing workflow_id");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::InvalidArgument);
@@ -7204,15 +8624,17 @@ mod tests {
     async fn test_e2e_start_workflow_missing_workflow_type() {
         let svc = test_service();
 
-        let resp = svc.start_workflow_execution(req(StartWorkflowExecutionRequest {
-            namespace: "default".to_string(),
-            workflow_execution: Some(velocity_proto::WorkflowExecution {
-                workflow_id: "20002".to_string(),
-                run_id: String::new(),
-            }),
-            workflow_type: None, // missing = invalid
-            ..Default::default()
-        })).await;
+        let resp = svc
+            .start_workflow_execution(req(StartWorkflowExecutionRequest {
+                namespace: "default".to_string(),
+                workflow_execution: Some(velocity_proto::WorkflowExecution {
+                    workflow_id: "20002".to_string(),
+                    run_id: String::new(),
+                }),
+                workflow_type: None, // missing = invalid
+                ..Default::default()
+            }))
+            .await;
 
         assert!(resp.is_err(), "should fail for missing workflow_type");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::InvalidArgument);
@@ -7222,12 +8644,14 @@ mod tests {
     async fn test_e2e_poll_workflow_missing_task_queue() {
         let svc = test_service();
 
-        let resp = svc.poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: None, // missing = invalid
-            identity: "test-worker".to_string(),
-            ..Default::default()
-        })).await;
+        let resp = svc
+            .poll_workflow_task_queue(req(PollWorkflowTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: None, // missing = invalid
+                identity: "test-worker".to_string(),
+                ..Default::default()
+            }))
+            .await;
 
         assert!(resp.is_err(), "should fail for missing task_queue");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::InvalidArgument);
@@ -7237,12 +8661,14 @@ mod tests {
     async fn test_e2e_poll_activity_missing_task_queue() {
         let svc = test_service();
 
-        let resp = svc.poll_activity_task_queue(req(PollActivityTaskQueueRequest {
-            namespace: "default".to_string(),
-            task_queue: None, // missing = invalid
-            identity: "test-worker".to_string(),
-            ..Default::default()
-        })).await;
+        let resp = svc
+            .poll_activity_task_queue(req(PollActivityTaskQueueRequest {
+                namespace: "default".to_string(),
+                task_queue: None, // missing = invalid
+                identity: "test-worker".to_string(),
+                ..Default::default()
+            }))
+            .await;
 
         assert!(resp.is_err(), "should fail for missing task_queue");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::InvalidArgument);
@@ -7265,31 +8691,40 @@ mod tests {
         assert_eq!(svc.engine.get_status(_wf3), WorkflowStatus::Running);
 
         // Start a batch terminate operation
-        let resp = svc.start_batch_operation(req(StartBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: String::new(),
-            operation: 0, // Terminate
-            visibility_query: "Status='running'".to_string(),
-            signal_name: String::new(),
-            signal_input: None,
-            reason: "test batch terminate".to_string(),
-            identity: "test-admin".to_string(),
-        })).await.unwrap();
+        let resp = svc
+            .start_batch_operation(req(StartBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: String::new(),
+                operation: 0, // Terminate
+                visibility_query: "Status='running'".to_string(),
+                signal_name: String::new(),
+                signal_input: None,
+                reason: "test batch terminate".to_string(),
+                identity: "test-admin".to_string(),
+            }))
+            .await
+            .unwrap();
 
         let inner = resp.into_inner();
         assert!(!inner.job_id.is_empty(), "should have a job_id");
 
         // Describe the batch operation
-        let desc_resp = svc.describe_batch_operation(req(DescribeBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: inner.job_id.clone(),
-        })).await.unwrap();
+        let desc_resp = svc
+            .describe_batch_operation(req(DescribeBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: inner.job_id.clone(),
+            }))
+            .await
+            .unwrap();
 
         let desc = desc_resp.into_inner();
         assert_eq!(desc.job_id, inner.job_id);
         assert_eq!(desc.operation, 0); // Terminate
         assert_eq!(desc.status, 2); // Completed
-        assert!(desc.total_workflows >= 3, "should have terminated at least 3 workflows");
+        assert!(
+            desc.total_workflows >= 3,
+            "should have terminated at least 3 workflows"
+        );
     }
 
     #[tokio::test]
@@ -7297,30 +8732,34 @@ mod tests {
         let svc = test_service();
 
         // Missing namespace
-        let resp = svc.start_batch_operation(req(StartBatchOperationRequest {
-            namespace: String::new(),
-            job_id: String::new(),
-            operation: 0,
-            visibility_query: "Status='running'".to_string(),
-            signal_name: String::new(),
-            signal_input: None,
-            reason: "test".to_string(),
-            identity: "test".to_string(),
-        })).await;
+        let resp = svc
+            .start_batch_operation(req(StartBatchOperationRequest {
+                namespace: String::new(),
+                job_id: String::new(),
+                operation: 0,
+                visibility_query: "Status='running'".to_string(),
+                signal_name: String::new(),
+                signal_input: None,
+                reason: "test".to_string(),
+                identity: "test".to_string(),
+            }))
+            .await;
         assert!(resp.is_err(), "should fail for missing namespace");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::InvalidArgument);
 
         // Missing visibility_query
-        let resp = svc.start_batch_operation(req(StartBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: String::new(),
-            operation: 0,
-            visibility_query: String::new(),
-            signal_name: String::new(),
-            signal_input: None,
-            reason: "test".to_string(),
-            identity: "test".to_string(),
-        })).await;
+        let resp = svc
+            .start_batch_operation(req(StartBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: String::new(),
+                operation: 0,
+                visibility_query: String::new(),
+                signal_name: String::new(),
+                signal_input: None,
+                reason: "test".to_string(),
+                identity: "test".to_string(),
+            }))
+            .await;
         assert!(resp.is_err(), "should fail for missing visibility_query");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::InvalidArgument);
     }
@@ -7329,10 +8768,12 @@ mod tests {
     async fn test_e2e_batch_describe_not_found() {
         let svc = test_service();
 
-        let resp = svc.describe_batch_operation(req(DescribeBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: "99999".to_string(),
-        })).await;
+        let resp = svc
+            .describe_batch_operation(req(DescribeBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: "99999".to_string(),
+            }))
+            .await;
 
         assert!(resp.is_err(), "should fail for non-existent batch");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::NotFound);
@@ -7347,25 +8788,35 @@ mod tests {
         let _wf2 = svc.engine.start_workflow(20012, 1, 0, 10, 3, None);
 
         // Start a batch signal operation
-        let resp = svc.start_batch_operation(req(StartBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: String::new(),
-            operation: 2, // Signal
-            visibility_query: "Status='running'".to_string(),
-            signal_name: "test-signal".to_string(),
-            signal_input: Some(velocity_proto::Payload { data: b"signal-data".to_vec(), encoding: 0, metadata: std::collections::HashMap::new() }),
-            reason: "test batch signal".to_string(),
-            identity: "test-admin".to_string(),
-        })).await.unwrap();
+        let resp = svc
+            .start_batch_operation(req(StartBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: String::new(),
+                operation: 2, // Signal
+                visibility_query: "Status='running'".to_string(),
+                signal_name: "test-signal".to_string(),
+                signal_input: Some(velocity_proto::Payload {
+                    data: b"signal-data".to_vec(),
+                    encoding: 0,
+                    metadata: std::collections::HashMap::new(),
+                }),
+                reason: "test batch signal".to_string(),
+                identity: "test-admin".to_string(),
+            }))
+            .await
+            .unwrap();
 
         let inner = resp.into_inner();
         assert!(!inner.job_id.is_empty(), "should have a job_id");
 
         // Describe the batch operation
-        let desc_resp = svc.describe_batch_operation(req(DescribeBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: inner.job_id.clone(),
-        })).await.unwrap();
+        let desc_resp = svc
+            .describe_batch_operation(req(DescribeBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: inner.job_id.clone(),
+            }))
+            .await
+            .unwrap();
 
         let desc = desc_resp.into_inner();
         assert_eq!(desc.operation, 2); // Signal
@@ -7376,16 +8827,18 @@ mod tests {
     async fn test_e2e_batch_signal_requires_signal_name() {
         let svc = test_service();
 
-        let resp = svc.start_batch_operation(req(StartBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: String::new(),
-            operation: 2, // Signal
-            visibility_query: "Status='running'".to_string(),
-            signal_name: String::new(), // missing!
-            signal_input: None,
-            reason: "test".to_string(),
-            identity: "test".to_string(),
-        })).await;
+        let resp = svc
+            .start_batch_operation(req(StartBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: String::new(),
+                operation: 2, // Signal
+                visibility_query: "Status='running'".to_string(),
+                signal_name: String::new(), // missing!
+                signal_input: None,
+                reason: "test".to_string(),
+                identity: "test".to_string(),
+            }))
+            .await;
 
         assert!(resp.is_err(), "should fail for missing signal_name");
         assert_eq!(resp.unwrap_err().code(), tonic::Code::InvalidArgument);
@@ -7400,30 +8853,39 @@ mod tests {
         let _wf2 = svc.engine.start_workflow(20022, 1, 0, 10, 3, None);
 
         // Start a batch query_status operation
-        let resp = svc.start_batch_operation(req(StartBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: String::new(),
-            operation: 3, // QueryStatus
-            visibility_query: "Status='running'".to_string(),
-            signal_name: String::new(),
-            signal_input: None,
-            reason: "test batch query".to_string(),
-            identity: "test-admin".to_string(),
-        })).await.unwrap();
+        let resp = svc
+            .start_batch_operation(req(StartBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: String::new(),
+                operation: 3, // QueryStatus
+                visibility_query: "Status='running'".to_string(),
+                signal_name: String::new(),
+                signal_input: None,
+                reason: "test batch query".to_string(),
+                identity: "test-admin".to_string(),
+            }))
+            .await
+            .unwrap();
 
         let inner = resp.into_inner();
         assert!(!inner.job_id.is_empty(), "should have a job_id");
 
         // Describe the batch operation
-        let desc_resp = svc.describe_batch_operation(req(DescribeBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: inner.job_id.clone(),
-        })).await.unwrap();
+        let desc_resp = svc
+            .describe_batch_operation(req(DescribeBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: inner.job_id.clone(),
+            }))
+            .await
+            .unwrap();
 
         let desc = desc_resp.into_inner();
         assert_eq!(desc.operation, 3); // QueryStatus
         assert_eq!(desc.status, 2); // Completed
-        assert!(desc.total_workflows >= 2, "should have queried at least 2 workflows");
+        assert!(
+            desc.total_workflows >= 2,
+            "should have queried at least 2 workflows"
+        );
     }
 
     #[tokio::test]
@@ -7435,42 +8897,54 @@ mod tests {
         let _wf2 = svc.engine.start_workflow(20032, 1, 0, 10, 3, None);
 
         // Start a batch terminate operation
-        let resp1 = svc.start_batch_operation(req(StartBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: String::new(),
-            operation: 0, // Terminate
-            visibility_query: "Status='running'".to_string(),
-            signal_name: String::new(),
-            signal_input: None,
-            reason: "test".to_string(),
-            identity: "test".to_string(),
-        })).await.unwrap();
+        let resp1 = svc
+            .start_batch_operation(req(StartBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: String::new(),
+                operation: 0, // Terminate
+                visibility_query: "Status='running'".to_string(),
+                signal_name: String::new(),
+                signal_input: None,
+                reason: "test".to_string(),
+                identity: "test".to_string(),
+            }))
+            .await
+            .unwrap();
         let job_id1 = resp1.into_inner().job_id;
 
         // Start another batch operation
         let _wf3 = svc.engine.start_workflow(20033, 1, 0, 10, 3, None);
-        let resp2 = svc.start_batch_operation(req(StartBatchOperationRequest {
-            namespace: "default".to_string(),
-            job_id: String::new(),
-            operation: 0, // Terminate
-            visibility_query: "Status='running'".to_string(),
-            signal_name: String::new(),
-            signal_input: None,
-            reason: "test2".to_string(),
-            identity: "test".to_string(),
-        })).await.unwrap();
+        let resp2 = svc
+            .start_batch_operation(req(StartBatchOperationRequest {
+                namespace: "default".to_string(),
+                job_id: String::new(),
+                operation: 0, // Terminate
+                visibility_query: "Status='running'".to_string(),
+                signal_name: String::new(),
+                signal_input: None,
+                reason: "test2".to_string(),
+                identity: "test".to_string(),
+            }))
+            .await
+            .unwrap();
         let job_id2 = resp2.into_inner().job_id;
 
         // List batch operations
-        let list_resp = svc.list_batch_operations(req(ListBatchOperationsRequest {
-            namespace: "default".to_string(),
-            page_size: 10,
-            next_page_token: vec![],
-        })).await.unwrap();
+        let list_resp = svc
+            .list_batch_operations(req(ListBatchOperationsRequest {
+                namespace: "default".to_string(),
+                page_size: 10,
+                next_page_token: vec![],
+            }))
+            .await
+            .unwrap();
 
         let list = list_resp.into_inner();
-        assert!(list.operations.len() >= 2, "should have at least 2 batch operations");
-        
+        assert!(
+            list.operations.len() >= 2,
+            "should have at least 2 batch operations"
+        );
+
         // Verify both job IDs are in the list
         let job_ids: Vec<String> = list.operations.iter().map(|op| op.job_id.clone()).collect();
         assert!(job_ids.contains(&job_id1), "should contain first job");

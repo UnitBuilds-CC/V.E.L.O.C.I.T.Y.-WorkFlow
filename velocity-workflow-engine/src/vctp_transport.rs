@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::RwLock;
 use std::time::Instant;
 
@@ -103,13 +103,17 @@ impl VctpTransport {
     pub fn new(config: VctpTransportConfig) -> Result<Self, String> {
         let socket = UdpSocket::bind(&config.bind_addr)
             .map_err(|e| format!("Failed to bind VCTP socket: {}", e))?;
-        socket.set_nonblocking(true)
+        socket
+            .set_nonblocking(true)
             .map_err(|e| format!("Failed to set non-blocking: {}", e))?;
 
         let cipher = if config.encryption_passphrase.is_empty() {
             None
         } else {
-            Some(VctpCipher::from_passphrase(&config.encryption_passphrase, config.nonce))
+            Some(VctpCipher::from_passphrase(
+                &config.encryption_passphrase,
+                config.nonce,
+            ))
         };
 
         let recv_buf_size = config.recv_buffer_size;
@@ -138,13 +142,16 @@ impl VctpTransport {
     /// Register a peer for communication.
     pub fn add_peer(&self, peer_id: u64, address: SocketAddr) {
         let now = self.now_ms();
-        self.peers.write().unwrap().insert(peer_id, VctpPeer {
+        self.peers.write().unwrap().insert(
             peer_id,
-            address,
-            last_seen_ms: now,
-            packets_sent: 0,
-            packets_received: 0,
-        });
+            VctpPeer {
+                peer_id,
+                address,
+                last_seen_ms: now,
+                packets_sent: 0,
+                packets_received: 0,
+            },
+        );
         self.addr_to_peer.write().unwrap().insert(address, peer_id);
     }
 
@@ -156,8 +163,17 @@ impl VctpTransport {
     }
 
     /// Send a VCTP packet to a specific peer.
-    pub fn send_to_peer(&self, peer_id: u64, workflow_id: u64, slab_offset: u32, payload: Vec<u8>) -> Result<u64, String> {
-        let peer_addr = self.peers.read().unwrap()
+    pub fn send_to_peer(
+        &self,
+        peer_id: u64,
+        workflow_id: u64,
+        slab_offset: u32,
+        payload: Vec<u8>,
+    ) -> Result<u64, String> {
+        let peer_addr = self
+            .peers
+            .read()
+            .unwrap()
             .get(&peer_id)
             .map(|p| p.address)
             .ok_or_else(|| format!("Peer {} not found", peer_id))?;
@@ -165,7 +181,13 @@ impl VctpTransport {
     }
 
     /// Send a VCTP packet to a specific address.
-    pub fn send_packet(&self, addr: SocketAddr, workflow_id: u64, slab_offset: u32, mut payload: Vec<u8>) -> Result<u64, String> {
+    pub fn send_packet(
+        &self,
+        addr: SocketAddr,
+        workflow_id: u64,
+        slab_offset: u32,
+        mut payload: Vec<u8>,
+    ) -> Result<u64, String> {
         let seq = self.next_sequence.fetch_add(1, Ordering::Relaxed);
         let header = VctpPacketHeader::new(seq, workflow_id, slab_offset, payload.len() as u32);
 
@@ -177,11 +199,16 @@ impl VctpTransport {
         let packet = VctpPacket::new(header, payload);
         let bytes = packet.to_bytes();
 
-        let sent = self.socket.send_to(&bytes, addr)
+        let sent = self
+            .socket
+            .send_to(&bytes, addr)
             .map_err(|e| format!("VCTP send failed: {}", e))?;
 
         // Track for retransmission
-        self.retransmit.write().unwrap().track_send(seq, bytes.clone(), self.now_ms());
+        self.retransmit
+            .write()
+            .unwrap()
+            .track_send(seq, bytes.clone(), self.now_ms());
 
         // Update stats
         let mut stats = self.stats.write().unwrap();
@@ -200,10 +227,16 @@ impl VctpTransport {
     }
 
     /// Send an ACK for a received packet.
-    pub fn send_ack(&self, addr: SocketAddr, ack_sequence: u64, workflow_id: u64) -> Result<(), String> {
+    pub fn send_ack(
+        &self,
+        addr: SocketAddr,
+        ack_sequence: u64,
+        workflow_id: u64,
+    ) -> Result<(), String> {
         let ack = VctpAck::new(ack_sequence, workflow_id);
         let bytes = ack.to_bytes();
-        self.socket.send_to(&bytes, addr)
+        self.socket
+            .send_to(&bytes, addr)
             .map_err(|e| format!("VCTP ACK send failed: {}", e))?;
         self.stats.write().unwrap().acks_sent += 1;
         Ok(())
@@ -223,11 +256,15 @@ impl VctpTransport {
                     }
 
                     // Check if it's an ACK
-                    let maybe_ack_magic = u32::from_le_bytes(buf[0..4].try_into().unwrap_or([0; 4]));
+                    let maybe_ack_magic =
+                        u32::from_le_bytes(buf[0..4].try_into().unwrap_or([0; 4]));
                     if maybe_ack_magic == velocity_workflow_core::vctp::VCTP_ACK_MAGIC {
                         if let Some(ack) = VctpAck::from_bytes(&buf[..len]) {
                             let now = self.now_ms();
-                            self.retransmit.write().unwrap().process_ack(ack.ack_sequence, now);
+                            self.retransmit
+                                .write()
+                                .unwrap()
+                                .process_ack(ack.ack_sequence, now);
                             self.stats.write().unwrap().acks_received += 1;
                             continue;
                         }
@@ -241,7 +278,11 @@ impl VctpTransport {
                         }
 
                         // Send ACK
-                        let _ = self.send_ack(src_addr, packet.header.sequence_number, packet.header.workflow_id);
+                        let _ = self.send_ack(
+                            src_addr,
+                            packet.header.sequence_number,
+                            packet.header.workflow_id,
+                        );
 
                         // Update peer stats
                         if let Some(&peer_id) = self.addr_to_peer.read().unwrap().get(&src_addr) {
@@ -312,7 +353,8 @@ impl VctpTransport {
 
     /// Get the local socket address.
     pub fn local_addr(&self) -> Result<SocketAddr, String> {
-        self.socket.local_addr()
+        self.socket
+            .local_addr()
             .map_err(|e| format!("Failed to get local addr: {}", e))
     }
 

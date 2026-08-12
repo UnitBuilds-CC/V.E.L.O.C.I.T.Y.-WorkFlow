@@ -178,7 +178,12 @@ impl WorkflowConcurrencyLimiter {
                 limit: self.config.max_per_type,
             });
             if limiter.active >= limiter.limit {
-                return self.handle_overflow(workflow_key, workflow_type_id, namespace_id, priority);
+                return self.handle_overflow(
+                    workflow_key,
+                    workflow_type_id,
+                    namespace_id,
+                    priority,
+                );
             }
         }
 
@@ -190,7 +195,12 @@ impl WorkflowConcurrencyLimiter {
                 limit: self.config.max_per_namespace,
             });
             if limiter.active >= limiter.limit {
-                return self.handle_overflow(workflow_key, workflow_type_id, namespace_id, priority);
+                return self.handle_overflow(
+                    workflow_key,
+                    workflow_type_id,
+                    namespace_id,
+                    priority,
+                );
             }
         }
 
@@ -246,15 +256,13 @@ impl WorkflowConcurrencyLimiter {
     /// Get utilization percentage for a workflow type (0.0 - 100.0).
     pub fn type_utilization(&self, workflow_type_id: u64) -> f64 {
         let types = self.per_type.read().unwrap();
-        types
-            .get(&workflow_type_id)
-            .map_or(0.0, |l| {
-                if l.limit == 0 {
-                    0.0
-                } else {
-                    l.active as f64 / l.limit as f64 * 100.0
-                }
-            })
+        types.get(&workflow_type_id).map_or(0.0, |l| {
+            if l.limit == 0 {
+                0.0
+            } else {
+                l.active as f64 / l.limit as f64 * 100.0
+            }
+        })
     }
 
     /// Get stats summary.

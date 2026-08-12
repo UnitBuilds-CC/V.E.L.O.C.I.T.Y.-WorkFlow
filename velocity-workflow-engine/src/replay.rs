@@ -303,7 +303,9 @@ impl ReplayEngine {
                     if event.payload.len() >= 8 {
                         let timer_id =
                             u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
-                        if let Some(t) = timer_states.iter_mut().rev().find(|t| t.timer_id == timer_id && t.status == ReplayTimerStatus::Started) {
+                        if let Some(t) = timer_states.iter_mut().rev().find(|t| {
+                            t.timer_id == timer_id && t.status == ReplayTimerStatus::Started
+                        }) {
                             t.status = ReplayTimerStatus::Fired;
                             t.fired_at_event_id = Some(event.event_id);
                         }
@@ -313,7 +315,9 @@ impl ReplayEngine {
                     if event.payload.len() >= 8 {
                         let timer_id =
                             u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
-                        if let Some(t) = timer_states.iter_mut().rev().find(|t| t.timer_id == timer_id && t.status == ReplayTimerStatus::Started) {
+                        if let Some(t) = timer_states.iter_mut().rev().find(|t| {
+                            t.timer_id == timer_id && t.status == ReplayTimerStatus::Started
+                        }) {
                             t.status = ReplayTimerStatus::Canceled;
                             t.fired_at_event_id = Some(event.event_id);
                         }
@@ -340,7 +344,11 @@ impl ReplayEngine {
                         } else {
                             None
                         };
-                        if let Some(c) = child_states.iter_mut().rev().find(|c| c.child_workflow_key == child_key) {
+                        if let Some(c) = child_states
+                            .iter_mut()
+                            .rev()
+                            .find(|c| c.child_workflow_key == child_key)
+                        {
                             c.status = ReplayChildStatus::Completed;
                             c.result = result;
                         }
@@ -350,7 +358,11 @@ impl ReplayEngine {
                     if event.payload.len() >= 8 {
                         let child_key =
                             u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
-                        if let Some(c) = child_states.iter_mut().rev().find(|c| c.child_workflow_key == child_key) {
+                        if let Some(c) = child_states
+                            .iter_mut()
+                            .rev()
+                            .find(|c| c.child_workflow_key == child_key)
+                        {
                             c.status = ReplayChildStatus::Failed;
                         }
                     }
@@ -707,7 +719,11 @@ mod tests {
         let mut completed_payload = Vec::new();
         completed_payload.extend_from_slice(&777u64.to_le_bytes());
         completed_payload.extend_from_slice(&[1, 2, 3]);
-        store.record_event(key, HistoryEventType::ChildWorkflowCompleted, completed_payload);
+        store.record_event(
+            key,
+            HistoryEventType::ChildWorkflowCompleted,
+            completed_payload,
+        );
 
         store.record_event(key, HistoryEventType::WorkflowCompleted, vec![]);
 

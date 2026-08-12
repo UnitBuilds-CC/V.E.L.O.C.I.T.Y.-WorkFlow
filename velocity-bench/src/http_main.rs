@@ -8,10 +8,12 @@
 //!   [velocity-bench-http] ──HTTP──► [Restate Ingress]   (service handler)
 
 use clap::Parser;
-use velocity_bench::http_adapter::{HttpAdapter, HttpBenchmarkResult, HttpEngineConfig, HttpEngineKind};
-use velocity_bench::http_workloads::{HttpWorkloadDefinition, HttpWorkloadKind};
 use std::time::{Duration, Instant};
 use tracing_subscriber::EnvFilter;
+use velocity_bench::http_adapter::{
+    HttpAdapter, HttpBenchmarkResult, HttpEngineConfig, HttpEngineKind,
+};
+use velocity_bench::http_workloads::{HttpWorkloadDefinition, HttpWorkloadKind};
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
@@ -255,7 +257,11 @@ async fn run_http_workload(
                         Ok(resp) => {
                             let status = resp.status().as_u16();
                             let bytes = resp.content_length().unwrap_or(0);
-                            (s.elapsed().as_micros() as u64, status >= 200 && status < 300, bytes)
+                            (
+                                s.elapsed().as_micros() as u64,
+                                status >= 200 && status < 300,
+                                bytes,
+                            )
                         }
                         Err(_) => (s.elapsed().as_micros() as u64, false, 0),
                     }
@@ -318,7 +324,11 @@ async fn run_http_workload(
                             Ok(resp) => {
                                 let status = resp.status().as_u16();
                                 let bytes = resp.content_length().unwrap_or(0);
-                                (s.elapsed().as_micros() as u64, status >= 200 && status < 300, bytes)
+                                (
+                                    s.elapsed().as_micros() as u64,
+                                    status >= 200 && status < 300,
+                                    bytes,
+                                )
                             }
                             Err(_) => (s.elapsed().as_micros() as u64, false, 0),
                         }
@@ -550,7 +560,10 @@ fn generate_report(
     }
 }
 
-fn write_output(cli: &Cli, report: &HttpComparisonReport) -> Result<(), Box<dyn std::error::Error>> {
+fn write_output(
+    cli: &Cli,
+    report: &HttpComparisonReport,
+) -> Result<(), Box<dyn std::error::Error>> {
     // JSON output
     let json_path = format!("{}.json", cli.output);
     let json = serde_json::to_string_pretty(report)?;
@@ -640,9 +653,7 @@ fn generate_markdown(report: &HttpComparisonReport) -> String {
 
     // Summary
     md.push_str("## Summary\n\n");
-    md.push_str(&format!(
-        "| Metric | Value |\n|--------|-------|\n"
-    ));
+    md.push_str(&format!("| Metric | Value |\n|--------|-------|\n"));
     md.push_str(&format!(
         "| Velocity Runtime wins | {} |\n",
         report.summary.velocity_wins
@@ -651,10 +662,7 @@ fn generate_markdown(report: &HttpComparisonReport) -> String {
         "| Restate wins | {} |\n",
         report.summary.restate_wins
     ));
-    md.push_str(&format!(
-        "| Comparable | {} |\n",
-        report.summary.comparable
-    ));
+    md.push_str(&format!("| Comparable | {} |\n", report.summary.comparable));
     md.push_str(&format!(
         "| Avg throughput delta | +{:.1}% |\n\n",
         report.summary.avg_throughput_delta_pct
@@ -681,8 +689,13 @@ fn generate_markdown(report: &HttpComparisonReport) -> String {
         {
             md.push_str(&format!(
                 "| {} | {} | {:.0} | {} | {} | {} | {:.1} |\n",
-                r.workload_name, r.engine, r.operations_per_second, r.latency_p50_us,
-                r.latency_p99_us, r.latency_p999_us, r.peak_memory_mb
+                r.workload_name,
+                r.engine,
+                r.operations_per_second,
+                r.latency_p50_us,
+                r.latency_p99_us,
+                r.latency_p999_us,
+                r.peak_memory_mb
             ));
         }
         for r in report
@@ -692,8 +705,13 @@ fn generate_markdown(report: &HttpComparisonReport) -> String {
         {
             md.push_str(&format!(
                 "| {} | {} | {:.0} | {} | {} | {} | {:.1} |\n",
-                r.workload_name, r.engine, r.operations_per_second, r.latency_p50_us,
-                r.latency_p99_us, r.latency_p999_us, r.peak_memory_mb
+                r.workload_name,
+                r.engine,
+                r.operations_per_second,
+                r.latency_p50_us,
+                r.latency_p99_us,
+                r.latency_p999_us,
+                r.peak_memory_mb
             ));
         }
     }

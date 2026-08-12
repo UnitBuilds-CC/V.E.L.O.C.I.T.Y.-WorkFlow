@@ -996,7 +996,10 @@ fn test_crash_recovery_end_to_end() {
 
         // Verify visibility index was populated during recovery
         let vis = engine.visibility();
-        assert!(vis.count() > 0, "Visibility should have recovered workflows");
+        assert!(
+            vis.count() > 0,
+            "Visibility should have recovered workflows"
+        );
     }
 
     // Clean up WAL file
@@ -1009,8 +1012,8 @@ fn test_crash_recovery_terminal_states() {
     let wal_path = format!("velocity_test_terminal_{}.wal", std::process::id());
 
     {
-        let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
-            .expect("Failed to create engine");
+        let engine =
+            WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024).expect("Failed to create engine");
 
         let key1 = engine.start_workflow(10, 100, 0, 42, 1, None);
         let key2 = engine.start_workflow(11, 100, 0, 42, 1, None);
@@ -1061,8 +1064,8 @@ fn test_replay_verification_after_recovery() {
     let wal_path = format!("velocity_test_replay_{}.wal", std::process::id());
 
     {
-        let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
-            .expect("Failed to create engine");
+        let engine =
+            WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024).expect("Failed to create engine");
 
         let key = engine.start_workflow(20, 200, 0, 42, 3, Some(b"input".to_vec()));
         engine.complete_step(key, 0, b"r0".to_vec());
@@ -1086,7 +1089,10 @@ fn test_replay_verification_after_recovery() {
 
         // The replay engine should have verified determinism during recovery
         let replay = engine.replay_engine();
-        assert!(replay.total_replays() > 0, "Replay engine should have run during recovery");
+        assert!(
+            replay.total_replays() > 0,
+            "Replay engine should have run during recovery"
+        );
     }
 
     let _ = std::fs::remove_file(&wal_path);
@@ -1103,7 +1109,10 @@ fn test_matching_service_integration() {
     // Check matching service has the task
     let matching = engine.matching_service();
     let stats = matching.stats();
-    assert!(stats.tasks_added > 0, "Matching service should have tasks from workflow start");
+    assert!(
+        stats.tasks_added > 0,
+        "Matching service should have tasks from workflow start"
+    );
 
     // Check visibility was updated
     let vis = engine.visibility();

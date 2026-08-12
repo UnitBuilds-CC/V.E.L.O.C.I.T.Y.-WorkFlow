@@ -3123,9 +3123,7 @@ pub unsafe extern "C" fn velocity_engine_dependent_count(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_graph_edge_count(
-    handle: *mut EngineHandle,
-) -> u32 {
+pub unsafe extern "C" fn velocity_engine_graph_edge_count(handle: *mut EngineHandle) -> u32 {
     if handle.is_null() {
         return 0;
     }
@@ -3134,9 +3132,7 @@ pub unsafe extern "C" fn velocity_engine_graph_edge_count(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_has_cycle(
-    handle: *mut EngineHandle,
-) -> bool {
+pub unsafe extern "C" fn velocity_engine_has_cycle(handle: *mut EngineHandle) -> bool {
     if handle.is_null() {
         return false;
     }
@@ -3162,13 +3158,13 @@ pub unsafe extern "C" fn velocity_engine_start_deployment(
         workflow_type,
         workflow_type_len as usize,
     ));
-    let build = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
-        build_id,
-        build_id_len as usize,
-    ));
-    h.engine
-        .deployment_pipeline()
-        .start_deployment(wf_type, build, crate::deployment_pipeline::DeploymentConfig::default())
+    let build =
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(build_id, build_id_len as usize));
+    h.engine.deployment_pipeline().start_deployment(
+        wf_type,
+        build,
+        crate::deployment_pipeline::DeploymentConfig::default(),
+    )
 }
 
 #[no_mangle]
@@ -3196,9 +3192,7 @@ pub unsafe extern "C" fn velocity_engine_promote_deployment(
         return false;
     }
     let h = &*handle;
-    h.engine
-        .deployment_pipeline()
-        .promote(deployment_id)
+    h.engine.deployment_pipeline().promote(deployment_id)
 }
 
 #[no_mangle]
@@ -3212,19 +3206,12 @@ pub unsafe extern "C" fn velocity_engine_rollback_deployment(
         return false;
     }
     let h = &*handle;
-    let r = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
-        reason,
-        reason_len as usize,
-    ));
-    h.engine
-        .deployment_pipeline()
-        .rollback(deployment_id, r)
+    let r = std::str::from_utf8_unchecked(std::slice::from_raw_parts(reason, reason_len as usize));
+    h.engine.deployment_pipeline().rollback(deployment_id, r)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_deployment_count(
-    handle: *mut EngineHandle,
-) -> u32 {
+pub unsafe extern "C" fn velocity_engine_deployment_count(handle: *mut EngineHandle) -> u32 {
     if handle.is_null() {
         return 0;
     }
@@ -3276,9 +3263,7 @@ pub unsafe extern "C" fn velocity_engine_tracker_record_failure(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_tracker_global_started(
-    handle: *mut EngineHandle,
-) -> u64 {
+pub unsafe extern "C" fn velocity_engine_tracker_global_started(handle: *mut EngineHandle) -> u64 {
     if handle.is_null() {
         return 0;
     }
@@ -3298,9 +3283,7 @@ pub unsafe extern "C" fn velocity_engine_tracker_global_completed(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_tracker_global_failed(
-    handle: *mut EngineHandle,
-) -> u64 {
+pub unsafe extern "C" fn velocity_engine_tracker_global_failed(handle: *mut EngineHandle) -> u64 {
     if handle.is_null() {
         return 0;
     }
@@ -3316,10 +3299,7 @@ pub unsafe extern "C" fn velocity_engine_tracker_slo_compliance_count(
         return 0;
     }
     let h = &*handle;
-    h.engine
-        .execution_tracker()
-        .slo_compliance_report()
-        .len() as u32
+    h.engine.execution_tracker().slo_compliance_report().len() as u32
 }
 
 // ─── Circuit Breaker ───────────────────────────────────────────────────
@@ -3413,7 +3393,12 @@ pub unsafe extern "C" fn velocity_engine_concurrency_acquire(
         return 1; // Rejected
     }
     let h = &*handle;
-    match h.engine.concurrency_limiter().acquire(workflow_key, workflow_type_id, namespace_id, priority) {
+    match h.engine.concurrency_limiter().acquire(
+        workflow_key,
+        workflow_type_id,
+        namespace_id,
+        priority,
+    ) {
         crate::concurrency_limiter::AcquireResult::Acquired => 0,
         crate::concurrency_limiter::AcquireResult::Rejected => 1,
         crate::concurrency_limiter::AcquireResult::Queued(_) => 2,
@@ -3430,13 +3415,13 @@ pub unsafe extern "C" fn velocity_engine_concurrency_release(
         return;
     }
     let h = &*handle;
-    h.engine.concurrency_limiter().release(workflow_type_id, namespace_id);
+    h.engine
+        .concurrency_limiter()
+        .release(workflow_type_id, namespace_id);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_concurrency_active(
-    handle: *mut EngineHandle,
-) -> u64 {
+pub unsafe extern "C" fn velocity_engine_concurrency_active(handle: *mut EngineHandle) -> u64 {
     if handle.is_null() {
         return 0;
     }
@@ -3453,17 +3438,16 @@ pub unsafe extern "C" fn velocity_engine_concurrency_active_for_type(
         return 0;
     }
     let h = &*handle;
-    h.engine.concurrency_limiter().active_for_type(workflow_type_id)
+    h.engine
+        .concurrency_limiter()
+        .active_for_type(workflow_type_id)
 }
 
 // ─── Search Query Parser ────────────────────────────────────────────────
 
 /// Parse a search query string. Returns 0 on success, 1 on error.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_search_query_parse(
-    query: *const u8,
-    query_len: u32,
-) -> u8 {
+pub unsafe extern "C" fn velocity_search_query_parse(query: *const u8, query_len: u32) -> u8 {
     if query.is_null() || query_len == 0 {
         return 1;
     }
@@ -3490,7 +3474,9 @@ pub unsafe extern "C" fn velocity_engine_change_version_register_workflow(
         return;
     }
     let h = &*handle;
-    h.engine.change_version_registry().register_workflow(workflow_key);
+    h.engine
+        .change_version_registry()
+        .register_workflow(workflow_key);
 }
 
 /// Unregister a workflow from the change version registry.
@@ -3503,7 +3489,9 @@ pub unsafe extern "C" fn velocity_engine_change_version_unregister_workflow(
         return false;
     }
     let h = &*handle;
-    h.engine.change_version_registry().unregister_workflow(workflow_key)
+    h.engine
+        .change_version_registry()
+        .unregister_workflow(workflow_key)
 }
 
 /// Get or record a version for a change ID. Returns the version number.
@@ -3527,7 +3515,9 @@ pub unsafe extern "C" fn velocity_engine_change_version_get_version(
         Ok(s) => s,
         Err(_) => return -1,
     };
-    let result = h.engine.get_version(workflow_key, cid, min_supported, max_supported, is_replay);
+    let result = h
+        .engine
+        .get_version(workflow_key, cid, min_supported, max_supported, is_replay);
     result.version()
 }
 
@@ -3548,7 +3538,9 @@ pub unsafe extern "C" fn velocity_engine_change_version_has_decision(
         Ok(s) => s,
         Err(_) => return false,
     };
-    h.engine.change_version_registry().has_decision(workflow_key, cid)
+    h.engine
+        .change_version_registry()
+        .has_decision(workflow_key, cid)
 }
 
 /// Get the recorded version for a change ID. Returns -1 if no decision exists.
@@ -3584,7 +3576,9 @@ pub unsafe extern "C" fn velocity_engine_change_version_decision_count(
         return 0;
     }
     let h = &*handle;
-    h.engine.change_version_registry().decision_count(workflow_key) as u32
+    h.engine
+        .change_version_registry()
+        .decision_count(workflow_key) as u32
 }
 
 /// Get total tracked workflows in the change version registry.
@@ -5522,8 +5516,7 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
             if result.success {
                 let workflows = h.engine.workflows_write();
                 // If context doesn't exist (crash recovery), create one
-                if let dashmap::mapref::entry::Entry::Vacant(e) = workflows.entry(workflow_key)
-                {
+                if let dashmap::mapref::entry::Entry::Vacant(e) = workflows.entry(workflow_key) {
                     let total_steps = result
                         .step_results
                         .keys()
@@ -5545,8 +5538,7 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
                     // Restore pending signals
                     for (signal_id, payloads) in &result.pending_signals {
                         for payload in payloads {
-                            ctx.signal_buffer
-                                .push(*signal_id, payload.clone());
+                            ctx.signal_buffer.push(*signal_id, payload.clone());
                         }
                     }
                     e.insert(ctx);
@@ -5559,8 +5551,7 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
                     ctx.status = result.status;
                     for (signal_id, payloads) in &result.pending_signals {
                         for payload in payloads {
-                            ctx.signal_buffer
-                                .push(*signal_id, payload.clone());
+                            ctx.signal_buffer.push(*signal_id, payload.clone());
                         }
                     }
                 }

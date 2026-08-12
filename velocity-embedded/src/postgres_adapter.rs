@@ -249,7 +249,9 @@ impl PostgresAdapter {
 
     /// Flush any buffered operations.
     pub fn flush(&self) -> Result<(), StorageError> {
-        let mut buffer = self.buffer.lock()
+        let mut buffer = self
+            .buffer
+            .lock()
             .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
         // In a real implementation, this would execute all pending ops in a transaction
         buffer.clear();
@@ -266,7 +268,9 @@ impl StorageBackend for PostgresAdapter {
     fn init_schema(&self) -> Result<(), StorageError> {
         // In a real implementation, this would execute SCHEMA_SQL against the database.
         // For now, we mark as initialized.
-        let mut init = self.initialized.lock()
+        let mut init = self
+            .initialized
+            .lock()
             .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
         *init = true;
         Ok(())
@@ -279,7 +283,9 @@ impl StorageBackend for PostgresAdapter {
         output: &serde_json::Value,
     ) -> Result<(), StorageError> {
         if self.batch_mode {
-            let mut buffer = self.buffer.lock()
+            let mut buffer = self
+                .buffer
+                .lock()
                 .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
             buffer.push(PendingOp::SaveWorkflow {
                 workflow_id: workflow_id.to_string(),
@@ -292,7 +298,9 @@ impl StorageBackend for PostgresAdapter {
         // In a real implementation: execute queries::UPSERT_WORKFLOW
         // For now, validate the inputs
         if workflow_id.is_empty() {
-            return Err(StorageError::Query("workflow_id cannot be empty".to_string()));
+            return Err(StorageError::Query(
+                "workflow_id cannot be empty".to_string(),
+            ));
         }
 
         Ok(())
@@ -301,7 +309,9 @@ impl StorageBackend for PostgresAdapter {
     fn load_workflow(&self, workflow_id: &str) -> Result<Option<serde_json::Value>, StorageError> {
         // In a real implementation: execute queries::LOAD_WORKFLOW
         if workflow_id.is_empty() {
-            return Err(StorageError::Query("workflow_id cannot be empty".to_string()));
+            return Err(StorageError::Query(
+                "workflow_id cannot be empty".to_string(),
+            ));
         }
         Ok(None)
     }
@@ -312,7 +322,9 @@ impl StorageBackend for PostgresAdapter {
         entry: &serde_json::Value,
     ) -> Result<(), StorageError> {
         if self.batch_mode {
-            let mut buffer = self.buffer.lock()
+            let mut buffer = self
+                .buffer
+                .lock()
                 .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
             buffer.push(PendingOp::SaveJournal {
                 workflow_id: workflow_id.to_string(),
@@ -337,7 +349,9 @@ impl StorageBackend for PostgresAdapter {
         value: &serde_json::Value,
     ) -> Result<(), StorageError> {
         if self.batch_mode {
-            let mut buffer = self.buffer.lock()
+            let mut buffer = self
+                .buffer
+                .lock()
                 .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
             buffer.push(PendingOp::SaveState {
                 workflow_id: workflow_id.to_string(),
@@ -392,7 +406,10 @@ mod tests {
     #[test]
     fn test_adapter_creation() {
         let adapter = PostgresAdapter::new(test_config());
-        assert_eq!(adapter.config().url, "postgres://test:test@localhost:5432/velocity_test");
+        assert_eq!(
+            adapter.config().url,
+            "postgres://test:test@localhost:5432/velocity_test"
+        );
         assert_eq!(adapter.pending_count(), 0);
     }
 
@@ -430,9 +447,15 @@ mod tests {
         let adapter = PostgresAdapter::new(test_config()).with_batch_mode(true);
 
         // These should be buffered, not executed
-        adapter.save_workflow("wf-1", "fn", &serde_json::json!("out")).unwrap();
-        adapter.save_journal_entry("wf-1", &serde_json::json!({"seq": 0})).unwrap();
-        adapter.save_state("wf-1", "key", &serde_json::json!("val")).unwrap();
+        adapter
+            .save_workflow("wf-1", "fn", &serde_json::json!("out"))
+            .unwrap();
+        adapter
+            .save_journal_entry("wf-1", &serde_json::json!({"seq": 0}))
+            .unwrap();
+        adapter
+            .save_state("wf-1", "key", &serde_json::json!("val"))
+            .unwrap();
 
         assert_eq!(adapter.pending_count(), 3);
 

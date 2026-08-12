@@ -248,9 +248,7 @@ jobs:
         working-directory: velocity-runtime-python
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f pyproject.toml ]; then pip install -e .; fi
+          pip install -e ".[dev]"
 
       - name: Run tests
         working-directory: velocity-runtime-python

@@ -155,10 +155,7 @@ impl WalWriter {
         let path = path.as_ref().to_path_buf();
         let is_new = !path.exists() || fs::metadata(&path)?.len() == 0;
 
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)?;
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
         let mut writer = BufWriter::new(file);
 
         if is_new {
@@ -362,7 +359,9 @@ impl WalManager {
         fs::copy(&self.path, &snapshot_path)?;
 
         // Fsync the snapshot to ensure durability
-        let snap_file = std::fs::OpenOptions::new().read(true).open(&snapshot_path)?;
+        let snap_file = std::fs::OpenOptions::new()
+            .read(true)
+            .open(&snapshot_path)?;
         snap_file.sync_all()?;
 
         Ok(snapshot_path)
@@ -377,7 +376,10 @@ impl WalManager {
         let mut snapshots: Vec<PathBuf> = fs::read_dir(dir)?
             .filter_map(|e| e.ok())
             .map(|e| e.path())
-            .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("wal_snapshot_")))
+            .filter(|p| {
+                p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("wal_snapshot_"))
+            })
             .collect();
         snapshots.sort_by(|a, b| b.cmp(a)); // newest first
         Ok(snapshots)

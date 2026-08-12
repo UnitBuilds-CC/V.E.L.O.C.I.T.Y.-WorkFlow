@@ -24,11 +24,16 @@ fn temp_wal_dir(name: &str) -> PathBuf {
     let count = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
     let dir = std::env::temp_dir()
         .join("velocity_wal_tests")
-        .join(format!("{}_{}_{}_{}", name, std::process::id(), count, 
+        .join(format!(
+            "{}_{}_{}_{}",
+            name,
+            std::process::id(),
+            count,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()));
+                .as_nanos()
+        ));
     fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -122,9 +127,15 @@ fn test_wal_record_all_event_types() {
 
 #[test]
 fn test_wal_event_type_from_u8() {
-    assert_eq!(WalEventType::from_u8(1), Some(WalEventType::WorkflowStarted));
+    assert_eq!(
+        WalEventType::from_u8(1),
+        Some(WalEventType::WorkflowStarted)
+    );
     assert_eq!(WalEventType::from_u8(2), Some(WalEventType::StepCompleted));
-    assert_eq!(WalEventType::from_u8(3), Some(WalEventType::WorkflowCompleted));
+    assert_eq!(
+        WalEventType::from_u8(3),
+        Some(WalEventType::WorkflowCompleted)
+    );
     assert_eq!(WalEventType::from_u8(0), None);
     assert_eq!(WalEventType::from_u8(255), None);
 }
@@ -323,7 +334,8 @@ fn test_wal_list_snapshots() {
 
     {
         let wal = WalManager::new(&wal_path, 10 * 1024 * 1024).unwrap();
-        wal.append(WalEventType::WorkflowStarted, 1, vec![1]).unwrap();
+        wal.append(WalEventType::WorkflowStarted, 1, vec![1])
+            .unwrap();
         wal.sync().unwrap();
 
         let s1 = wal.snapshot(&snap_dir);
@@ -365,10 +377,7 @@ fn test_wal_recovery_after_partial_write() {
     // Simulate a partial write (crash mid-write)
     {
         use std::io::Write;
-        let mut file = fs::OpenOptions::new()
-            .append(true)
-            .open(&wal_path)
-            .unwrap();
+        let mut file = fs::OpenOptions::new().append(true).open(&wal_path).unwrap();
         let _ = file.write_all(&[0xFF, 0xFF, 0xFF]);
         let _ = file.flush();
     }

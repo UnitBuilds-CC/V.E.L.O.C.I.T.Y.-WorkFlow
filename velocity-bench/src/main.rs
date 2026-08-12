@@ -189,7 +189,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .map(|mut w| {
             w.config.workflow_count = (w.config.workflow_count as f64 * count_mult).max(1.0) as u64;
-            w.config.duration_secs = (w.config.duration_secs as f64 * duration_mult).max(1.0) as u64;
+            w.config.duration_secs =
+                (w.config.duration_secs as f64 * duration_mult).max(1.0) as u64;
             w
         })
         .collect();
@@ -241,7 +242,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cli.sustained > 0 {
         tracing::info!("╔══════════════════════════════════════════════════════════╗");
         tracing::info!("║  SUSTAINED BENCHMARK MODE                               ║");
-        tracing::info!("║  Duration: {} minutes, Sample interval: {}s             ║", cli.sustained, cli.sample_interval);
+        tracing::info!(
+            "║  Duration: {} minutes, Sample interval: {}s             ║",
+            cli.sustained,
+            cli.sample_interval
+        );
         tracing::info!("╚══════════════════════════════════════════════════════════╝");
 
         let sustained_duration = Duration::from_secs(cli.sustained * 60);
@@ -250,9 +255,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Find the workload definition
         let all_workloads = WorkloadDefinition::all();
-        let workload_def = all_workloads.iter().find(|w| w.name == *workload_name)
+        let workload_def = all_workloads
+            .iter()
+            .find(|w| w.name == *workload_name)
             .cloned()
-            .unwrap_or_else(|| all_workloads.iter().find(|w| w.name == "simple_workflow").cloned().unwrap());
+            .unwrap_or_else(|| {
+                all_workloads
+                    .iter()
+                    .find(|w| w.name == "simple_workflow")
+                    .cloned()
+                    .unwrap()
+            });
 
         // Scale up for sustained testing — use high concurrency and count
         let mut sustained_workload = workload_def;
@@ -274,9 +287,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut timeseries: Vec<TimeSeriesSample> = Vec::new();
         let bench_start = Instant::now();
 
-        tracing::info!("Starting sustained benchmark for {} minutes...", cli.sustained);
-        tracing::info!("Workload: {} (scaled: {} workflows, {} concurrency)",
-            sustained_workload.name, sustained_workload.config.workflow_count, sustained_workload.config.concurrency);
+        tracing::info!(
+            "Starting sustained benchmark for {} minutes...",
+            cli.sustained
+        );
+        tracing::info!(
+            "Workload: {} (scaled: {} workflows, {} concurrency)",
+            sustained_workload.name,
+            sustained_workload.config.workflow_count,
+            sustained_workload.config.concurrency
+        );
 
         let mut sample_num = 0u64;
 
@@ -291,9 +311,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let metrics = run_workload(vel, &sustained_workload).await;
                 let p50 = metrics.completion_latency.p50_us as f64;
                 let p99 = metrics.completion_latency.p99_us as f64;
-                tracing::info!("  VELOCITY: {:.0} ops/sec, p50={:.0}µs, p99={:.0}µs, mem={:.1}MB",
-                    metrics.operations_per_second, p50, p99, metrics.peak_memory_mb);
-                (metrics.operations_per_second, p50, p99, metrics.peak_memory_mb)
+                tracing::info!(
+                    "  VELOCITY: {:.0} ops/sec, p50={:.0}µs, p99={:.0}µs, mem={:.1}MB",
+                    metrics.operations_per_second,
+                    p50,
+                    p99,
+                    metrics.peak_memory_mb
+                );
+                (
+                    metrics.operations_per_second,
+                    p50,
+                    p99,
+                    metrics.peak_memory_mb,
+                )
             } else {
                 (0.0, 0.0, 0.0, 0.0)
             };
@@ -303,9 +333,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let metrics = run_workload(tmp, &sustained_workload).await;
                 let p50 = metrics.completion_latency.p50_us as f64;
                 let p99 = metrics.completion_latency.p99_us as f64;
-                tracing::info!("  Temporal: {:.0} ops/sec, p50={:.0}µs, p99={:.0}µs, mem={:.1}MB",
-                    metrics.operations_per_second, p50, p99, metrics.peak_memory_mb);
-                (metrics.operations_per_second, p50, p99, metrics.peak_memory_mb)
+                tracing::info!(
+                    "  Temporal: {:.0} ops/sec, p50={:.0}µs, p99={:.0}µs, mem={:.1}MB",
+                    metrics.operations_per_second,
+                    p50,
+                    p99,
+                    metrics.peak_memory_mb
+                );
+                (
+                    metrics.operations_per_second,
+                    p50,
+                    p99,
+                    metrics.peak_memory_mb,
+                )
             } else {
                 (0.0, 0.0, 0.0, 0.0)
             };
@@ -322,9 +362,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 temporal_mem_mb: t_mem,
             });
 
-            tracing::info!("  Delta: throughput {:+.1}%, p99 {:+.1}%",
-                if t_ops > 0.0 { (v_ops / t_ops - 1.0) * 100.0 } else { 0.0 },
-                if t_p99 > 0.0 { (v_p99 / t_p99 - 1.0) * 100.0 } else { 0.0 });
+            tracing::info!(
+                "  Delta: throughput {:+.1}%, p99 {:+.1}%",
+                if t_ops > 0.0 {
+                    (v_ops / t_ops - 1.0) * 100.0
+                } else {
+                    0.0
+                },
+                if t_p99 > 0.0 {
+                    (v_p99 / t_p99 - 1.0) * 100.0
+                } else {
+                    0.0
+                }
+            );
 
             // Don't sleep if we're past the duration
             if bench_start.elapsed() + Duration::from_secs(30) < sustained_duration {
@@ -338,16 +388,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("");
         tracing::info!("╔══════════════════════════════════════════════════════════╗");
         tracing::info!("║  SUSTAINED BENCHMARK COMPLETE                            ║");
-        tracing::info!("║  Total duration: {}s, Samples: {}                        ║", total_secs, timeseries.len());
+        tracing::info!(
+            "║  Total duration: {}s, Samples: {}                        ║",
+            total_secs,
+            timeseries.len()
+        );
         tracing::info!("╚══════════════════════════════════════════════════════════╝");
 
         // Calculate summary stats
-        let v_avg_ops: f64 = timeseries.iter().map(|s| s.velocity_ops_per_sec).sum::<f64>() / timeseries.len() as f64;
-        let t_avg_ops: f64 = timeseries.iter().map(|s| s.temporal_ops_per_sec).sum::<f64>() / timeseries.len() as f64;
-        let v_min_ops = timeseries.iter().map(|s| s.velocity_ops_per_sec).fold(f64::INFINITY, f64::min);
-        let t_min_ops = timeseries.iter().map(|s| s.temporal_ops_per_sec).fold(f64::INFINITY, f64::min);
-        let v_max_ops = timeseries.iter().map(|s| s.velocity_ops_per_sec).fold(0.0_f64, f64::max);
-        let t_max_ops = timeseries.iter().map(|s| s.temporal_ops_per_sec).fold(0.0_f64, f64::max);
+        let v_avg_ops: f64 = timeseries
+            .iter()
+            .map(|s| s.velocity_ops_per_sec)
+            .sum::<f64>()
+            / timeseries.len() as f64;
+        let t_avg_ops: f64 = timeseries
+            .iter()
+            .map(|s| s.temporal_ops_per_sec)
+            .sum::<f64>()
+            / timeseries.len() as f64;
+        let v_min_ops = timeseries
+            .iter()
+            .map(|s| s.velocity_ops_per_sec)
+            .fold(f64::INFINITY, f64::min);
+        let t_min_ops = timeseries
+            .iter()
+            .map(|s| s.temporal_ops_per_sec)
+            .fold(f64::INFINITY, f64::min);
+        let v_max_ops = timeseries
+            .iter()
+            .map(|s| s.velocity_ops_per_sec)
+            .fold(0.0_f64, f64::max);
+        let t_max_ops = timeseries
+            .iter()
+            .map(|s| s.temporal_ops_per_sec)
+            .fold(0.0_f64, f64::max);
         let v_final_p99 = timeseries.last().map(|s| s.velocity_p99_us).unwrap_or(0.0);
         let t_final_p99 = timeseries.last().map(|s| s.temporal_p99_us).unwrap_or(0.0);
         let v_first_p99 = timeseries.first().map(|s| s.velocity_p99_us).unwrap_or(0.0);
@@ -359,20 +433,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         tracing::info!("");
         tracing::info!("=== VELOCITY Sustained Summary ===");
-        tracing::info!("  Avg throughput: {:.0} ops/sec (min: {:.0}, max: {:.0})", v_avg_ops, v_min_ops, v_max_ops);
-        tracing::info!("  p99 latency: first={:.0}µs, final={:.0}µs, delta={:+.1}%", v_first_p99, v_final_p99, if v_first_p99 > 0.0 { (v_final_p99 / v_first_p99 - 1.0) * 100.0 } else { 0.0 });
-        tracing::info!("  Memory: first={:.1}MB, final={:.1}MB, growth={:+.1}MB", v_first_mem, v_final_mem, v_final_mem - v_first_mem);
+        tracing::info!(
+            "  Avg throughput: {:.0} ops/sec (min: {:.0}, max: {:.0})",
+            v_avg_ops,
+            v_min_ops,
+            v_max_ops
+        );
+        tracing::info!(
+            "  p99 latency: first={:.0}µs, final={:.0}µs, delta={:+.1}%",
+            v_first_p99,
+            v_final_p99,
+            if v_first_p99 > 0.0 {
+                (v_final_p99 / v_first_p99 - 1.0) * 100.0
+            } else {
+                0.0
+            }
+        );
+        tracing::info!(
+            "  Memory: first={:.1}MB, final={:.1}MB, growth={:+.1}MB",
+            v_first_mem,
+            v_final_mem,
+            v_final_mem - v_first_mem
+        );
         tracing::info!("");
         tracing::info!("=== Temporal Sustained Summary ===");
-        tracing::info!("  Avg throughput: {:.0} ops/sec (min: {:.0}, max: {:.0})", t_avg_ops, t_min_ops, t_max_ops);
-        tracing::info!("  p99 latency: first={:.0}µs, final={:.0}µs, delta={:+.1}%", t_first_p99, t_final_p99, if t_first_p99 > 0.0 { (t_final_p99 / t_first_p99 - 1.0) * 100.0 } else { 0.0 });
-        tracing::info!("  Memory: first={:.1}MB, final={:.1}MB, growth={:+.1}MB", t_first_mem, t_final_mem, t_final_mem - t_first_mem);
+        tracing::info!(
+            "  Avg throughput: {:.0} ops/sec (min: {:.0}, max: {:.0})",
+            t_avg_ops,
+            t_min_ops,
+            t_max_ops
+        );
+        tracing::info!(
+            "  p99 latency: first={:.0}µs, final={:.0}µs, delta={:+.1}%",
+            t_first_p99,
+            t_final_p99,
+            if t_first_p99 > 0.0 {
+                (t_final_p99 / t_first_p99 - 1.0) * 100.0
+            } else {
+                0.0
+            }
+        );
+        tracing::info!(
+            "  Memory: first={:.1}MB, final={:.1}MB, growth={:+.1}MB",
+            t_first_mem,
+            t_final_mem,
+            t_final_mem - t_first_mem
+        );
 
         // Write JSON time-series to file
         let mut json_lines = Vec::new();
         json_lines.push("{".to_string());
         json_lines.push(format!("  \"sustained_duration_secs\": {},", total_secs));
-        json_lines.push(format!("  \"sample_interval_secs\": {},", cli.sample_interval));
+        json_lines.push(format!(
+            "  \"sample_interval_secs\": {},",
+            cli.sample_interval
+        ));
         json_lines.push(format!("  \"workload\": \"{}\",", sustained_workload.name));
         json_lines.push(format!("  \"samples\": {},", timeseries.len()));
         json_lines.push("  \"velocity_summary\": {".to_string());
@@ -381,10 +496,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         json_lines.push(format!("    \"max_ops_per_sec\": {:.1},", v_max_ops));
         json_lines.push(format!("    \"first_p99_us\": {:.1},", v_first_p99));
         json_lines.push(format!("    \"final_p99_us\": {:.1},", v_final_p99));
-        json_lines.push(format!("    \"p99_degradation_pct\": {:.1},", if v_first_p99 > 0.0 { (v_final_p99 / v_first_p99 - 1.0) * 100.0 } else { 0.0 }));
+        json_lines.push(format!(
+            "    \"p99_degradation_pct\": {:.1},",
+            if v_first_p99 > 0.0 {
+                (v_final_p99 / v_first_p99 - 1.0) * 100.0
+            } else {
+                0.0
+            }
+        ));
         json_lines.push(format!("    \"first_mem_mb\": {:.1},", v_first_mem));
         json_lines.push(format!("    \"final_mem_mb\": {:.1},", v_final_mem));
-        json_lines.push(format!("    \"mem_growth_mb\": {:.1}", v_final_mem - v_first_mem));
+        json_lines.push(format!(
+            "    \"mem_growth_mb\": {:.1}",
+            v_final_mem - v_first_mem
+        ));
         json_lines.push("  },".to_string());
         json_lines.push("  \"temporal_summary\": {".to_string());
         json_lines.push(format!("    \"avg_ops_per_sec\": {:.1},", t_avg_ops));
@@ -392,10 +517,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         json_lines.push(format!("    \"max_ops_per_sec\": {:.1},", t_max_ops));
         json_lines.push(format!("    \"first_p99_us\": {:.1},", t_first_p99));
         json_lines.push(format!("    \"final_p99_us\": {:.1},", t_final_p99));
-        json_lines.push(format!("    \"p99_degradation_pct\": {:.1},", if t_first_p99 > 0.0 { (t_final_p99 / t_first_p99 - 1.0) * 100.0 } else { 0.0 }));
+        json_lines.push(format!(
+            "    \"p99_degradation_pct\": {:.1},",
+            if t_first_p99 > 0.0 {
+                (t_final_p99 / t_first_p99 - 1.0) * 100.0
+            } else {
+                0.0
+            }
+        ));
         json_lines.push(format!("    \"first_mem_mb\": {:.1},", t_first_mem));
         json_lines.push(format!("    \"final_mem_mb\": {:.1},", t_final_mem));
-        json_lines.push(format!("    \"mem_growth_mb\": {:.1}", t_final_mem - t_first_mem));
+        json_lines.push(format!(
+            "    \"mem_growth_mb\": {:.1}",
+            t_final_mem - t_first_mem
+        ));
         json_lines.push("  },".to_string());
         json_lines.push("  \"timeseries\": [".to_string());
         for (i, s) in timeseries.iter().enumerate() {
@@ -427,7 +562,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(
             "Running {} iterations per workload for statistical analysis (significance: {})",
             num_runs,
-            if use_significance { "enabled" } else { "disabled" }
+            if use_significance {
+                "enabled"
+            } else {
+                "disabled"
+            }
         );
     }
 
@@ -506,7 +645,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if num_runs > 1 {
         tracing::info!("");
         tracing::info!("╔══════════════════════════════════════════════════════════╗");
-        tracing::info!("║  STATISTICAL SUMMARY ({} runs per workload)           ║", num_runs);
+        tracing::info!(
+            "║  STATISTICAL SUMMARY ({} runs per workload)           ║",
+            num_runs
+        );
         tracing::info!("╠══════════════════════════════════════════════════════════╣");
 
         for workload in &workload_defs {
@@ -595,8 +737,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     velocity_per_workload.get(&workload.name),
                     temporal_per_workload.get(&workload.name),
                 ) {
-                    let vel_ops: Vec<f64> = vel_snaps.iter().map(|s| s.operations_per_second).collect();
-                    let tmp_ops: Vec<f64> = tmp_snaps.iter().map(|s| s.operations_per_second).collect();
+                    let vel_ops: Vec<f64> =
+                        vel_snaps.iter().map(|s| s.operations_per_second).collect();
+                    let tmp_ops: Vec<f64> =
+                        tmp_snaps.iter().map(|s| s.operations_per_second).collect();
                     sig_tests.push(SignificanceTest::welchs_t_test(
                         &format!("{}/ops_per_sec", workload.name),
                         &vel_ops,
@@ -720,7 +864,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Also include temporal results if present
         for (name, _desc, metrics) in &temporal_results {
             // Find or create the entry for this workload
-            if let Some(existing) = workloads_arr.iter_mut().find(|w| w["name"] == name.as_str()) {
+            if let Some(existing) = workloads_arr
+                .iter_mut()
+                .find(|w| w["name"] == name.as_str())
+            {
                 existing["temporal_ops_per_sec"] = serde_json::json!(metrics.operations_per_second);
                 existing["temporal_p99_us"] = serde_json::json!(metrics.completion_latency.p99_us);
                 existing["temporal_mem_mb"] = serde_json::json!(metrics.peak_memory_mb);
@@ -1196,10 +1343,7 @@ async fn run_signal_query_mix(
         // Send a query on odd iterations (if queries remain)
         if i % 2 == 1 && query_idx < n_queries {
             let start = Instant::now();
-            match engine
-                .query_workflow(&handle, "get_status", b"")
-                .await
-            {
+            match engine.query_workflow(&handle, "get_status", b"").await {
                 Ok(result) => {
                     black_box(&result);
                     collector.record_query(start.elapsed());
@@ -1235,10 +1379,7 @@ async fn run_signal_query_mix(
     }
     while query_idx < n_queries {
         let start = Instant::now();
-        match engine
-            .query_workflow(&handle, "get_status", b"")
-            .await
-        {
+        match engine.query_workflow(&handle, "get_status", b"").await {
             Ok(result) => {
                 black_box(&result);
                 collector.record_query(start.elapsed());
@@ -1289,7 +1430,10 @@ async fn run_search_attributes(
             let wf_id = format!("{}-{}", workload.name, i);
             futures.push(async move {
                 let start = Instant::now();
-                match engine.start_workflow("search_attributes", &wf_id, b"input").await {
+                match engine
+                    .start_workflow("search_attributes", &wf_id, b"input")
+                    .await
+                {
                     Ok(handle) => {
                         collector.record_start(start.elapsed());
 
@@ -1331,10 +1475,8 @@ async fn run_search_attributes(
                                             }
                                         }
                                         Err(e) => {
-                                            collector.record_error(&format!(
-                                                "completion_error: {}",
-                                                e
-                                            ));
+                                            collector
+                                                .record_error(&format!("completion_error: {}", e));
                                         }
                                     }
                                 } else {
@@ -1382,7 +1524,12 @@ async fn run_generic_workload(
                 } else {
                     // Multi-step workflow: complete ALL steps before waiting for completion
                     run_multi_step_workflow(
-                        engine, &wf_id, &wf_type, collector, timeout, total_steps,
+                        engine,
+                        &wf_id,
+                        &wf_type,
+                        collector,
+                        timeout,
+                        total_steps,
                     )
                     .await;
                 }
@@ -1446,7 +1593,10 @@ async fn run_replay_amplification(
     for i in 0..num_signals {
         let signal_start = Instant::now();
         let payload = format!("signal-{}", i);
-        match engine.signal_workflow(&handle, "test_signal", payload.as_bytes()).await {
+        match engine
+            .signal_workflow(&handle, "test_signal", payload.as_bytes())
+            .await
+        {
             Ok(result) => {
                 let elapsed = signal_start.elapsed();
                 latencies.push(elapsed.as_micros() as u64);
@@ -1463,7 +1613,10 @@ async fn run_replay_amplification(
     let complete_start = Instant::now();
     match engine.complete_step(&handle, 0, b"done").await {
         Ok(_) => {
-            match engine.wait_for_completion(&handle, Duration::from_millis(config.timeout_ms)).await {
+            match engine
+                .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+                .await
+            {
                 Ok(_) => {
                     collector.record_completion(complete_start.elapsed());
                 }
@@ -1479,10 +1632,10 @@ async fn run_replay_amplification(
 
     // Log amplification data for analysis
     if !latencies.is_empty() {
-        let first_quarter_avg: f64 = latencies[..latencies.len()/4].iter().sum::<u64>() as f64
-            / (latencies.len()/4).max(1) as f64;
-        let last_quarter_avg: f64 = latencies[3*latencies.len()/4..].iter().sum::<u64>() as f64
-            / (latencies.len() - 3*latencies.len()/4).max(1) as f64;
+        let first_quarter_avg: f64 = latencies[..latencies.len() / 4].iter().sum::<u64>() as f64
+            / (latencies.len() / 4).max(1) as f64;
+        let last_quarter_avg: f64 = latencies[3 * latencies.len() / 4..].iter().sum::<u64>() as f64
+            / (latencies.len() - 3 * latencies.len() / 4).max(1) as f64;
         let amplification_factor = if first_quarter_avg > 0.0 {
             last_quarter_avg / first_quarter_avg
         } else {
@@ -1516,13 +1669,7 @@ async fn run_wal_durability(
             let wf_id = format!("{}-{}", workload.name, i);
             let wf_type = workload.name.clone();
             futures.push(async move {
-                run_one_workflow(
-                    engine,
-                    &wf_id,
-                    &wf_type,
-                    collector,
-                    config.timeout_ms,
-                ).await
+                run_one_workflow(engine, &wf_id, &wf_type, collector, config.timeout_ms).await
             });
         }
 
@@ -1548,7 +1695,8 @@ async fn run_tail_latency_sustained(
 
     tracing::info!(
         "  Running sustained load for {}s at concurrency {}...",
-        config.duration_secs, concurrency
+        config.duration_secs,
+        concurrency
     );
 
     while start_time.elapsed() < duration {
@@ -1557,13 +1705,7 @@ async fn run_tail_latency_sustained(
             let wf_id = format!("{}-iter{}-{}", workload.name, iteration, i);
             let wf_type = workload.name.clone();
             futures.push(async move {
-                run_one_workflow(
-                    engine,
-                    &wf_id,
-                    &wf_type,
-                    collector,
-                    config.timeout_ms,
-                ).await
+                run_one_workflow(engine, &wf_id, &wf_type, collector, config.timeout_ms).await
             });
         }
         let _results = futures::future::join_all(futures).await;

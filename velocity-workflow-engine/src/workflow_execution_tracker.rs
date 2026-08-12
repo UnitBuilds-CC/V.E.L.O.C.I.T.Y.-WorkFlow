@@ -381,8 +381,7 @@ impl ThroughputTracker {
         // Calculate current RPS
         let window_elapsed = now.saturating_sub(self.window_start_ms);
         if window_elapsed > 0 {
-            self.current_rps =
-                self.total_requests as f64 / (window_elapsed as f64 / 1000.0);
+            self.current_rps = self.total_requests as f64 / (window_elapsed as f64 / 1000.0);
         }
         if self.current_rps > self.peak_rps {
             self.peak_rps = self.current_rps;
@@ -655,7 +654,11 @@ impl WorkflowExecutionTracker {
 
     /// Get stats for a specific workflow type.
     pub fn get_stats(&self, workflow_type_id: u64) -> Option<WorkflowExecutionStats> {
-        self.stats_by_type.read().unwrap().get(&workflow_type_id).cloned()
+        self.stats_by_type
+            .read()
+            .unwrap()
+            .get(&workflow_type_id)
+            .cloned()
     }
 
     /// Get global summary statistics.
@@ -710,7 +713,8 @@ impl WorkflowExecutionTracker {
                     actual_success_rate: success_rate,
                     target_success_rate: slo.success_rate_target,
                     success_compliant: success_met,
-                    error_budget_remaining_pct: budget.remaining_budget / budget.total_budget * 100.0,
+                    error_budget_remaining_pct: budget.remaining_budget / budget.total_budget
+                        * 100.0,
                     current_burn_rate: budget.current_burn_rate,
                     active_alerts: budget.active_alerts.len(),
                 })

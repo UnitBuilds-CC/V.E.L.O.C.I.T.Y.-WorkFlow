@@ -599,7 +599,9 @@ impl MutableState {
             // From Created: can only go to Running
             (Created, Running) => true,
             // From Running: can go to any terminal state
-            (Running, Completed | Failed | Cancelled | Terminated | ContinuedAsNew | TimedOut) => true,
+            (Running, Completed | Failed | Cancelled | Terminated | ContinuedAsNew | TimedOut) => {
+                true
+            }
             // Terminal states cannot transition (except TimedOut from Running handled above)
             _ => false,
         };
@@ -1188,7 +1190,8 @@ mod tests {
         };
         ms.add_child_workflow(child);
         ms.start_child_workflow("child-1").unwrap();
-        ms.fail_child_workflow("child-1", Some("error".to_string())).unwrap();
+        ms.fail_child_workflow("child-1", Some("error".to_string()))
+            .unwrap();
         // Cannot fail again
         assert!(ms.fail_child_workflow("child-1", None).is_err());
     }

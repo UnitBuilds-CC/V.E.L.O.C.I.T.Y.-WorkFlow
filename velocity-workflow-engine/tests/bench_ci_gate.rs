@@ -34,17 +34,61 @@ struct Baseline {
 }
 
 const BASELINES: &[Baseline] = &[
-    Baseline { name: "task_queue_enqueue",     min_ops_per_sec: 500_000.0,  max_p99_us: 10 },
-    Baseline { name: "task_queue_dequeue",     min_ops_per_sec: 500_000.0,  max_p99_us: 10 },
-    Baseline { name: "timer_schedule",         min_ops_per_sec: 500_000.0,  max_p99_us: 10 },
-    Baseline { name: "wal_append",             min_ops_per_sec: 100_000.0,  max_p99_us: 20 },
-    Baseline { name: "wal_read",               min_ops_per_sec: 5_000.0,    max_p99_us: 500 },
-    Baseline { name: "workflow_create",        min_ops_per_sec: 100_000.0,  max_p99_us: 20 },
-    Baseline { name: "workflow_complete",      min_ops_per_sec: 100_000.0,  max_p99_us: 20 },
-    Baseline { name: "search_index_upsert",    min_ops_per_sec: 200_000.0,  max_p99_us: 10 },
-    Baseline { name: "search_index_query",     min_ops_per_sec: 200_000.0,  max_p99_us: 10 },
-    Baseline { name: "query_handler_register", min_ops_per_sec: 500_000.0,  max_p99_us: 10 },
-    Baseline { name: "codec_encode_decode",    min_ops_per_sec: 500_000.0,  max_p99_us: 10 },
+    Baseline {
+        name: "task_queue_enqueue",
+        min_ops_per_sec: 500_000.0,
+        max_p99_us: 10,
+    },
+    Baseline {
+        name: "task_queue_dequeue",
+        min_ops_per_sec: 500_000.0,
+        max_p99_us: 10,
+    },
+    Baseline {
+        name: "timer_schedule",
+        min_ops_per_sec: 500_000.0,
+        max_p99_us: 10,
+    },
+    Baseline {
+        name: "wal_append",
+        min_ops_per_sec: 100_000.0,
+        max_p99_us: 20,
+    },
+    Baseline {
+        name: "wal_read",
+        min_ops_per_sec: 5_000.0,
+        max_p99_us: 500,
+    },
+    Baseline {
+        name: "workflow_create",
+        min_ops_per_sec: 100_000.0,
+        max_p99_us: 20,
+    },
+    Baseline {
+        name: "workflow_complete",
+        min_ops_per_sec: 100_000.0,
+        max_p99_us: 20,
+    },
+    Baseline {
+        name: "search_index_upsert",
+        min_ops_per_sec: 200_000.0,
+        max_p99_us: 10,
+    },
+    Baseline {
+        name: "search_index_query",
+        min_ops_per_sec: 200_000.0,
+        max_p99_us: 10,
+    },
+    Baseline {
+        name: "query_handler_register",
+        min_ops_per_sec: 500_000.0,
+        max_p99_us: 10,
+    },
+    Baseline {
+        name: "codec_encode_decode",
+        min_ops_per_sec: 500_000.0,
+        max_p99_us: 10,
+    },
 ];
 
 // ─── Benchmark Harness ───────────────────────────────────────────────────────
@@ -215,8 +259,8 @@ fn benchmark_regression_gate() {
         // WAL read: measure reading records from a file
         let read_path = read_dir.join("read.wal");
         let result = measure(5_000, Duration::from_millis(200), || {
-            let records = velocity_workflow_engine::wal::read_wal_records(black_box(&read_path))
-                .unwrap();
+            let records =
+                velocity_workflow_engine::wal::read_wal_records(black_box(&read_path)).unwrap();
             black_box(records.len());
         });
         print_result("wal_read", &result, &BASELINES[4], &mut failures);
@@ -310,7 +354,12 @@ fn benchmark_regression_gate() {
             let encoded = chain.encode(black_box(&data)).unwrap();
             black_box(chain.decode(black_box(&encoded)).unwrap());
         });
-        print_result("codec_encode_decode", &result, &BASELINES[10], &mut failures);
+        print_result(
+            "codec_encode_decode",
+            &result,
+            &BASELINES[10],
+            &mut failures,
+        );
     }
 
     // ── Summary ─────────────────────────────────────────────────────────

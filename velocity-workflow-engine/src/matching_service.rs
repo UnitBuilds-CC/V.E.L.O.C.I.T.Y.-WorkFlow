@@ -101,7 +101,8 @@ impl PartitionQueue {
     fn expire_tasks(&mut self, ttl: Duration) -> u64 {
         let now = Instant::now();
         let before = self.tasks.len();
-        self.tasks.retain(|t| now.duration_since(t.created_at) < ttl);
+        self.tasks
+            .retain(|t| now.duration_since(t.created_at) < ttl);
         (before - self.tasks.len()) as u64
     }
 }
@@ -752,7 +753,10 @@ mod tests {
         // Poll from any partition — cross-partition forwarding should find tasks
         let mut found = 0;
         for _ in 0..20 {
-            if svc.try_poll_task("cross-q", None, TaskKindFilter::Any).is_some() {
+            if svc
+                .try_poll_task("cross-q", None, TaskKindFilter::Any)
+                .is_some()
+            {
                 found += 1;
             }
         }

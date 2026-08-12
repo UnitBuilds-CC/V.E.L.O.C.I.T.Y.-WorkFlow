@@ -153,11 +153,7 @@ impl DurableContext {
     ///
     /// The step is journaled. On crash recovery, previously completed steps
     /// return their cached result without re-executing.
-    pub async fn run<F, Fut, O>(
-        &mut self,
-        step_name: &str,
-        handler: F,
-    ) -> Result<O, EmbeddedError>
+    pub async fn run<F, Fut, O>(&mut self, step_name: &str, handler: F) -> Result<O, EmbeddedError>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = O>,
@@ -167,11 +163,16 @@ impl DurableContext {
 
         // Check if we have a cached result from journal replay
         let cached = {
-            let counters = self.sequence_counters.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
+            let counters = self
+                .sequence_counters
+                .lock()
+                .map_err(|_| EmbeddedError::LockPoisoned)?;
             let seq = counters.get(&seq_key).copied().unwrap_or(0);
 
             // Check journal for existing result
-            self.journal.iter().find(|e| e.sequence == seq && e.function_name == step_name && e.completed)
+            self.journal
+                .iter()
+                .find(|e| e.sequence == seq && e.function_name == step_name && e.completed)
                 .and_then(|e| e.output.as_ref())
                 .and_then(|v| serde_json::from_value::<O>(v.clone()).ok())
         };
@@ -188,7 +189,10 @@ impl DurableContext {
             .map_err(|e| EmbeddedError::Serialization(e.to_string()))?;
 
         let seq = {
-            let mut counters = self.sequence_counters.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
+            let mut counters = self
+                .sequence_counters
+                .lock()
+                .map_err(|_| EmbeddedError::LockPoisoned)?;
             let seq = counters.entry(seq_key).or_insert(0);
             let current = *seq;
             *seq += 1;
@@ -225,7 +229,9 @@ impl DurableContext {
 
     /// Get a durable state value.
     pub fn get_state<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
-        self.state.get(key).and_then(|v| serde_json::from_value(v.clone()).ok())
+        self.state
+            .get(key)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 
     /// Set a durable state value.

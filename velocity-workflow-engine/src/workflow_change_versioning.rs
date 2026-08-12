@@ -53,7 +53,11 @@ pub enum VersionResult {
     /// An existing decision was returned (replay-safe).
     Existing(i32),
     /// The requested range is incompatible with the recorded version.
-    Incompatible { recorded: i32, min_supported: i32, max_supported: i32 },
+    Incompatible {
+        recorded: i32,
+        min_supported: i32,
+        max_supported: i32,
+    },
 }
 
 impl VersionResult {
@@ -160,7 +164,11 @@ impl ChangeVersionRegistry {
 
     /// Remove a workflow's version state. Called when a workflow completes/terminates.
     pub fn unregister_workflow(&self, workflow_key: u64) -> bool {
-        self.workflows.write().unwrap().remove(&workflow_key).is_some()
+        self.workflows
+            .write()
+            .unwrap()
+            .remove(&workflow_key)
+            .is_some()
     }
 
     /// Core API: Get or record a version for a change ID.
@@ -262,16 +270,12 @@ impl ChangeVersionRegistry {
 
     /// Get all decisions for a workflow.
     pub fn get_workflow_decisions(&self, workflow_key: u64) -> Option<Vec<VersionDecision>> {
-        self.workflows
-            .read()
-            .unwrap()
-            .get(&workflow_key)
-            .map(|s| {
-                s.decision_order
-                    .iter()
-                    .filter_map(|cid| s.decisions.get(cid).cloned())
-                    .collect()
-            })
+        self.workflows.read().unwrap().get(&workflow_key).map(|s| {
+            s.decision_order
+                .iter()
+                .filter_map(|cid| s.decisions.get(cid).cloned())
+                .collect()
+        })
     }
 
     /// Get the number of decisions for a specific workflow.
@@ -362,12 +366,7 @@ impl ChangeVersionRegistry {
 
     /// Force-set a version decision (for testing or migration).
     /// Bypasses the normal get_version flow and directly records a decision.
-    pub fn force_set_version(
-        &self,
-        workflow_key: u64,
-        change_id: &str,
-        version: i32,
-    ) -> bool {
+    pub fn force_set_version(&self, workflow_key: u64, change_id: &str, version: i32) -> bool {
         let mut workflows = self.workflows.write().unwrap();
         let state = workflows
             .entry(workflow_key)
@@ -392,12 +391,7 @@ impl ChangeVersionRegistry {
     }
 
     /// Override an existing version decision (for workflow reset or migration).
-    pub fn override_version(
-        &self,
-        workflow_key: u64,
-        change_id: &str,
-        new_version: i32,
-    ) -> bool {
+    pub fn override_version(&self, workflow_key: u64, change_id: &str, new_version: i32) -> bool {
         let mut workflows = self.workflows.write().unwrap();
         if let Some(state) = workflows.get_mut(&workflow_key) {
             if let Some(existing) = state.decisions.get_mut(change_id) {
@@ -496,7 +490,12 @@ mod tests {
         // Now caller requires min=3, but recorded is 1
         let r2 = reg.get_version(100, "old-change", 3, 5, false);
         assert!(r2.is_incompatible());
-        if let VersionResult::Incompatible { recorded, min_supported, max_supported } = r2 {
+        if let VersionResult::Incompatible {
+            recorded,
+            min_supported,
+            max_supported,
+        } = r2
+        {
             assert_eq!(recorded, 1);
             assert_eq!(min_supported, 3);
             assert_eq!(max_supported, 5);

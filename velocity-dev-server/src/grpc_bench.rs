@@ -1207,16 +1207,13 @@ impl BenchmarkService for BenchmarkServiceImpl {
             history_length: wf.history_length as i32,
         };
 
-        let execution_duration_ms = wf
-            .closed_at
-            .map(|c| c - wf.started_at)
-            .unwrap_or_else(|| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as i64
-                    - wf.started_at
-            });
+        let execution_duration_ms = wf.closed_at.map(|c| c - wf.started_at).unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64
+                - wf.started_at
+        });
 
         Ok(Response::new(DescribeWorkflowExecutionResponse {
             execution: Some(execution),

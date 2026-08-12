@@ -153,9 +153,12 @@ impl VelocityEngine {
 
     // ── Engine methods (identical pattern to Temporal bridge) ─────────────
 
-    async fn start_workflow(&self, namespace: &str, workflow_id: &str, workflow_type: &str)
-        -> Result<(String, String), String>
-    {
+    async fn start_workflow(
+        &self,
+        namespace: &str,
+        workflow_id: &str,
+        workflow_type: &str,
+    ) -> Result<(String, String), String> {
         let wf_id = if workflow_id.is_empty() {
             format!("vel-wf-{}", self.next_id.fetch_add(1, Ordering::Relaxed))
         } else {
@@ -167,42 +170,63 @@ impl VelocityEngine {
         Ok((wf_id, run_id))
     }
 
-    async fn signal_workflow(&self, _ns: &str, workflow_id: &str, _name: &str, _payload: Vec<u8>)
-        -> Result<(), String>
-    {
+    async fn signal_workflow(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _name: &str,
+        _payload: Vec<u8>,
+    ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.signals_received += 1;
         log.event_count += 1;
         Ok(())
     }
 
-    async fn query_workflow(&self, _ns: &str, workflow_id: &str, _qt: &str)
-        -> Result<Vec<u8>, String>
-    {
+    async fn query_workflow(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _qt: &str,
+    ) -> Result<Vec<u8>, String> {
         let logs = self.logs.read().unwrap();
-        let log = logs.get(workflow_id)
+        let log = logs
+            .get(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-        Ok(format!(r#"{{"workflow_id":"{}","status":"{:?}"}}"#, workflow_id, log.status).into_bytes())
+        Ok(format!(
+            r#"{{"workflow_id":"{}","status":"{:?}"}}"#,
+            workflow_id, log.status
+        )
+        .into_bytes())
     }
 
-    async fn complete_workflow(&self, _ns: &str, workflow_id: &str, _result: Option<Vec<u8>>)
-        -> Result<(), String>
-    {
+    async fn complete_workflow(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _result: Option<Vec<u8>>,
+    ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::Completed;
         log.event_count += 1;
         Ok(())
     }
 
-    async fn terminate_workflow(&self, _ns: &str, workflow_id: &str, _reason: &str)
-        -> Result<(), String>
-    {
+    async fn terminate_workflow(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _reason: &str,
+    ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::Terminated;
         log.event_count += 1;
@@ -243,9 +267,15 @@ impl VelocityEngine {
         }
     }
 
-    async fn cancel_workflow(&self, _ns: &str, workflow_id: &str, _reason: &str) -> Result<(), String> {
+    async fn cancel_workflow(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _reason: &str,
+    ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::Cancelled;
         log.cancel_requested = true;
@@ -253,23 +283,34 @@ impl VelocityEngine {
         Ok(())
     }
 
-    async fn update_workflow(&self, _ns: &str, workflow_id: &str, _name: &str, update_id: &str, _payload: Vec<u8>)
-        -> Result<Vec<u8>, String>
-    {
+    async fn update_workflow(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _name: &str,
+        update_id: &str,
+        _payload: Vec<u8>,
+    ) -> Result<Vec<u8>, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.updates_received += 1;
         log.event_count += 1;
         Ok(format!(r#"{{"update_id":"{}","status":"COMPLETED"}}"#, update_id).into_bytes())
     }
 
-    async fn start_child_workflow(&self, namespace: &str, parent_wf_id: &str, wf_type: &str, child_wf_id: &str)
-        -> Result<(String, String), String>
-    {
+    async fn start_child_workflow(
+        &self,
+        namespace: &str,
+        parent_wf_id: &str,
+        wf_type: &str,
+        child_wf_id: &str,
+    ) -> Result<(String, String), String> {
         {
             let mut logs = self.logs.write().unwrap();
-            let parent = logs.get_mut(parent_wf_id)
+            let parent = logs
+                .get_mut(parent_wf_id)
                 .ok_or_else(|| format!("Parent workflow {} not found", parent_wf_id))?;
             parent.child_workflows_started += 1;
             parent.event_count += 1;
@@ -284,11 +325,16 @@ impl VelocityEngine {
         Ok((child_id, child_run_id))
     }
 
-    async fn schedule_timer(&self, _ns: &str, workflow_id: &str, timer_id: &str, _duration_ms: i64)
-        -> Result<String, String>
-    {
+    async fn schedule_timer(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        timer_id: &str,
+        _duration_ms: i64,
+    ) -> Result<String, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.timers_scheduled += 1;
         log.event_count += 1;
@@ -300,18 +346,30 @@ impl VelocityEngine {
         Ok(tid)
     }
 
-    async fn cancel_timer(&self, _ns: &str, workflow_id: &str, _timer_id: &str) -> Result<(), String> {
+    async fn cancel_timer(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _timer_id: &str,
+    ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.timers_cancelled += 1;
         log.event_count += 1;
         Ok(())
     }
 
-    async fn continue_as_new(&self, _ns: &str, workflow_id: &str, _wf_type: &str) -> Result<String, String> {
+    async fn continue_as_new(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _wf_type: &str,
+    ) -> Result<String, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::ContinuedAsNew;
         log.event_count += 1;
@@ -319,31 +377,44 @@ impl VelocityEngine {
         Ok(new_run_id)
     }
 
-    async fn upsert_search_attributes(&self, _ns: &str, workflow_id: &str, attrs: HashMap<String, String>)
-        -> Result<(), String>
-    {
+    async fn upsert_search_attributes(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        attrs: HashMap<String, String>,
+    ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.search_attributes.extend(attrs);
         log.event_count += 1;
         Ok(())
     }
 
-    async fn set_memo(&self, _ns: &str, workflow_id: &str, memo: HashMap<String, String>)
-        -> Result<(), String>
-    {
+    async fn set_memo(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        memo: HashMap<String, String>,
+    ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.memo.extend(memo);
         log.event_count += 1;
         Ok(())
     }
 
-    async fn signal_with_start(&self, namespace: &str, wf_type: &str, workflow_id: &str,
-        signal_name: &str, payload: Vec<u8>) -> Result<(String, String, bool, bool), String>
-    {
+    async fn signal_with_start(
+        &self,
+        namespace: &str,
+        wf_type: &str,
+        workflow_id: &str,
+        signal_name: &str,
+        payload: Vec<u8>,
+    ) -> Result<(String, String, bool, bool), String> {
         let exists_and_running = {
             let logs = self.logs.read().unwrap();
             logs.get(workflow_id)
@@ -351,28 +422,46 @@ impl VelocityEngine {
                 .unwrap_or(false)
         };
         if exists_and_running {
-            self.signal_workflow(namespace, workflow_id, signal_name, payload).await?;
-            return Ok((workflow_id.to_string(), workflow_id.to_string(), false, true));
+            self.signal_workflow(namespace, workflow_id, signal_name, payload)
+                .await?;
+            return Ok((
+                workflow_id.to_string(),
+                workflow_id.to_string(),
+                false,
+                true,
+            ));
         }
         let (wf_id, run_id) = self.start_workflow(namespace, workflow_id, wf_type).await?;
-        self.signal_workflow(namespace, &wf_id, signal_name, payload).await?;
+        self.signal_workflow(namespace, &wf_id, signal_name, payload)
+            .await?;
         Ok((wf_id, run_id, true, true))
     }
 
-    async fn record_heartbeat(&self, _ns: &str, workflow_id: &str, _activity_id: &str) -> Result<bool, String> {
+    async fn record_heartbeat(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _activity_id: &str,
+    ) -> Result<bool, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.heartbeats_recorded += 1;
         log.event_count += 1;
         Ok(log.cancel_requested)
     }
 
-    async fn schedule_activity(&self, _ns: &str, workflow_id: &str, activity_id: &str, _atype: &str)
-        -> Result<String, String>
-    {
+    async fn schedule_activity(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        activity_id: &str,
+        _atype: &str,
+    ) -> Result<String, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.activities_scheduled += 1;
         log.event_count += 1;
@@ -384,20 +473,32 @@ impl VelocityEngine {
         Ok(aid)
     }
 
-    async fn complete_activity(&self, _ns: &str, workflow_id: &str, _activity_id: &str) -> Result<(), String> {
+    async fn complete_activity(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _activity_id: &str,
+    ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.activities_completed += 1;
         log.event_count += 1;
         Ok(())
     }
 
-    async fn fail_activity(&self, _ns: &str, workflow_id: &str, _activity_id: &str, _reason: &str, _nr: bool)
-        -> Result<(bool, u32), String>
-    {
+    async fn fail_activity(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _activity_id: &str,
+        _reason: &str,
+        _nr: bool,
+    ) -> Result<(bool, u32), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.activities_failed += 1;
         log.event_count += 1;
@@ -407,16 +508,22 @@ impl VelocityEngine {
 
     async fn replay_workflow(&self, _ns: &str, workflow_id: &str) -> Result<(u64, String), String> {
         let logs = self.logs.read().unwrap();
-        let log = logs.get(workflow_id)
+        let log = logs
+            .get(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         Ok((log.event_count, format!("{:?}", log.status)))
     }
 
-    async fn reset_workflow(&self, _ns: &str, workflow_id: &str, _reset_id: i64, _reason: &str)
-        -> Result<String, String>
-    {
+    async fn reset_workflow(
+        &self,
+        _ns: &str,
+        workflow_id: &str,
+        _reset_id: i64,
+        _reason: &str,
+    ) -> Result<String, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::Running;
         log.event_count += 1;
@@ -426,11 +533,16 @@ impl VelocityEngine {
 
     async fn batch_terminate(&self, namespace: &str, _reason: &str, max_count: i64) -> u64 {
         let mut logs = self.logs.write().unwrap();
-        let targets: Vec<String> = logs.iter()
+        let targets: Vec<String> = logs
+            .iter()
             .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
             .filter(|(_, log)| log.status == WorkflowStatus::Running)
             .map(|(id, _)| id.clone())
-            .take(if max_count > 0 { max_count as usize } else { usize::MAX })
+            .take(if max_count > 0 {
+                max_count as usize
+            } else {
+                usize::MAX
+            })
             .collect();
         let mut count = 0u64;
         for wf_id in &targets {
@@ -443,13 +555,24 @@ impl VelocityEngine {
         count
     }
 
-    async fn batch_signal(&self, namespace: &str, _signal_name: &str, _payload: Vec<u8>, max_count: i64) -> u64 {
+    async fn batch_signal(
+        &self,
+        namespace: &str,
+        _signal_name: &str,
+        _payload: Vec<u8>,
+        max_count: i64,
+    ) -> u64 {
         let mut logs = self.logs.write().unwrap();
-        let targets: Vec<String> = logs.iter()
+        let targets: Vec<String> = logs
+            .iter()
             .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
             .filter(|(_, log)| log.status == WorkflowStatus::Running)
             .map(|(id, _)| id.clone())
-            .take(if max_count > 0 { max_count as usize } else { usize::MAX })
+            .take(if max_count > 0 {
+                max_count as usize
+            } else {
+                usize::MAX
+            })
             .collect();
         let mut count = 0u64;
         for wf_id in &targets {
@@ -464,7 +587,8 @@ impl VelocityEngine {
 
     async fn get_workflow_history(&self, _ns: &str, workflow_id: &str) -> Result<u64, String> {
         let logs = self.logs.read().unwrap();
-        let log = logs.get(workflow_id)
+        let log = logs
+            .get(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         Ok(log.event_count)
     }
@@ -478,359 +602,1032 @@ struct BenchmarkServiceImpl {
 
 #[tonic::async_trait]
 impl BenchmarkService for BenchmarkServiceImpl {
-    async fn start_workflow(&self, request: Request<StartWorkflowRequest>) -> Result<Response<StartWorkflowResponse>, Status> {
+    async fn start_workflow(
+        &self,
+        request: Request<StartWorkflowRequest>,
+    ) -> Result<Response<StartWorkflowResponse>, Status> {
         let req = request.into_inner();
-        let namespace = if req.namespace.is_empty() { "default" } else { &req.namespace };
-        let (workflow_id, run_id) = self.engine.start_workflow(namespace, &req.workflow_id, &req.workflow_type).await.map_err(Status::internal)?;
-        Ok(Response::new(StartWorkflowResponse { workflow_id, run_id, start_time_us: VelocityEngine::now_us() }))
+        let namespace = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        let (workflow_id, run_id) = self
+            .engine
+            .start_workflow(namespace, &req.workflow_id, &req.workflow_type)
+            .await
+            .map_err(Status::internal)?;
+        Ok(Response::new(StartWorkflowResponse {
+            workflow_id,
+            run_id,
+            start_time_us: VelocityEngine::now_us(),
+        }))
     }
-    async fn signal_workflow(&self, request: Request<SignalWorkflowRequest>) -> Result<Response<SignalWorkflowResponse>, Status> {
+    async fn signal_workflow(
+        &self,
+        request: Request<SignalWorkflowRequest>,
+    ) -> Result<Response<SignalWorkflowResponse>, Status> {
         let start = Instant::now();
         let req = request.into_inner();
-        let namespace = if req.namespace.is_empty() { "default" } else { &req.namespace };
-        match self.engine.signal_workflow(namespace, &req.workflow_id, &req.signal_name, req.payload).await {
-            Ok(()) => Ok(Response::new(SignalWorkflowResponse { success: true, latency_us: start.elapsed().as_micros() as i64, error: String::new() })),
-            Err(e) => Ok(Response::new(SignalWorkflowResponse { success: false, latency_us: start.elapsed().as_micros() as i64, error: e })),
+        let namespace = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        match self
+            .engine
+            .signal_workflow(namespace, &req.workflow_id, &req.signal_name, req.payload)
+            .await
+        {
+            Ok(()) => Ok(Response::new(SignalWorkflowResponse {
+                success: true,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(SignalWorkflowResponse {
+                success: false,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: e,
+            })),
         }
     }
-    async fn query_workflow(&self, request: Request<QueryWorkflowRequest>) -> Result<Response<QueryWorkflowResponse>, Status> {
+    async fn query_workflow(
+        &self,
+        request: Request<QueryWorkflowRequest>,
+    ) -> Result<Response<QueryWorkflowResponse>, Status> {
         let start = Instant::now();
         let req = request.into_inner();
-        let namespace = if req.namespace.is_empty() { "default" } else { &req.namespace };
-        match self.engine.query_workflow(namespace, &req.workflow_id, &req.query_type).await {
-            Ok(result_bytes) => {
-                Ok(Response::new(QueryWorkflowResponse { success: true, latency_us: start.elapsed().as_micros() as i64, result: result_bytes, error: String::new() }))
-            }
-            Err(e) => Ok(Response::new(QueryWorkflowResponse { success: false, latency_us: start.elapsed().as_micros() as i64, result: Vec::new(), error: e })),
+        let namespace = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        match self
+            .engine
+            .query_workflow(namespace, &req.workflow_id, &req.query_type)
+            .await
+        {
+            Ok(result_bytes) => Ok(Response::new(QueryWorkflowResponse {
+                success: true,
+                latency_us: start.elapsed().as_micros() as i64,
+                result: result_bytes,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(QueryWorkflowResponse {
+                success: false,
+                latency_us: start.elapsed().as_micros() as i64,
+                result: Vec::new(),
+                error: e,
+            })),
         }
     }
-    async fn wait_for_completion(&self, request: Request<WaitForCompletionRequest>) -> Result<Response<WaitForCompletionResponse>, Status> {
+    async fn wait_for_completion(
+        &self,
+        request: Request<WaitForCompletionRequest>,
+    ) -> Result<Response<WaitForCompletionResponse>, Status> {
         let start = Instant::now();
         let req = request.into_inner();
-        let namespace = if req.namespace.is_empty() { "default" } else { &req.namespace };
-        let timeout = if req.timeout_ms > 0 { Duration::from_millis(req.timeout_ms as u64) } else { Duration::from_secs(30) };
+        let namespace = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        let timeout = if req.timeout_ms > 0 {
+            Duration::from_millis(req.timeout_ms as u64)
+        } else {
+            Duration::from_secs(30)
+        };
         let poll_interval = Duration::from_micros(100);
         loop {
-            if let Some(status) = self.engine.get_workflow_status(namespace, &req.workflow_id).await {
+            if let Some(status) = self
+                .engine
+                .get_workflow_status(namespace, &req.workflow_id)
+                .await
+            {
                 match status {
-                    WorkflowStatus::Completed => return Ok(Response::new(WaitForCompletionResponse { success: true, latency_us: start.elapsed().as_micros() as i64, result: Vec::new(), status: "completed".into(), error: String::new() })),
-                    WorkflowStatus::Failed => return Ok(Response::new(WaitForCompletionResponse { success: false, latency_us: start.elapsed().as_micros() as i64, result: Vec::new(), status: "failed".into(), error: String::new() })),
-                    WorkflowStatus::Terminated => return Ok(Response::new(WaitForCompletionResponse { success: false, latency_us: start.elapsed().as_micros() as i64, result: Vec::new(), status: "terminated".into(), error: String::new() })),
-                    WorkflowStatus::Cancelled => return Ok(Response::new(WaitForCompletionResponse { success: false, latency_us: start.elapsed().as_micros() as i64, result: Vec::new(), status: "cancelled".into(), error: String::new() })),
-                    WorkflowStatus::ContinuedAsNew => return Ok(Response::new(WaitForCompletionResponse { success: true, latency_us: start.elapsed().as_micros() as i64, result: Vec::new(), status: "continued_as_new".into(), error: String::new() })),
+                    WorkflowStatus::Completed => {
+                        return Ok(Response::new(WaitForCompletionResponse {
+                            success: true,
+                            latency_us: start.elapsed().as_micros() as i64,
+                            result: Vec::new(),
+                            status: "completed".into(),
+                            error: String::new(),
+                        }))
+                    }
+                    WorkflowStatus::Failed => {
+                        return Ok(Response::new(WaitForCompletionResponse {
+                            success: false,
+                            latency_us: start.elapsed().as_micros() as i64,
+                            result: Vec::new(),
+                            status: "failed".into(),
+                            error: String::new(),
+                        }))
+                    }
+                    WorkflowStatus::Terminated => {
+                        return Ok(Response::new(WaitForCompletionResponse {
+                            success: false,
+                            latency_us: start.elapsed().as_micros() as i64,
+                            result: Vec::new(),
+                            status: "terminated".into(),
+                            error: String::new(),
+                        }))
+                    }
+                    WorkflowStatus::Cancelled => {
+                        return Ok(Response::new(WaitForCompletionResponse {
+                            success: false,
+                            latency_us: start.elapsed().as_micros() as i64,
+                            result: Vec::new(),
+                            status: "cancelled".into(),
+                            error: String::new(),
+                        }))
+                    }
+                    WorkflowStatus::ContinuedAsNew => {
+                        return Ok(Response::new(WaitForCompletionResponse {
+                            success: true,
+                            latency_us: start.elapsed().as_micros() as i64,
+                            result: Vec::new(),
+                            status: "continued_as_new".into(),
+                            error: String::new(),
+                        }))
+                    }
                     WorkflowStatus::Running => {}
                 }
             }
             if start.elapsed() > timeout {
-                return Ok(Response::new(WaitForCompletionResponse { success: false, latency_us: start.elapsed().as_micros() as i64, result: Vec::new(), status: "timed_out".into(), error: "timeout".into() }));
+                return Ok(Response::new(WaitForCompletionResponse {
+                    success: false,
+                    latency_us: start.elapsed().as_micros() as i64,
+                    result: Vec::new(),
+                    status: "timed_out".into(),
+                    error: "timeout".into(),
+                }));
             }
             tokio::time::sleep(poll_interval).await;
         }
     }
-    async fn terminate_workflow(&self, request: Request<TerminateWorkflowRequest>) -> Result<Response<TerminateWorkflowResponse>, Status> {
-        let start = Instant::now(); let req = request.into_inner();
-        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
-        match self.engine.terminate_workflow(ns, &req.workflow_id, &req.reason).await {
-            Ok(()) => Ok(Response::new(TerminateWorkflowResponse { success: true, latency_us: start.elapsed().as_micros() as i64, error: String::new() })),
-            Err(e) => Ok(Response::new(TerminateWorkflowResponse { success: false, latency_us: start.elapsed().as_micros() as i64, error: e })),
+    async fn terminate_workflow(
+        &self,
+        request: Request<TerminateWorkflowRequest>,
+    ) -> Result<Response<TerminateWorkflowResponse>, Status> {
+        let start = Instant::now();
+        let req = request.into_inner();
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        match self
+            .engine
+            .terminate_workflow(ns, &req.workflow_id, &req.reason)
+            .await
+        {
+            Ok(()) => Ok(Response::new(TerminateWorkflowResponse {
+                success: true,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(TerminateWorkflowResponse {
+                success: false,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: e,
+            })),
         }
     }
-    async fn complete_step(&self, request: Request<CompleteStepRequest>) -> Result<Response<CompleteStepResponse>, Status> {
-        let start = Instant::now(); let req = request.into_inner();
-        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
-        let result = if req.result.is_empty() { None } else { Some(req.result) };
-        match self.engine.complete_workflow(ns, &req.workflow_id, result).await {
-            Ok(()) => Ok(Response::new(CompleteStepResponse { success: true, latency_us: start.elapsed().as_micros() as i64, error: String::new() })),
-            Err(e) => Ok(Response::new(CompleteStepResponse { success: false, latency_us: start.elapsed().as_micros() as i64, error: e })),
+    async fn complete_step(
+        &self,
+        request: Request<CompleteStepRequest>,
+    ) -> Result<Response<CompleteStepResponse>, Status> {
+        let start = Instant::now();
+        let req = request.into_inner();
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        let result = if req.result.is_empty() {
+            None
+        } else {
+            Some(req.result)
+        };
+        match self
+            .engine
+            .complete_workflow(ns, &req.workflow_id, result)
+            .await
+        {
+            Ok(()) => Ok(Response::new(CompleteStepResponse {
+                success: true,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(CompleteStepResponse {
+                success: false,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: e,
+            })),
         }
     }
-    async fn register_namespace(&self, request: Request<RegisterNamespaceRequest>) -> Result<Response<RegisterNamespaceResponse>, Status> {
+    async fn register_namespace(
+        &self,
+        request: Request<RegisterNamespaceRequest>,
+    ) -> Result<Response<RegisterNamespaceResponse>, Status> {
         let req = request.into_inner();
         let mut namespaces = self.engine.namespaces.write().unwrap();
         let already_exists = namespaces.contains_key(&req.name);
         if !already_exists {
-            namespaces.insert(req.name.clone(), NamespaceInfo {
-                name: req.name.clone(), description: req.description.clone(), state: "REGISTERED".to_string(),
-                retention_days: 7, owner_email: String::new(), is_global: false,
-                created_at: VelocityEngine::now_us() / 1_000_000,
-            });
+            namespaces.insert(
+                req.name.clone(),
+                NamespaceInfo {
+                    name: req.name.clone(),
+                    description: req.description.clone(),
+                    state: "REGISTERED".to_string(),
+                    retention_days: 7,
+                    owner_email: String::new(),
+                    is_global: false,
+                    created_at: VelocityEngine::now_us() / 1_000_000,
+                },
+            );
         }
-        Ok(Response::new(RegisterNamespaceResponse { success: true, already_exists }))
+        Ok(Response::new(RegisterNamespaceResponse {
+            success: true,
+            already_exists,
+        }))
     }
-    async fn count_workflows(&self, request: Request<CountWorkflowsRequest>) -> Result<Response<CountWorkflowsResponse>, Status> {
+    async fn count_workflows(
+        &self,
+        request: Request<CountWorkflowsRequest>,
+    ) -> Result<Response<CountWorkflowsResponse>, Status> {
         let req = request.into_inner();
-        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
-        let filter = if req.status_filter.is_empty() { "all" } else { &req.status_filter };
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        let filter = if req.status_filter.is_empty() {
+            "all"
+        } else {
+            &req.status_filter
+        };
         let count = self.engine.count_workflows(ns, filter).await;
-        Ok(Response::new(CountWorkflowsResponse { count: count as i64 }))
+        Ok(Response::new(CountWorkflowsResponse {
+            count: count as i64,
+        }))
     }
-    async fn health_check(&self, _request: Request<HealthCheckRequest>) -> Result<Response<HealthCheckResponse>, Status> {
+    async fn health_check(
+        &self,
+        _request: Request<HealthCheckRequest>,
+    ) -> Result<Response<HealthCheckResponse>, Status> {
         let logs = self.engine.logs.read().unwrap();
-        let active = logs.values().filter(|l| l.status == WorkflowStatus::Running).count() as i64;
+        let active = logs
+            .values()
+            .filter(|l| l.status == WorkflowStatus::Running)
+            .count() as i64;
         Ok(Response::new(HealthCheckResponse {
-            healthy: true, engine_version: env!("CARGO_PKG_VERSION").to_string(),
+            healthy: true,
+            engine_version: env!("CARGO_PKG_VERSION").to_string(),
             engine_name: "Velocity-Server".to_string(),
             uptime_secs: self.engine.start_time.elapsed().as_secs() as i64,
-            active_workflows: active, memory_rss_mb: 0.0, cpu_percent: 0.0,
+            active_workflows: active,
+            memory_rss_mb: 0.0,
+            cpu_percent: 0.0,
         }))
     }
-    async fn get_system_info(&self, _request: Request<GetSystemInfoRequest>) -> Result<Response<GetSystemInfoResponse>, Status> {
+    async fn get_system_info(
+        &self,
+        _request: Request<GetSystemInfoRequest>,
+    ) -> Result<Response<GetSystemInfoResponse>, Status> {
         Ok(Response::new(GetSystemInfoResponse {
-            engine_name: "Velocity-Server".to_string(), engine_version: env!("CARGO_PKG_VERSION").to_string(),
-            runtime: "rust".to_string(), max_workflows: 1_000_000,
-            supports_signals: true, supports_queries: true, supports_child_workflows: true,
-            supports_sagas: true, supports_timers: true, supports_search_attributes: true,
-            supports_namespaces: true, supports_cron: true,
+            engine_name: "Velocity-Server".to_string(),
+            engine_version: env!("CARGO_PKG_VERSION").to_string(),
+            runtime: "rust".to_string(),
+            max_workflows: 1_000_000,
+            supports_signals: true,
+            supports_queries: true,
+            supports_child_workflows: true,
+            supports_sagas: true,
+            supports_timers: true,
+            supports_search_attributes: true,
+            supports_namespaces: true,
+            supports_cron: true,
         }))
     }
-    async fn reset(&self, request: Request<ResetRequest>) -> Result<Response<ResetResponse>, Status> {
+    async fn reset(
+        &self,
+        request: Request<ResetRequest>,
+    ) -> Result<Response<ResetResponse>, Status> {
         let req = request.into_inner();
-        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
         let cleared = self.engine.reset(ns).await;
-        Ok(Response::new(ResetResponse { success: true, workflows_cleared: cleared as i64 }))
+        Ok(Response::new(ResetResponse {
+            success: true,
+            workflows_cleared: cleared as i64,
+        }))
     }
     // ─── Tier 1 ────────────────────────────────────────────────────────────
-    async fn cancel_workflow(&self, req: Request<CancelWorkflowRequest>) -> Result<Response<CancelWorkflowResponse>, Status> {
-        let start = Instant::now(); let r = req.into_inner();
-        let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.cancel_workflow(ns, &r.workflow_id, &r.reason).await {
-            Ok(()) => Ok(Response::new(CancelWorkflowResponse { success: true, latency_us: start.elapsed().as_micros() as i64, error: String::new() })),
-            Err(e) => Ok(Response::new(CancelWorkflowResponse { success: false, latency_us: start.elapsed().as_micros() as i64, error: e })),
+    async fn cancel_workflow(
+        &self,
+        req: Request<CancelWorkflowRequest>,
+    ) -> Result<Response<CancelWorkflowResponse>, Status> {
+        let start = Instant::now();
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .cancel_workflow(ns, &r.workflow_id, &r.reason)
+            .await
+        {
+            Ok(()) => Ok(Response::new(CancelWorkflowResponse {
+                success: true,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(CancelWorkflowResponse {
+                success: false,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: e,
+            })),
         }
     }
-    async fn update_workflow_execution(&self, req: Request<UpdateWorkflowRequest>) -> Result<Response<UpdateWorkflowResponse>, Status> {
-        let start = Instant::now(); let r = req.into_inner();
-        let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.update_workflow(ns, &r.workflow_id, &r.update_name, &r.update_id, r.payload).await {
-            Ok(result) => Ok(Response::new(UpdateWorkflowResponse { success: true, latency_us: start.elapsed().as_micros() as i64, result, error: String::new() })),
-            Err(e) => Ok(Response::new(UpdateWorkflowResponse { success: false, latency_us: 0, result: Vec::new(), error: e })),
+    async fn update_workflow_execution(
+        &self,
+        req: Request<UpdateWorkflowRequest>,
+    ) -> Result<Response<UpdateWorkflowResponse>, Status> {
+        let start = Instant::now();
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .update_workflow(ns, &r.workflow_id, &r.update_name, &r.update_id, r.payload)
+            .await
+        {
+            Ok(result) => Ok(Response::new(UpdateWorkflowResponse {
+                success: true,
+                latency_us: start.elapsed().as_micros() as i64,
+                result,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(UpdateWorkflowResponse {
+                success: false,
+                latency_us: 0,
+                result: Vec::new(),
+                error: e,
+            })),
         }
     }
-    async fn start_child_workflow(&self, req: Request<StartChildWorkflowRequest>) -> Result<Response<StartChildWorkflowResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.start_child_workflow(ns, &r.parent_workflow_id, &r.workflow_type, &r.workflow_id).await {
-            Ok((cid, crid)) => Ok(Response::new(StartChildWorkflowResponse { workflow_id: cid, run_id: crid, success: true, error: String::new() })),
-            Err(e) => Ok(Response::new(StartChildWorkflowResponse { workflow_id: String::new(), run_id: String::new(), success: false, error: e })),
+    async fn start_child_workflow(
+        &self,
+        req: Request<StartChildWorkflowRequest>,
+    ) -> Result<Response<StartChildWorkflowResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .start_child_workflow(ns, &r.parent_workflow_id, &r.workflow_type, &r.workflow_id)
+            .await
+        {
+            Ok((cid, crid)) => Ok(Response::new(StartChildWorkflowResponse {
+                workflow_id: cid,
+                run_id: crid,
+                success: true,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(StartChildWorkflowResponse {
+                workflow_id: String::new(),
+                run_id: String::new(),
+                success: false,
+                error: e,
+            })),
         }
     }
-    async fn schedule_timer(&self, req: Request<ScheduleTimerRequest>) -> Result<Response<ScheduleTimerResponse>, Status> {
-        let start = Instant::now(); let r = req.into_inner();
-        let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.schedule_timer(ns, &r.workflow_id, &r.timer_id, r.duration_ms).await {
-            Ok(tid) => Ok(Response::new(ScheduleTimerResponse { success: true, timer_id: tid, latency_us: start.elapsed().as_micros() as i64 })),
-            Err(_) => Ok(Response::new(ScheduleTimerResponse { success: false, timer_id: String::new(), latency_us: 0 })),
+    async fn schedule_timer(
+        &self,
+        req: Request<ScheduleTimerRequest>,
+    ) -> Result<Response<ScheduleTimerResponse>, Status> {
+        let start = Instant::now();
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .schedule_timer(ns, &r.workflow_id, &r.timer_id, r.duration_ms)
+            .await
+        {
+            Ok(tid) => Ok(Response::new(ScheduleTimerResponse {
+                success: true,
+                timer_id: tid,
+                latency_us: start.elapsed().as_micros() as i64,
+            })),
+            Err(_) => Ok(Response::new(ScheduleTimerResponse {
+                success: false,
+                timer_id: String::new(),
+                latency_us: 0,
+            })),
         }
     }
-    async fn cancel_timer(&self, req: Request<CancelTimerRequest>) -> Result<Response<CancelTimerResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.cancel_timer(ns, &r.workflow_id, &r.timer_id).await {
-            Ok(()) => Ok(Response::new(CancelTimerResponse { success: true, error: String::new() })),
-            Err(e) => Ok(Response::new(CancelTimerResponse { success: false, error: e })),
+    async fn cancel_timer(
+        &self,
+        req: Request<CancelTimerRequest>,
+    ) -> Result<Response<CancelTimerResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .cancel_timer(ns, &r.workflow_id, &r.timer_id)
+            .await
+        {
+            Ok(()) => Ok(Response::new(CancelTimerResponse {
+                success: true,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(CancelTimerResponse {
+                success: false,
+                error: e,
+            })),
         }
     }
-    async fn continue_as_new(&self, req: Request<ContinueAsNewRequest>) -> Result<Response<ContinueAsNewResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        let wt = if r.workflow_type.is_empty() { "default" } else { &r.workflow_type };
+    async fn continue_as_new(
+        &self,
+        req: Request<ContinueAsNewRequest>,
+    ) -> Result<Response<ContinueAsNewResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        let wt = if r.workflow_type.is_empty() {
+            "default"
+        } else {
+            &r.workflow_type
+        };
         match self.engine.continue_as_new(ns, &r.workflow_id, wt).await {
-            Ok(id) => Ok(Response::new(ContinueAsNewResponse { new_run_id: id, success: true, error: String::new() })),
-            Err(e) => Ok(Response::new(ContinueAsNewResponse { new_run_id: String::new(), success: false, error: e })),
+            Ok(id) => Ok(Response::new(ContinueAsNewResponse {
+                new_run_id: id,
+                success: true,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(ContinueAsNewResponse {
+                new_run_id: String::new(),
+                success: false,
+                error: e,
+            })),
         }
     }
-    async fn upsert_search_attributes(&self, req: Request<UpsertSearchAttributesRequest>) -> Result<Response<UpsertSearchAttributesResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.upsert_search_attributes(ns, &r.workflow_id, r.search_attributes).await {
-            Ok(()) => Ok(Response::new(UpsertSearchAttributesResponse { success: true, error: String::new() })),
-            Err(e) => Ok(Response::new(UpsertSearchAttributesResponse { success: false, error: e })),
+    async fn upsert_search_attributes(
+        &self,
+        req: Request<UpsertSearchAttributesRequest>,
+    ) -> Result<Response<UpsertSearchAttributesResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .upsert_search_attributes(ns, &r.workflow_id, r.search_attributes)
+            .await
+        {
+            Ok(()) => Ok(Response::new(UpsertSearchAttributesResponse {
+                success: true,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(UpsertSearchAttributesResponse {
+                success: false,
+                error: e,
+            })),
         }
     }
-    async fn set_memo(&self, req: Request<SetMemoRequest>) -> Result<Response<SetMemoResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
+    async fn set_memo(
+        &self,
+        req: Request<SetMemoRequest>,
+    ) -> Result<Response<SetMemoResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
         match self.engine.set_memo(ns, &r.workflow_id, r.memo).await {
-            Ok(()) => Ok(Response::new(SetMemoResponse { success: true, error: String::new() })),
-            Err(e) => Ok(Response::new(SetMemoResponse { success: false, error: e })),
+            Ok(()) => Ok(Response::new(SetMemoResponse {
+                success: true,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(SetMemoResponse {
+                success: false,
+                error: e,
+            })),
         }
     }
-    async fn signal_with_start(&self, req: Request<SignalWithStartRequest>) -> Result<Response<SignalWithStartResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.signal_with_start(ns, &r.workflow_type, &r.workflow_id, &r.signal_name, r.signal_payload).await {
-            Ok((wf, run, s, sig)) => Ok(Response::new(SignalWithStartResponse { workflow_id: wf, run_id: run, started: s, signaled: sig })),
+    async fn signal_with_start(
+        &self,
+        req: Request<SignalWithStartRequest>,
+    ) -> Result<Response<SignalWithStartResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .signal_with_start(
+                ns,
+                &r.workflow_type,
+                &r.workflow_id,
+                &r.signal_name,
+                r.signal_payload,
+            )
+            .await
+        {
+            Ok((wf, run, s, sig)) => Ok(Response::new(SignalWithStartResponse {
+                workflow_id: wf,
+                run_id: run,
+                started: s,
+                signaled: sig,
+            })),
             Err(e) => Err(Status::internal(e)),
         }
     }
     // ─── Tier 2 ────────────────────────────────────────────────────────────
-    async fn record_activity_heartbeat(&self, req: Request<RecordActivityHeartbeatRequest>) -> Result<Response<RecordActivityHeartbeatResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.record_heartbeat(ns, &r.workflow_id, &r.activity_id).await {
-            Ok(c) => Ok(Response::new(RecordActivityHeartbeatResponse { success: true, cancel_requested: c })),
-            Err(_) => Ok(Response::new(RecordActivityHeartbeatResponse { success: false, cancel_requested: false })),
+    async fn record_activity_heartbeat(
+        &self,
+        req: Request<RecordActivityHeartbeatRequest>,
+    ) -> Result<Response<RecordActivityHeartbeatResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .record_heartbeat(ns, &r.workflow_id, &r.activity_id)
+            .await
+        {
+            Ok(c) => Ok(Response::new(RecordActivityHeartbeatResponse {
+                success: true,
+                cancel_requested: c,
+            })),
+            Err(_) => Ok(Response::new(RecordActivityHeartbeatResponse {
+                success: false,
+                cancel_requested: false,
+            })),
         }
     }
-    async fn schedule_activity(&self, req: Request<ScheduleActivityRequest>) -> Result<Response<ScheduleActivityResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.schedule_activity(ns, &r.workflow_id, &r.activity_id, &r.activity_type).await {
-            Ok(aid) => Ok(Response::new(ScheduleActivityResponse { activity_id: aid, success: true, error: String::new() })),
-            Err(e) => Ok(Response::new(ScheduleActivityResponse { activity_id: String::new(), success: false, error: e })),
+    async fn schedule_activity(
+        &self,
+        req: Request<ScheduleActivityRequest>,
+    ) -> Result<Response<ScheduleActivityResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .schedule_activity(ns, &r.workflow_id, &r.activity_id, &r.activity_type)
+            .await
+        {
+            Ok(aid) => Ok(Response::new(ScheduleActivityResponse {
+                activity_id: aid,
+                success: true,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(ScheduleActivityResponse {
+                activity_id: String::new(),
+                success: false,
+                error: e,
+            })),
         }
     }
-    async fn complete_activity_task(&self, req: Request<CompleteActivityTaskRequest>) -> Result<Response<CompleteActivityTaskResponse>, Status> {
-        let start = Instant::now(); let r = req.into_inner();
-        let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.complete_activity(ns, &r.workflow_id, &r.activity_id).await {
-            Ok(()) => Ok(Response::new(CompleteActivityTaskResponse { success: true, latency_us: start.elapsed().as_micros() as i64, error: String::new() })),
-            Err(e) => Ok(Response::new(CompleteActivityTaskResponse { success: false, latency_us: 0, error: e })),
+    async fn complete_activity_task(
+        &self,
+        req: Request<CompleteActivityTaskRequest>,
+    ) -> Result<Response<CompleteActivityTaskResponse>, Status> {
+        let start = Instant::now();
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .complete_activity(ns, &r.workflow_id, &r.activity_id)
+            .await
+        {
+            Ok(()) => Ok(Response::new(CompleteActivityTaskResponse {
+                success: true,
+                latency_us: start.elapsed().as_micros() as i64,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(CompleteActivityTaskResponse {
+                success: false,
+                latency_us: 0,
+                error: e,
+            })),
         }
     }
-    async fn fail_activity_task(&self, req: Request<FailActivityTaskRequest>) -> Result<Response<FailActivityTaskResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.fail_activity(ns, &r.workflow_id, &r.activity_id, &r.reason, r.non_retryable).await {
-            Ok((wr, nx)) => Ok(Response::new(FailActivityTaskResponse { success: true, will_retry: wr, next_attempt: nx as i32, error: String::new() })),
-            Err(e) => Ok(Response::new(FailActivityTaskResponse { success: false, will_retry: false, next_attempt: 0, error: e })),
+    async fn fail_activity_task(
+        &self,
+        req: Request<FailActivityTaskRequest>,
+    ) -> Result<Response<FailActivityTaskResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .fail_activity(
+                ns,
+                &r.workflow_id,
+                &r.activity_id,
+                &r.reason,
+                r.non_retryable,
+            )
+            .await
+        {
+            Ok((wr, nx)) => Ok(Response::new(FailActivityTaskResponse {
+                success: true,
+                will_retry: wr,
+                next_attempt: nx as i32,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(FailActivityTaskResponse {
+                success: false,
+                will_retry: false,
+                next_attempt: 0,
+                error: e,
+            })),
         }
     }
-    async fn replay_workflow(&self, req: Request<ReplayWorkflowRequest>) -> Result<Response<ReplayWorkflowResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
+    async fn replay_workflow(
+        &self,
+        req: Request<ReplayWorkflowRequest>,
+    ) -> Result<Response<ReplayWorkflowResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
         match self.engine.replay_workflow(ns, &r.workflow_id).await {
-            Ok((ev, st)) => Ok(Response::new(ReplayWorkflowResponse { success: true, events_replayed: ev as i64, final_status: st, error: String::new() })),
-            Err(e) => Ok(Response::new(ReplayWorkflowResponse { success: false, events_replayed: 0, final_status: String::new(), error: e })),
+            Ok((ev, st)) => Ok(Response::new(ReplayWorkflowResponse {
+                success: true,
+                events_replayed: ev as i64,
+                final_status: st,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(ReplayWorkflowResponse {
+                success: false,
+                events_replayed: 0,
+                final_status: String::new(),
+                error: e,
+            })),
         }
     }
-    async fn reset_workflow(&self, req: Request<ResetWorkflowRequest>) -> Result<Response<ResetWorkflowResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        match self.engine.reset_workflow(ns, &r.workflow_id, r.reset_to_event_id, &r.reason).await {
-            Ok(id) => Ok(Response::new(ResetWorkflowResponse { new_run_id: id, success: true, error: String::new() })),
-            Err(e) => Ok(Response::new(ResetWorkflowResponse { new_run_id: String::new(), success: false, error: e })),
+    async fn reset_workflow(
+        &self,
+        req: Request<ResetWorkflowRequest>,
+    ) -> Result<Response<ResetWorkflowResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .engine
+            .reset_workflow(ns, &r.workflow_id, r.reset_to_event_id, &r.reason)
+            .await
+        {
+            Ok(id) => Ok(Response::new(ResetWorkflowResponse {
+                new_run_id: id,
+                success: true,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(ResetWorkflowResponse {
+                new_run_id: String::new(),
+                success: false,
+                error: e,
+            })),
         }
     }
-    async fn batch_terminate(&self, req: Request<BatchTerminateRequest>) -> Result<Response<BatchTerminateResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        let count = self.engine.batch_terminate(ns, &r.reason, r.max_count).await;
-        Ok(Response::new(BatchTerminateResponse { terminated_count: count as i64 }))
+    async fn batch_terminate(
+        &self,
+        req: Request<BatchTerminateRequest>,
+    ) -> Result<Response<BatchTerminateResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        let count = self
+            .engine
+            .batch_terminate(ns, &r.reason, r.max_count)
+            .await;
+        Ok(Response::new(BatchTerminateResponse {
+            terminated_count: count as i64,
+        }))
     }
-    async fn batch_signal(&self, req: Request<BatchSignalRequest>) -> Result<Response<BatchSignalResponse>, Status> {
-        let r = req.into_inner(); let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
-        let count = self.engine.batch_signal(ns, &r.signal_name, r.payload, r.max_count).await;
-        Ok(Response::new(BatchSignalResponse { signaled_count: count as i64 }))
+    async fn batch_signal(
+        &self,
+        req: Request<BatchSignalRequest>,
+    ) -> Result<Response<BatchSignalResponse>, Status> {
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        let count = self
+            .engine
+            .batch_signal(ns, &r.signal_name, r.payload, r.max_count)
+            .await;
+        Ok(Response::new(BatchSignalResponse {
+            signaled_count: count as i64,
+        }))
     }
     // ─── Tier 3 ────────────────────────────────────────────────────────────
-    async fn describe_namespace(&self, req: Request<DescribeNamespaceRequest>) -> Result<Response<DescribeNamespaceResponse>, Status> {
+    async fn describe_namespace(
+        &self,
+        req: Request<DescribeNamespaceRequest>,
+    ) -> Result<Response<DescribeNamespaceResponse>, Status> {
         let r = req.into_inner();
         let namespaces = self.engine.namespaces.read().unwrap();
         match namespaces.get(&r.name) {
             Some(ns) => Ok(Response::new(DescribeNamespaceResponse {
-                name: ns.name.clone(), id: format!("ns-{}", ns.name), description: ns.description.clone(),
-                state: ns.state.clone(), retention_days: ns.retention_days, owner_email: ns.owner_email.clone(),
-                is_global: ns.is_global, created_at: ns.created_at,
+                name: ns.name.clone(),
+                id: format!("ns-{}", ns.name),
+                description: ns.description.clone(),
+                state: ns.state.clone(),
+                retention_days: ns.retention_days,
+                owner_email: ns.owner_email.clone(),
+                is_global: ns.is_global,
+                created_at: ns.created_at,
             })),
             None => Err(Status::not_found(format!("Namespace {} not found", r.name))),
         }
     }
-    async fn update_namespace(&self, req: Request<UpdateNamespaceRequest>) -> Result<Response<UpdateNamespaceResponse>, Status> {
+    async fn update_namespace(
+        &self,
+        req: Request<UpdateNamespaceRequest>,
+    ) -> Result<Response<UpdateNamespaceResponse>, Status> {
         let r = req.into_inner();
         let mut namespaces = self.engine.namespaces.write().unwrap();
         match namespaces.get_mut(&r.name) {
             Some(ns) => {
-                if !r.description.is_empty() { ns.description = r.description; }
-                if r.retention_days > 0 { ns.retention_days = r.retention_days; }
-                if !r.owner_email.is_empty() { ns.owner_email = r.owner_email; }
-                Ok(Response::new(UpdateNamespaceResponse { success: true, error: String::new() }))
+                if !r.description.is_empty() {
+                    ns.description = r.description;
+                }
+                if r.retention_days > 0 {
+                    ns.retention_days = r.retention_days;
+                }
+                if !r.owner_email.is_empty() {
+                    ns.owner_email = r.owner_email;
+                }
+                Ok(Response::new(UpdateNamespaceResponse {
+                    success: true,
+                    error: String::new(),
+                }))
             }
-            None => Ok(Response::new(UpdateNamespaceResponse { success: true, error: String::new() })),
+            None => Ok(Response::new(UpdateNamespaceResponse {
+                success: true,
+                error: String::new(),
+            })),
         }
     }
-    async fn delete_namespace(&self, req: Request<DeleteNamespaceRequest>) -> Result<Response<DeleteNamespaceResponse>, Status> {
+    async fn delete_namespace(
+        &self,
+        req: Request<DeleteNamespaceRequest>,
+    ) -> Result<Response<DeleteNamespaceResponse>, Status> {
         let r = req.into_inner();
-        { let mut ns = self.engine.namespaces.write().unwrap(); ns.remove(&r.name); }
+        {
+            let mut ns = self.engine.namespaces.write().unwrap();
+            ns.remove(&r.name);
+        }
         let _ = self.engine.reset(&r.name).await;
-        Ok(Response::new(DeleteNamespaceResponse { success: true, error: String::new() }))
+        Ok(Response::new(DeleteNamespaceResponse {
+            success: true,
+            error: String::new(),
+        }))
     }
-    async fn poll_workflow_task(&self, req: Request<PollWorkflowTaskRequest>) -> Result<Response<PollWorkflowTaskResponse>, Status> {
+    async fn poll_workflow_task(
+        &self,
+        req: Request<PollWorkflowTaskRequest>,
+    ) -> Result<Response<PollWorkflowTaskResponse>, Status> {
         let r = req.into_inner();
-        let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
         let logs = self.engine.logs.read().unwrap();
         for (wf_id, log) in logs.iter() {
             if log.namespace == ns && log.status == WorkflowStatus::Running {
                 return Ok(Response::new(PollWorkflowTaskResponse {
-                    task_token: format!("wt-{}-{}", wf_id, self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
-                    event_id: log.event_count as i64, event_type: "WorkflowTask".to_string(),
-                    workflow_execution: Vec::new(), has_task: true,
+                    task_token: format!(
+                        "wt-{}-{}",
+                        wf_id,
+                        self.engine.next_id.fetch_add(1, Ordering::Relaxed)
+                    ),
+                    event_id: log.event_count as i64,
+                    event_type: "WorkflowTask".to_string(),
+                    workflow_execution: Vec::new(),
+                    has_task: true,
                 }));
             }
         }
         Ok(Response::new(PollWorkflowTaskResponse {
-            task_token: String::new(), event_id: 0, event_type: String::new(),
-            workflow_execution: Vec::new(), has_task: false,
+            task_token: String::new(),
+            event_id: 0,
+            event_type: String::new(),
+            workflow_execution: Vec::new(),
+            has_task: false,
         }))
     }
-    async fn poll_activity_task(&self, req: Request<PollActivityTaskRequest>) -> Result<Response<PollActivityTaskResponse>, Status> {
+    async fn poll_activity_task(
+        &self,
+        req: Request<PollActivityTaskRequest>,
+    ) -> Result<Response<PollActivityTaskResponse>, Status> {
         let r = req.into_inner();
-        let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
         let logs = self.engine.logs.read().unwrap();
         for (wf_id, log) in logs.iter() {
-            if log.namespace == ns && log.status == WorkflowStatus::Running
+            if log.namespace == ns
+                && log.status == WorkflowStatus::Running
                 && log.activities_scheduled > log.activities_completed + log.activities_failed
             {
                 return Ok(Response::new(PollActivityTaskResponse {
-                    task_token: format!("at-{}-{}", wf_id, self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
-                    activity_id: format!("act-{}", self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
-                    activity_type: "activity".to_string(), input: Vec::new(),
-                    workflow_id: wf_id.clone(), has_task: true,
+                    task_token: format!(
+                        "at-{}-{}",
+                        wf_id,
+                        self.engine.next_id.fetch_add(1, Ordering::Relaxed)
+                    ),
+                    activity_id: format!(
+                        "act-{}",
+                        self.engine.next_id.fetch_add(1, Ordering::Relaxed)
+                    ),
+                    activity_type: "activity".to_string(),
+                    input: Vec::new(),
+                    workflow_id: wf_id.clone(),
+                    has_task: true,
                     scheduled_time: VelocityEngine::now_us(),
                 }));
             }
         }
         Ok(Response::new(PollActivityTaskResponse {
-            task_token: String::new(), activity_id: String::new(), activity_type: String::new(),
-            input: Vec::new(), workflow_id: String::new(), has_task: false, scheduled_time: 0,
+            task_token: String::new(),
+            activity_id: String::new(),
+            activity_type: String::new(),
+            input: Vec::new(),
+            workflow_id: String::new(),
+            has_task: false,
+            scheduled_time: 0,
         }))
     }
-    async fn get_workflow_history(&self, req: Request<GetWorkflowHistoryRequest>) -> Result<Response<GetWorkflowHistoryResponse>, Status> {
+    async fn get_workflow_history(
+        &self,
+        req: Request<GetWorkflowHistoryRequest>,
+    ) -> Result<Response<GetWorkflowHistoryResponse>, Status> {
         let r = req.into_inner();
-        let ns = if r.namespace.is_empty() { "default" } else { &r.namespace };
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
         match self.engine.get_workflow_history(ns, &r.workflow_id).await {
-            Ok(count) => Ok(Response::new(GetWorkflowHistoryResponse { events: Vec::new(), next_page_token: Vec::new(), total_event_count: count as i64 })),
+            Ok(count) => Ok(Response::new(GetWorkflowHistoryResponse {
+                events: Vec::new(),
+                next_page_token: Vec::new(),
+                total_event_count: count as i64,
+            })),
             Err(e) => Err(Status::not_found(e)),
         }
     }
     // ─── Tier 4 ────────────────────────────────────────────────────────────
-    async fn list_workflows(&self, request: Request<ListWorkflowsRequest>) -> Result<Response<ListWorkflowsResponse>, Status> {
+    async fn list_workflows(
+        &self,
+        request: Request<ListWorkflowsRequest>,
+    ) -> Result<Response<ListWorkflowsResponse>, Status> {
         let req = request.into_inner();
-        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
         let logs = self.engine.logs.read().unwrap();
         let mut executions = Vec::new();
         for (wf_id, log) in logs.iter() {
-            if log.namespace != ns { continue; }
+            if log.namespace != ns {
+                continue;
+            }
             let status_str = format!("{:?}", log.status);
-            if !req.status_filter.is_empty() && req.status_filter.to_lowercase() != status_str.to_lowercase() && req.status_filter != "all" { continue; }
+            if !req.status_filter.is_empty()
+                && req.status_filter.to_lowercase() != status_str.to_lowercase()
+                && req.status_filter != "all"
+            {
+                continue;
+            }
             executions.push(WorkflowExecutionInfo {
-                workflow_id: wf_id.clone(), run_id: wf_id.clone(), workflow_type: log.workflow_type.clone(),
-                namespace: log.namespace.clone(), status: status_str,
-                start_time_ms: 0, close_time_ms: 0, task_queue: String::new(),
-                search_attributes: log.search_attributes.clone(), history_length: log.event_count as i32,
+                workflow_id: wf_id.clone(),
+                run_id: wf_id.clone(),
+                workflow_type: log.workflow_type.clone(),
+                namespace: log.namespace.clone(),
+                status: status_str,
+                start_time_ms: 0,
+                close_time_ms: 0,
+                task_queue: String::new(),
+                search_attributes: log.search_attributes.clone(),
+                history_length: log.event_count as i32,
             });
         }
         let total = executions.len() as i64;
-        Ok(Response::new(ListWorkflowsResponse { executions, next_page_token: Vec::new(), total_count: total }))
-    }
-    async fn describe_workflow_execution(&self, request: Request<DescribeWorkflowExecutionRequest>) -> Result<Response<DescribeWorkflowExecutionResponse>, Status> {
-        let req = request.into_inner();
-        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
-        let logs = self.engine.logs.read().unwrap();
-        let log = logs.get(&req.workflow_id).ok_or_else(|| Status::not_found(format!("workflow {} not found", req.workflow_id)))?;
-        if log.namespace != ns { return Err(Status::not_found("namespace mismatch")); }
-        let status_str = format!("{:?}", log.status);
-        let exec = WorkflowExecutionInfo {
-            workflow_id: req.workflow_id.clone(), run_id: req.workflow_id.clone(),
-            workflow_type: log.workflow_type.clone(), namespace: log.namespace.clone(),
-            status: status_str, start_time_ms: 0, close_time_ms: 0, task_queue: String::new(),
-            search_attributes: log.search_attributes.clone(), history_length: log.event_count as i32,
-        };
-        Ok(Response::new(DescribeWorkflowExecutionResponse {
-            execution: Some(exec), pending_activities: Vec::new(), pending_children: Vec::new(),
-            history_length: log.event_count as i64, execution_duration_ms: 0,
+        Ok(Response::new(ListWorkflowsResponse {
+            executions,
+            next_page_token: Vec::new(),
+            total_count: total,
         }))
     }
-    async fn describe_task_queue(&self, _request: Request<DescribeTaskQueueRequest>) -> Result<Response<DescribeTaskQueueResponse>, Status> {
-        Ok(Response::new(DescribeTaskQueueResponse { pollers: Vec::new(), total_backlog: 0, partition_count: 0, build_ids: Vec::new() }))
+    async fn describe_workflow_execution(
+        &self,
+        request: Request<DescribeWorkflowExecutionRequest>,
+    ) -> Result<Response<DescribeWorkflowExecutionResponse>, Status> {
+        let req = request.into_inner();
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+        let logs = self.engine.logs.read().unwrap();
+        let log = logs
+            .get(&req.workflow_id)
+            .ok_or_else(|| Status::not_found(format!("workflow {} not found", req.workflow_id)))?;
+        if log.namespace != ns {
+            return Err(Status::not_found("namespace mismatch"));
+        }
+        let status_str = format!("{:?}", log.status);
+        let exec = WorkflowExecutionInfo {
+            workflow_id: req.workflow_id.clone(),
+            run_id: req.workflow_id.clone(),
+            workflow_type: log.workflow_type.clone(),
+            namespace: log.namespace.clone(),
+            status: status_str,
+            start_time_ms: 0,
+            close_time_ms: 0,
+            task_queue: String::new(),
+            search_attributes: log.search_attributes.clone(),
+            history_length: log.event_count as i32,
+        };
+        Ok(Response::new(DescribeWorkflowExecutionResponse {
+            execution: Some(exec),
+            pending_activities: Vec::new(),
+            pending_children: Vec::new(),
+            history_length: log.event_count as i64,
+            execution_duration_ms: 0,
+        }))
+    }
+    async fn describe_task_queue(
+        &self,
+        _request: Request<DescribeTaskQueueRequest>,
+    ) -> Result<Response<DescribeTaskQueueResponse>, Status> {
+        Ok(Response::new(DescribeTaskQueueResponse {
+            pollers: Vec::new(),
+            total_backlog: 0,
+            partition_count: 0,
+            build_ids: Vec::new(),
+        }))
     }
 }
 
@@ -867,19 +1664,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match e.recover_from_wal() {
             Ok((records, workflows)) => {
                 if records > 0 {
-                    tracing::info!(records_replayed = records, workflows_recovered = workflows, "Crash recovery: replayed WAL on startup");
+                    tracing::info!(
+                        records_replayed = records,
+                        workflows_recovered = workflows,
+                        "Crash recovery: replayed WAL on startup"
+                    );
                 }
             }
-            Err(err) => { tracing::warn!(error = %err, "WAL recovery failed (starting fresh)"); }
+            Err(err) => {
+                tracing::warn!(error = %err, "WAL recovery failed (starting fresh)");
+            }
         }
         e
     };
     let _engine = Arc::new(engine);
 
     // Use the structurally-identical mock engine for fair comparison
-    let service = BenchmarkServiceImpl { engine: VelocityEngine::new() };
+    let service = BenchmarkServiceImpl {
+        engine: VelocityEngine::new(),
+    };
 
-    tracing::info!("BenchmarkService (mock mode — structurally identical to Temporal bridge) listening on {}", addr);
+    tracing::info!(
+        "BenchmarkService (mock mode — structurally identical to Temporal bridge) listening on {}",
+        addr
+    );
 
     tonic::transport::Server::builder()
         .add_service(BenchmarkServiceServer::new(service))

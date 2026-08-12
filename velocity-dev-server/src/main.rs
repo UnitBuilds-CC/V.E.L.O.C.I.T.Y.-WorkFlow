@@ -30,17 +30,17 @@ use tokio::sync::{broadcast, Notify};
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 // Hyper HTTP server (production-grade HTTP/1.1 with keep-alive)
+use http_body_util::Full;
+use hyper::body::Bytes;
 use hyper::body::Incoming;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder as ServerBuilder;
-use http_body_util::Full;
-use hyper::body::Bytes;
 
 // TLS support — optional, enabled via --tls-cert / --tls-key
-use tokio_rustls::TlsAcceptor;
 use std::io::BufReader;
+use tokio_rustls::TlsAcceptor;
 
 // gRPC BenchmarkService — apples-to-apples comparison with Temporal.
 mod grpc_bench;
@@ -403,10 +403,26 @@ struct SignalEntry {
 
 /// Static feature list — allocated once, never changes.
 const FEATURES_LIST: &[&str] = &[
-    "signals", "queries", "updates", "cancellation", "child_workflows",
-    "timers", "activities", "heartbeats", "retry", "continue_as_new",
-    "search_attributes", "memo", "signal_with_start", "batch_operations",
-    "cron", "replay", "reset", "namespace_mgmt", "worker_poll", "history_archival",
+    "signals",
+    "queries",
+    "updates",
+    "cancellation",
+    "child_workflows",
+    "timers",
+    "activities",
+    "heartbeats",
+    "retry",
+    "continue_as_new",
+    "search_attributes",
+    "memo",
+    "signal_with_start",
+    "batch_operations",
+    "cron",
+    "replay",
+    "reset",
+    "namespace_mgmt",
+    "worker_poll",
+    "history_archival",
 ];
 
 #[derive(Debug)]
@@ -1891,7 +1907,10 @@ async fn run_http_server(
         }
     };
     if tls_acceptor.is_some() {
-        tracing::info!("HTTP API listening on https://{} (Hyper + TLS, keep-alive)", addr);
+        tracing::info!(
+            "HTTP API listening on https://{} (Hyper + TLS, keep-alive)",
+            addr
+        );
     } else {
         tracing::info!("HTTP API listening on http://{} (Hyper, keep-alive)", addr);
     }
@@ -1982,7 +2001,8 @@ async fn route_to_http_response(
     let path = req.uri().path().to_string();
 
     // Extract or generate X-Request-Id for request correlation
-    let request_id = req.headers()
+    let request_id = req
+        .headers()
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
@@ -1990,7 +2010,8 @@ async fn route_to_http_response(
 
     // Auth enforcement: check bearer token for /api/ routes when auth is configured
     if !engine.config.auth_token.is_empty() && path.starts_with("/api/") {
-        let auth_header = req.headers()
+        let auth_header = req
+            .headers()
             .get("authorization")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
@@ -2007,7 +2028,8 @@ async fn route_to_http_response(
 
     // Content-Type validation: POST/PUT/PATCH to /api/ must send application/json
     if (method == "POST" || method == "PUT" || method == "PATCH") && path.starts_with("/api/") {
-        let ct = req.headers()
+        let ct = req
+            .headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
@@ -2017,20 +2039,24 @@ async fn route_to_http_response(
                 .header("Content-Type", "application/json")
                 .header("X-Request-Id", &request_id)
                 .body(Full::new(Bytes::from(
-                    r#"{"error":"unsupported media type","expected":"application/json"}"#
+                    r#"{"error":"unsupported media type","expected":"application/json"}"#,
                 )))
                 .unwrap());
         }
     }
 
     // Request body size limit: check Content-Length first for fast rejection
-    let content_length = req.headers()
+    let content_length = req
+        .headers()
         .get("content-length")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<usize>().ok());
     if let Some(len) = content_length {
         if len > MAX_BODY_SIZE {
-            let msg = format!(r#"{{"error":"payload too large","max_bytes":{}}}"#, MAX_BODY_SIZE);
+            let msg = format!(
+                r#"{{"error":"payload too large","max_bytes":{}}}"#,
+                MAX_BODY_SIZE
+            );
             return Ok(Response::builder()
                 .status(413)
                 .header("Content-Type", "application/json")
@@ -2044,7 +2070,10 @@ async fn route_to_http_response(
         Ok(collected) => {
             let bytes = collected.to_bytes();
             if bytes.len() > MAX_BODY_SIZE {
-                let msg = format!(r#"{{"error":"payload too large","max_bytes":{}}}"#, MAX_BODY_SIZE);
+                let msg = format!(
+                    r#"{{"error":"payload too large","max_bytes":{}}}"#,
+                    MAX_BODY_SIZE
+                );
                 return Ok(Response::builder()
                     .status(413)
                     .header("Content-Type", "application/json")
@@ -2057,7 +2086,8 @@ async fn route_to_http_response(
         Err(_) => Bytes::new(),
     };
 
-    let (status, content_type, response_body) = route_request(engine, &method, &path, &body_bytes).await;
+    let (status, content_type, response_body) =
+        route_request(engine, &method, &path, &body_bytes).await;
 
     let Ok(response) = Response::builder()
         .status(status)
@@ -2551,29 +2581,20 @@ async fn route_ui_to_http_response(
     let path = req.uri().path().to_string();
 
     let (status, content_type, body) = match path.as_str() {
-        "/" | "/index.html" => (
-            200,
-            "text/html",
-            generate_ui_html(engine),
-        ),
-        "/health" => (
-            200,
-            "application/json",
-            r#"{"status":"ok"}"#.to_string(),
-        ),
+        "/" | "/index.html" => (200, "text/html", generate_ui_html(engine)),
+        "/health" => (200, "application/json", r#"{"status":"ok"}"#.to_string()),
         p if p.starts_with("/workflows/") => {
             let wf_id = p.trim_start_matches("/workflows/");
             let namespace = &engine.config.namespace;
             match engine.get_workflow(namespace, wf_id) {
-                Some(wf) => (
-                    200,
-                    "text/html",
-                    generate_workflow_detail_html(engine, &wf),
-                ),
+                Some(wf) => (200, "text/html", generate_workflow_detail_html(engine, &wf)),
                 None => (
                     404,
                     "text/html",
-                    format!("<h1>Workflow {} not found</h1><a href='/'>Back to dashboard</a>", wf_id),
+                    format!(
+                        "<h1>Workflow {} not found</h1><a href='/'>Back to dashboard</a>",
+                        wf_id
+                    ),
                 ),
             }
         }
@@ -2750,7 +2771,7 @@ a:hover {{ text-decoration: underline; }}
 
 fn generate_workflow_detail_html(engine: &Arc<DevEngine>, wf: &WorkflowExecution) -> String {
     let history = engine.get_history(&engine.config.namespace, &wf.workflow_id);
-    
+
     let history_rows: String = history
         .iter()
         .map(|e| {
@@ -2760,11 +2781,15 @@ fn generate_workflow_detail_html(engine: &Arc<DevEngine>, wf: &WorkflowExecution
                 e.event_id,
                 e.event_type,
                 format_duration(e.event_time),
-                if attrs_str.is_empty() || attrs_str == "null" { "-" } else { &attrs_str[..attrs_str.len().min(50)] }
+                if attrs_str.is_empty() || attrs_str == "null" {
+                    "-"
+                } else {
+                    &attrs_str[..attrs_str.len().min(50)]
+                }
             )
         })
         .collect();
-    
+
     let status_color = match wf.status.as_str() {
         "RUNNING" => "#2196F3",
         "COMPLETED" => "#4CAF50",
@@ -2772,7 +2797,7 @@ fn generate_workflow_detail_html(engine: &Arc<DevEngine>, wf: &WorkflowExecution
         "CANCELLED" => "#FF9800",
         _ => "#9E9E9E",
     };
-    
+
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -2879,7 +2904,9 @@ a:hover {{ text-decoration: underline; }}
         wf.status,
         wf.task_queue,
         format_duration(wf.started_at),
-        wf.closed_at.map(format_duration).unwrap_or_else(|| "-".to_string()),
+        wf.closed_at
+            .map(format_duration)
+            .unwrap_or_else(|| "-".to_string()),
         history.len(),
         wf.workflow_id,
         wf.workflow_id,
@@ -2890,7 +2917,7 @@ a:hover {{ text-decoration: underline; }}
 
 fn generate_schedules_html(engine: &Arc<DevEngine>) -> String {
     let schedules = engine.list_schedules();
-    
+
     let schedule_rows: String = schedules
         .iter()
         .map(|s| {
@@ -2911,24 +2938,27 @@ fn generate_schedules_html(engine: &Arc<DevEngine>) -> String {
             )
         })
         .collect();
-    
-    generate_page_html("Schedules", &format!(
-        r#"<div class="section">
+
+    generate_page_html(
+        "Schedules",
+        &format!(
+            r#"<div class="section">
     <h2>Schedules ({})</h2>
     <table>
       <thead><tr><th>Schedule ID</th><th>Workflow Type</th><th>State</th><th>Cron</th><th>Last Action</th></tr></thead>
       <tbody>{}</tbody>
     </table>
   </div>"#,
-        schedules.len(),
-        schedule_rows,
-    ))
+            schedules.len(),
+            schedule_rows,
+        ),
+    )
 }
 
 fn generate_task_queues_html(engine: &Arc<DevEngine>) -> String {
     let namespace = &engine.config.namespace;
     let task_queues = engine.list_task_queues(namespace);
-    
+
     let tq_rows: String = task_queues
         .iter()
         .map(|tq| {
@@ -2941,23 +2971,26 @@ fn generate_task_queues_html(engine: &Arc<DevEngine>) -> String {
             )
         })
         .collect();
-    
-    generate_page_html("Task Queues", &format!(
-        r#"<div class="section">
+
+    generate_page_html(
+        "Task Queues",
+        &format!(
+            r#"<div class="section">
     <h2>Task Queues ({})</h2>
     <table>
       <thead><tr><th>Name</th><th>Type</th><th>Pending Tasks</th><th>Pollers</th></tr></thead>
       <tbody>{}</tbody>
     </table>
   </div>"#,
-        task_queues.len(),
-        tq_rows,
-    ))
+            task_queues.len(),
+            tq_rows,
+        ),
+    )
 }
 
 fn generate_batch_operations_html(engine: &Arc<DevEngine>) -> String {
     let batches = engine.list_batch_operations();
-    
+
     let batch_rows: String = batches
         .iter()
         .map(|b| {
@@ -2979,22 +3012,27 @@ fn generate_batch_operations_html(engine: &Arc<DevEngine>) -> String {
             )
         })
         .collect();
-    
-    generate_page_html("Batch Operations", &format!(
-        r#"<div class="section">
+
+    generate_page_html(
+        "Batch Operations",
+        &format!(
+            r#"<div class="section">
     <h2>Batch Operations ({})</h2>
     <table>
       <thead><tr><th>Job ID</th><th>Operation</th><th>Status</th><th>Total</th><th>Succeeded</th><th>Failed</th></tr></thead>
       <tbody>{}</tbody>
     </table>
   </div>"#,
-        batches.len(),
-        batch_rows,
-    ))
+            batches.len(),
+            batch_rows,
+        ),
+    )
 }
 
 fn generate_search_html(_engine: &Arc<DevEngine>) -> String {
-    generate_page_html("Search", r#"
+    generate_page_html(
+        "Search",
+        r#"
   <div class="section">
     <h2>Search Workflows</h2>
     <div class="actions">
@@ -3013,7 +3051,8 @@ fn generate_search_html(_engine: &Arc<DevEngine>) -> String {
         <li style="margin: 8px 0;"><code style="color: #4CAF50;">NamespaceId = 0</code> - Find workflows in default namespace</li>
       </ul>
     </div>
-  </div>"#)
+  </div>"#,
+    )
 }
 
 fn generate_page_html(title: &str, content: &str) -> String {
@@ -3065,9 +3104,7 @@ code {{ background: #252540; padding: 2px 6px; border-radius: 3px; }}
 </div>
 </body>
 </html>"#,
-        title,
-        title,
-        content,
+        title, title, content,
     )
 }
 
@@ -3235,38 +3272,77 @@ async fn main() {
     let _ = shutdown_tx.send(());
     engine.shutdown.store(true, Ordering::Relaxed);
     engine.shutdown_notify.notify_waiters();
-    tracing::info!("Shutdown signal sent — draining {} components", total_components);
+    tracing::info!(
+        "Shutdown signal sent — draining {} components",
+        total_components
+    );
 
     // Phase 2: Wait for each server to drain with a shared deadline
     let drain_deadline = Duration::from_secs(10);
     let drain_start = Instant::now();
 
     // HTTP server
-    match tokio::time::timeout(drain_deadline.saturating_sub(drain_start.elapsed()), http_handle).await {
-        Ok(_) => { drained_count.fetch_add(1, Ordering::Relaxed); tracing::info!("HTTP server drained"); }
-        Err(_) => { tracing::warn!("HTTP server did not drain within deadline"); }
+    match tokio::time::timeout(
+        drain_deadline.saturating_sub(drain_start.elapsed()),
+        http_handle,
+    )
+    .await
+    {
+        Ok(_) => {
+            drained_count.fetch_add(1, Ordering::Relaxed);
+            tracing::info!("HTTP server drained");
+        }
+        Err(_) => {
+            tracing::warn!("HTTP server did not drain within deadline");
+        }
     }
 
     // gRPC server
-    match tokio::time::timeout(drain_deadline.saturating_sub(drain_start.elapsed()), grpc_handle).await {
-        Ok(_) => { drained_count.fetch_add(1, Ordering::Relaxed); tracing::info!("gRPC server drained"); }
-        Err(_) => { tracing::warn!("gRPC server did not drain within deadline"); }
+    match tokio::time::timeout(
+        drain_deadline.saturating_sub(drain_start.elapsed()),
+        grpc_handle,
+    )
+    .await
+    {
+        Ok(_) => {
+            drained_count.fetch_add(1, Ordering::Relaxed);
+            tracing::info!("gRPC server drained");
+        }
+        Err(_) => {
+            tracing::warn!("gRPC server did not drain within deadline");
+        }
     }
 
     // UI server (if enabled)
     if let Some(handle) = ui_handle {
-        match tokio::time::timeout(drain_deadline.saturating_sub(drain_start.elapsed()), handle).await {
-            Ok(_) => { drained_count.fetch_add(1, Ordering::Relaxed); tracing::info!("UI server drained"); }
-            Err(_) => { tracing::warn!("UI server did not drain within deadline"); }
+        match tokio::time::timeout(drain_deadline.saturating_sub(drain_start.elapsed()), handle)
+            .await
+        {
+            Ok(_) => {
+                drained_count.fetch_add(1, Ordering::Relaxed);
+                tracing::info!("UI server drained");
+            }
+            Err(_) => {
+                tracing::warn!("UI server did not drain within deadline");
+            }
         }
     }
 
     let drained = drained_count.load(Ordering::Relaxed);
     let elapsed = drain_start.elapsed();
     if drained == total_components {
-        tracing::info!("All {} components drained in {:.1}s", total_components, elapsed.as_secs_f64());
+        tracing::info!(
+            "All {} components drained in {:.1}s",
+            total_components,
+            elapsed.as_secs_f64()
+        );
     } else {
-        tracing::warn!("Only {}/{} components drained in {:.1}s — forcing shutdown", drained, total_components, elapsed.as_secs_f64());
+        tracing::warn!(
+            "Only {}/{} components drained in {:.1}s — forcing shutdown",
+            drained,
+            total_components,
+            elapsed.as_secs_f64()
+        );
     }
 
     let stats = engine.get_stats();
@@ -3277,7 +3353,10 @@ async fn main() {
     println!("    Workflows failed:    {}", stats.failed_workflows);
     println!("    Signals delivered:   {}", stats.signal_count);
     println!("    Uptime:              {}s", stats.uptime_secs);
-    println!("    Drain:               {}/{} components", drained, total_components);
+    println!(
+        "    Drain:               {}/{} components",
+        drained, total_components
+    );
     println!();
 }
 

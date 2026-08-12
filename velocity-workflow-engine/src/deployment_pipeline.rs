@@ -254,7 +254,11 @@ impl DeploymentPipeline {
             let dep_id = active.get(workflow_type).copied();
             drop(active);
             dep_id.and_then(|id| {
-                self.deployments.read().unwrap().get(&id).map(|d| d.build_id.clone())
+                self.deployments
+                    .read()
+                    .unwrap()
+                    .get(&id)
+                    .map(|d| d.build_id.clone())
             })
         };
 
@@ -283,21 +287,30 @@ impl DeploymentPipeline {
             .unwrap()
             .insert(workflow_type.to_string(), deployment_id);
 
-        self.log_audit(deployment_id, DeploymentAuditAction::CanaryStarted, 
-            format!("build_id={} canary={}% ", build_id, 
-                self.deployments.read().unwrap().get(&deployment_id).unwrap().config.canary_percentage));
-        self.stats.deployments_created.fetch_add(1, Ordering::Relaxed);
+        self.log_audit(
+            deployment_id,
+            DeploymentAuditAction::CanaryStarted,
+            format!(
+                "build_id={} canary={}% ",
+                build_id,
+                self.deployments
+                    .read()
+                    .unwrap()
+                    .get(&deployment_id)
+                    .unwrap()
+                    .config
+                    .canary_percentage
+            ),
+        );
+        self.stats
+            .deployments_created
+            .fetch_add(1, Ordering::Relaxed);
 
         deployment_id
     }
 
     /// Record an execution result for the active deployment.
-    pub fn record_execution(
-        &self,
-        deployment_id: u64,
-        success: bool,
-        latency_ms: u64,
-    ) {
+    pub fn record_execution(&self, deployment_id: u64, success: bool, latency_ms: u64) {
         let mut deployments = self.deployments.write().unwrap();
         if let Some(dep) = deployments.get_mut(&deployment_id) {
             dep.metrics.total_executions += 1;
@@ -319,7 +332,9 @@ impl DeploymentPipeline {
 
     /// Run a health check on a deployment. Returns whether it passed.
     pub fn run_health_check(&self, deployment_id: u64) -> HealthCheckResult {
-        self.stats.health_checks_executed.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .health_checks_executed
+            .fetch_add(1, Ordering::Relaxed);
 
         let deployments = self.deployments.read().unwrap();
         let dep = match deployments.get(&deployment_id) {
@@ -390,23 +405,40 @@ impl DeploymentPipeline {
                 dep.health_checks_passed += 1;
                 dep.status = DeploymentStatus::Healthy;
                 drop(deployments);
-                self.log_audit(deployment_id, DeploymentAuditAction::HealthCheckPassed, result.details.clone());
+                self.log_audit(
+                    deployment_id,
+                    DeploymentAuditAction::HealthCheckPassed,
+                    result.details.clone(),
+                );
             } else {
                 dep.health_checks_failed += 1;
                 dep.status = DeploymentStatus::Unhealthy;
-                
+
                 // Auto-rollback if configured
                 if dep.config.auto_rollback && dep.health_checks_failed >= 3 {
                     dep.status = DeploymentStatus::RolledBack;
                     dep.stage = DeploymentStage::RolledBack;
-                    dep.rollback_reason = Some(format!("auto-rollback: {} consecutive failures", dep.health_checks_failed));
+                    dep.rollback_reason = Some(format!(
+                        "auto-rollback: {} consecutive failures",
+                        dep.health_checks_failed
+                    ));
                     drop(deployments);
-                    self.log_audit(deployment_id, DeploymentAuditAction::RolledBack, "auto-rollback triggered".into());
-                    self.stats.deployments_rolled_back.fetch_add(1, Ordering::Relaxed);
+                    self.log_audit(
+                        deployment_id,
+                        DeploymentAuditAction::RolledBack,
+                        "auto-rollback triggered".into(),
+                    );
+                    self.stats
+                        .deployments_rolled_back
+                        .fetch_add(1, Ordering::Relaxed);
                     return;
                 }
                 drop(deployments);
-                self.log_audit(deployment_id, DeploymentAuditAction::HealthCheckFailed, result.details.clone());
+                self.log_audit(
+                    deployment_id,
+                    DeploymentAuditAction::HealthCheckFailed,
+                    result.details.clone(),
+                );
             }
         }
     }
@@ -436,7 +468,9 @@ impl DeploymentPipeline {
                 dep.promoted_at_ms = Some(now_ms());
                 drop(deployments);
                 self.log_audit(deployment_id, action, String::new());
-                self.stats.deployments_promoted.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .deployments_promoted
+                    .fetch_add(1, Ordering::Relaxed);
                 return true;
             }
         }
@@ -451,8 +485,14 @@ impl DeploymentPipeline {
             dep.status = DeploymentStatus::RolledBack;
             dep.rollback_reason = Some(reason.to_string());
             drop(deployments);
-            self.log_audit(deployment_id, DeploymentAuditAction::RolledBack, reason.to_string());
-            self.stats.deployments_rolled_back.fetch_add(1, Ordering::Relaxed);
+            self.log_audit(
+                deployment_id,
+                DeploymentAuditAction::RolledBack,
+                reason.to_string(),
+            );
+            self.stats
+                .deployments_rolled_back
+                .fetch_add(1, Ordering::Relaxed);
             true
         } else {
             false
@@ -488,12 +528,20 @@ impl DeploymentPipeline {
 
     /// Get a deployment by ID.
     pub fn get_deployment(&self, deployment_id: u64) -> Option<WorkflowDeployment> {
-        self.deployments.read().unwrap().get(&deployment_id).cloned()
+        self.deployments
+            .read()
+            .unwrap()
+            .get(&deployment_id)
+            .cloned()
     }
 
     /// Get the active deployment ID for a workflow type.
     pub fn get_active_deployment_id(&self, workflow_type: &str) -> Option<u64> {
-        self.active_by_type.read().unwrap().get(workflow_type).copied()
+        self.active_by_type
+            .read()
+            .unwrap()
+            .get(workflow_type)
+            .copied()
     }
 
     /// Get the active deployment for a workflow type.
@@ -651,16 +699,28 @@ mod tests {
 
         // Canary → Staging
         assert!(pipeline.promote(id));
-        assert_eq!(pipeline.get_deployment(id).unwrap().stage, DeploymentStage::Staging);
+        assert_eq!(
+            pipeline.get_deployment(id).unwrap().stage,
+            DeploymentStage::Staging
+        );
 
         // Staging → Production
         assert!(pipeline.promote(id));
-        assert_eq!(pipeline.get_deployment(id).unwrap().stage, DeploymentStage::Production);
+        assert_eq!(
+            pipeline.get_deployment(id).unwrap().stage,
+            DeploymentStage::Production
+        );
 
         // Production → Completed
         assert!(pipeline.promote(id));
-        assert_eq!(pipeline.get_deployment(id).unwrap().stage, DeploymentStage::Completed);
-        assert_eq!(pipeline.get_deployment(id).unwrap().status, DeploymentStatus::Completed);
+        assert_eq!(
+            pipeline.get_deployment(id).unwrap().stage,
+            DeploymentStage::Completed
+        );
+        assert_eq!(
+            pipeline.get_deployment(id).unwrap().status,
+            DeploymentStatus::Completed
+        );
 
         // Can't promote further
         assert!(!pipeline.promote(id));
@@ -675,7 +735,10 @@ mod tests {
         let dep = pipeline.get_deployment(id).unwrap();
         assert_eq!(dep.stage, DeploymentStage::RolledBack);
         assert_eq!(dep.status, DeploymentStatus::RolledBack);
-        assert_eq!(dep.rollback_reason.as_deref(), Some("manual rollback: bad deploy"));
+        assert_eq!(
+            dep.rollback_reason.as_deref(),
+            Some("manual rollback: bad deploy")
+        );
     }
 
     #[test]
@@ -707,10 +770,16 @@ mod tests {
         let id = pipeline.start_deployment("WF", "b1", test_config());
 
         assert!(pipeline.pause(id));
-        assert_eq!(pipeline.get_deployment(id).unwrap().status, DeploymentStatus::Paused);
+        assert_eq!(
+            pipeline.get_deployment(id).unwrap().status,
+            DeploymentStatus::Paused
+        );
 
         assert!(pipeline.resume(id));
-        assert_eq!(pipeline.get_deployment(id).unwrap().status, DeploymentStatus::InProgress);
+        assert_eq!(
+            pipeline.get_deployment(id).unwrap().status,
+            DeploymentStatus::InProgress
+        );
     }
 
     #[test]

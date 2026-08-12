@@ -134,16 +134,25 @@ impl StorageBackend for InMemoryStorage {
         function_name: &str,
         output: &serde_json::Value,
     ) -> Result<(), StorageError> {
-        let mut workflows = self.workflows.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
-        workflows.insert(workflow_id.to_string(), WorkflowData {
-            function_name: function_name.to_string(),
-            output: output.clone(),
-        });
+        let mut workflows = self
+            .workflows
+            .lock()
+            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+        workflows.insert(
+            workflow_id.to_string(),
+            WorkflowData {
+                function_name: function_name.to_string(),
+                output: output.clone(),
+            },
+        );
         Ok(())
     }
 
     fn load_workflow(&self, workflow_id: &str) -> Result<Option<serde_json::Value>, StorageError> {
-        let workflows = self.workflows.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+        let workflows = self
+            .workflows
+            .lock()
+            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
         Ok(workflows.get(workflow_id).map(|w| w.output.clone()))
     }
 
@@ -152,15 +161,22 @@ impl StorageBackend for InMemoryStorage {
         workflow_id: &str,
         entry: &serde_json::Value,
     ) -> Result<(), StorageError> {
-        let mut journals = self.journals.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
-        journals.entry(workflow_id.to_string())
+        let mut journals = self
+            .journals
+            .lock()
+            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+        journals
+            .entry(workflow_id.to_string())
             .or_insert_with(Vec::new)
             .push(entry.clone());
         Ok(())
     }
 
     fn load_journal(&self, workflow_id: &str) -> Result<Vec<serde_json::Value>, StorageError> {
-        let journals = self.journals.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+        let journals = self
+            .journals
+            .lock()
+            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
         Ok(journals.get(workflow_id).cloned().unwrap_or_default())
     }
 
@@ -170,8 +186,12 @@ impl StorageBackend for InMemoryStorage {
         key: &str,
         value: &serde_json::Value,
     ) -> Result<(), StorageError> {
-        let mut state = self.state.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
-        state.entry(workflow_id.to_string())
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+        state
+            .entry(workflow_id.to_string())
             .or_insert_with(HashMap::new)
             .insert(key.to_string(), value.clone());
         Ok(())
@@ -182,33 +202,52 @@ impl StorageBackend for InMemoryStorage {
         workflow_id: &str,
         key: &str,
     ) -> Result<Option<serde_json::Value>, StorageError> {
-        let state = self.state.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
         Ok(state.get(workflow_id).and_then(|m| m.get(key)).cloned())
     }
 
     fn delete_state(&self, workflow_id: &str, key: &str) -> Result<bool, StorageError> {
-        let mut state = self.state.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
-        Ok(state.get_mut(workflow_id)
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+        Ok(state
+            .get_mut(workflow_id)
             .map(|m| m.remove(key).is_some())
             .unwrap_or(false))
     }
 
     fn list_workflows(&self) -> Result<Vec<String>, StorageError> {
-        let workflows = self.workflows.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+        let workflows = self
+            .workflows
+            .lock()
+            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
         Ok(workflows.keys().cloned().collect())
     }
 
     fn delete_workflow(&self, workflow_id: &str) -> Result<(), StorageError> {
         {
-            let mut workflows = self.workflows.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+            let mut workflows = self
+                .workflows
+                .lock()
+                .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
             workflows.remove(workflow_id);
         }
         {
-            let mut state = self.state.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
             state.remove(workflow_id);
         }
         {
-            let mut journals = self.journals.lock().map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+            let mut journals = self
+                .journals
+                .lock()
+                .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
             journals.remove(workflow_id);
         }
         Ok(())
@@ -264,8 +303,12 @@ mod tests {
     fn test_journal_isolation() {
         let storage = InMemoryStorage::new();
 
-        storage.save_journal_entry("wf-1", &serde_json::json!("a")).unwrap();
-        storage.save_journal_entry("wf-2", &serde_json::json!("b")).unwrap();
+        storage
+            .save_journal_entry("wf-1", &serde_json::json!("a"))
+            .unwrap();
+        storage
+            .save_journal_entry("wf-2", &serde_json::json!("b"))
+            .unwrap();
 
         let j1 = storage.load_journal("wf-1").unwrap();
         let j2 = storage.load_journal("wf-2").unwrap();
@@ -277,7 +320,9 @@ mod tests {
     fn test_state_operations() {
         let storage = InMemoryStorage::new();
 
-        storage.save_state("wf-1", "count", &serde_json::json!(42)).unwrap();
+        storage
+            .save_state("wf-1", "count", &serde_json::json!(42))
+            .unwrap();
         let val = storage.load_state("wf-1", "count").unwrap();
         assert_eq!(val, Some(serde_json::json!(42)));
 
@@ -292,8 +337,12 @@ mod tests {
     fn test_state_isolation() {
         let storage = InMemoryStorage::new();
 
-        storage.save_state("wf-1", "x", &serde_json::json!("a")).unwrap();
-        storage.save_state("wf-2", "x", &serde_json::json!("b")).unwrap();
+        storage
+            .save_state("wf-1", "x", &serde_json::json!("a"))
+            .unwrap();
+        storage
+            .save_state("wf-2", "x", &serde_json::json!("b"))
+            .unwrap();
 
         let v1 = storage.load_state("wf-1", "x").unwrap();
         let v2 = storage.load_state("wf-2", "x").unwrap();
@@ -304,8 +353,12 @@ mod tests {
     #[test]
     fn test_list_workflows() {
         let storage = InMemoryStorage::new();
-        storage.save_workflow("wf-1", "fn1", &serde_json::json!("a")).unwrap();
-        storage.save_workflow("wf-2", "fn2", &serde_json::json!("b")).unwrap();
+        storage
+            .save_workflow("wf-1", "fn1", &serde_json::json!("a"))
+            .unwrap();
+        storage
+            .save_workflow("wf-2", "fn2", &serde_json::json!("b"))
+            .unwrap();
 
         let list = storage.list_workflows().unwrap();
         assert_eq!(list.len(), 2);
@@ -316,9 +369,15 @@ mod tests {
     #[test]
     fn test_delete_workflow() {
         let storage = InMemoryStorage::new();
-        storage.save_workflow("wf-1", "fn", &serde_json::json!("out")).unwrap();
-        storage.save_state("wf-1", "key", &serde_json::json!("val")).unwrap();
-        storage.save_journal_entry("wf-1", &serde_json::json!("entry")).unwrap();
+        storage
+            .save_workflow("wf-1", "fn", &serde_json::json!("out"))
+            .unwrap();
+        storage
+            .save_state("wf-1", "key", &serde_json::json!("val"))
+            .unwrap();
+        storage
+            .save_journal_entry("wf-1", &serde_json::json!("entry"))
+            .unwrap();
 
         storage.delete_workflow("wf-1").unwrap();
 

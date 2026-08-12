@@ -198,7 +198,10 @@ impl PushDispatcher {
     /// Register a service endpoint.
     pub fn register_service(&mut self, endpoint: ServiceEndpoint) {
         let name = endpoint.name.clone();
-        self.services.entry(name.clone()).or_default().push(endpoint);
+        self.services
+            .entry(name.clone())
+            .or_default()
+            .push(endpoint);
         self.stats.registered_services = self.services.len() as u64;
         self.update_healthy_count();
     }
@@ -270,7 +273,9 @@ impl PushDispatcher {
     }
 
     fn update_healthy_count(&mut self) {
-        let count = self.services.values()
+        let count = self
+            .services
+            .values()
             .flat_map(|eps| eps.iter())
             .filter(|ep| ep.healthy)
             .count() as u64;
@@ -300,7 +305,11 @@ impl PushDispatcher {
         }
 
         // Check capacity
-        let active = self.active_per_service.get(service_name).copied().unwrap_or(0);
+        let active = self
+            .active_per_service
+            .get(service_name)
+            .copied()
+            .unwrap_or(0);
         if active >= self.config.max_concurrent_per_service {
             return Err(DispatchError::QueueFull(service_name.to_string()));
         }
@@ -347,11 +356,10 @@ impl PushDispatcher {
     fn try_dispatch(&mut self, service_name: &str) {
         // Find a healthy endpoint
         let target_url = match self.services.get(service_name) {
-            Some(endpoints) => {
-                endpoints.iter()
-                    .find(|ep| ep.healthy)
-                    .map(|ep| format!("{}/{}", ep.base_url, ""))
-            }
+            Some(endpoints) => endpoints
+                .iter()
+                .find(|ep| ep.healthy)
+                .map(|ep| format!("{}/{}", ep.base_url, "")),
             None => return,
         };
 
@@ -375,7 +383,10 @@ impl PushDispatcher {
             dispatch.attempt_count += 1;
         }
 
-        *self.active_per_service.entry(service_name.to_string()).or_insert(0) += 1;
+        *self
+            .active_per_service
+            .entry(service_name.to_string())
+            .or_insert(0) += 1;
         self.stats.queued_count = self.stats.queued_count.saturating_sub(1);
         self.stats.active_dispatches += 1;
     }
@@ -386,7 +397,9 @@ impl PushDispatcher {
         dispatch_id: u64,
         response: Vec<u8>,
     ) -> Result<(), DispatchError> {
-        let dispatch = self.dispatches.get_mut(&dispatch_id)
+        let dispatch = self
+            .dispatches
+            .get_mut(&dispatch_id)
             .ok_or(DispatchError::MaxAttemptsExceeded(dispatch_id))?;
 
         let service_name = dispatch.service_name.clone();
@@ -398,8 +411,15 @@ impl PushDispatcher {
 
         self.stats.total_delivered += 1;
         self.stats.active_dispatches = self.stats.active_dispatches.saturating_sub(1);
-        *self.active_per_service.entry(service_name.clone()).or_insert(0) =
-            self.active_per_service.get(&service_name).copied().unwrap_or(1).saturating_sub(1);
+        *self
+            .active_per_service
+            .entry(service_name.clone())
+            .or_insert(0) = self
+            .active_per_service
+            .get(&service_name)
+            .copied()
+            .unwrap_or(1)
+            .saturating_sub(1);
 
         // Record success for health tracking
         if let Some(url) = target_url {
@@ -413,17 +433,19 @@ impl PushDispatcher {
     }
 
     /// Mark a dispatch as failed (service didn't respond).
-    pub fn mark_failed(
-        &mut self,
-        dispatch_id: u64,
-        error: String,
-    ) -> Result<(), DispatchError> {
+    pub fn mark_failed(&mut self, dispatch_id: u64, error: String) -> Result<(), DispatchError> {
         // Extract info first to avoid overlapping borrows
         let (service_name, target_url, attempt_count, max_attempts) = {
-            let dispatch = self.dispatches.get(&dispatch_id)
+            let dispatch = self
+                .dispatches
+                .get(&dispatch_id)
                 .ok_or(DispatchError::MaxAttemptsExceeded(dispatch_id))?;
-            (dispatch.service_name.clone(), dispatch.target_url.clone(),
-             dispatch.attempt_count, dispatch.max_attempts)
+            (
+                dispatch.service_name.clone(),
+                dispatch.target_url.clone(),
+                dispatch.attempt_count,
+                dispatch.max_attempts,
+            )
         };
 
         // Record failure for health tracking
@@ -432,8 +454,15 @@ impl PushDispatcher {
         }
 
         self.stats.active_dispatches = self.stats.active_dispatches.saturating_sub(1);
-        *self.active_per_service.entry(service_name.clone()).or_insert(0) =
-            self.active_per_service.get(&service_name).copied().unwrap_or(1).saturating_sub(1);
+        *self
+            .active_per_service
+            .entry(service_name.clone())
+            .or_insert(0) = self
+            .active_per_service
+            .get(&service_name)
+            .copied()
+            .unwrap_or(1)
+            .saturating_sub(1);
 
         // Now mutate the dispatch
         let dispatch = self.dispatches.get_mut(&dispatch_id).unwrap();
@@ -466,7 +495,9 @@ impl PushDispatcher {
 
     /// Cancel a pending dispatch.
     pub fn cancel(&mut self, dispatch_id: u64) -> Result<(), DispatchError> {
-        let dispatch = self.dispatches.get_mut(&dispatch_id)
+        let dispatch = self
+            .dispatches
+            .get_mut(&dispatch_id)
             .ok_or(DispatchError::MaxAttemptsExceeded(dispatch_id))?;
 
         let service_name = dispatch.service_name.clone();
@@ -516,7 +547,8 @@ impl PushDispatcher {
 
     /// Check if a service has any healthy endpoints.
     pub fn is_service_healthy(&self, service_name: &str) -> bool {
-        self.services.get(service_name)
+        self.services
+            .get(service_name)
             .is_some_and(|eps| eps.iter().any(|ep| ep.healthy))
     }
 }
@@ -558,7 +590,9 @@ mod tests {
     #[test]
     fn test_dispatch_to_healthy_service() {
         let mut d = test_dispatcher();
-        let id = d.dispatch("order-svc", "process_order", b"order-data".to_vec(), None).unwrap();
+        let id = d
+            .dispatch("order-svc", "process_order", b"order-data".to_vec(), None)
+            .unwrap();
 
         let dispatch = d.get_dispatch(id).unwrap();
         assert_eq!(dispatch.state, DispatchState::Dispatching);
@@ -575,7 +609,9 @@ mod tests {
     #[test]
     fn test_mark_delivered() {
         let mut d = test_dispatcher();
-        let id = d.dispatch("order-svc", "handler", b"data".to_vec(), None).unwrap();
+        let id = d
+            .dispatch("order-svc", "handler", b"data".to_vec(), None)
+            .unwrap();
         d.mark_delivered(id, b"response".to_vec()).unwrap();
 
         let dispatch = d.get_dispatch(id).unwrap();
@@ -586,7 +622,9 @@ mod tests {
     #[test]
     fn test_retry_on_failure() {
         let mut d = test_dispatcher();
-        let id = d.dispatch("order-svc", "handler", b"data".to_vec(), None).unwrap();
+        let id = d
+            .dispatch("order-svc", "handler", b"data".to_vec(), None)
+            .unwrap();
 
         // First attempt (attempt_count = 1 after try_dispatch)
         let dispatch = d.get_dispatch(id).unwrap();
@@ -618,7 +656,9 @@ mod tests {
         d.register_service(ep);
 
         // Dispatch succeeds (goes to queue) but can't be dispatched
-        let id = d.dispatch("svc", "handler", b"data".to_vec(), None).unwrap();
+        let id = d
+            .dispatch("svc", "handler", b"data".to_vec(), None)
+            .unwrap();
         let dispatch = d.get_dispatch(id).unwrap();
         assert_eq!(dispatch.state, DispatchState::Queued); // Stays queued
     }
@@ -643,8 +683,22 @@ mod tests {
     #[test]
     fn test_idempotent_dispatch() {
         let mut d = test_dispatcher();
-        let id1 = d.dispatch("order-svc", "handler", b"data".to_vec(), Some("idem-1".to_string())).unwrap();
-        let id2 = d.dispatch("order-svc", "handler", b"data".to_vec(), Some("idem-1".to_string())).unwrap();
+        let id1 = d
+            .dispatch(
+                "order-svc",
+                "handler",
+                b"data".to_vec(),
+                Some("idem-1".to_string()),
+            )
+            .unwrap();
+        let id2 = d
+            .dispatch(
+                "order-svc",
+                "handler",
+                b"data".to_vec(),
+                Some("idem-1".to_string()),
+            )
+            .unwrap();
         assert_eq!(id1, id2);
         assert_eq!(d.stats().total_dispatches, 1);
     }
@@ -652,7 +706,9 @@ mod tests {
     #[test]
     fn test_cancel_dispatch() {
         let mut d = test_dispatcher();
-        let id = d.dispatch("order-svc", "handler", b"data".to_vec(), None).unwrap();
+        let id = d
+            .dispatch("order-svc", "handler", b"data".to_vec(), None)
+            .unwrap();
         d.cancel(id).unwrap();
         assert_eq!(d.get_dispatch(id).unwrap().state, DispatchState::Canceled);
     }

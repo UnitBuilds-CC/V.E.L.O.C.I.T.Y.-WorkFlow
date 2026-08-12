@@ -21,7 +21,11 @@ impl<V> SlotMap<V> {
         slots.resize_with(capacity, || None);
         let mut keys = Vec::with_capacity(capacity);
         keys.resize(capacity, u64::MAX);
-        Self { slots, keys, occupied: 0 }
+        Self {
+            slots,
+            keys,
+            occupied: 0,
+        }
     }
 
     /// Insert a value at the given key. Overwrites any existing value.
@@ -164,7 +168,11 @@ impl<V> SlotVec<V> {
         slots.resize_with(capacity, Vec::new);
         let mut keys = Vec::with_capacity(capacity);
         keys.resize(capacity, u64::MAX);
-        Self { slots, keys, occupied: 0 }
+        Self {
+            slots,
+            keys,
+            occupied: 0,
+        }
     }
 
     fn find_slot(&self, key: u64) -> Option<usize> {

@@ -135,7 +135,10 @@ impl TemporalEngine {
         workflow_type: &str,
     ) -> Result<(String, String), String> {
         let wf_id = if workflow_id.is_empty() {
-            format!("temporal-wf-{}", self.next_id.fetch_add(1, Ordering::Relaxed))
+            format!(
+                "temporal-wf-{}",
+                self.next_id.fetch_add(1, Ordering::Relaxed)
+            )
         } else {
             workflow_id.to_string()
         };
@@ -154,7 +157,8 @@ impl TemporalEngine {
         _payload: Vec<u8>,
     ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.signals_received += 1;
         log.event_count += 1;
@@ -168,7 +172,8 @@ impl TemporalEngine {
         _query_type: &str,
     ) -> Result<serde_json::Value, String> {
         let logs = self.logs.read().unwrap();
-        let log = logs.get(workflow_id)
+        let log = logs
+            .get(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         Ok(serde_json::json!({
             "workflow_id": workflow_id,
@@ -185,7 +190,8 @@ impl TemporalEngine {
         _result: Option<Vec<u8>>,
     ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::Completed;
         log.event_count += 1;
@@ -199,7 +205,8 @@ impl TemporalEngine {
         _reason: &str,
     ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::Terminated;
         log.event_count += 1;
@@ -253,7 +260,8 @@ impl TemporalEngine {
         _reason: &str,
     ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::Cancelled;
         log.cancel_requested = true;
@@ -270,7 +278,8 @@ impl TemporalEngine {
         _payload: Vec<u8>,
     ) -> Result<Vec<u8>, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.updates_received += 1;
         log.event_count += 1;
@@ -286,7 +295,8 @@ impl TemporalEngine {
     ) -> Result<(String, String), String> {
         {
             let mut logs = self.logs.write().unwrap();
-            let parent = logs.get_mut(parent_wf_id)
+            let parent = logs
+                .get_mut(parent_wf_id)
                 .ok_or_else(|| format!("Parent workflow {} not found", parent_wf_id))?;
             parent.child_workflows_started += 1;
             parent.event_count += 1;
@@ -309,7 +319,8 @@ impl TemporalEngine {
         _duration_ms: i64,
     ) -> Result<String, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.timers_scheduled += 1;
         log.event_count += 1;
@@ -328,7 +339,8 @@ impl TemporalEngine {
         _timer_id: &str,
     ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.timers_cancelled += 1;
         log.event_count += 1;
@@ -342,7 +354,8 @@ impl TemporalEngine {
         _wf_type: &str,
     ) -> Result<String, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::ContinuedAsNew;
         log.event_count += 1;
@@ -357,7 +370,8 @@ impl TemporalEngine {
         attrs: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.search_attributes.extend(attrs);
         log.event_count += 1;
@@ -371,7 +385,8 @@ impl TemporalEngine {
         memo: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.memo.extend(memo);
         log.event_count += 1;
@@ -394,12 +409,19 @@ impl TemporalEngine {
                 .unwrap_or(false)
         };
         if exists_and_running {
-            self.signal_workflow(namespace, workflow_id, signal_name, payload).await?;
-            return Ok((workflow_id.to_string(), workflow_id.to_string(), false, true));
+            self.signal_workflow(namespace, workflow_id, signal_name, payload)
+                .await?;
+            return Ok((
+                workflow_id.to_string(),
+                workflow_id.to_string(),
+                false,
+                true,
+            ));
         }
         // Start new workflow and signal it
         let (wf_id, run_id) = self.start_workflow(namespace, workflow_id, wf_type).await?;
-        self.signal_workflow(namespace, &wf_id, signal_name, payload).await?;
+        self.signal_workflow(namespace, &wf_id, signal_name, payload)
+            .await?;
         Ok((wf_id, run_id, true, true))
     }
 
@@ -412,7 +434,8 @@ impl TemporalEngine {
         _activity_id: &str,
     ) -> Result<bool, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.heartbeats_recorded += 1;
         log.event_count += 1;
@@ -427,7 +450,8 @@ impl TemporalEngine {
         _activity_type: &str,
     ) -> Result<String, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.activities_scheduled += 1;
         log.event_count += 1;
@@ -446,7 +470,8 @@ impl TemporalEngine {
         _activity_id: &str,
     ) -> Result<(), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.activities_completed += 1;
         log.event_count += 1;
@@ -462,7 +487,8 @@ impl TemporalEngine {
         _non_retryable: bool,
     ) -> Result<(bool, u32), String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.activities_failed += 1;
         log.event_count += 1;
@@ -476,7 +502,8 @@ impl TemporalEngine {
         workflow_id: &str,
     ) -> Result<(u64, String), String> {
         let logs = self.logs.read().unwrap();
-        let log = logs.get(workflow_id)
+        let log = logs
+            .get(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         Ok((log.event_count, format!("{:?}", log.status)))
     }
@@ -489,7 +516,8 @@ impl TemporalEngine {
         _reason: &str,
     ) -> Result<String, String> {
         let mut logs = self.logs.write().unwrap();
-        let log = logs.get_mut(workflow_id)
+        let log = logs
+            .get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         log.status = WorkflowStatus::Running;
         log.event_count += 1;
@@ -499,11 +527,16 @@ impl TemporalEngine {
 
     async fn batch_terminate(&self, namespace: &str, _reason: &str, max_count: i64) -> u64 {
         let mut logs = self.logs.write().unwrap();
-        let targets: Vec<String> = logs.iter()
+        let targets: Vec<String> = logs
+            .iter()
             .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
             .filter(|(_, log)| log.status == WorkflowStatus::Running)
             .map(|(id, _)| id.clone())
-            .take(if max_count > 0 { max_count as usize } else { usize::MAX })
+            .take(if max_count > 0 {
+                max_count as usize
+            } else {
+                usize::MAX
+            })
             .collect();
         let mut count = 0u64;
         for wf_id in &targets {
@@ -524,11 +557,16 @@ impl TemporalEngine {
         max_count: i64,
     ) -> u64 {
         let mut logs = self.logs.write().unwrap();
-        let targets: Vec<String> = logs.iter()
+        let targets: Vec<String> = logs
+            .iter()
             .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
             .filter(|(_, log)| log.status == WorkflowStatus::Running)
             .map(|(id, _)| id.clone())
-            .take(if max_count > 0 { max_count as usize } else { usize::MAX })
+            .take(if max_count > 0 {
+                max_count as usize
+            } else {
+                usize::MAX
+            })
             .collect();
         let mut count = 0u64;
         for wf_id in &targets {
@@ -549,7 +587,8 @@ impl TemporalEngine {
         workflow_id: &str,
     ) -> Result<u64, String> {
         let logs = self.logs.read().unwrap();
-        let log = logs.get(workflow_id)
+        let log = logs
+            .get(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
         Ok(log.event_count)
     }
@@ -859,7 +898,8 @@ impl BenchmarkService for BenchmarkServiceImpl {
         _request: Request<HealthCheckRequest>,
     ) -> Result<Response<HealthCheckResponse>, Status> {
         let logs = self.engine.logs.read().unwrap();
-        let active = logs.values()
+        let active = logs
+            .values()
             .filter(|l| l.status == WorkflowStatus::Running)
             .count() as i64;
 
@@ -1442,7 +1482,11 @@ impl BenchmarkService for BenchmarkServiceImpl {
         for (wf_id, log) in logs.iter() {
             if log.namespace == ns && log.status == WorkflowStatus::Running {
                 return Ok(Response::new(PollWorkflowTaskResponse {
-                    task_token: format!("wt-{}-{}", wf_id, self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
+                    task_token: format!(
+                        "wt-{}-{}",
+                        wf_id,
+                        self.engine.next_id.fetch_add(1, Ordering::Relaxed)
+                    ),
                     event_id: log.event_count as i64,
                     event_type: "WorkflowTask".to_string(),
                     workflow_execution: Vec::new(),
@@ -1474,8 +1518,15 @@ impl BenchmarkService for BenchmarkServiceImpl {
             if log.namespace == ns && log.status == WorkflowStatus::Running {
                 if log.activities_scheduled > log.activities_completed + log.activities_failed {
                     return Ok(Response::new(PollActivityTaskResponse {
-                        task_token: format!("at-{}-{}", wf_id, self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
-                        activity_id: format!("act-{}", self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
+                        task_token: format!(
+                            "at-{}-{}",
+                            wf_id,
+                            self.engine.next_id.fetch_add(1, Ordering::Relaxed)
+                        ),
+                        activity_id: format!(
+                            "act-{}",
+                            self.engine.next_id.fetch_add(1, Ordering::Relaxed)
+                        ),
                         activity_type: "activity".to_string(),
                         input: Vec::new(),
                         workflow_id: wf_id.clone(),
@@ -1506,13 +1557,11 @@ impl BenchmarkService for BenchmarkServiceImpl {
             &r.namespace
         };
         match self.engine.get_workflow_history(ns, &r.workflow_id).await {
-            Ok(event_count) => {
-                Ok(Response::new(GetWorkflowHistoryResponse {
-                    events: Vec::new(),
-                    next_page_token: Vec::new(),
-                    total_event_count: event_count as i64,
-                }))
-            }
+            Ok(event_count) => Ok(Response::new(GetWorkflowHistoryResponse {
+                events: Vec::new(),
+                next_page_token: Vec::new(),
+                total_event_count: event_count as i64,
+            })),
             Err(e) => Err(Status::not_found(e)),
         }
     }
@@ -1523,7 +1572,11 @@ impl BenchmarkService for BenchmarkServiceImpl {
         request: Request<ListWorkflowsRequest>,
     ) -> Result<Response<ListWorkflowsResponse>, Status> {
         let req = request.into_inner();
-        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
 
         let logs = self.engine.logs.read().unwrap();
 
@@ -1533,7 +1586,10 @@ impl BenchmarkService for BenchmarkServiceImpl {
                 continue;
             }
             let status_str = format!("{:?}", log.status);
-            if !req.status_filter.is_empty() && req.status_filter.to_lowercase() != status_str.to_lowercase() && req.status_filter != "all" {
+            if !req.status_filter.is_empty()
+                && req.status_filter.to_lowercase() != status_str.to_lowercase()
+                && req.status_filter != "all"
+            {
                 continue;
             }
             executions.push(WorkflowExecutionInfo {
@@ -1564,10 +1620,15 @@ impl BenchmarkService for BenchmarkServiceImpl {
         request: Request<DescribeWorkflowExecutionRequest>,
     ) -> Result<Response<DescribeWorkflowExecutionResponse>, Status> {
         let req = request.into_inner();
-        let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
+        let ns = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
 
         let logs = self.engine.logs.read().unwrap();
-        let log = logs.get(&req.workflow_id)
+        let log = logs
+            .get(&req.workflow_id)
             .ok_or_else(|| Status::not_found(format!("workflow {} not found", req.workflow_id)))?;
         if log.namespace != ns {
             return Err(Status::not_found("namespace mismatch"));
