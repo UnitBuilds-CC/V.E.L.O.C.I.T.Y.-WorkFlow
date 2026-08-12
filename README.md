@@ -68,7 +68,7 @@
 |--------|----------|----------|-----------------|--------|
 | **Velocity Classic** | Temporal | gRPC (HTTP/2) | `velocity-classic` (Rust), `@velocity-workflow/classic` (TS) | Benchmarked |
 | **Velocity Runtime** | Restate | HTTP/1.1 JSON | `velocity-runtime-python`, `@velocity-workflow/runtime` (TS) | Benchmarked |
-| **Velocity Embedded** | DBOS | HTTP + PostgreSQL | `velocity-embedded` (Rust), `@velocity-workflow/embedded` (TS) | In progress |
+| **Velocity Embedded** | DBOS | HTTP + PostgreSQL | `velocity-embedded` (Rust), `@velocity-workflow/embedded` (TS) | Complete |
 
 All three flavors share the same `velocity-workflow-engine` core. For local development, the `velocity-dev-server` (binary: `velocity-dev`) provides a zero-setup in-memory experience with HTTP API, gRPC, and web UI.
 
