@@ -1,0 +1,568 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "velocity/v1/common.proto";
+
+// ─── WorkerService ────────────────────────────────────────────────────────────
+// Internal service for system workflows, batch operations, and maintenance tasks.
+// Temporal equivalent: api.workerservice.v1
+
+service WorkerService {
+
+  // AddSearchAttributes — add search attributes to a namespace
+  rpc AddSearchAttributes(AddSearchAttributesRequest)
+      returns (AddSearchAttributesResponse);
+
+  // RemoveSearchAttributes — remove search attributes from a namespace
+  rpc RemoveSearchAttributes(RemoveSearchAttributesRequest)
+      returns (RemoveSearchAttributesResponse);
+
+  // DescribeHistoryHost — describe a history host
+  rpc DescribeHistoryHost(DescribeHistoryHostRequest)
+      returns (DescribeHistoryHostResponse);
+
+  // GetWorkflowExecutionRawHistoryV2 — get raw history
+  rpc GetWorkflowExecutionRawHistoryV2(GetWorkflowExecutionRawHistoryV2Request)
+      returns (GetWorkflowExecutionRawHistoryV2Response);
+
+  // GetWorkflowExecutionRawHistory — get raw history
+  rpc GetWorkflowExecutionRawHistory(GetWorkflowExecutionRawHistoryRequest)
+      returns (GetWorkflowExecutionRawHistoryResponse);
+
+  // CloseShard — close a shard
+  rpc CloseShard(CloseShardRequest)
+      returns (CloseShardResponse);
+
+  // DescribeMutableState — describe mutable state
+  rpc DescribeMutableState(DescribeMutableStateRequest)
+      returns (DescribeMutableStateResponse);
+
+  // GetReplicationMessages — get replication messages
+  rpc GetReplicationMessages(GetReplicationMessagesRequest)
+      returns (GetReplicationMessagesResponse);
+
+  // GetNamespaceReplicationMessages — get namespace replication messages
+  rpc GetNamespaceReplicationMessages(GetNamespaceReplicationMessagesRequest)
+      returns (GetNamespaceReplicationMessagesResponse);
+
+  // GetDLQReplicationMessages — get DLQ replication messages
+  rpc GetDLQReplicationMessages(GetDLQReplicationMessagesRequest)
+      returns (GetDLQReplicationMessagesResponse);
+
+  // ReapplyEvents — reapply events
+  rpc ReapplyEvents(ReapplyEventsRequest)
+      returns (ReapplyEventsResponse);
+
+  // RefreshWorkflowTasks — refresh workflow tasks
+  rpc RefreshWorkflowTasks(RefreshWorkflowTasksRequest)
+      returns (RefreshWorkflowTasksResponse);
+
+  // DeleteWorkflowExecution — delete a workflow execution
+  rpc DeleteWorkflowExecution(DeleteWorkflowExecutionRequest)
+      returns (DeleteWorkflowExecutionResponse);
+
+  // ListQueuedMessages — list queued messages
+  rpc ListQueuedMessages(ListQueuedMessagesRequest)
+      returns (ListQueuedMessagesResponse);
+
+  // PurgeDLQMessages — purge dead letter queue
+  rpc PurgeDLQMessages(PurgeDLQMessagesRequest)
+      returns (PurgeDLQMessagesResponse);
+
+  // MergeDLQMessages — merge dead letter queue
+  rpc MergeDLQMessages(MergeDLQMessagesRequest)
+      returns (MergeDLQMessagesResponse);
+
+  // GetDLQMessages — get dead letter queue messages
+  rpc GetDLQMessages(GetDLQMessagesRequest)
+      returns (GetDLQMessagesResponse);
+
+  // RebuildMutableState — rebuild mutable state from history
+  rpc RebuildMutableState(RebuildMutableStateRequest)
+      returns (RebuildMutableStateResponse);
+
+  // ImportWorkflowExecution — import a workflow execution
+  rpc ImportWorkflowExecution(ImportWorkflowExecutionRequest)
+      returns (ImportWorkflowExecutionResponse);
+
+  // DeleteDLQTasks — delete DLQ tasks
+  rpc DeleteDLQTasks(DeleteDLQTasksRequest)
+      returns (DeleteDLQTasksResponse);
+
+  // ListHistoryTasks — list history tasks
+  rpc ListHistoryTasks(ListHistoryTasksRequest)
+      returns (ListHistoryTasksResponse);
+
+  // RemoveTask — remove a task
+  rpc RemoveTask(RemoveTaskRequest)
+      returns (RemoveTaskResponse);
+
+  // GetShard — get shard info
+  rpc GetShard(GetShardRequest)
+      returns (GetShardResponse);
+
+  // DescribeCluster — describe cluster
+  rpc DescribeCluster(DescribeClusterRequest)
+      returns (DescribeClusterResponse);
+
+  // ListClusters — list clusters
+  rpc ListClusters(ListClustersRequest)
+      returns (ListClustersResponse);
+
+  // AddOrUpdateRemoteCluster — add or update remote cluster
+  rpc AddOrUpdateRemoteCluster(AddOrUpdateRemoteClusterRequest)
+      returns (AddOrUpdateRemoteClusterResponse);
+
+  // RemoveRemoteCluster — remove remote cluster
+  rpc RemoveRemoteCluster(RemoveRemoteClusterRequest)
+      returns (RemoveRemoteClusterResponse);
+
+  // SyncWorkflowState — sync workflow state
+  rpc SyncWorkflowState(SyncWorkflowStateRequest)
+      returns (SyncWorkflowStateResponse);
+
+  // GenerateLastHistoryReplicationTasks — generate replication tasks
+  rpc GenerateLastHistoryReplicationTasks(GenerateLastHistoryReplicationTasksRequest)
+      returns (GenerateLastHistoryReplicationTasksResponse);
+
+  // GetClusterInfo — get cluster info
+  rpc GetClusterInfo(GetClusterInfoRequest)
+      returns (GetClusterInfoResponse);
+
+  // ListTables — list database tables
+  rpc ListTables(ListTablesRequest)
+      returns (ListTablesResponse);
+
+  // CreateNamespace — create a namespace
+  rpc CreateNamespace(CreateNamespaceRequest)
+      returns (CreateNamespaceResponse);
+
+  // UpdateNamespace — update a namespace
+  rpc UpdateNamespace(UpdateNamespaceRequest)
+      returns (UpdateNamespaceResponse);
+
+  // GetTaskQueueMetadata — get task queue metadata
+  rpc GetTaskQueueMetadata(GetTaskQueueMetadataRequest)
+      returns (GetTaskQueueMetadataResponse);
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+message AddSearchAttributesRequest {
+  map<string, int32> search_attributes = 1;
+  string namespace_id = 2;
+}
+
+message AddSearchAttributesResponse {}
+
+message RemoveSearchAttributesRequest {
+  repeated string search_attributes = 1;
+  string namespace_id = 2;
+}
+
+message RemoveSearchAttributesResponse {}
+
+message DescribeHistoryHostRequest {
+  string host_address = 1;
+  int32 shard_id_for_host = 2;
+  WorkflowExecution execution = 3;
+  string namespace_id = 4;
+}
+
+message DescribeHistoryHostResponse {
+  int32 shard_count = 1;
+  repeated int32 owned_shard_ids = 2;
+  string namespace_cache_state = 3;
+  string shard_controller_state = 4;
+  string address = 5;
+}
+
+message GetWorkflowExecutionRawHistoryV2Request {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 start_event_id = 3;
+  int64 end_event_id = 4;
+  int32 maximum_page_size = 5;
+  bytes next_page_token = 6;
+}
+
+message GetWorkflowExecutionRawHistoryV2Response {
+  repeated HistoryEvent history_events = 1;
+  bytes next_page_token = 2;
+}
+
+message GetWorkflowExecutionRawHistoryRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 start_event_id = 3;
+  int64 end_event_id = 4;
+  int32 maximum_page_size = 5;
+  bytes next_page_token = 6;
+}
+
+message GetWorkflowExecutionRawHistoryResponse {
+  repeated HistoryEvent history_events = 1;
+  bytes next_page_token = 2;
+}
+
+message CloseShardRequest {
+  int32 shard_id = 1;
+}
+
+message CloseShardResponse {}
+
+message DescribeMutableStateRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message DescribeMutableStateResponse {
+  string shard_id = 1;
+  bytes database_state = 2;
+  bytes cache_state = 3;
+}
+
+message GetReplicationMessagesRequest {
+  repeated ShardReplicationInfo shards = 1;
+  string cluster_name = 2;
+}
+
+message GetReplicationMessagesResponse {
+  repeated ReplicationTaskList shard_messages = 1;
+}
+
+message GetNamespaceReplicationMessagesRequest {
+  string cluster_name = 1;
+  int64 last_known_namespace_replication_task_id = 2;
+}
+
+message GetNamespaceReplicationMessagesResponse {
+  repeated ReplicationTask messages = 1;
+}
+
+message GetDLQReplicationMessagesRequest {
+  repeated ReplicationTaskInfo task_infos = 1;
+}
+
+message GetDLQReplicationMessagesResponse {
+  repeated ReplicationTask tasks = 1;
+}
+
+message ReapplyEventsRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  repeated HistoryEvent events = 3;
+}
+
+message ReapplyEventsResponse {}
+
+message RefreshWorkflowTasksRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message RefreshWorkflowTasksResponse {}
+
+message DeleteWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message DeleteWorkflowExecutionResponse {}
+
+message ListQueuedMessagesRequest {
+  int32 shard_id = 1;
+  int32 category = 2;
+  int32 page_size = 3;
+  bytes next_page_token = 4;
+}
+
+message ListQueuedMessagesResponse {
+  repeated QueuedMessage messages = 1;
+  bytes next_page_token = 2;
+}
+
+message PurgeDLQMessagesRequest {
+  string cluster_name = 1;
+  int32 shard_id = 2;
+  int64 first_message_id = 3;
+  int64 last_message_id = 4;
+}
+
+message PurgeDLQMessagesResponse {}
+
+message MergeDLQMessagesRequest {
+  string cluster_name = 1;
+  int32 shard_id = 2;
+  int64 first_message_id = 3;
+  int64 last_message_id = 4;
+}
+
+message MergeDLQMessagesResponse {}
+
+message GetDLQMessagesRequest {
+  string cluster_name = 1;
+  int32 shard_id = 2;
+  int64 first_message_id = 3;
+  int32 max_message_count = 4;
+  bytes last_message_id = 5;
+}
+
+message GetDLQMessagesResponse {
+  repeated DLQMessage messages = 1;
+}
+
+message RebuildMutableStateRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message RebuildMutableStateResponse {}
+
+message ImportWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  bytes workflow_state = 3;
+}
+
+message ImportWorkflowExecutionResponse {}
+
+message DeleteDLQTasksRequest {
+  string cluster_name = 1;
+  int32 shard_id = 2;
+  int64 inclusive_max_task_id = 3;
+}
+
+message DeleteDLQTasksResponse {
+  int64 messages_deleted = 1;
+}
+
+message ListHistoryTasksRequest {
+  int32 shard_id = 1;
+  int32 task_queue_type = 2;
+  TaskRange task_range = 3;
+  int32 batch_size = 4;
+  bytes next_page_token = 5;
+}
+
+message ListHistoryTasksResponse {
+  repeated Task tasks = 1;
+  bytes next_page_token = 2;
+}
+
+message RemoveTaskRequest {
+  int32 shard_id = 1;
+  int32 category = 2;
+  int64 task_id = 3;
+  google.protobuf.Timestamp visibility_time = 4;
+}
+
+message RemoveTaskResponse {}
+
+message GetShardRequest {
+  int32 shard_id = 1;
+}
+
+message GetShardResponse {
+  ShardInfo shard = 1;
+}
+
+message DescribeClusterRequest {
+  string cluster_name = 1;
+}
+
+message DescribeClusterResponse {
+  string cluster_name = 1;
+  int32 history_shard_count = 2;
+  string cluster_id = 3;
+  map<string, string> version_info = 4;
+  string failover_version_increment = 5;
+  string initial_failover_version = 6;
+  bool is_global_namespace_enabled = 7;
+  bool is_connection_enabled = 8;
+}
+
+message ListClustersRequest {
+  int32 page_size = 1;
+  bytes next_page_token = 2;
+}
+
+message ListClustersResponse {
+  repeated ClusterMetadata clusters = 1;
+  bytes next_page_token = 2;
+}
+
+message AddOrUpdateRemoteClusterRequest {
+  string frontend_address = 1;
+  bool enable_remote_cluster_connection = 2;
+}
+
+message AddOrUpdateRemoteClusterResponse {}
+
+message RemoveRemoteClusterRequest {
+  string cluster_name = 1;
+}
+
+message RemoveRemoteClusterResponse {}
+
+message SyncWorkflowStateRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  bytes replication_state = 3;
+}
+
+message SyncWorkflowStateResponse {}
+
+message GenerateLastHistoryReplicationTasksRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message GenerateLastHistoryReplicationTasksResponse {}
+
+message GetClusterInfoRequest {}
+
+message GetClusterInfoResponse {
+  repeated string supported_clients = 1;
+  string server_version = 2;
+  string cluster_id = 3;
+  int64 version_info = 4;
+  string cluster_name = 5;
+  int32 history_shard_count = 6;
+  string persistence_store = 7;
+  string visibility_store = 8;
+}
+
+message ListTablesRequest {
+  string database = 1;
+  int32 page_size = 2;
+  bytes next_page_token = 3;
+}
+
+message ListTablesResponse {
+  repeated string tables = 1;
+  bytes next_page_token = 2;
+}
+
+message CreateNamespaceRequest {
+  string namespace = 1;
+  string description = 2;
+  string owner_email = 3;
+  google.protobuf.Duration workflow_execution_retention_period = 4;
+  repeated ClusterReplicationConfig clusters = 5;
+  string active_cluster_name = 6;
+  map<string, string> data = 7;
+  bool is_global_namespace = 8;
+}
+
+message CreateNamespaceResponse {
+  string namespace_id = 1;
+}
+
+message UpdateNamespaceRequest {
+  string namespace_id = 1;
+  string description = 2;
+  string owner_email = 3;
+  map<string, string> data = 4;
+}
+
+message UpdateNamespaceResponse {}
+
+message GetTaskQueueMetadataRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  int32 task_queue_type = 3;
+}
+
+message GetTaskQueueMetadataResponse {
+  int64 max_tasks_per_second = 1;
+}
+
+// ─── Supporting Types ─────────────────────────────────────────────────────────
+
+message WorkflowExecution {
+  string workflow_id = 1;
+  string run_id = 2;
+}
+
+message ShardReplicationInfo {
+  int32 shard_id = 1;
+  int64 cluster_ack_level = 2;
+}
+
+message ReplicationTaskList {
+  repeated ReplicationTask tasks = 1;
+}
+
+message ReplicationTask {
+  int32 task_type = 1;
+  int64 source_task_id = 2;
+  bytes task_attributes = 3;
+}
+
+message ReplicationTaskInfo {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 task_id = 3;
+}
+
+message DLQMessage {
+  int64 message_id = 1;
+  bytes data = 2;
+}
+
+message QueuedMessage {
+  int64 message_id = 1;
+  bytes data = 2;
+  google.protobuf.Timestamp enqueued_time = 3;
+}
+
+message TaskRange {
+  int64 inclusive_min_task_key = 1;
+  int64 exclusive_max_task_key = 2;
+}
+
+message Task {
+  int64 namespace_id = 1;
+  int64 task_id = 2;
+  int32 task_type = 3;
+  google.protobuf.Timestamp fire_time = 4;
+}
+
+message ShardInfo {
+  int32 shard_id = 1;
+  int64 range_id = 2;
+  string owner = 3;
+  int64 replication_ack_level = 4;
+  int64 transfer_ack_level = 5;
+}
+
+message ClusterMetadata {
+  string cluster_name = 1;
+  string cluster_id = 2;
+  string frontend_address = 3;
+  bool is_connection_enabled = 4;
+}
+
+message ClusterReplicationConfig {
+  string cluster_name = 1;
+}
+
+message HistoryEvent {
+  int64 event_id = 1;
+  google.protobuf.Timestamp event_time = 2;
+  int32 event_type = 3;
+  int64 task_id = 4;
+  int64 version = 5;
+  bytes attributes = 6;
+}

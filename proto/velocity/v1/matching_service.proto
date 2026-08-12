@@ -1,0 +1,357 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "velocity/v1/common.proto";
+
+// ─── MatchingService ──────────────────────────────────────────────────────────
+// Internal service for task queue matching, polling, and dispatch.
+// Temporal equivalent: api.matchingservice.v1
+
+service MatchingService {
+
+  // PollActivityTaskQueue — long-poll for an activity task
+  rpc PollActivityTaskQueue(PollActivityTaskQueueRequest)
+      returns (PollActivityTaskQueueResponse);
+
+  // PollWorkflowTaskQueue — long-poll for a workflow task
+  rpc PollWorkflowTaskQueue(PollWorkflowTaskQueueRequest)
+      returns (PollWorkflowTaskQueueResponse);
+
+  // AddActivityTask — enqueue an activity task
+  rpc AddActivityTask(AddActivityTaskRequest)
+      returns (AddActivityTaskResponse);
+
+  // AddWorkflowTask — enqueue a workflow task
+  rpc AddWorkflowTask(AddWorkflowTaskRequest)
+      returns (AddWorkflowTaskResponse);
+
+  // QueryWorkflow — query a running workflow via matching
+  rpc QueryWorkflow(QueryWorkflowRequest)
+      returns (QueryWorkflowResponse);
+
+  // RespondQueryTaskCompleted — complete a query task
+  rpc RespondQueryTaskCompleted(RespondQueryTaskCompletedRequest)
+      returns (RespondQueryTaskCompletedResponse);
+
+  // CancelOutstandingPoll — cancel a pending long-poll
+  rpc CancelOutstandingPoll(CancelOutstandingPollRequest)
+      returns (CancelOutstandingPollResponse);
+
+  // DescribeTaskQueue — describe a task queue's status
+  rpc DescribeTaskQueue(DescribeTaskQueueRequest)
+      returns (DescribeTaskQueueResponse);
+
+  // ListTaskQueuePartitions — list partitions for a task queue
+  rpc ListTaskQueuePartitions(ListTaskQueuePartitionsRequest)
+      returns (ListTaskQueuePartitionsResponse);
+
+  // UpdateWorkerBuildIdCompatibility — update build ID versioning
+  rpc UpdateWorkerBuildIdCompatibility(UpdateWorkerBuildIdCompatibilityRequest)
+      returns (UpdateWorkerBuildIdCompatibilityResponse);
+
+  // GetWorkerBuildIdCompatibility — get build ID versioning info
+  rpc GetWorkerBuildIdCompatibility(GetWorkerBuildIdCompatibilityRequest)
+      returns (GetWorkerBuildIdCompatibilityResponse);
+
+  // UpdateTaskQueueUserData — update task queue metadata
+  rpc UpdateTaskQueueUserData(UpdateTaskQueueUserDataRequest)
+      returns (UpdateTaskQueueUserDataResponse);
+
+  // ReplicateTaskQueueUserData — replicate task queue metadata across clusters
+  rpc ReplicateTaskQueueUserData(ReplicateTaskQueueUserDataRequest)
+      returns (ReplicateTaskQueueUserDataResponse);
+
+  // CheckTaskQueueUserDataPropagation — verify propagation
+  rpc CheckTaskQueueUserDataPropagation(CheckTaskQueueUserDataPropagationRequest)
+      returns (CheckTaskQueueUserDataPropagationResponse);
+
+  // GetTaskQueueMetadata — get task queue metadata
+  rpc GetTaskQueueMetadata(GetTaskQueueMetadataRequest)
+      returns (GetTaskQueueMetadataResponse);
+
+  // ApplyNexusTask — apply a nexus task to the queue
+  rpc ApplyNexusTask(ApplyNexusTaskRequest)
+      returns (ApplyNexusTaskResponse);
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+message PollActivityTaskQueueRequest {
+  string namespace_id = 1;
+  string poller_identity = 2;
+  string task_queue = 3;
+  int32 task_queue_type = 4;
+  string task_queue_kind = 5;
+  int32 max_tasks_per_poll = 6;
+  google.protobuf.Duration poll_timeout = 7;
+  WorkerVersionCapabilities worker_version_capabilities = 8;
+}
+
+message PollActivityTaskQueueResponse {
+  string task_token = 1;
+  WorkflowExecution workflow_execution = 2;
+  string activity_id = 3;
+  string activity_type = 4;
+  bytes input = 5;
+  google.protobuf.Timestamp scheduled_time = 6;
+  google.protobuf.Timestamp started_time = 7;
+  google.protobuf.Duration heartbeat_timeout = 8;
+  int32 attempt = 9;
+  google.protobuf.Timestamp current_attempt_scheduled_time = 10;
+  RetryPolicy retry_policy = 11;
+}
+
+message PollWorkflowTaskQueueRequest {
+  string namespace_id = 1;
+  string poller_identity = 2;
+  string task_queue = 3;
+  int32 task_queue_type = 4;
+  string task_queue_kind = 5;
+  int32 max_tasks_per_poll = 6;
+  google.protobuf.Duration poll_timeout = 7;
+  WorkerVersionCapabilities worker_version_capabilities = 8;
+}
+
+message PollWorkflowTaskQueueResponse {
+  string task_token = 1;
+  WorkflowExecution workflow_execution = 2;
+  string workflow_type = 3;
+  int64 previous_started_event_id = 4;
+  int64 started_event_id = 5;
+  int32 attempt = 6;
+  repeated HistoryEvent history_events = 7;
+  repeated HistoryEvent new_history_events = 8;
+}
+
+message AddActivityTaskRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string task_queue = 3;
+  string activity_id = 4;
+  google.protobuf.Duration schedule_to_start_timeout = 5;
+  TaskVersionDirective version_directive = 6;
+}
+
+message AddActivityTaskResponse {}
+
+message AddWorkflowTaskRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string task_queue = 3;
+  int64 scheduled_event_id = 4;
+  google.protobuf.Duration schedule_to_start_timeout = 5;
+  TaskVersionDirective version_directive = 6;
+}
+
+message AddWorkflowTaskResponse {}
+
+message QueryWorkflowRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string query_type = 3;
+  bytes query_args = 4;
+  int32 query_reject_condition = 5;
+  string header_key = 6;
+}
+
+message QueryWorkflowResponse {
+  bytes result = 1;
+  QueryRejected query_rejected = 2;
+}
+
+message RespondQueryTaskCompletedRequest {
+  string task_token = 1;
+  int32 completed_type = 2;
+  bytes result = 3;
+  string error_message = 4;
+  string namespace_id = 5;
+}
+
+message RespondQueryTaskCompletedResponse {}
+
+message CancelOutstandingPollRequest {
+  string namespace_id = 1;
+  string poller_id = 2;
+  string task_queue = 3;
+  int32 task_queue_type = 4;
+}
+
+message CancelOutstandingPollResponse {}
+
+message DescribeTaskQueueRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  int32 task_queue_type = 3;
+  bool include_task_queue_status = 4;
+}
+
+message DescribeTaskQueueResponse {
+  repeated PollerInfo pollers = 1;
+  TaskQueueStatus task_queue_status = 2;
+}
+
+message ListTaskQueuePartitionsRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  int32 task_queue_type = 3;
+}
+
+message ListTaskQueuePartitionsResponse {
+  repeated TaskQueuePartitionMetadata activity_task_queue_partitions = 1;
+  repeated TaskQueuePartitionMetadata workflow_task_queue_partitions = 2;
+}
+
+message UpdateWorkerBuildIdCompatibilityRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  oneof operation {
+    AddNewCompatibleVersion add_new_compatible_version = 3;
+    AddNewBuildIdInNewDefaultSet add_new_build_id_in_new_default_set = 4;
+    MergeSets merge_sets = 5;
+  }
+}
+
+message UpdateWorkerBuildIdCompatibilityResponse {}
+
+message AddNewCompatibleVersion {
+  string new_build_id = 1;
+  string existing_compatible_set = 2;
+  bool make_set_default = 3;
+}
+
+message AddNewBuildIdInNewDefaultSet {
+  string new_build_id = 1;
+}
+
+message MergeSets {
+  string primary_set = 1;
+  string secondary_set = 2;
+}
+
+message GetWorkerBuildIdCompatibilityRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  int32 max_sets = 3;
+}
+
+message GetWorkerBuildIdCompatibilityResponse {
+  repeated WorkerBuildIdSet major_version_sets = 1;
+}
+
+message WorkerBuildIdSet {
+  repeated string build_ids = 1;
+}
+
+message UpdateTaskQueueUserDataRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  TaskQueueUserData user_data = 3;
+}
+
+message UpdateTaskQueueUserDataResponse {}
+
+message ReplicateTaskQueueUserDataRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  TaskQueueUserData user_data = 3;
+}
+
+message ReplicateTaskQueueUserDataResponse {}
+
+message CheckTaskQueueUserDataPropagationRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  int64 version = 3;
+}
+
+message CheckTaskQueueUserDataPropagationResponse {}
+
+message GetTaskQueueMetadataRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  int32 task_queue_type = 3;
+}
+
+message GetTaskQueueMetadataResponse {
+  TaskQueueMetadata metadata = 1;
+}
+
+message ApplyNexusTaskRequest {
+  string namespace_id = 1;
+  string task_queue = 2;
+  bytes task_payload = 3;
+}
+
+message ApplyNexusTaskResponse {}
+
+// ─── Supporting Types ─────────────────────────────────────────────────────────
+
+message WorkerVersionCapabilities {
+  string build_id = 1;
+  bool use_versioning = 2;
+}
+
+message TaskVersionDirective {
+  string build_id = 1;
+  bool use_versioning = 2;
+}
+
+message QueryRejected {
+  int32 status = 1;
+}
+
+message PollerInfo {
+  string identity = 1;
+  google.protobuf.Timestamp last_access_time = 2;
+  float rate_per_second = 3;
+}
+
+message TaskQueueStatus {
+  int64 backlog_count = 1;
+  int64 read_level = 2;
+  int64 ack_level = 3;
+  float rate_per_second = 4;
+  int64 task_id_block_start = 5;
+  int64 task_id_block_end = 6;
+}
+
+message TaskQueuePartitionMetadata {
+  string key = 1;
+  string owner_host_name = 2;
+}
+
+message TaskQueueUserData {
+  int64 clock = 1;
+  TaskQueueVersionInfo versioning_data = 2;
+}
+
+message TaskQueueVersionInfo {
+  repeated TaskQueueVersionInfoEntry versions = 1;
+}
+
+message TaskQueueVersionInfoEntry {
+  string build_id = 1;
+  bool is_default = 2;
+}
+
+message TaskQueueMetadata {
+  int64 max_tasks_per_second = 1;
+}
+
+message HistoryEvent {
+  int64 event_id = 1;
+  google.protobuf.Timestamp event_time = 2;
+  int32 event_type = 3;
+  int64 task_id = 4;
+  int64 version = 5;
+}

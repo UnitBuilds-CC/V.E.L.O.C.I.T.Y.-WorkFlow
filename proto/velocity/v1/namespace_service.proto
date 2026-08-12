@@ -1,0 +1,235 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "velocity/v1/common.proto";
+
+// ─── NamespaceService ─────────────────────────────────────────────────────────
+// Manages namespace lifecycle, configuration, replication, and failover.
+
+service NamespaceService {
+
+  // RegisterNamespace — create a new namespace
+  rpc RegisterNamespace(RegisterNamespaceRequest)
+      returns (RegisterNamespaceResponse);
+
+  // DescribeNamespace — get namespace details
+  rpc DescribeNamespace(DescribeNamespaceRequest)
+      returns (DescribeNamespaceResponse);
+
+  // UpdateNamespace — update namespace configuration
+  rpc UpdateNamespace(UpdateNamespaceRequest)
+      returns (UpdateNamespaceResponse);
+
+  // DeprecateNamespace — mark namespace as deprecated (no new workflows)
+  rpc DeprecateNamespace(DeprecateNamespaceRequest)
+      returns (DeprecateNamespaceResponse);
+
+  // DeleteNamespace — permanently delete a namespace
+  rpc DeleteNamespace(DeleteNamespaceRequest)
+      returns (DeleteNamespaceResponse);
+
+  // ListNamespaces — list all namespaces
+  rpc ListNamespaces(ListNamespacesRequest)
+      returns (ListNamespacesResponse);
+
+  // UpdateNamespaceReplicationConfig — update replication configuration
+  rpc UpdateNamespaceReplicationConfig(UpdateNamespaceReplicationConfigRequest)
+      returns (UpdateNamespaceReplicationConfigResponse);
+
+  // GetNamespaceReplicationConfig — get replication configuration
+  rpc GetNamespaceReplicationConfig(GetNamespaceReplicationConfigRequest)
+      returns (GetNamespaceReplicationConfigResponse);
+
+  // FailoverNamespace — trigger namespace failover to another cluster
+  rpc FailoverNamespace(FailoverNamespaceRequest)
+      returns (FailoverNamespaceResponse);
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+message RegisterNamespaceRequest {
+  string namespace = 1;
+  string description = 2;
+  string owner_email = 3;
+  google.protobuf.Duration workflow_execution_retention_period = 4;
+  repeated ClusterReplicationConfig clusters = 5;
+  string active_cluster_name = 6;
+  map<string, string> data = 7;
+  string security_token = 8;
+  bool is_global_namespace = 9;
+  HistoryArchivalState history_archival_state = 10;
+  string history_archival_uri = 11;
+  VisibilityArchivalState visibility_archival_state = 12;
+  string visibility_archival_uri = 13;
+}
+
+message RegisterNamespaceResponse {
+  // empty on success
+}
+
+message DescribeNamespaceRequest {
+  string namespace_id = 1;
+  string namespace = 2;
+}
+
+message DescribeNamespaceResponse {
+  NamespaceInfo namespace_info = 1;
+  NamespaceConfig config = 2;
+  NamespaceReplicationConfig replication_config = 3;
+  int64 failover_version = 4;
+  bool is_global_namespace = 5;
+}
+
+message UpdateNamespaceRequest {
+  string namespace_id = 1;
+  string namespace = 2;
+  UpdateNamespaceInfo update_info = 3;
+  NamespaceConfig config = 4;
+  NamespaceReplicationConfig replication_config = 5;
+  string security_token = 6;
+  string delete_bad_binary = 7;
+  bool promote_namespace = 8;
+}
+
+message UpdateNamespaceResponse {
+  NamespaceInfo namespace_info = 1;
+  NamespaceConfig config = 2;
+  NamespaceReplicationConfig replication_config = 3;
+  int64 failover_version = 4;
+  bool is_global_namespace = 5;
+}
+
+message DeprecateNamespaceRequest {
+  string namespace_id = 1;
+  string namespace = 2;
+  string security_token = 3;
+}
+
+message DeprecateNamespaceResponse {
+  NamespaceInfo namespace_info = 1;
+}
+
+message DeleteNamespaceRequest {
+  string namespace_id = 1;
+  string namespace = 2;
+  string security_token = 3;
+}
+
+message DeleteNamespaceResponse {}
+
+message ListNamespacesRequest {
+  int32 page_size = 1;
+  bytes next_page_token = 2;
+  string namespace_filter_state = 3;
+}
+
+message ListNamespacesResponse {
+  repeated DescribeNamespaceResponse namespaces = 1;
+  bytes next_page_token = 2;
+}
+
+message UpdateNamespaceReplicationConfigRequest {
+  string namespace_id = 1;
+  string namespace = 2;
+  string active_cluster_name = 3;
+  repeated ClusterReplicationConfig clusters = 4;
+}
+
+message UpdateNamespaceReplicationConfigResponse {}
+
+message GetNamespaceReplicationConfigRequest {
+  string namespace_id = 1;
+  string namespace = 2;
+}
+
+message GetNamespaceReplicationConfigResponse {
+  string active_cluster_name = 1;
+  repeated ClusterReplicationConfig clusters = 2;
+}
+
+message FailoverNamespaceRequest {
+  string namespace_id = 1;
+  string namespace = 2;
+  string target_cluster = 3;
+  bool force = 4;
+}
+
+message FailoverNamespaceResponse {
+  NamespaceInfo namespace_info = 1;
+  string failover_state = 2;
+}
+
+// ─── Supporting Types ─────────────────────────────────────────────────────────
+
+enum HistoryArchivalState {
+  HISTORY_ARCHIVAL_STATE_UNSPECIFIED = 0;
+  HISTORY_ARCHIVAL_STATE_DISABLED = 1;
+  HISTORY_ARCHIVAL_STATE_ENABLED = 2;
+}
+
+enum VisibilityArchivalState {
+  VISIBILITY_ARCHIVAL_STATE_UNSPECIFIED = 0;
+  VISIBILITY_ARCHIVAL_STATE_DISABLED = 1;
+  VISIBILITY_ARCHIVAL_STATE_ENABLED = 2;
+}
+
+message NamespaceInfo {
+  string name = 1;
+  string id = 2;
+  NamespaceState state = 3;
+  string description = 4;
+  string owner_email = 5;
+  map<string, string> data = 6;
+  int64 failover_version = 7;
+  bool is_global_namespace = 8;
+  repeated string supported_sdk_versions = 9;
+}
+
+enum NamespaceState {
+  NAMESPACE_STATE_UNSPECIFIED = 0;
+  NAMESPACE_STATE_REGISTERED = 1;
+  NAMESPACE_STATE_DEPRECATED = 2;
+  NAMESPACE_STATE_DELETED = 3;
+}
+
+message NamespaceConfig {
+  google.protobuf.Duration workflow_execution_retention_ttl = 1;
+  BadBinaryInfo bad_binary = 2;
+  HistoryArchivalState history_archival_state = 3;
+  string history_archival_uri = 4;
+  VisibilityArchivalState visibility_archival_state = 5;
+  string visibility_archival_uri = 6;
+}
+
+message BadBinaryInfo {
+  string reason = 1;
+  string operator = 2;
+  google.protobuf.Timestamp create_time = 3;
+}
+
+message NamespaceReplicationConfig {
+  string active_cluster_name = 1;
+  repeated ClusterReplicationConfig clusters = 2;
+  NamespaceState state = 3;
+}
+
+message ClusterReplicationConfig {
+  string cluster_name = 1;
+}
+
+message UpdateNamespaceInfo {
+  string description = 1;
+  string owner_email = 2;
+  map<string, string> data = 3;
+  NamespaceState state = 4;
+}

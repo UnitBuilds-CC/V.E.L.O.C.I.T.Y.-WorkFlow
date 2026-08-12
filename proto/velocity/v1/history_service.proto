@@ -1,0 +1,915 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "velocity/v1/common.proto";
+
+// ─── HistoryService ───────────────────────────────────────────────────────────
+// Internal service for workflow history management, replication, and shard control.
+// Temporal equivalent: api.historyservice.v1
+
+service HistoryService {
+
+  // StartWorkflowExecution — start a new workflow execution
+  rpc StartWorkflowExecution(StartWorkflowExecutionRequest)
+      returns (StartWorkflowExecutionResponse);
+
+  // GetMutableState — get mutable state for a workflow execution
+  rpc GetMutableState(GetMutableStateRequest)
+      returns (GetMutableStateResponse);
+
+  // PollMutableState — long-poll for mutable state changes
+  rpc PollMutableState(PollMutableStateRequest)
+      returns (PollMutableStateResponse);
+
+  // ResetStickyTaskQueue — reset the sticky task queue for a workflow
+  rpc ResetStickyTaskQueue(ResetStickyTaskQueueRequest)
+      returns (ResetStickyTaskQueueResponse);
+
+  // DescribeWorkflowExecution — describe a workflow execution
+  rpc DescribeWorkflowExecution(DescribeWorkflowExecutionRequest)
+      returns (DescribeWorkflowExecutionResponse);
+
+  // RecordWorkflowTaskStarted — record that a workflow task has started
+  rpc RecordWorkflowTaskStarted(RecordWorkflowTaskStartedRequest)
+      returns (RecordWorkflowTaskStartedResponse);
+
+  // RecordActivityTaskStarted — record that an activity task has started
+  rpc RecordActivityTaskStarted(RecordActivityTaskStartedRequest)
+      returns (RecordActivityTaskStartedResponse);
+
+  // RespondWorkflowTaskCompleted — complete a workflow task
+  rpc RespondWorkflowTaskCompleted(RespondWorkflowTaskCompletedRequest)
+      returns (RespondWorkflowTaskCompletedResponse);
+
+  // RespondWorkflowTaskFailed — fail a workflow task
+  rpc RespondWorkflowTaskFailed(RespondWorkflowTaskFailedRequest)
+      returns (RespondWorkflowTaskFailedResponse);
+
+  // RespondActivityTaskCompleted — complete an activity task
+  rpc RespondActivityTaskCompleted(RespondActivityTaskCompletedRequest)
+      returns (RespondActivityTaskCompletedResponse);
+
+  // RespondActivityTaskFailed — fail an activity task
+  rpc RespondActivityTaskFailed(RespondActivityTaskFailedRequest)
+      returns (RespondActivityTaskFailedResponse);
+
+  // RespondActivityTaskCanceled — cancel an activity task
+  rpc RespondActivityTaskCanceled(RespondActivityTaskCanceledRequest)
+      returns (RespondActivityTaskCanceledResponse);
+
+  // RecordActivityTaskHeartbeat — heartbeat an activity task
+  rpc RecordActivityTaskHeartbeat(RecordActivityTaskHeartbeatRequest)
+      returns (RecordActivityTaskHeartbeatResponse);
+
+  // RequestCancelWorkflowExecution — request cancellation
+  rpc RequestCancelWorkflowExecution(RequestCancelWorkflowExecutionRequest)
+      returns (RequestCancelWorkflowExecutionResponse);
+
+  // SignalWorkflowExecution — signal a workflow
+  rpc SignalWorkflowExecution(SignalWorkflowExecutionRequest)
+      returns (SignalWorkflowExecutionResponse);
+
+  // SignalWithStartWorkflowExecution — signal or start
+  rpc SignalWithStartWorkflowExecution(SignalWithStartWorkflowExecutionRequest)
+      returns (SignalWithStartWorkflowExecutionResponse);
+
+  // RemoveSignalMutableState — remove a signal from mutable state
+  rpc RemoveSignalMutableState(RemoveSignalMutableStateRequest)
+      returns (RemoveSignalMutableStateResponse);
+
+  // TerminateWorkflowExecution — terminate a workflow
+  rpc TerminateWorkflowExecution(TerminateWorkflowExecutionRequest)
+      returns (TerminateWorkflowExecutionResponse);
+
+  // DeleteWorkflowExecution — delete a workflow execution
+  rpc DeleteWorkflowExecution(DeleteWorkflowExecutionRequest)
+      returns (DeleteWorkflowExecutionResponse);
+
+  // ResetWorkflowExecution — reset a workflow to a previous event
+  rpc ResetWorkflowExecution(ResetWorkflowExecutionRequest)
+      returns (ResetWorkflowExecutionResponse);
+
+  // ScheduleWorkflowTask — schedule a workflow task
+  rpc ScheduleWorkflowTask(ScheduleWorkflowTaskRequest)
+      returns (ScheduleWorkflowTaskResponse);
+
+  // RecordChildExecutionCompleted — record child workflow completion
+  rpc RecordChildExecutionCompleted(RecordChildExecutionCompletedRequest)
+      returns (RecordChildExecutionCompletedResponse);
+
+  // VerifyChildExecutionCompletionRecorded — verify child completion
+  rpc VerifyChildExecutionCompletionRecorded(VerifyChildExecutionCompletionRecordedRequest)
+      returns (VerifyChildExecutionCompletionRecordedResponse);
+
+  // ReplicateEventsV2 — replicate events from another cluster
+  rpc ReplicateEventsV2(ReplicateEventsV2Request)
+      returns (ReplicateEventsV2Response);
+
+  // SyncShardStatus — sync shard status across clusters
+  rpc SyncShardStatus(SyncShardStatusRequest)
+      returns (SyncShardStatusResponse);
+
+  // SyncActivity — sync activity state across clusters
+  rpc SyncActivity(SyncActivityRequest)
+      returns (SyncActivityResponse);
+
+  // DescribeMutableState — describe mutable state (debug)
+  rpc DescribeMutableState(DescribeMutableStateRequest)
+      returns (DescribeMutableStateResponse);
+
+  // GetReplicationMessages — get replication messages for a shard
+  rpc GetReplicationMessages(GetReplicationMessagesRequest)
+      returns (GetReplicationMessagesResponse);
+
+  // GetDLQReplicationMessages — get DLQ replication messages
+  rpc GetDLQReplicationMessages(GetDLQReplicationMessagesRequest)
+      returns (GetDLQReplicationMessagesResponse);
+
+  // QueryWorkflow — query a workflow
+  rpc QueryWorkflow(QueryWorkflowRequest)
+      returns (QueryWorkflowResponse);
+
+  // ReapplyEvents — reapply events to a workflow
+  rpc ReapplyEvents(ReapplyEventsRequest)
+      returns (ReapplyEventsResponse);
+
+  // GetDLQMessages — get dead letter queue messages
+  rpc GetDLQMessages(GetDLQMessagesRequest)
+      returns (GetDLQMessagesResponse);
+
+  // PurgeDLQMessages — purge dead letter queue messages
+  rpc PurgeDLQMessages(PurgeDLQMessagesRequest)
+      returns (PurgeDLQMessagesResponse);
+
+  // MergeDLQMessages — merge dead letter queue messages
+  rpc MergeDLQMessages(MergeDLQMessagesRequest)
+      returns (MergeDLQMessagesResponse);
+
+  // RefreshWorkflowTasks — refresh workflow tasks
+  rpc RefreshWorkflowTasks(RefreshWorkflowTasksRequest)
+      returns (RefreshWorkflowTasksResponse);
+
+  // GenerateLastHistoryReplicationTasks — generate replication tasks
+  rpc GenerateLastHistoryReplicationTasks(GenerateLastHistoryReplicationTasksRequest)
+      returns (GenerateLastHistoryReplicationTasksResponse);
+
+  // GetReplicationStatus — get replication status
+  rpc GetReplicationStatus(GetReplicationStatusRequest)
+      returns (GetReplicationStatusResponse);
+
+  // GetShard — get shard info
+  rpc GetShard(GetShardRequest)
+      returns (GetShardResponse);
+
+  // CloseShard — close a shard
+  rpc CloseShard(CloseShardRequest)
+      returns (CloseShardResponse);
+
+  // ListHistoryTasks — list tasks in history queue
+  rpc ListHistoryTasks(ListHistoryTasksRequest)
+      returns (ListHistoryTasksResponse);
+
+  // RemoveTask — remove a task from the queue
+  rpc RemoveTask(RemoveTaskRequest)
+      returns (RemoveTaskResponse);
+
+  // GetWorkflowExecutionRawHistoryV2 — get raw history events
+  rpc GetWorkflowExecutionRawHistoryV2(GetWorkflowExecutionRawHistoryV2Request)
+      returns (GetWorkflowExecutionRawHistoryV2Response);
+
+  // GetWorkflowExecutionHistory — get workflow history
+  rpc GetWorkflowExecutionHistory(GetWorkflowExecutionHistoryRequest)
+      returns (GetWorkflowExecutionHistoryResponse);
+
+  // GetWorkflowExecutionHistoryReverse — get history in reverse
+  rpc GetWorkflowExecutionHistoryReverse(GetWorkflowExecutionHistoryReverseRequest)
+      returns (GetWorkflowExecutionHistoryReverseResponse);
+
+  // ForceDeleteWorkflowExecution — force delete a workflow
+  rpc ForceDeleteWorkflowExecution(ForceDeleteWorkflowExecutionRequest)
+      returns (ForceDeleteWorkflowExecutionResponse);
+
+  // GetWorkflowExecutionRawHistory — get raw history
+  rpc GetWorkflowExecutionRawHistory(GetWorkflowExecutionRawHistoryRequest)
+      returns (GetWorkflowExecutionRawHistoryResponse);
+
+  // ListQueuedMessages — list queued messages
+  rpc ListQueuedMessages(ListQueuedMessagesRequest)
+      returns (ListQueuedMessagesResponse);
+
+  // InvokeStateMachineMethod — invoke a state machine method
+  rpc InvokeStateMachineMethod(InvokeStateMachineMethodRequest)
+      returns (InvokeStateMachineMethodResponse);
+}
+
+// ─── Core Messages ────────────────────────────────────────────────────────────
+
+message StartWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string workflow_type = 3;
+  string task_queue = 4;
+  bytes input = 5;
+  google.protobuf.Duration workflow_run_timeout = 6;
+  google.protobuf.Duration workflow_task_timeout = 7;
+  string identity = 8;
+  string request_id = 9;
+  int32 workflow_id_reuse_policy = 10;
+  int32 retry_initial_interval_seconds = 11;
+  int32 retry_max_attempts = 12;
+  map<string, string> search_attributes = 13;
+  map<string, string> memo = 14;
+  int32 continue_as_new_initiator = 15;
+  string cron_schedule = 16;
+}
+
+message StartWorkflowExecutionResponse {
+  string run_id = 1;
+  int64 started_event_id = 2;
+  string cluster = 3;
+}
+
+message GetMutableStateRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 expected_next_event_id = 3;
+  bytes current_branch_token = 4;
+}
+
+message GetMutableStateResponse {
+  WorkflowExecution execution = 1;
+  string workflow_type = 2;
+  int64 next_event_id = 3;
+  int64 previous_started_event_id = 4;
+  int32 workflow_state = 5;
+  int32 workflow_status = 6;
+  string task_queue = 7;
+  bool sticky_task_queue_enabled = 8;
+  string client_library_version = 9;
+  bytes current_branch_token = 10;
+  int64 version_histories_scheduled_event_id = 11;
+}
+
+message PollMutableStateRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 expected_next_event_id = 3;
+  bytes current_branch_token = 4;
+}
+
+message PollMutableStateResponse {
+  WorkflowExecution execution = 1;
+  string workflow_type = 2;
+  int64 next_event_id = 3;
+  int64 previous_started_event_id = 4;
+  int32 workflow_state = 5;
+  int32 workflow_status = 6;
+  string task_queue = 7;
+}
+
+message ResetStickyTaskQueueRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message ResetStickyTaskQueueResponse {}
+
+message DescribeWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message DescribeWorkflowExecutionResponse {
+  WorkflowExecutionConfig execution_config = 1;
+  WorkflowExecutionInfo execution_info = 2;
+  repeated PendingActivityInfo pending_activities = 3;
+  repeated PendingChildExecutionInfo pending_children = 4;
+  int32 pending_workflow_task_count = 5;
+}
+
+message RecordWorkflowTaskStartedRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 schedule_event_id = 3;
+  string task_token = 4;
+  string poller_identity = 5;
+}
+
+message RecordWorkflowTaskStartedResponse {
+  int64 previous_started_event_id = 1;
+  int64 started_event_id = 2;
+  string workflow_type = 3;
+  int64 next_event_id = 4;
+  int32 attempt = 5;
+  bool sticky_task_queue_enabled = 6;
+}
+
+message RecordActivityTaskStartedRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 schedule_event_id = 3;
+  string task_token = 4;
+  string poller_identity = 5;
+}
+
+message RecordActivityTaskStartedResponse {
+  int64 scheduled_event_id = 1;
+  int32 attempt = 2;
+  google.protobuf.Timestamp scheduled_time = 3;
+  google.protobuf.Timestamp started_time = 4;
+}
+
+message RespondWorkflowTaskCompletedRequest {
+  string task_token = 1;
+  repeated WorkflowCommand commands = 2;
+  string identity = 3;
+  StickyExecutionAttributes sticky_attributes = 4;
+  bool return_new_workflow_task = 5;
+  bool force_create_new_workflow_task = 6;
+  string worker_versioning_build_id = 7;
+  map<string, NexusOperationCancellationInfo> nexus_operations = 8;
+}
+
+message RespondWorkflowTaskCompletedResponse {
+  WorkflowTaskCompletedResult result = 1;
+}
+
+message RespondWorkflowTaskFailedRequest {
+  string task_token = 1;
+  int32 cause = 2;
+  string details = 3;
+  string identity = 4;
+}
+
+message RespondWorkflowTaskFailedResponse {}
+
+message RespondActivityTaskCompletedRequest {
+  string task_token = 1;
+  bytes result = 2;
+  string identity = 3;
+  string namespace_id = 4;
+}
+
+message RespondActivityTaskCompletedResponse {}
+
+message RespondActivityTaskFailedRequest {
+  string task_token = 1;
+  bytes failure = 2;
+  string identity = 3;
+  string namespace_id = 4;
+  int32 last_heartbeat_details_count = 5;
+}
+
+message RespondActivityTaskFailedResponse {}
+
+message RespondActivityTaskCanceledRequest {
+  string task_token = 1;
+  bytes details = 2;
+  string identity = 3;
+  string namespace_id = 4;
+}
+
+message RespondActivityTaskCanceledResponse {}
+
+message RecordActivityTaskHeartbeatRequest {
+  string task_token = 1;
+  bytes details = 2;
+  string identity = 3;
+  string namespace_id = 4;
+}
+
+message RecordActivityTaskHeartbeatResponse {
+  bool cancel_requested = 1;
+}
+
+message RequestCancelWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string identity = 3;
+  string request_id = 4;
+  string first_execution_run_id = 5;
+  int32 reason = 6;
+}
+
+message RequestCancelWorkflowExecutionResponse {}
+
+message SignalWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string signal_name = 3;
+  bytes signal_input = 4;
+  string identity = 5;
+  string request_id = 6;
+  int32 control = 7;
+  string header_key = 8;
+}
+
+message SignalWorkflowExecutionResponse {}
+
+message SignalWithStartWorkflowExecutionRequest {
+  string namespace_id = 1;
+  string workflow_id = 2;
+  string workflow_type = 3;
+  string task_queue = 4;
+  bytes input = 5;
+  google.protobuf.Duration workflow_run_timeout = 6;
+  google.protobuf.Duration workflow_task_timeout = 7;
+  string identity = 8;
+  string request_id = 9;
+  string signal_name = 10;
+  bytes signal_input = 11;
+}
+
+message SignalWithStartWorkflowExecutionResponse {
+  string run_id = 1;
+}
+
+message RemoveSignalMutableStateRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string request_id = 3;
+}
+
+message RemoveSignalMutableStateResponse {}
+
+message TerminateWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string reason = 3;
+  bytes details = 4;
+  string identity = 5;
+}
+
+message TerminateWorkflowExecutionResponse {}
+
+message DeleteWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message DeleteWorkflowExecutionResponse {}
+
+message ResetWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string reason = 3;
+  int64 workflow_task_finish_event_id = 4;
+  string request_id = 5;
+}
+
+message ResetWorkflowExecutionResponse {
+  string run_id = 1;
+}
+
+message ScheduleWorkflowTaskRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  bool has_first_workflow_task = 3;
+}
+
+message ScheduleWorkflowTaskResponse {}
+
+message RecordChildExecutionCompletedRequest {
+  string namespace_id = 1;
+  WorkflowExecution parent_execution = 2;
+  WorkflowExecution child_execution = 3;
+  int64 child_initiated_event_id = 4;
+  int32 child_completion_event_type = 5;
+  bytes child_completion_result = 6;
+}
+
+message RecordChildExecutionCompletedResponse {}
+
+message VerifyChildExecutionCompletionRecordedRequest {
+  string namespace_id = 1;
+  WorkflowExecution parent_execution = 2;
+  WorkflowExecution child_execution = 3;
+  int64 child_initiated_event_id = 4;
+}
+
+message VerifyChildExecutionCompletionRecordedResponse {}
+
+message ReplicateEventsV2Request {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 version = 3;
+  int64 first_event_id = 4;
+  int64 next_event_id = 5;
+  bytes events = 6;
+  bytes new_run_events = 7;
+  string base_execution_info = 8;
+}
+
+message ReplicateEventsV2Response {}
+
+message SyncShardStatusRequest {
+  string source_cluster = 1;
+  int32 shard_id = 2;
+  google.protobuf.Timestamp status_time = 3;
+}
+
+message SyncShardStatusResponse {}
+
+message SyncActivityRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 version = 3;
+  int64 scheduled_event_id = 4;
+  google.protobuf.Timestamp scheduled_time = 5;
+  google.protobuf.Timestamp started_time = 6;
+  int32 attempt = 7;
+}
+
+message SyncActivityResponse {}
+
+message DescribeMutableStateRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message DescribeMutableStateResponse {
+  string shard_id = 1;
+  string history_addr = 2;
+  bytes mutable_state = 3;
+  bytes databaseMutableState = 4;
+}
+
+message GetReplicationMessagesRequest {
+  repeated ShardReplicationInfo shards = 1;
+  string cluster_name = 2;
+}
+
+message GetReplicationMessagesResponse {
+  repeated ReplicationTaskList shard_messages = 1;
+}
+
+message GetDLQReplicationMessagesRequest {
+  repeated ReplicationTaskInfo task_infos = 1;
+}
+
+message GetDLQReplicationMessagesResponse {
+  repeated ReplicationTask tasks = 1;
+}
+
+message QueryWorkflowRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  string query_type = 3;
+  bytes query_args = 4;
+  int32 query_reject_condition = 5;
+}
+
+message QueryWorkflowResponse {
+  bytes result = 1;
+  QueryRejected query_rejected = 2;
+}
+
+message ReapplyEventsRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  repeated HistoryEvent events = 3;
+}
+
+message ReapplyEventsResponse {}
+
+message GetDLQMessagesRequest {
+  string cluster_name = 1;
+  int32 shard_id = 2;
+  int64 first_message_id = 3;
+  int32 max_message_count = 4;
+  bytes last_message_id = 5;
+}
+
+message GetDLQMessagesResponse {
+  repeated DLQMessage messages = 1;
+  bytes replication_tasks = 2;
+}
+
+message PurgeDLQMessagesRequest {
+  string cluster_name = 1;
+  int32 shard_id = 2;
+  int64 first_message_id = 3;
+  int64 last_message_id = 4;
+}
+
+message PurgeDLQMessagesResponse {}
+
+message MergeDLQMessagesRequest {
+  string cluster_name = 1;
+  int32 shard_id = 2;
+  int64 first_message_id = 3;
+  int64 last_message_id = 4;
+}
+
+message MergeDLQMessagesResponse {}
+
+message RefreshWorkflowTasksRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message RefreshWorkflowTasksResponse {}
+
+message GenerateLastHistoryReplicationTasksRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message GenerateLastHistoryReplicationTasksResponse {}
+
+message GetReplicationStatusRequest {
+  repeated string cluster_names = 1;
+}
+
+message GetReplicationStatusResponse {
+  repeated ShardReplicationStatus shards = 1;
+}
+
+message GetShardRequest {
+  int32 shard_id = 1;
+}
+
+message GetShardResponse {
+  ShardInfo shard = 1;
+}
+
+message CloseShardRequest {
+  int32 shard_id = 1;
+}
+
+message CloseShardResponse {}
+
+message ListHistoryTasksRequest {
+  int32 shard_id = 1;
+  int32 task_queue_type = 2;
+  TaskRange task_range = 3;
+  int32 batch_size = 4;
+  bytes next_page_token = 5;
+}
+
+message ListHistoryTasksResponse {
+  repeated Task tasks = 1;
+  bytes next_page_token = 2;
+}
+
+message RemoveTaskRequest {
+  int32 shard_id = 1;
+  int32 category = 2;
+  int64 task_id = 3;
+  google.protobuf.Timestamp visibility_time = 4;
+}
+
+message RemoveTaskResponse {}
+
+message GetWorkflowExecutionRawHistoryV2Request {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 start_event_id = 3;
+  int64 end_event_id = 4;
+  bytes start_event_version = 5;
+  bytes end_event_version = 6;
+  int32 maximum_page_size = 7;
+  bytes next_page_token = 8;
+}
+
+message GetWorkflowExecutionRawHistoryV2Response {
+  repeated HistoryEvent history_events = 1;
+  bytes next_page_token = 2;
+}
+
+message GetWorkflowExecutionHistoryRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int32 maximum_page_size = 3;
+  bytes next_page_token = 4;
+  bool wait_new_event = 5;
+  int32 history_event_filter_type = 6;
+  bool skip_archival = 7;
+}
+
+message GetWorkflowExecutionHistoryResponse {
+  repeated HistoryEvent history_events = 1;
+  bytes next_page_token = 2;
+  bool archived = 3;
+}
+
+message GetWorkflowExecutionHistoryReverseRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int32 maximum_page_size = 3;
+  bytes next_page_token = 4;
+}
+
+message GetWorkflowExecutionHistoryReverseResponse {
+  repeated HistoryEvent history_events = 1;
+  bytes next_page_token = 2;
+}
+
+message ForceDeleteWorkflowExecutionRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+}
+
+message ForceDeleteWorkflowExecutionResponse {}
+
+message GetWorkflowExecutionRawHistoryRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 start_event_id = 3;
+  int64 end_event_id = 4;
+  int32 maximum_page_size = 5;
+  bytes next_page_token = 6;
+}
+
+message GetWorkflowExecutionRawHistoryResponse {
+  repeated HistoryEvent history_events = 1;
+  bytes next_page_token = 2;
+}
+
+message ListQueuedMessagesRequest {
+  int32 shard_id = 1;
+  int32 category = 2;
+  int32 page_size = 3;
+  bytes next_page_token = 4;
+}
+
+message ListQueuedMessagesResponse {
+  repeated QueuedMessage messages = 1;
+  bytes next_page_token = 2;
+}
+
+message InvokeStateMachineMethodRequest {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int32 state_machine_type = 3;
+  int64 state_machine_id = 4;
+  int32 method = 5;
+  bytes input = 6;
+}
+
+message InvokeStateMachineMethodResponse {
+  bytes output = 1;
+}
+
+// ─── Supporting Types ─────────────────────────────────────────────────────────
+
+message WorkflowCommand {
+  int32 command_type = 1;
+  bytes attributes = 2;
+}
+
+message StickyExecutionAttributes {
+  string task_queue = 1;
+  google.protobuf.Duration schedule_to_start_timeout = 2;
+}
+
+message WorkflowTaskCompletedResult {
+  repeated WorkflowTask new_workflow_tasks = 1;
+  repeated ActivityTask new_activity_tasks = 2;
+}
+
+message WorkflowTask {
+  string task_queue = 1;
+  int64 started_event_id = 2;
+}
+
+message ActivityTask {
+  string task_queue = 1;
+  int64 scheduled_event_id = 2;
+}
+
+message NexusOperationCancellationInfo {
+  int32 state = 1;
+  string operation_id = 2;
+}
+
+message WorkflowExecutionConfig {
+  string task_queue = 1;
+  google.protobuf.Duration workflow_run_timeout = 2;
+  google.protobuf.Duration workflow_task_timeout = 3;
+}
+
+message WorkflowExecutionInfo {
+  WorkflowExecution execution = 1;
+  string workflow_type = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp close_time = 4;
+  int32 status = 5;
+  int64 history_length = 6;
+  string parent_namespace_id = 7;
+  WorkflowExecution parent_execution = 8;
+  int64 execution_time = 9;
+  string memo_key = 10;
+  string search_attributes_key = 11;
+  int64 state_transition_count = 12;
+}
+
+message PendingActivityInfo {
+  string activity_id = 1;
+  string activity_type = 2;
+  int32 state = 3;
+  bytes heartbeat_details = 4;
+  google.protobuf.Timestamp last_heartbeat_time = 5;
+  int32 attempt = 6;
+  int32 max_attempts = 7;
+  google.protobuf.Timestamp scheduled_time = 8;
+  google.protobuf.Timestamp expiration_time = 9;
+  bytes last_failure = 10;
+  string last_worker_identity = 11;
+}
+
+message PendingChildExecutionInfo {
+  string workflow_id = 1;
+  string run_id = 2;
+  string workflow_type = 3;
+  int64 initiated_id = 4;
+  int32 parent_close_policy = 5;
+}
+
+message QueryRejected {
+  int32 status = 1;
+}
+
+message ShardReplicationInfo {
+  int32 shard_id = 1;
+  int64 cluster_ack_level = 2;
+}
+
+message ReplicationTaskList {
+  repeated ReplicationTask tasks = 1;
+}
+
+message ReplicationTask {
+  int32 task_type = 1;
+  int64 source_task_id = 2;
+  bytes task_attributes = 3;
+}
+
+message ReplicationTaskInfo {
+  string namespace_id = 1;
+  WorkflowExecution execution = 2;
+  int64 task_id = 3;
+}
+
+message DLQMessage {
+  int64 message_id = 1;
+  bytes data = 2;
+}
+
+message ShardReplicationStatus {
+  int32 shard_id = 1;
+  string max_replication_task_id = 2;
+  string cluster_replication_status = 3;
+}
+
+message ShardInfo {
+  int32 shard_id = 1;
+  int64 range_id = 2;
+  string owner = 3;
+  int64 replication_ack_level = 4;
+  int64 transfer_ack_level = 5;
+  int64 timer_ack_level = 6;
+}
+
+message TaskRange {
+  int64 inclusive_min_task_key = 1;
+  int64 exclusive_max_task_key = 2;
+}
+
+message Task {
+  int64 namespace_id = 1;
+  int64 task_id = 2;
+  int32 task_type = 3;
+  google.protobuf.Timestamp fire_time = 4;
+  int64 version = 5;
+}
+
+message QueuedMessage {
+  int64 message_id = 1;
+  bytes data = 2;
+  google.protobuf.Timestamp enqueued_time = 3;
+}
+
+message HistoryEvent {
+  int64 event_id = 1;
+  google.protobuf.Timestamp event_time = 2;
+  int32 event_type = 3;
+  int64 task_id = 4;
+  int64 version = 5;
+  bytes attributes = 6;
+}
+
+message WorkflowExecution {
+  string workflow_id = 1;
+  string run_id = 2;
+}
