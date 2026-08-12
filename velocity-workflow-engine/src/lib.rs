@@ -67,7 +67,9 @@ pub mod visibility;
 pub mod visibility_query;
 pub mod wal;
 pub mod worker_versioning;
+pub mod worker_determinism;
 pub mod worker_registry;
+pub mod worker_sessions;
 pub mod workflow_reset;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
@@ -135,3 +137,5 @@ pub use update::{UpdateController, UpdateHandler, UpdateStore, UpdateRequest, Up
 pub use reachability::{ReachabilityTracker, ReachabilityQuery, ReachabilityResult, ReachabilityType};
 pub use deployment_api::{DeploymentManager, Deployment, DeploymentStatus, DrainageStatus};
 pub use codec_server::{CodecServer, CodecRequest, CodecResponse, PayloadCodec as ServerPayloadCodec, IdentityCodec, Base64Codec, JsonPrettyCodec};
+pub use worker_sessions::{SessionManager, WorkerSession, SessionStatus, SessionConfig};
+pub use worker_determinism::{DeterminismChecker, DeterminismResult, DeterminismViolation, ViolationSeverity, RecordedSideEffect, WorkflowOperation, OperationType};
