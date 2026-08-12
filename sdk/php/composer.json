@@ -2,7 +2,7 @@
     "name": "velocity/workflow-sdk",
     "description": "PHP SDK for the VELOCITY-WorkFlow engine — calls the native engine via FFI or gRPC",
     "type": "library",
-    "license": "MIT",
+    "license": "Apache-2.0",
     "authors": [
         {
             "name": "UnitBuilds",

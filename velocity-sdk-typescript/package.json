@@ -18,7 +18,7 @@
     "velocity"
   ],
   "author": "Velocity Team",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {},
   "devDependencies": {
     "@types/jest": "^29.5.12",

@@ -7,7 +7,7 @@ name = "velocity-runtime"
 version = "0.1.0"
 description = "Velocity Runtime — Restate-compatible durable execution SDK for Python"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [{name = "Velocity Team"}]
 keywords = ["velocity", "restate", "workflow", "durable-execution", "virtual-objects"]

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["UnitBuilds <ian@unitbuilds.com>"]
 description = "Native Rust SDK for the VELOCITY-WorkFlow engine — wraps WorkflowEngine directly as a library"
-license = "MIT"
+license = "Apache-2.0"
 
 [lib]
 name = "velocity_sdk"

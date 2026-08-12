@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
   spec.description   = 'Ruby client for the VELOCITY-WorkFlow engine — uses FFI to call the native ' \
                         'velocity_workflow_engine shared library, or gRPC for remote connections.'
   spec.homepage      = 'https://github.com/velocity/workflow-sdk'
-  spec.license       = 'MIT'
+  spec.license       = 'Apache-2.0'
   spec.required_ruby_version = '>= 3.0.0'
 
   spec.files         = Dir['lib/**/*.rb', 'LICENSE', 'README.md']

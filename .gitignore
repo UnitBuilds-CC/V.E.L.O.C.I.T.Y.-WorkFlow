@@ -7,6 +7,9 @@ obj/
 *.so
 *.dylib
 
+# Embedded repos
+V.A.L.I.D/
+
 # IDE
 .vs/
 .vscode/

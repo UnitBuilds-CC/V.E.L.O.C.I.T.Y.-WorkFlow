@@ -3,7 +3,7 @@
 [![CI](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/ci.yml)
 [![Benchmark](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/benchmark.yml/badge.svg)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/benchmark.yml)
 [![E2E](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/e2e.yml/badge.svg)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/e2e.yml)
-[![License: AGPLv3](https://img.shields.io/badge/License-AGPL--3.0-orange.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
 **V.E.L.O.C.I.T.Y.-WorkFlow** is a durable execution engine and state machine runtime designed as a drop-in replacement for Temporal, Restate, and DBOS. The core engine is written in Rust with a zero-allocation slab allocator; C# Roslyn source generators provide compile-time workflow transpilation; and 7 language SDKs connect over gRPC or HTTP.
 
@@ -485,7 +485,7 @@ For major changes, please open an issue first.
 
 ## Licensing
 
-V.E.L.O.C.I.T.Y.-WorkFlow is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. Enterprise migration tooling and commercial support are available under proprietary licenses.
+V.E.L.O.C.I.T.Y.-WorkFlow is licensed under the **Apache License 2.0**.
 
 | Resource | Link |
 |:---|:---|
