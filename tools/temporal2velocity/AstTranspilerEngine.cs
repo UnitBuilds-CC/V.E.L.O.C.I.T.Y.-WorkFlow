@@ -118,8 +118,8 @@ public static class AstTranspilerEngine
             {
                 var newUsing = usingDir.WithName(
                     SyntaxFactory.ParseName(replacement)
-                        .WithLeadingTrivia(usingDir.Name.GetLeadingTrivia())
-                        .WithTrailingTrivia(usingDir.Name.GetTrailingTrivia()));
+                        .WithLeadingTrivia(usingDir.Name?.GetLeadingTrivia() ?? default)
+                        .WithTrailingTrivia(usingDir.Name?.GetTrailingTrivia() ?? default));
                 root = root.ReplaceNode(usingDir, newUsing);
                 stats.UsingDirectivesRewritten++;
             }

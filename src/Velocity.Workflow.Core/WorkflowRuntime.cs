@@ -897,7 +897,7 @@ public sealed unsafe class WorkflowRuntime : IDisposable
                 uint keyLen = BitConverter.ToUInt32(buffer, pos); pos += 4;
                 string key = System.Text.Encoding.UTF8.GetString(buffer, pos, (int)keyLen); pos += (int)keyLen;
                 byte typeTag = buffer[pos++];
-                object val = typeTag switch
+                object? val = typeTag switch
                 {
                     1 => System.Text.Encoding.UTF8.GetString(buffer, pos + 4, (int)BitConverter.ToUInt32(buffer, pos)),
                     2 => BitConverter.ToInt64(buffer, pos),
