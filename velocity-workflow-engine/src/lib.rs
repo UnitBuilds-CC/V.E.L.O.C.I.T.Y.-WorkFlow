@@ -95,6 +95,11 @@ pub mod worker_services;
 pub mod frontend_service;
 pub mod namespace_mgmt;
 pub mod common_utils;
+pub mod persistence_sql;
+pub mod persistence_visibility;
+pub mod history_api;
+pub mod matching_workers;
+pub mod frontend_handlers;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
 // Requires protoc to be installed for proto compilation.
@@ -381,4 +386,67 @@ pub use common_utils::{
     MetricsFramework, MetricsFrameworkStats, MetricsScope, MetricDefinition, MetricType,
     TaskFramework, TaskFrameworkStats, TaskExecutor, FrameworkTask, TaskResult, TaskError,
     VersioningManager, VersioningStats, VersionSet as DeepVersionSet, VersionRedirectRule,
+};
+// persistence_sql: SQL query builder, schema management, connection pooling, transaction handling.
+pub use persistence_sql::{
+    SqlQueryBuilder, SqlDialect, SqlValue, ComparisonOp,
+    SelectBuilder, InsertBuilder, UpdateBuilder, DeleteBuilder,
+    Condition, OrderByClause, JoinClause, JoinType, Assignment,
+    SchemaManager, SchemaMigration, SchemaError as SqlSchemaError,
+    ConnectionPool, PoolConfig, PoolConnection, PoolStats, PoolError,
+    SqlTransactionManager, SqlTransaction, IsolationLevel, TransactionStats as SqlTransactionStats, TransactionError,
+};
+// persistence_visibility: deep visibility store with query parsing, indexing, aggregation.
+pub use persistence_visibility::{
+    VisibilityRecord, WorkflowExecutionStatus as VisExecStatus, SearchAttribute as VisSearchAttribute,
+    QueryParser, VisibilityQuery as DeepVisibilityQuery, QueryValue as DeepQueryValue, QueryParseError,
+    QueryEvaluator,
+    VisibilityIndex as DeepVisibilityIndex,
+    DeepVisibilityStore, VisibilityStats, VisibilityError,
+};
+// history_api: full history API handler implementations.
+pub use history_api::{
+    HistoryApiContext,
+    StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
+    RecordActivityTaskHeartbeatRequest, RecordActivityTaskHeartbeatResponse,
+    PollActivityTaskQueueRequest, PollActivityTaskQueueResponse,
+    RespondActivityTaskCompletedRequest, RespondActivityTaskFailedRequest, RespondActivityTaskCanceledRequest,
+    SignalWorkflowExecutionRequest, QueryWorkflowRequest, QueryWorkflowResponse,
+    RequestCancelWorkflowExecutionRequest, TerminateWorkflowExecutionRequest,
+    GetWorkflowExecutionHistoryRequest, GetWorkflowExecutionHistoryResponse,
+    HistoryApiHandler, HistoryApiServiceImpl, HistoryApiError, HistoryApiStats,
+    WorkflowExecution as HistWorkflowExecution, WorkflowExecutionStatus as HistExecStatus,
+    HistoryEvent as ApiHistoryEvent, EventType as ApiEventType, History as ApiHistory, Failure as ApiFailure, FailureType as ApiFailureType, TimeoutType as ApiTimeoutType,
+    RetryPolicy as HistRetryPolicy, TaskQueueMetadata,
+};
+// matching_workers: deep matching worker implementations.
+pub use matching_workers::{
+    TaskQueuePartition as WorkerTaskQueuePartition, TaskType as WorkerTaskType, InternalTask, RedirectInfo,
+    PhysicalTaskQueue as WorkerPhysicalTaskQueue, TaskQueueConfig, PollerInfo as WorkerPollerInfo,
+    RateLimiterState,
+    LogicalTaskQueue as WorkerLogicalTaskQueue, TaskQueueVersioning, VersionData, VersionRedirectRule as WorkerVersionRedirectRule, VersionAssignmentRule,
+    DispatchResult,
+    TaskQueueManager, TaskQueueManagerStats,
+    TaskForwarder as WorkerTaskForwarder, ForwardStats,
+    MatchingLoadBalancer, PartitionLoad,
+};
+// frontend_handlers: expanded frontend API handlers.
+pub use frontend_handlers::{
+    RegisterNamespaceRequest, RegisterNamespaceResponse,
+    DescribeNamespaceRequest, DescribeNamespaceResponse,
+    UpdateNamespaceRequest, UpdateNamespaceResponse,
+    DeprecateNamespaceRequest,
+    ListNamespacesRequest, ListNamespacesResponse, NamespaceFilter,
+    NamespaceInfo, NamespaceConfig as FrontendNamespaceConfig, NamespaceReplicationConfig as FrontendNsReplicationConfig,
+    NamespaceState as FrontendNamespaceState, ArchivalState as FrontendArchivalState,
+    BadBinaries, BadBinaryInfo,
+    ListWorkflowExecutionsRequest, ListWorkflowExecutionsResponse,
+    CountWorkflowExecutionsRequest, CountWorkflowExecutionsResponse,
+    WorkflowExecutionInfo as FrontendWorkflowInfo,
+    GetSearchAttributesRequest, GetSearchAttributesResponse, SearchAttributeType as FrontendSearchAttributeType,
+    DescribeWorkflowExecutionRequest, DescribeWorkflowExecutionResponse,
+    PendingActivityInfo as FrontendPendingActivity, PendingActivityState as FrontendPendingActivityState,
+    PendingWorkflowTaskInfo, WorkflowTaskType,
+    ResetWorkflowExecutionRequest, ResetWorkflowExecutionResponse,
+    FrontendServiceImpl, FrontendError, FrontendStats as HandlerFrontendStats,
 };
