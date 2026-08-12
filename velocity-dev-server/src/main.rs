@@ -185,7 +185,7 @@ struct ActivityTask {
     namespace: String,
     activity_type: String,
     input: serde_json::Value,
-    status: String,          // SCHEDULED, STARTED, COMPLETED, FAILED, CANCELLED
+    status: String, // SCHEDULED, STARTED, COMPLETED, FAILED, CANCELLED
     attempt: u32,
     retry_policy: Option<RetryPolicy>,
     last_heartbeat: i64,
@@ -683,7 +683,10 @@ impl DevEngine {
         let timers = self.timers.read().unwrap();
         let child_workflows = self.child_workflows.read().unwrap();
 
-        let active_activities = activities.values().filter(|a| a.status == "STARTED" || a.status == "SCHEDULED").count() as u64;
+        let active_activities = activities
+            .values()
+            .filter(|a| a.status == "STARTED" || a.status == "SCHEDULED")
+            .count() as u64;
         let pending_timers = timers.values().filter(|t| t.status == "PENDING").count() as u64;
         let total_children = child_workflows.values().map(|v| v.len() as u64).sum();
 
@@ -707,13 +710,26 @@ impl DevEngine {
             child_workflows: total_children,
             memory_usage_bytes: 0,
             features: vec![
-                "signals".into(), "queries".into(), "updates".into(),
-                "cancellation".into(), "child_workflows".into(), "timers".into(),
-                "activities".into(), "heartbeats".into(), "retry".into(),
-                "continue_as_new".into(), "search_attributes".into(), "memo".into(),
-                "signal_with_start".into(), "batch_operations".into(), "cron".into(),
-                "replay".into(), "reset".into(), "namespace_mgmt".into(),
-                "worker_poll".into(), "history_archival".into(),
+                "signals".into(),
+                "queries".into(),
+                "updates".into(),
+                "cancellation".into(),
+                "child_workflows".into(),
+                "timers".into(),
+                "activities".into(),
+                "heartbeats".into(),
+                "retry".into(),
+                "continue_as_new".into(),
+                "search_attributes".into(),
+                "memo".into(),
+                "signal_with_start".into(),
+                "batch_operations".into(),
+                "cron".into(),
+                "replay".into(),
+                "reset".into(),
+                "namespace_mgmt".into(),
+                "worker_poll".into(),
+                "history_archival".into(),
             ],
         }
     }
@@ -855,11 +871,18 @@ impl DevEngine {
             attributes: serde_json::json!({ "reason": reason }),
         };
         wf.history_length += 1;
-        self.history.write().unwrap().entry(key).or_default().push(event);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
 
         self.stats.running_count.fetch_sub(1, Ordering::Relaxed);
         self.stats.cancelled_count.fetch_add(1, Ordering::Relaxed);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
 
         // Cancel any pending timers for this workflow
         let mut timers = self.timers.write().unwrap();
@@ -874,8 +897,12 @@ impl DevEngine {
 
     /// Update a running workflow's mutable state (Temporal's signal replacement).
     fn update_workflow(
-        &self, namespace: &str, wf_id: &str, update_name: &str,
-        update_id: &str, payload: serde_json::Value,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        update_name: &str,
+        update_id: &str,
+        payload: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         let key = format!("{}/{}", namespace, wf_id);
         let workflows = self.workflows.read().unwrap();
@@ -885,7 +912,11 @@ impl DevEngine {
         }
         drop(workflows);
 
-        let uid = if update_id.is_empty() { format!("upd-{}", generate_id()) } else { update_id.to_string() };
+        let uid = if update_id.is_empty() {
+            format!("upd-{}", generate_id())
+        } else {
+            update_id.to_string()
+        };
         let now = now_millis();
 
         let entry = UpdateEntry {
@@ -898,27 +929,51 @@ impl DevEngine {
             result: Some(serde_json::json!({ "accepted": true, "update_name": update_name })),
             created_at: now,
         };
-        self.updates.write().unwrap().entry(key.clone()).or_default().push(entry);
+        self.updates
+            .write()
+            .unwrap()
+            .entry(key.clone())
+            .or_default()
+            .push(entry);
         self.stats.update_count.fetch_add(1, Ordering::Relaxed);
 
         // Record in history
         let event = HistoryEvent {
-            event_id: self.history.read().unwrap().get(&key).map(|h| h.len()).unwrap_or(0) as u64 + 1,
+            event_id: self
+                .history
+                .read()
+                .unwrap()
+                .get(&key)
+                .map(|h| h.len())
+                .unwrap_or(0) as u64
+                + 1,
             event_type: "WorkflowExecutionUpdated".to_string(),
             event_time: now,
             task_id: now as u64,
             attributes: serde_json::json!({ "update_name": update_name, "update_id": uid, "payload": payload }),
         };
-        self.history.write().unwrap().entry(key).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok(serde_json::json!({ "update_id": uid, "status": "COMPLETED" }))
     }
 
     /// Start a child workflow from a parent.
     fn start_child_workflow(
-        &self, namespace: &str, parent_wf_id: &str, wf_type: &str,
-        wf_id: &str, task_queue: &str, input: serde_json::Value,
+        &self,
+        namespace: &str,
+        parent_wf_id: &str,
+        wf_type: &str,
+        wf_id: &str,
+        task_queue: &str,
+        input: serde_json::Value,
     ) -> Result<WorkflowExecution, String> {
         let parent_key = format!("{}/{}", namespace, parent_wf_id);
         let workflows = self.workflows.read().unwrap();
@@ -927,7 +982,11 @@ impl DevEngine {
         }
         drop(workflows);
 
-        let child_id = if wf_id.is_empty() { format!("child-{}", generate_id()) } else { wf_id.to_string() };
+        let child_id = if wf_id.is_empty() {
+            format!("child-{}", generate_id())
+        } else {
+            wf_id.to_string()
+        };
         let mut exec = self.start_workflow(namespace, wf_type, task_queue, input, &child_id)?;
         exec.parent_workflow_id = Some(parent_wf_id.to_string());
 
@@ -952,12 +1011,23 @@ impl DevEngine {
             completed_at: None,
             result: None,
         };
-        self.child_workflows.write().unwrap()
-            .entry(parent_key.clone()).or_default().push(handle);
+        self.child_workflows
+            .write()
+            .unwrap()
+            .entry(parent_key.clone())
+            .or_default()
+            .push(handle);
 
         // Record child-initiated event in parent history
         let event = HistoryEvent {
-            event_id: self.history.read().unwrap().get(&parent_key).map(|h| h.len()).unwrap_or(0) as u64 + 1,
+            event_id: self
+                .history
+                .read()
+                .unwrap()
+                .get(&parent_key)
+                .map(|h| h.len())
+                .unwrap_or(0) as u64
+                + 1,
             event_type: "StartChildWorkflowExecutionInitiated".to_string(),
             event_time: now_millis(),
             task_id: now_millis() as u64,
@@ -967,15 +1037,26 @@ impl DevEngine {
                 "task_queue": task_queue,
             }),
         };
-        self.history.write().unwrap().entry(parent_key).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(parent_key)
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok(exec)
     }
 
     /// Schedule a timer for a running workflow.
     fn schedule_timer(
-        &self, namespace: &str, wf_id: &str, timer_id: &str, duration_ms: i64,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        timer_id: &str,
+        duration_ms: i64,
     ) -> Result<String, String> {
         let key = format!("{}/{}", namespace, wf_id);
         let workflows = self.workflows.read().unwrap();
@@ -984,7 +1065,11 @@ impl DevEngine {
         }
         drop(workflows);
 
-        let tid = if timer_id.is_empty() { format!("timer-{}", generate_id()) } else { timer_id.to_string() };
+        let tid = if timer_id.is_empty() {
+            format!("timer-{}", generate_id())
+        } else {
+            timer_id.to_string()
+        };
         let now = now_millis();
         let timer = TimerEntry {
             timer_id: tid.clone(),
@@ -994,18 +1079,35 @@ impl DevEngine {
             created_at: now,
             status: "PENDING".to_string(),
         };
-        self.timers.write().unwrap().insert(format!("{}/{}", namespace, tid), timer);
+        self.timers
+            .write()
+            .unwrap()
+            .insert(format!("{}/{}", namespace, tid), timer);
 
         // Record timer event in history
         let event = HistoryEvent {
-            event_id: self.history.read().unwrap().get(&key).map(|h| h.len()).unwrap_or(0) as u64 + 1,
+            event_id: self
+                .history
+                .read()
+                .unwrap()
+                .get(&key)
+                .map(|h| h.len())
+                .unwrap_or(0) as u64
+                + 1,
             event_type: "TimerStarted".to_string(),
             event_time: now,
             task_id: now as u64,
             attributes: serde_json::json!({ "timer_id": tid, "duration_ms": duration_ms, "fire_at": now + duration_ms }),
         };
-        self.history.write().unwrap().entry(key).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok(tid)
     }
@@ -1026,8 +1128,12 @@ impl DevEngine {
 
     /// Continue-as-new: complete current execution and start a fresh one.
     fn continue_as_new(
-        &self, namespace: &str, wf_id: &str, wf_type: &str,
-        task_queue: &str, input: serde_json::Value,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        wf_type: &str,
+        task_queue: &str,
+        input: serde_json::Value,
     ) -> Result<String, String> {
         let key = format!("{}/{}", namespace, wf_id);
         // Complete the current execution
@@ -1042,14 +1148,28 @@ impl DevEngine {
 
         let now = now_millis();
         let event = HistoryEvent {
-            event_id: self.history.read().unwrap().get(&key).map(|h| h.len()).unwrap_or(0) as u64 + 1,
+            event_id: self
+                .history
+                .read()
+                .unwrap()
+                .get(&key)
+                .map(|h| h.len())
+                .unwrap_or(0) as u64
+                + 1,
             event_type: "WorkflowExecutionContinuedAsNew".to_string(),
             event_time: now,
             task_id: now as u64,
             attributes: serde_json::json!({ "new_workflow_type": wf_type, "task_queue": task_queue }),
         };
-        self.history.write().unwrap().entry(key.clone()).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key.clone())
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
 
         // Start a new execution with the same workflow ID
         let new_exec = self.start_workflow(namespace, wf_type, task_queue, input, wf_id)?;
@@ -1058,7 +1178,10 @@ impl DevEngine {
 
     /// Upsert search attributes on a running workflow.
     fn upsert_search_attributes(
-        &self, namespace: &str, wf_id: &str, attrs: HashMap<String, String>,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        attrs: HashMap<String, String>,
     ) -> Result<(), String> {
         let key = format!("{}/{}", namespace, wf_id);
         let mut workflows = self.workflows.write().unwrap();
@@ -1076,13 +1199,25 @@ impl DevEngine {
             attributes: serde_json::json!({ "attributes": attrs }),
         };
         wf.history_length += 1;
-        self.history.write().unwrap().entry(key).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
     /// Set memo key/value pairs on a running workflow.
-    fn set_memo(&self, namespace: &str, wf_id: &str, memo: HashMap<String, String>) -> Result<(), String> {
+    fn set_memo(
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        memo: HashMap<String, String>,
+    ) -> Result<(), String> {
         let key = format!("{}/{}", namespace, wf_id);
         let mut workflows = self.workflows.write().unwrap();
         let wf = workflows.get_mut(&key).ok_or("Workflow not found")?;
@@ -1094,15 +1229,23 @@ impl DevEngine {
 
     /// Signal-with-start: signal existing workflow or start a new one and signal it.
     fn signal_with_start(
-        &self, namespace: &str, wf_type: &str, wf_id: &str,
-        task_queue: &str, input: serde_json::Value,
-        signal_name: &str, signal_payload: serde_json::Value,
+        &self,
+        namespace: &str,
+        wf_type: &str,
+        wf_id: &str,
+        task_queue: &str,
+        input: serde_json::Value,
+        signal_name: &str,
+        signal_payload: serde_json::Value,
     ) -> Result<(WorkflowExecution, bool, bool), String> {
         let key = format!("{}/{}", namespace, wf_id);
         // Check if workflow already exists and is running
         let existing = {
             let workflows = self.workflows.read().unwrap();
-            workflows.get(&key).filter(|w| w.status == "RUNNING").cloned()
+            workflows
+                .get(&key)
+                .filter(|w| w.status == "RUNNING")
+                .cloned()
         };
 
         match existing {
@@ -1126,7 +1269,11 @@ impl DevEngine {
 
     /// Record an activity heartbeat.
     fn record_heartbeat(
-        &self, namespace: &str, wf_id: &str, activity_id: &str, _details: serde_json::Value,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        activity_id: &str,
+        _details: serde_json::Value,
     ) -> Result<bool, String> {
         let akey = format!("{}/{}/{}", namespace, wf_id, activity_id);
         let mut activities = self.activities.write().unwrap();
@@ -1135,16 +1282,27 @@ impl DevEngine {
 
         // Check if cancellation was requested on the parent workflow
         let wf_key = format!("{}/{}", namespace, wf_id);
-        let cancel_requested = self.workflows.read().unwrap()
-            .get(&wf_key).map(|w| w.cancel_requested).unwrap_or(false);
+        let cancel_requested = self
+            .workflows
+            .read()
+            .unwrap()
+            .get(&wf_key)
+            .map(|w| w.cancel_requested)
+            .unwrap_or(false);
         Ok(cancel_requested)
     }
 
     /// Schedule an activity task for a workflow.
     fn schedule_activity(
-        &self, namespace: &str, wf_id: &str, run_id: &str,
-        activity_id: &str, activity_type: &str, task_queue: &str,
-        input: serde_json::Value, heartbeat_timeout_ms: Option<i64>,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        run_id: &str,
+        activity_id: &str,
+        activity_type: &str,
+        task_queue: &str,
+        input: serde_json::Value,
+        heartbeat_timeout_ms: Option<i64>,
     ) -> Result<ActivityTask, String> {
         let key = format!("{}/{}", namespace, wf_id);
         let workflows = self.workflows.read().unwrap();
@@ -1153,7 +1311,11 @@ impl DevEngine {
         }
         drop(workflows);
 
-        let aid = if activity_id.is_empty() { format!("act-{}", generate_id()) } else { activity_id.to_string() };
+        let aid = if activity_id.is_empty() {
+            format!("act-{}", generate_id())
+        } else {
+            activity_id.to_string()
+        };
         let now = now_millis();
         let akey = format!("{}/{}/{}", namespace, wf_id, aid);
 
@@ -1176,12 +1338,22 @@ impl DevEngine {
             failure_reason: None,
             task_queue: task_queue.to_string(),
         };
-        self.activities.write().unwrap().insert(akey, activity.clone());
+        self.activities
+            .write()
+            .unwrap()
+            .insert(akey, activity.clone());
         self.stats.activity_count.fetch_add(1, Ordering::Relaxed);
 
         // Record in history
         let event = HistoryEvent {
-            event_id: self.history.read().unwrap().get(&key).map(|h| h.len()).unwrap_or(0) as u64 + 1,
+            event_id: self
+                .history
+                .read()
+                .unwrap()
+                .get(&key)
+                .map(|h| h.len())
+                .unwrap_or(0) as u64
+                + 1,
             event_type: "ActivityTaskScheduled".to_string(),
             event_time: now,
             task_id: now as u64,
@@ -1190,15 +1362,26 @@ impl DevEngine {
                 "task_queue": task_queue, "attempt": 1,
             }),
         };
-        self.history.write().unwrap().entry(key).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok(activity)
     }
 
     /// Complete an activity task.
     fn complete_activity(
-        &self, namespace: &str, wf_id: &str, activity_id: &str, result: serde_json::Value,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        activity_id: &str,
+        result: serde_json::Value,
     ) -> Result<(), String> {
         let akey = format!("{}/{}/{}", namespace, wf_id, activity_id);
         let mut activities = self.activities.write().unwrap();
@@ -1211,27 +1394,51 @@ impl DevEngine {
         let wf_key = format!("{}/{}", namespace, wf_id);
         let now = now_millis();
         let event = HistoryEvent {
-            event_id: self.history.read().unwrap().get(&wf_key).map(|h| h.len()).unwrap_or(0) as u64 + 1,
+            event_id: self
+                .history
+                .read()
+                .unwrap()
+                .get(&wf_key)
+                .map(|h| h.len())
+                .unwrap_or(0) as u64
+                + 1,
             event_type: "ActivityTaskCompleted".to_string(),
             event_time: now,
             task_id: now as u64,
             attributes: serde_json::json!({ "activity_id": activity_id, "result": result }),
         };
-        self.history.write().unwrap().entry(wf_key).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(wf_key)
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
     /// Fail an activity task (triggers retry if policy allows).
     fn fail_activity(
-        &self, namespace: &str, wf_id: &str, activity_id: &str,
-        reason: &str, non_retryable: bool,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        activity_id: &str,
+        reason: &str,
+        non_retryable: bool,
     ) -> Result<(bool, u32), String> {
         let akey = format!("{}/{}/{}", namespace, wf_id, activity_id);
         let mut activities = self.activities.write().unwrap();
         let act = activities.get_mut(&akey).ok_or("Activity not found")?;
 
-        let will_retry = !non_retryable && act.attempt < act.retry_policy.as_ref().map(|r| r.max_attempts).unwrap_or(3);
+        let will_retry = !non_retryable
+            && act.attempt
+                < act
+                    .retry_policy
+                    .as_ref()
+                    .map(|r| r.max_attempts)
+                    .unwrap_or(3);
         if will_retry {
             act.attempt += 1;
             act.status = "SCHEDULED".to_string();
@@ -1245,16 +1452,34 @@ impl DevEngine {
         // Record in history
         let wf_key = format!("{}/{}", namespace, wf_id);
         let now = now_millis();
-        let event_type = if will_retry { "ActivityTaskRetry" } else { "ActivityTaskFailed" };
+        let event_type = if will_retry {
+            "ActivityTaskRetry"
+        } else {
+            "ActivityTaskFailed"
+        };
         let event = HistoryEvent {
-            event_id: self.history.read().unwrap().get(&wf_key).map(|h| h.len()).unwrap_or(0) as u64 + 1,
+            event_id: self
+                .history
+                .read()
+                .unwrap()
+                .get(&wf_key)
+                .map(|h| h.len())
+                .unwrap_or(0) as u64
+                + 1,
             event_type: event_type.to_string(),
             event_time: now,
             task_id: now as u64,
             attributes: serde_json::json!({ "activity_id": activity_id, "reason": reason, "attempt": act.attempt, "will_retry": will_retry }),
         };
-        self.history.write().unwrap().entry(wf_key).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(wf_key)
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok((will_retry, act.attempt))
     }
@@ -1269,34 +1494,48 @@ impl DevEngine {
         // Validate event chain: event IDs must be sequential starting from 1
         for (i, event) in events.iter().enumerate() {
             if event.event_id != (i as u64 + 1) {
-                return Err(format!("Event ID gap at position {}: expected {}, got {}", i, i + 1, event.event_id));
+                return Err(format!(
+                    "Event ID gap at position {}: expected {}, got {}",
+                    i,
+                    i + 1,
+                    event.event_id
+                ));
             }
         }
 
         // Determine final status from last event
-        let final_status = events.last().map(|e| {
-            match e.event_type.as_str() {
+        let final_status = events
+            .last()
+            .map(|e| match e.event_type.as_str() {
                 "WorkflowExecutionCompleted" => "COMPLETED".to_string(),
                 "WorkflowExecutionFailed" => "FAILED".to_string(),
                 "WorkflowExecutionTerminated" => "TERMINATED".to_string(),
                 "WorkflowExecutionCancelled" => "CANCELLED".to_string(),
                 "WorkflowExecutionContinuedAsNew" => "CONTINUED_AS_NEW".to_string(),
                 _ => "RUNNING".to_string(),
-            }
-        }).unwrap_or_else(|| "UNKNOWN".to_string());
+            })
+            .unwrap_or_else(|| "UNKNOWN".to_string());
 
         Ok((event_count, final_status))
     }
 
     /// Reset a workflow to a previous event ID — creates a new run from that point.
     fn reset_workflow(
-        &self, namespace: &str, wf_id: &str, reset_to_event_id: i64, reason: &str,
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        reset_to_event_id: i64,
+        reason: &str,
     ) -> Result<String, String> {
         let key = format!("{}/{}", namespace, wf_id);
         let history = self.history.read().unwrap();
         let events = history.get(&key).ok_or("Workflow not found")?;
         if reset_to_event_id <= 0 || reset_to_event_id > events.len() as i64 {
-            return Err(format!("Event ID {} out of range (1..{})", reset_to_event_id, events.len()));
+            return Err(format!(
+                "Event ID {} out of range (1..{})",
+                reset_to_event_id,
+                events.len()
+            ));
         }
         let workflows = self.workflows.read().unwrap();
         let wf = workflows.get(&key).ok_or("Workflow not found")?;
@@ -1306,34 +1545,60 @@ impl DevEngine {
         drop(history);
 
         // Start a new run with the same workflow ID
-        let input = serde_json::json!({ "__reset_from_event": reset_to_event_id, "__reason": reason });
+        let input =
+            serde_json::json!({ "__reset_from_event": reset_to_event_id, "__reason": reason });
         let new_exec = self.start_workflow(namespace, &wf_type, &task_queue, input, wf_id)?;
 
         // Record reset event
         let event = HistoryEvent {
-            event_id: self.history.read().unwrap().get(&key).map(|h| h.len()).unwrap_or(0) as u64 + 1,
+            event_id: self
+                .history
+                .read()
+                .unwrap()
+                .get(&key)
+                .map(|h| h.len())
+                .unwrap_or(0) as u64
+                + 1,
             event_type: "WorkflowExecutionReset".to_string(),
             event_time: now_millis(),
             task_id: now_millis() as u64,
             attributes: serde_json::json!({ "reset_to_event_id": reset_to_event_id, "reason": reason, "new_run_id": new_exec.run_id }),
         };
-        self.history.write().unwrap().entry(key).or_default().push(event);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok(new_exec.run_id)
     }
 
     /// Batch terminate all running workflows in a namespace.
-    fn batch_terminate(&self, namespace: &str, status_filter: &str, reason: &str, max_count: i64) -> u64 {
+    fn batch_terminate(
+        &self,
+        namespace: &str,
+        status_filter: &str,
+        reason: &str,
+        max_count: i64,
+    ) -> u64 {
         let workflows = self.workflows.read().unwrap();
-        let keys: Vec<String> = workflows.values()
+        let keys: Vec<String> = workflows
+            .values()
             .filter(|w| w.namespace == namespace)
             .filter(|w| match status_filter {
                 "running" => w.status == "RUNNING",
                 _ => w.status == "RUNNING" || w.status == "STARTED",
             })
             .map(|w| format!("{}/{}", w.namespace, w.workflow_id))
-            .take(if max_count > 0 { max_count as usize } else { usize::MAX })
+            .take(if max_count > 0 {
+                max_count as usize
+            } else {
+                usize::MAX
+            })
             .collect();
         drop(workflows);
 
@@ -1348,22 +1613,37 @@ impl DevEngine {
     }
 
     /// Batch signal all running workflows in a namespace.
-    fn batch_signal(&self, namespace: &str, status_filter: &str, signal_name: &str, payload: serde_json::Value, max_count: i64) -> u64 {
+    fn batch_signal(
+        &self,
+        namespace: &str,
+        status_filter: &str,
+        signal_name: &str,
+        payload: serde_json::Value,
+        max_count: i64,
+    ) -> u64 {
         let workflows = self.workflows.read().unwrap();
-        let targets: Vec<(String, String)> = workflows.values()
+        let targets: Vec<(String, String)> = workflows
+            .values()
             .filter(|w| w.namespace == namespace)
             .filter(|w| match status_filter {
                 "running" => w.status == "RUNNING",
                 _ => w.status == "RUNNING",
             })
             .map(|w| (w.namespace.clone(), w.workflow_id.clone()))
-            .take(if max_count > 0 { max_count as usize } else { usize::MAX })
+            .take(if max_count > 0 {
+                max_count as usize
+            } else {
+                usize::MAX
+            })
             .collect();
         drop(workflows);
 
         let mut count = 0u64;
         for (ns, wf_id) in &targets {
-            if self.signal_workflow(ns, wf_id, signal_name, payload.clone()).is_ok() {
+            if self
+                .signal_workflow(ns, wf_id, signal_name, payload.clone())
+                .is_ok()
+            {
                 count += 1;
             }
         }
@@ -1376,16 +1656,35 @@ impl DevEngine {
 
     /// Describe a namespace.
     fn describe_namespace(&self, name: &str) -> Result<Namespace, String> {
-        self.namespaces.read().unwrap().get(name).cloned().ok_or(format!("Namespace {} not found", name))
+        self.namespaces
+            .read()
+            .unwrap()
+            .get(name)
+            .cloned()
+            .ok_or(format!("Namespace {} not found", name))
     }
 
     /// Update a namespace's configuration.
-    fn update_namespace(&self, name: &str, description: Option<&str>, retention_days: Option<u32>, owner_email: Option<&str>) -> Result<(), String> {
+    fn update_namespace(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        retention_days: Option<u32>,
+        owner_email: Option<&str>,
+    ) -> Result<(), String> {
         let mut namespaces = self.namespaces.write().unwrap();
-        let ns = namespaces.get_mut(name).ok_or(format!("Namespace {} not found", name))?;
-        if let Some(d) = description { ns.description = d.to_string(); }
-        if let Some(r) = retention_days { ns.retention_days = r; }
-        if let Some(e) = owner_email { ns.owner_email = e.to_string(); }
+        let ns = namespaces
+            .get_mut(name)
+            .ok_or(format!("Namespace {} not found", name))?;
+        if let Some(d) = description {
+            ns.description = d.to_string();
+        }
+        if let Some(r) = retention_days {
+            ns.retention_days = r;
+        }
+        if let Some(e) = owner_email {
+            ns.owner_email = e.to_string();
+        }
         Ok(())
     }
 
@@ -1406,7 +1705,12 @@ impl DevEngine {
     }
 
     /// Poll for a workflow task from a task queue (worker poll loop).
-    fn poll_workflow_task(&self, namespace: &str, task_queue: &str, identity: &str) -> Option<(String, u64, String)> {
+    fn poll_workflow_task(
+        &self,
+        namespace: &str,
+        task_queue: &str,
+        identity: &str,
+    ) -> Option<(String, u64, String)> {
         let tq_key = format!("{}/{}", namespace, task_queue);
         let mut tqs = self.task_queues.write().unwrap();
         if let Some(tq) = tqs.get_mut(&tq_key) {
@@ -1432,7 +1736,11 @@ impl DevEngine {
                 if let Some(events) = history.get(&key) {
                     if let Some(last_event) = events.last() {
                         let task_token = format!("wt-{}-{}", wf.workflow_id, generate_id());
-                        return Some((task_token, last_event.event_id, last_event.event_type.clone()));
+                        return Some((
+                            task_token,
+                            last_event.event_id,
+                            last_event.event_type.clone(),
+                        ));
                     }
                 }
             }
@@ -1441,10 +1749,18 @@ impl DevEngine {
     }
 
     /// Poll for an activity task from a task queue.
-    fn poll_activity_task(&self, namespace: &str, task_queue: &str, _identity: &str) -> Option<ActivityTask> {
+    fn poll_activity_task(
+        &self,
+        namespace: &str,
+        task_queue: &str,
+        _identity: &str,
+    ) -> Option<ActivityTask> {
         let mut activities = self.activities.write().unwrap();
         for act in activities.values_mut() {
-            if act.namespace == namespace && act.task_queue == task_queue && act.status == "SCHEDULED" {
+            if act.namespace == namespace
+                && act.task_queue == task_queue
+                && act.status == "SCHEDULED"
+            {
                 act.status = "STARTED".to_string();
                 act.started_at = Some(now_millis());
                 return Some(act.clone());
@@ -2642,8 +2958,12 @@ mod tests {
     #[test]
     fn test_cancel_workflow() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        assert!(engine.cancel_workflow("test", &wf.workflow_id, "test cancel").is_ok());
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        assert!(engine
+            .cancel_workflow("test", &wf.workflow_id, "test cancel")
+            .is_ok());
         let updated = engine.get_workflow("test", &wf.workflow_id).unwrap();
         assert_eq!(updated.status, "CANCELLED");
         assert!(updated.cancel_requested);
@@ -2652,16 +2972,30 @@ mod tests {
     #[test]
     fn test_cancel_non_running_fails() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        engine.complete_workflow("test", &wf.workflow_id, serde_json::Value::Null).unwrap();
-        assert!(engine.cancel_workflow("test", &wf.workflow_id, "test").is_err());
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        engine
+            .complete_workflow("test", &wf.workflow_id, serde_json::Value::Null)
+            .unwrap();
+        assert!(engine
+            .cancel_workflow("test", &wf.workflow_id, "test")
+            .is_err());
     }
 
     #[test]
     fn test_update_workflow() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        let result = engine.update_workflow("test", &wf.workflow_id, "my_update", "upd-1", serde_json::json!({"key": "val"}));
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        let result = engine.update_workflow(
+            "test",
+            &wf.workflow_id,
+            "my_update",
+            "upd-1",
+            serde_json::json!({"key": "val"}),
+        );
         assert!(result.is_ok());
         let val = result.unwrap();
         assert_eq!(val["status"], "COMPLETED");
@@ -2670,8 +3004,17 @@ mod tests {
     #[test]
     fn test_child_workflow() {
         let engine = DevEngine::new(test_config());
-        let parent = engine.start_workflow("test", "Parent", "q1", serde_json::Value::Null, "").unwrap();
-        let child = engine.start_child_workflow("test", &parent.workflow_id, "Child", "", "q1", serde_json::Value::Null);
+        let parent = engine
+            .start_workflow("test", "Parent", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        let child = engine.start_child_workflow(
+            "test",
+            &parent.workflow_id,
+            "Child",
+            "",
+            "q1",
+            serde_json::Value::Null,
+        );
         assert!(child.is_ok());
         let child_exec = child.unwrap();
         assert!(child_exec.parent_workflow_id.is_some());
@@ -2681,8 +3024,12 @@ mod tests {
     #[test]
     fn test_schedule_and_cancel_timer() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        let tid = engine.schedule_timer("test", &wf.workflow_id, "", 5000).unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        let tid = engine
+            .schedule_timer("test", &wf.workflow_id, "", 5000)
+            .unwrap();
         assert!(!tid.is_empty());
         assert!(engine.cancel_timer("test", &wf.workflow_id, &tid).is_ok());
     }
@@ -2690,8 +3037,11 @@ mod tests {
     #[test]
     fn test_continue_as_new() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        let new_run = engine.continue_as_new("test", &wf.workflow_id, "WF", "q1", serde_json::Value::Null);
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        let new_run =
+            engine.continue_as_new("test", &wf.workflow_id, "WF", "q1", serde_json::Value::Null);
         assert!(new_run.is_ok());
         // After CASR, the workflow with this ID is the NEW execution (RUNNING)
         let updated = engine.get_workflow("test", &wf.workflow_id).unwrap();
@@ -2703,11 +3053,15 @@ mod tests {
     #[test]
     fn test_upsert_search_attributes() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
         let mut attrs = HashMap::new();
         attrs.insert("env".to_string(), "production".to_string());
         attrs.insert("team".to_string(), "backend".to_string());
-        assert!(engine.upsert_search_attributes("test", &wf.workflow_id, attrs).is_ok());
+        assert!(engine
+            .upsert_search_attributes("test", &wf.workflow_id, attrs)
+            .is_ok());
         let updated = engine.get_workflow("test", &wf.workflow_id).unwrap();
         assert_eq!(updated.search_attributes.get("env").unwrap(), "production");
         assert_eq!(updated.search_attributes.get("team").unwrap(), "backend");
@@ -2716,7 +3070,9 @@ mod tests {
     #[test]
     fn test_set_memo() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
         let mut memo = HashMap::new();
         memo.insert("note".to_string(), "important".to_string());
         assert!(engine.set_memo("test", &wf.workflow_id, memo).is_ok());
@@ -2727,15 +3083,31 @@ mod tests {
     #[test]
     fn test_signal_with_start() {
         let engine = DevEngine::new(test_config());
-        let (_exec, started, signaled) = engine.signal_with_start(
-            "test", "WF", "wf-sws", "q1", serde_json::Value::Null, "my_signal", serde_json::json!(42),
-        ).unwrap();
+        let (_exec, started, signaled) = engine
+            .signal_with_start(
+                "test",
+                "WF",
+                "wf-sws",
+                "q1",
+                serde_json::Value::Null,
+                "my_signal",
+                serde_json::json!(42),
+            )
+            .unwrap();
         assert!(started);
         assert!(signaled);
         // Signal again — should not start a new workflow
-        let (_, started2, signaled2) = engine.signal_with_start(
-            "test", "WF", "wf-sws", "q1", serde_json::Value::Null, "my_signal", serde_json::json!(99),
-        ).unwrap();
+        let (_, started2, signaled2) = engine
+            .signal_with_start(
+                "test",
+                "WF",
+                "wf-sws",
+                "q1",
+                serde_json::Value::Null,
+                "my_signal",
+                serde_json::json!(99),
+            )
+            .unwrap();
         assert!(!started2);
         assert!(signaled2);
     }
@@ -2743,21 +3115,64 @@ mod tests {
     #[test]
     fn test_activity_lifecycle() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        let act = engine.schedule_activity("test", &wf.workflow_id, &wf.run_id, "act-1", "DoWork", "q1", serde_json::json!("data"), None).unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        let act = engine
+            .schedule_activity(
+                "test",
+                &wf.workflow_id,
+                &wf.run_id,
+                "act-1",
+                "DoWork",
+                "q1",
+                serde_json::json!("data"),
+                None,
+            )
+            .unwrap();
         assert_eq!(act.status, "SCHEDULED");
         // Heartbeat
-        assert!(engine.record_heartbeat("test", &wf.workflow_id, "act-1", serde_json::Value::Null).is_ok());
+        assert!(engine
+            .record_heartbeat("test", &wf.workflow_id, "act-1", serde_json::Value::Null)
+            .is_ok());
         // Complete
-        assert!(engine.complete_activity("test", &wf.workflow_id, "act-1", serde_json::json!({"done": true})).is_ok());
+        assert!(engine
+            .complete_activity(
+                "test",
+                &wf.workflow_id,
+                "act-1",
+                serde_json::json!({"done": true})
+            )
+            .is_ok());
     }
 
     #[test]
     fn test_activity_retry() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        engine.schedule_activity("test", &wf.workflow_id, &wf.run_id, "act-retry", "DoWork", "q1", serde_json::Value::Null, None).unwrap();
-        let (will_retry, next_attempt) = engine.fail_activity("test", &wf.workflow_id, "act-retry", "transient error", false).unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        engine
+            .schedule_activity(
+                "test",
+                &wf.workflow_id,
+                &wf.run_id,
+                "act-retry",
+                "DoWork",
+                "q1",
+                serde_json::Value::Null,
+                None,
+            )
+            .unwrap();
+        let (will_retry, next_attempt) = engine
+            .fail_activity(
+                "test",
+                &wf.workflow_id,
+                "act-retry",
+                "transient error",
+                false,
+            )
+            .unwrap();
         assert!(will_retry);
         assert_eq!(next_attempt, 2);
     }
@@ -2765,8 +3180,12 @@ mod tests {
     #[test]
     fn test_replay_workflow() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        engine.complete_workflow("test", &wf.workflow_id, serde_json::json!({"ok": true})).unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        engine
+            .complete_workflow("test", &wf.workflow_id, serde_json::json!({"ok": true}))
+            .unwrap();
         let (events, status) = engine.replay_workflow("test", &wf.workflow_id).unwrap();
         assert!(events >= 3); // Started + TaskScheduled + Completed
         assert_eq!(status, "COMPLETED");
@@ -2775,7 +3194,9 @@ mod tests {
     #[test]
     fn test_reset_workflow() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
         let new_run = engine.reset_workflow("test", &wf.workflow_id, 1, "debug reset");
         assert!(new_run.is_ok());
     }
@@ -2783,9 +3204,15 @@ mod tests {
     #[test]
     fn test_batch_terminate() {
         let engine = DevEngine::new(test_config());
-        engine.start_workflow("test", "WF1", "q1", serde_json::Value::Null, "").unwrap();
-        engine.start_workflow("test", "WF2", "q1", serde_json::Value::Null, "").unwrap();
-        engine.start_workflow("test", "WF3", "q1", serde_json::Value::Null, "").unwrap();
+        engine
+            .start_workflow("test", "WF1", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        engine
+            .start_workflow("test", "WF2", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        engine
+            .start_workflow("test", "WF3", "q1", serde_json::Value::Null, "")
+            .unwrap();
         let count = engine.batch_terminate("test", "running", "batch test", 0);
         assert_eq!(count, 3);
     }
@@ -2793,8 +3220,12 @@ mod tests {
     #[test]
     fn test_batch_signal() {
         let engine = DevEngine::new(test_config());
-        engine.start_workflow("test", "WF1", "q1", serde_json::Value::Null, "").unwrap();
-        engine.start_workflow("test", "WF2", "q1", serde_json::Value::Null, "").unwrap();
+        engine
+            .start_workflow("test", "WF1", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        engine
+            .start_workflow("test", "WF2", "q1", serde_json::Value::Null, "")
+            .unwrap();
         let count = engine.batch_signal("test", "running", "broadcast", serde_json::json!("go"), 0);
         assert_eq!(count, 2);
     }
@@ -2810,7 +3241,9 @@ mod tests {
     #[test]
     fn test_update_namespace() {
         let engine = DevEngine::new(test_config());
-        assert!(engine.update_namespace("test", Some("updated desc"), Some(30), None).is_ok());
+        assert!(engine
+            .update_namespace("test", Some("updated desc"), Some(30), None)
+            .is_ok());
         let ns = engine.describe_namespace("test").unwrap();
         assert_eq!(ns.description, "updated desc");
         assert_eq!(ns.retention_days, 30);
@@ -2833,7 +3266,9 @@ mod tests {
     #[test]
     fn test_poll_workflow_task() {
         let engine = DevEngine::new(test_config());
-        engine.start_workflow("test", "WF", "poll-queue", serde_json::Value::Null, "").unwrap();
+        engine
+            .start_workflow("test", "WF", "poll-queue", serde_json::Value::Null, "")
+            .unwrap();
         let task = engine.poll_workflow_task("test", "poll-queue", "worker-1");
         assert!(task.is_some());
         let (token, event_id, _event_type) = task.unwrap();
@@ -2844,8 +3279,21 @@ mod tests {
     #[test]
     fn test_poll_activity_task() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        engine.schedule_activity("test", &wf.workflow_id, &wf.run_id, "a1", "DoWork", "act-queue", serde_json::Value::Null, None).unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        engine
+            .schedule_activity(
+                "test",
+                &wf.workflow_id,
+                &wf.run_id,
+                "a1",
+                "DoWork",
+                "act-queue",
+                serde_json::Value::Null,
+                None,
+            )
+            .unwrap();
         let task = engine.poll_activity_task("test", "act-queue", "worker-1");
         assert!(task.is_some());
         let act = task.unwrap();
@@ -2856,8 +3304,12 @@ mod tests {
     #[test]
     fn test_stats_includes_new_fields() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "WF", "q1", serde_json::Value::Null, "").unwrap();
-        engine.cancel_workflow("test", &wf.workflow_id, "test").unwrap();
+        let wf = engine
+            .start_workflow("test", "WF", "q1", serde_json::Value::Null, "")
+            .unwrap();
+        engine
+            .cancel_workflow("test", &wf.workflow_id, "test")
+            .unwrap();
         let stats = engine.get_stats();
         assert_eq!(stats.cancelled_workflows, 1);
         assert!(!stats.features.is_empty());
