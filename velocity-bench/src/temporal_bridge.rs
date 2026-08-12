@@ -730,6 +730,79 @@ impl BenchmarkService for BenchmarkServiceImpl {
             workflows_cleared: cleared as i64,
         }))
     }
+
+    // ── Stub implementations for extended RPCs ────────────────────────────
+    // These return Unimplemented since Temporal Bridge is a simulation harness.
+
+    async fn cancel_workflow(&self, _req: Request<CancelWorkflowRequest>) -> Result<Response<CancelWorkflowResponse>, Status> {
+        Err(Status::unimplemented("cancel_workflow not implemented in temporal bridge"))
+    }
+    async fn update_workflow_execution(&self, _req: Request<UpdateWorkflowRequest>) -> Result<Response<UpdateWorkflowResponse>, Status> {
+        Err(Status::unimplemented("update_workflow not implemented in temporal bridge"))
+    }
+    async fn start_child_workflow(&self, _req: Request<StartChildWorkflowRequest>) -> Result<Response<StartChildWorkflowResponse>, Status> {
+        Err(Status::unimplemented("start_child_workflow not implemented in temporal bridge"))
+    }
+    async fn schedule_timer(&self, _req: Request<ScheduleTimerRequest>) -> Result<Response<ScheduleTimerResponse>, Status> {
+        Err(Status::unimplemented("schedule_timer not implemented in temporal bridge"))
+    }
+    async fn cancel_timer(&self, _req: Request<CancelTimerRequest>) -> Result<Response<CancelTimerResponse>, Status> {
+        Err(Status::unimplemented("cancel_timer not implemented in temporal bridge"))
+    }
+    async fn continue_as_new(&self, _req: Request<ContinueAsNewRequest>) -> Result<Response<ContinueAsNewResponse>, Status> {
+        Err(Status::unimplemented("continue_as_new not implemented in temporal bridge"))
+    }
+    async fn upsert_search_attributes(&self, _req: Request<UpsertSearchAttributesRequest>) -> Result<Response<UpsertSearchAttributesResponse>, Status> {
+        Err(Status::unimplemented("upsert_search_attributes not implemented in temporal bridge"))
+    }
+    async fn set_memo(&self, _req: Request<SetMemoRequest>) -> Result<Response<SetMemoResponse>, Status> {
+        Err(Status::unimplemented("set_memo not implemented in temporal bridge"))
+    }
+    async fn signal_with_start(&self, _req: Request<SignalWithStartRequest>) -> Result<Response<SignalWithStartResponse>, Status> {
+        Err(Status::unimplemented("signal_with_start not implemented in temporal bridge"))
+    }
+    async fn record_activity_heartbeat(&self, _req: Request<RecordActivityHeartbeatRequest>) -> Result<Response<RecordActivityHeartbeatResponse>, Status> {
+        Err(Status::unimplemented("record_heartbeat not implemented in temporal bridge"))
+    }
+    async fn schedule_activity(&self, _req: Request<ScheduleActivityRequest>) -> Result<Response<ScheduleActivityResponse>, Status> {
+        Err(Status::unimplemented("schedule_activity not implemented in temporal bridge"))
+    }
+    async fn complete_activity_task(&self, _req: Request<CompleteActivityTaskRequest>) -> Result<Response<CompleteActivityTaskResponse>, Status> {
+        Err(Status::unimplemented("complete_activity not implemented in temporal bridge"))
+    }
+    async fn fail_activity_task(&self, _req: Request<FailActivityTaskRequest>) -> Result<Response<FailActivityTaskResponse>, Status> {
+        Err(Status::unimplemented("fail_activity not implemented in temporal bridge"))
+    }
+    async fn replay_workflow(&self, _req: Request<ReplayWorkflowRequest>) -> Result<Response<ReplayWorkflowResponse>, Status> {
+        Err(Status::unimplemented("replay_workflow not implemented in temporal bridge"))
+    }
+    async fn reset_workflow(&self, _req: Request<ResetWorkflowRequest>) -> Result<Response<ResetWorkflowResponse>, Status> {
+        Err(Status::unimplemented("reset_workflow not implemented in temporal bridge"))
+    }
+    async fn batch_terminate(&self, _req: Request<BatchTerminateRequest>) -> Result<Response<BatchTerminateResponse>, Status> {
+        Err(Status::unimplemented("batch_terminate not implemented in temporal bridge"))
+    }
+    async fn batch_signal(&self, _req: Request<BatchSignalRequest>) -> Result<Response<BatchSignalResponse>, Status> {
+        Err(Status::unimplemented("batch_signal not implemented in temporal bridge"))
+    }
+    async fn describe_namespace(&self, _req: Request<DescribeNamespaceRequest>) -> Result<Response<DescribeNamespaceResponse>, Status> {
+        Err(Status::unimplemented("describe_namespace not implemented in temporal bridge"))
+    }
+    async fn update_namespace(&self, _req: Request<UpdateNamespaceRequest>) -> Result<Response<UpdateNamespaceResponse>, Status> {
+        Err(Status::unimplemented("update_namespace not implemented in temporal bridge"))
+    }
+    async fn delete_namespace(&self, _req: Request<DeleteNamespaceRequest>) -> Result<Response<DeleteNamespaceResponse>, Status> {
+        Err(Status::unimplemented("delete_namespace not implemented in temporal bridge"))
+    }
+    async fn poll_workflow_task(&self, _req: Request<PollWorkflowTaskRequest>) -> Result<Response<PollWorkflowTaskResponse>, Status> {
+        Err(Status::unimplemented("poll_workflow_task not implemented in temporal bridge"))
+    }
+    async fn poll_activity_task(&self, _req: Request<PollActivityTaskRequest>) -> Result<Response<PollActivityTaskResponse>, Status> {
+        Err(Status::unimplemented("poll_activity_task not implemented in temporal bridge"))
+    }
+    async fn get_workflow_history(&self, _req: Request<GetWorkflowHistoryRequest>) -> Result<Response<GetWorkflowHistoryResponse>, Status> {
+        Err(Status::unimplemented("get_workflow_history not implemented in temporal bridge"))
+    }
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────

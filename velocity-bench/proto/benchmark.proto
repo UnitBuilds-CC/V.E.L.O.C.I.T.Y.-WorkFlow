@@ -47,6 +47,58 @@ service BenchmarkService {
 
   // Count active workflows.
   rpc CountWorkflows(CountWorkflowsRequest) returns (CountWorkflowsResponse);
+
+  // ── Tier 1: Core workflow features ──────────────────────────────────
+  // Cancel a running workflow (triggers cancellation callbacks).
+  rpc CancelWorkflow(CancelWorkflowRequest) returns (CancelWorkflowResponse);
+  // Mutate a running workflow's state (Temporal's signal replacement).
+  rpc UpdateWorkflowExecution(UpdateWorkflowRequest) returns (UpdateWorkflowResponse);
+  // Spawn a child workflow from a parent.
+  rpc StartChildWorkflow(StartChildWorkflowRequest) returns (StartChildWorkflowResponse);
+  // Schedule a timer in a running workflow.
+  rpc ScheduleTimer(ScheduleTimerRequest) returns (ScheduleTimerResponse);
+  // Cancel a pending timer.
+  rpc CancelTimer(CancelTimerRequest) returns (CancelTimerResponse);
+  // Continue-as-new: start a fresh execution with the same workflow ID.
+  rpc ContinueAsNew(ContinueAsNewRequest) returns (ContinueAsNewResponse);
+  // Add or update search attributes on a running workflow.
+  rpc UpsertSearchAttributes(UpsertSearchAttributesRequest) returns (UpsertSearchAttributesResponse);
+  // Set memo key/value pairs on a running workflow.
+  rpc SetMemo(SetMemoRequest) returns (SetMemoResponse);
+  // Signal-with-start: atomically signal or start+signal a workflow.
+  rpc SignalWithStart(SignalWithStartRequest) returns (SignalWithStartResponse);
+
+  // ── Tier 2: Activity & operational features ─────────────────────────
+  // Heartbeat an activity (detects stuck activities).
+  rpc RecordActivityHeartbeat(RecordActivityHeartbeatRequest) returns (RecordActivityHeartbeatResponse);
+  // Schedule an activity task for a workflow.
+  rpc ScheduleActivity(ScheduleActivityRequest) returns (ScheduleActivityResponse);
+  // Complete an activity task.
+  rpc CompleteActivityTask(CompleteActivityTaskRequest) returns (CompleteActivityTaskResponse);
+  // Fail an activity task (triggers retry).
+  rpc FailActivityTask(FailActivityTaskRequest) returns (FailActivityTaskResponse);
+  // Replay a workflow from history.
+  rpc ReplayWorkflow(ReplayWorkflowRequest) returns (ReplayWorkflowResponse);
+  // Reset a workflow to a previous event ID.
+  rpc ResetWorkflow(ResetWorkflowRequest) returns (ResetWorkflowResponse);
+  // Batch terminate workflows matching a filter.
+  rpc BatchTerminate(BatchTerminateRequest) returns (BatchTerminateResponse);
+  // Batch signal workflows matching a filter.
+  rpc BatchSignal(BatchSignalRequest) returns (BatchSignalResponse);
+
+  // ── Tier 3: Namespace & production features ─────────────────────────
+  // Describe a namespace.
+  rpc DescribeNamespace(DescribeNamespaceRequest) returns (DescribeNamespaceResponse);
+  // Update a namespace's configuration.
+  rpc UpdateNamespace(UpdateNamespaceRequest) returns (UpdateNamespaceResponse);
+  // Delete a namespace.
+  rpc DeleteNamespace(DeleteNamespaceRequest) returns (DeleteNamespaceResponse);
+  // Poll for workflow tasks (worker poll loop).
+  rpc PollWorkflowTask(PollWorkflowTaskRequest) returns (PollWorkflowTaskResponse);
+  // Poll for activity tasks (worker poll loop).
+  rpc PollActivityTask(PollActivityTaskRequest) returns (PollActivityTaskResponse);
+  // Get workflow history (full event stream).
+  rpc GetWorkflowHistory(GetWorkflowHistoryRequest) returns (GetWorkflowHistoryResponse);
 }
 
 // ─── Messages ────────────────────────────────────────────────────────────────
@@ -194,4 +246,302 @@ message CountWorkflowsRequest {
 
 message CountWorkflowsResponse {
   int64 count = 1;
+}
+
+// ─── Tier 1 Messages ────────────────────────────────────────────────────────
+
+message CancelWorkflowRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  string reason = 4;
+}
+message CancelWorkflowResponse {
+  bool success = 1;
+  int64 latency_us = 2;
+  string error = 3;
+}
+
+message UpdateWorkflowRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  string update_name = 4;
+  bytes payload = 5;
+  string update_id = 6;
+}
+message UpdateWorkflowResponse {
+  bool success = 1;
+  int64 latency_us = 2;
+  bytes result = 3;
+  string error = 4;
+}
+
+message StartChildWorkflowRequest {
+  string parent_workflow_id = 1;
+  string parent_run_id = 2;
+  string namespace = 3;
+  string workflow_type = 4;
+  string workflow_id = 5;
+  string task_queue = 6;
+  bytes input = 7;
+}
+message StartChildWorkflowResponse {
+  string workflow_id = 1;
+  string run_id = 2;
+  bool success = 3;
+  string error = 4;
+}
+
+message ScheduleTimerRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  string timer_id = 4;
+  int64 duration_ms = 5;
+}
+message ScheduleTimerResponse {
+  bool success = 1;
+  string timer_id = 2;
+  int64 latency_us = 3;
+}
+
+message CancelTimerRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  string timer_id = 4;
+}
+message CancelTimerResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ContinueAsNewRequest {
+  string workflow_id = 1;
+  string namespace = 2;
+  string workflow_type = 3;
+  string task_queue = 4;
+  bytes input = 5;
+}
+message ContinueAsNewResponse {
+  string new_run_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message UpsertSearchAttributesRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  map<string, string> search_attributes = 4;
+}
+message UpsertSearchAttributesResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message SetMemoRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  map<string, string> memo = 4;
+}
+message SetMemoResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message SignalWithStartRequest {
+  string workflow_type = 1;
+  string workflow_id = 2;
+  string namespace = 3;
+  string task_queue = 4;
+  bytes input = 5;
+  string signal_name = 6;
+  bytes signal_payload = 7;
+}
+message SignalWithStartResponse {
+  string workflow_id = 1;
+  string run_id = 2;
+  bool started = 3;   // true if workflow was started, false if already running
+  bool signaled = 4;
+}
+
+// ─── Tier 2 Messages ────────────────────────────────────────────────────────
+
+message RecordActivityHeartbeatRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  string activity_id = 4;
+  bytes details = 5;
+}
+message RecordActivityHeartbeatResponse {
+  bool success = 1;
+  bool cancel_requested = 2;
+}
+
+message ScheduleActivityRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  string activity_id = 4;
+  string activity_type = 5;
+  string task_queue = 6;
+  bytes input = 7;
+  int64 heartbeat_timeout_ms = 8;
+}
+message ScheduleActivityResponse {
+  string activity_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message CompleteActivityTaskRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  string activity_id = 4;
+  bytes result = 5;
+}
+message CompleteActivityTaskResponse {
+  bool success = 1;
+  int64 latency_us = 2;
+  string error = 3;
+}
+
+message FailActivityTaskRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  string activity_id = 4;
+  string reason = 5;
+  bool non_retryable = 6;
+}
+message FailActivityTaskResponse {
+  bool success = 1;
+  bool will_retry = 2;
+  int32 next_attempt = 3;
+  string error = 4;
+}
+
+message ReplayWorkflowRequest {
+  string workflow_id = 1;
+  string namespace = 2;
+}
+message ReplayWorkflowResponse {
+  bool success = 1;
+  int64 events_replayed = 2;
+  string final_status = 3;
+  string error = 4;
+}
+
+message ResetWorkflowRequest {
+  string workflow_id = 1;
+  string namespace = 2;
+  int64 reset_to_event_id = 3;
+  string reason = 4;
+}
+message ResetWorkflowResponse {
+  string new_run_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message BatchTerminateRequest {
+  string namespace = 1;
+  string status_filter = 2;   // "running", "all"
+  string reason = 3;
+  int64 max_count = 4;        // 0 = unlimited
+}
+message BatchTerminateResponse {
+  int64 terminated_count = 1;
+}
+
+message BatchSignalRequest {
+  string namespace = 1;
+  string status_filter = 2;
+  string signal_name = 3;
+  bytes payload = 4;
+  int64 max_count = 5;
+}
+message BatchSignalResponse {
+  int64 signaled_count = 1;
+}
+
+// ─── Tier 3 Messages ────────────────────────────────────────────────────────
+
+message DescribeNamespaceRequest {
+  string name = 1;
+}
+message DescribeNamespaceResponse {
+  string name = 1;
+  string id = 2;
+  string description = 3;
+  string state = 4;
+  uint32 retention_days = 5;
+  string owner_email = 6;
+  bool is_global = 7;
+  int64 created_at = 8;
+}
+
+message UpdateNamespaceRequest {
+  string name = 1;
+  string description = 2;
+  uint32 retention_days = 3;
+  string owner_email = 4;
+}
+message UpdateNamespaceResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message DeleteNamespaceRequest {
+  string name = 1;
+}
+message DeleteNamespaceResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message PollWorkflowTaskRequest {
+  string namespace = 1;
+  string task_queue = 2;
+  string identity = 3;
+}
+message PollWorkflowTaskResponse {
+  string task_token = 1;
+  int64 event_id = 2;
+  string event_type = 3;
+  bytes workflow_execution = 4;
+  bool has_task = 5;
+}
+
+message PollActivityTaskRequest {
+  string namespace = 1;
+  string task_queue = 2;
+  string identity = 3;
+}
+message PollActivityTaskResponse {
+  string task_token = 1;
+  string activity_id = 2;
+  string activity_type = 3;
+  bytes input = 4;
+  string workflow_id = 5;
+  bool has_task = 6;
+  int64 scheduled_time = 7;
+}
+
+message GetWorkflowHistoryRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace = 3;
+  int64 max_page_size = 4;
+  bytes next_page_token = 5;
+}
+message GetWorkflowHistoryResponse {
+  repeated bytes events = 1;  // Serialized HistoryEvent JSON per element
+  bytes next_page_token = 2;
+  int64 total_event_count = 3;
 }
