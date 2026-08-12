@@ -1,0 +1,71 @@
+{{- if .Values.monitoring.prometheus.rules.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "velocity.fullname" . }}-alerts
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitoring
+    {{- with .Values.monitoring.prometheus.rules.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: velocity-server.rules
+      rules:
+        # ── Critical Alerts ──────────────────────────────────────────────────
+        - alert: HighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job="{{ include "velocity.fullname" . }}",status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="{{ include "velocity.fullname" . }}"}[5m])) > {{ .Values.monitoring.prometheus.rules.highErrorRate.threshold | default 0.05 }}
+          for: {{ .Values.monitoring.prometheus.rules.highErrorRate.duration | default "5m" }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "High HTTP error rate detected"
+            description: "More than {{ "{{ $value | humanizePercentage }}" }} of requests are failing with 5xx errors."
+
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}",pod=~"{{ include "velocity.fullname" . }}.*"}[15m]) * 60 * 15 > {{ .Values.monitoring.prometheus.rules.podCrashLooping.threshold | default 5 }}
+          for: "5m"
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ "{{ $labels.pod }}" }} is crash looping"
+            description: "Pod has restarted {{ "{{ $value }}" }} times in the last 15 minutes."
+
+        - alert: HighMemoryUsage
+          expr: |
+            container_memory_working_set_bytes{namespace="{{ .Release.Namespace }}",pod=~"{{ include "velocity.fullname" . }}.*"}
+            /
+            container_spec_memory_limit_bytes{namespace="{{ .Release.Namespace }}",pod=~"{{ include "velocity.fullname" . }}.*"} > {{ .Values.monitoring.prometheus.rules.highMemoryUsage.threshold | default 0.85 }}
+          for: {{ .Values.monitoring.prometheus.rules.highMemoryUsage.duration | default "10m" }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "High memory usage on {{ "{{ $labels.pod }}" }}"
+            description: "Container memory usage is above {{ "{{ $value | humanizePercentage }}" }} of limit."
+
+        # ── Warning Alerts ───────────────────────────────────────────────────
+        - alert: HighLatency
+          expr: |
+            histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="{{ include "velocity.fullname" . }}"}[5m])) by (le)) > {{ .Values.monitoring.prometheus.rules.highLatency.threshold | default 1.0 }}
+          for: {{ .Values.monitoring.prometheus.rules.highLatency.duration | default "5m" }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "High request latency detected"
+            description: "95th percentile latency is {{ "{{ $value }}" }}s, exceeding threshold."
+
+        - alert: LowThroughput
+          expr: |
+            sum(rate(http_requests_total{job="{{ include "velocity.fullname" . }}"}[5m])) < {{ .Values.monitoring.prometheus.rules.lowThroughput.threshold | default 1 }}
+          for: {{ .Values.monitoring.prometheus.rules.lowThroughput.duration | default "10m" }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "Low request throughput"
+            description: "Request rate has dropped below {{ "{{ $value }}" }} req/s."
+{{- end }}

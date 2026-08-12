@@ -56,6 +56,17 @@ securityContext:
     drop:
       - ALL
 
+# ── Advanced Security ───────────────────────────────────────────────────────
+security:
+  podSecurityPolicy:
+    enabled: false
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+  securityContext:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    seccompProfile: RuntimeDefault
+
 # ── Service ──────────────────────────────────────────────────────────────────
 service:
   type: ClusterIP
@@ -193,6 +204,9 @@ podDisruptionBudget:
 # ── Network Policy ───────────────────────────────────────────────────────────
 networkPolicy:
   enabled: true
+  # Default-deny policy: blocks ALL ingress/egress unless explicitly allowed
+  denyAll:
+    enabled: false
   allowedIngressNamespaces: []
   postgresqlNamespace: ""
   prometheusNamespace: "monitoring"
@@ -264,6 +278,33 @@ monitoring:
         cpu: 250m
         memory: 512Mi
     replicas: 1
+    # PrometheusRule alerting rules (requires Prometheus Operator CRDs)
+    rules:
+      enabled: false
+      additionalLabels: {}
+      highErrorRate:
+        threshold: 0.05    # 5 % error rate
+        duration: 5m
+      highLatency:
+        threshold: 1.0     # seconds (p95)
+        duration: 5m
+      lowThroughput:
+        threshold: 1       # requests per second
+        duration: 10m
+      podCrashLooping:
+        threshold: 5       # restarts in 15 min
+      highMemoryUsage:
+        threshold: 0.85    # 85 % of limit
+        duration: 10m
+    # PodMonitor for Prometheus Operator
+    podMonitor:
+      enabled: false
+      additionalLabels: {}
+      metricsPath: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+      relabelings: []
   grafana:
     enabled: false
     image:
@@ -330,14 +371,92 @@ backup:
 # ── TLS ──────────────────────────────────────────────────────────────────────
 tls:
   enabled: false
-  certManager: true
-  issuerRef:
-    name: ""
-    kind: ClusterIssuer
-  secretName: velocity-tls
   commonName: velocity.local
   duration: 2160h   # 90 days
   renewBefore: 360h # 15 days
+  secretName: velocity-tls
+  issuerRef:
+    name: ""
+    kind: ClusterIssuer
+  # cert-manager integration (replaces simple boolean toggle)
+  certManager:
+    enabled: false
+    email: admin@velocity.local
+    issuer: prod          # "prod" or "staging"
+    secretName: ""        # defaults to <fullname>-tls
+    commonName: ""        # defaults to tls.commonName
+    duration: ""          # defaults to tls.duration
+    renewBefore: ""       # defaults to tls.renewBefore
+    ingressClass: nginx
+    staging:
+      enabled: true
+    webhook:
+      enabled: false
+    # DNS-01 challenge providers (optional)
+    dns01:
+      enabled: false
+      route53:
+        enabled: false
+        region: ""
+        hostedZoneID: ""
+      cloudflare:
+        enabled: false
+        email: ""
+        apiTokenSecretRef: cloudflare-api-token
+
+# ── Service Mesh — Istio ────────────────────────────────────────────────────
+serviceMesh:
+  istio:
+    enabled: false
+    gateway:
+      enabled: false
+      port: 443
+      portName: https
+      protocol: HTTPS
+    sidecar:
+      enabled: false
+      outboundTrafficPolicy: REGISTRY_ONLY
+      egressHosts: []
+      #  - "./velocity-backend.svc.cluster.local"
+    trafficManagement:
+      timeout: 30s
+      loadBalancer: ROUND_ROBIN   # ROUND_ROBIN | LEAST_CONN | RANDOM | PASSTHROUGH
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: "5xx,reset,connect-failure"
+      connectionPool:
+        tcp:
+          maxConnections: 100
+          connectTimeout: 5s
+        http:
+          maxRequestsPerConnection: 0
+          maxRetries: 3
+      outlierDetection:
+        consecutiveErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 50
+
+  # ── Service Mesh — Linkerd ──────────────────────────────────────────────────
+  linkerd:
+    enabled: false
+    serviceProfile:
+      retryBudget:
+        retryRatio: 0.2
+        minRetriesPerSecond: 10
+        ttl: 10s
+      healthTimeout: 2s
+      metricsTimeout: 5s
+      grpcTimeout: 30s
+      grpcRetryable: true
+      restTimeout: 15s
+
+# ── Advanced Monitoring ─────────────────────────────────────────────────────
+# (extends the existing monitoring.prometheus section)
+# monitoring:
+#   prometheus:
+#     rules / podMonitor are nested under monitoring.prometheus (see below)
 
 # ── Probes ───────────────────────────────────────────────────────────────────
 # Override default probe settings for the velocity-server container.

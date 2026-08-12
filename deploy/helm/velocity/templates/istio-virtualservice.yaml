@@ -1,0 +1,43 @@
+{{- if .Values.serviceMesh.istio.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "velocity.fullname" . }}
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: service-mesh
+spec:
+  hosts:
+    - {{ include "velocity.fullname" . }}
+    {{- range .Values.ingress.hosts }}
+    - {{ .host | quote }}
+    {{- end }}
+  gateways:
+    {{- if .Values.serviceMesh.istio.gateway.enabled }}
+    - {{ include "velocity.fullname" . }}-gateway
+    {{- else }}
+    - mesh
+    {{- end }}
+  http:
+    - name: primary
+      match:
+        - headers:
+            x-canary:
+              exact: "true"
+      route:
+        - destination:
+            host: {{ include "velocity.fullname" . }}
+            subset: canary
+          weight: 100
+    - name: default
+      route:
+        - destination:
+            host: {{ include "velocity.fullname" . }}
+            subset: stable
+          weight: 100
+      timeout: {{ .Values.serviceMesh.istio.trafficManagement.timeout | default "30s" }}
+      retries:
+        attempts: {{ .Values.serviceMesh.istio.trafficManagement.retries.attempts | default 3 }}
+        perTryTimeout: {{ .Values.serviceMesh.istio.trafficManagement.retries.perTryTimeout | default "10s" }}
+        retryOn: {{ .Values.serviceMesh.istio.trafficManagement.retries.retryOn | default "5xx,reset,connect-failure" }}
+{{- end }}

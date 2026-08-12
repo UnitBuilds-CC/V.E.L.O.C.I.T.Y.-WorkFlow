@@ -401,6 +401,211 @@ const VelocityUtils = {
     }
 };
 
+// ─── VelocityWSHelper: WebSocket Integration Utilities ────────────────────────
+const VelocityWSHelper = {
+    /**
+     * Connect to WebSocket and auto-subscribe to standard channels
+     */
+    connectRealtime(callbacks = {}) {
+        if (typeof velocityWS === 'undefined') {
+            console.warn('[WSHelper] velocityWS not loaded');
+            return;
+        }
+        if (callbacks.onWorkflowEvent) {
+            velocityWS.subscribe('workflow-events', callbacks.onWorkflowEvent);
+        }
+        if (callbacks.onMetrics) {
+            velocityWS.subscribe('metrics', callbacks.onMetrics);
+        }
+        if (callbacks.onLogs) {
+            velocityWS.subscribe('logs', callbacks.onLogs);
+        }
+        if (callbacks.onNotification) {
+            velocityWS.subscribe('notifications', callbacks.onNotification);
+        }
+        velocityWS.connect();
+        return velocityWS;
+    },
+
+    /**
+     * Format a WebSocket message for display
+     */
+    formatMessage(msg) {
+        const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString();
+        const channel = msg.channel || msg.type || 'unknown';
+        const detail = msg.message || msg.event || JSON.stringify(msg.data || msg.payload || {});
+        return { time, channel, detail: String(detail).slice(0, 200) };
+    },
+
+    /**
+     * Create a connection status updater
+     */
+    bindConnectionStatus(dotElement, textElement) {
+        const update = () => {
+            if (!velocityWS) return;
+            const connected = velocityWS.isConnected();
+            if (dotElement) {
+                dotElement.className = connected ? 'conn-dot connected' : 'conn-dot';
+            }
+            if (textElement) {
+                textElement.textContent = connected ? 'Connected' : 'Disconnected';
+            }
+        };
+        setInterval(update, 2000);
+        update();
+    }
+};
+
+// ─── VelocityDesigner: Workflow Designer Helpers ──────────────────────────────
+const VelocityDesigner = {
+    STEP_TYPES: ['start', 'task', 'decision', 'parallel', 'wait', 'end'],
+
+    STEP_COLORS: {
+        start: '#3fb950', task: '#58a6ff', decision: '#d29922',
+        parallel: '#bc8cff', wait: '#e3872d', end: '#f85149'
+    },
+
+    /**
+     * Create a blank workflow definition
+     */
+    createBlank(name = 'Untitled Workflow') {
+        return {
+            name,
+            version: 1,
+            steps: [],
+            connections: [],
+            metadata: { created: new Date().toISOString(), modified: new Date().toISOString() }
+        };
+    },
+
+    /**
+     * Validate a workflow definition
+     */
+    validate(definition) {
+        const errors = [];
+        if (!definition.steps || definition.steps.length === 0) {
+            errors.push('Workflow must have at least one step');
+        }
+        const hasStart = definition.steps.some(s => s.type === 'start');
+        const hasEnd = definition.steps.some(s => s.type === 'end');
+        if (!hasStart) errors.push('Workflow must have a Start step');
+        if (!hasEnd) errors.push('Workflow must have an End step');
+
+        // Check for orphan steps (no connections)
+        const connected = new Set();
+        (definition.connections || []).forEach(c => { connected.add(c.from); connected.add(c.to); });
+        definition.steps.forEach(s => {
+            if (definition.steps.length > 1 && !connected.has(s.id)) {
+                errors.push(`Step "${s.name || s.id}" is not connected`);
+            }
+        });
+        return errors;
+    },
+
+    /**
+     * Generate a step ID
+     */
+    generateStepId() {
+        return 'step_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+    },
+
+    /**
+     * Convert designer definition to execution format
+     */
+    toExecutionFormat(definition) {
+        return {
+            name: definition.name,
+            tasks: definition.steps
+                .filter(s => s.type !== 'start' && s.type !== 'end')
+                .map(s => ({
+                    name: s.name,
+                    type: s.type === 'decision' ? 'decision' : s.type === 'parallel' ? 'parallel' : 'activity',
+                    timeout: s.timeout || 30,
+                    retry_policy: { type: s.retry || 'none', max_attempts: s.maxRetries || 3 },
+                    input_mapping: s.input || {}
+                })),
+            flow: (definition.connections || []).map(c => ({
+                from: (definition.steps.find(s => s.id === c.from) || {}).name || c.from,
+                to: (definition.steps.find(s => s.id === c.to) || {}).name || c.to
+            }))
+        };
+    }
+};
+
+// ─── VelocityTimeline: Event Timeline Rendering Utilities ─────────────────────
+const VelocityTimeline = {
+    EVENT_COLORS: {
+        started: 'var(--accent-green)', completed: 'var(--accent-blue)',
+        failed: 'var(--accent-red)', signaled: 'var(--accent-purple)',
+        queried: 'var(--accent-cyan)', cancelled: 'var(--accent-yellow)',
+        timerfired: 'var(--accent-orange)', childworkflowstarted: 'var(--accent-purple)'
+    },
+
+    /**
+     * Classify an event type string
+     */
+    classify(eventType) {
+        const t = (eventType || '').toLowerCase();
+        if (t.includes('start')) return 'started';
+        if (t.includes('complete')) return 'completed';
+        if (t.includes('fail') || t.includes('error')) return 'failed';
+        if (t.includes('signal')) return 'signaled';
+        if (t.includes('quer')) return 'queried';
+        if (t.includes('cancel')) return 'cancelled';
+        if (t.includes('timer')) return 'timerfired';
+        if (t.includes('child')) return 'childworkflowstarted';
+        return 'started';
+    },
+
+    /**
+     * Format event type for display
+     */
+    formatType(eventType) {
+        return (eventType || 'Unknown')
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/^./, s => s.toUpperCase())
+            .trim();
+    },
+
+    /**
+     * Create timeline HTML for a set of events
+     */
+    renderEvents(events) {
+        if (!events || events.length === 0) {
+            return '<div style="text-align:center;padding:2rem;color:var(--text-muted)">No events to display</div>';
+        }
+        return events.map(evt => {
+            const cls = this.classify(evt.event_type || evt.type);
+            const color = this.EVENT_COLORS[cls] || 'var(--accent-blue)';
+            const time = new Date(evt.timestamp || Date.now()).toLocaleTimeString();
+            const summary = evt.summary || evt.event_type || evt.type || '';
+            return `<div class="timeline-item"><div class="timeline-dot ${cls}"></div><div class="timeline-card"><div class="timeline-card-header"><span class="timeline-event-type" style="color:${color}">${this.formatType(evt.event_type || evt.type)}</span><span class="timeline-time">${time}</span></div><div class="timeline-summary">${summary}</div></div></div>`;
+        }).join('');
+    },
+
+    /**
+     * Group events by type and return counts
+     */
+    groupByType(events) {
+        const groups = {};
+        (events || []).forEach(evt => {
+            const cls = this.classify(evt.event_type || evt.type);
+            groups[cls] = (groups[cls] || 0) + 1;
+        });
+        return groups;
+    },
+
+    /**
+     * Calculate total duration from first to last event
+     */
+    totalDuration(events) {
+        if (!events || events.length < 2) return 0;
+        const times = events.map(e => e.timestamp || 0).filter(t => t > 0);
+        if (times.length < 2) return 0;
+        return Math.max(...times) - Math.min(...times);
+    }
+};
+
 // ─── Initialize Global Instances ────────────────────────────────────────────────
 const velocityAPI = new VelocityAPI();
 const velocitySSE = new VelocitySSE();
@@ -412,6 +617,9 @@ if (typeof window !== 'undefined') {
     window.VelocitySSE = VelocitySSE;
     window.VelocityTheme = VelocityTheme;
     window.VelocityUtils = VelocityUtils;
+    window.VelocityWSHelper = VelocityWSHelper;
+    window.VelocityDesigner = VelocityDesigner;
+    window.VelocityTimeline = VelocityTimeline;
     window.velocityAPI = velocityAPI;
     window.velocitySSE = velocitySSE;
     window.velocityTheme = velocityTheme;

@@ -1,0 +1,56 @@
+{{- if .Values.tls.certManager.enabled }}
+# ── Let's Encrypt Production ClusterIssuer ──────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ include "velocity.fullname" . }}-letsencrypt-prod
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-manager
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: {{ .Values.tls.certManager.email | quote }}
+    privateKeySecretRef:
+      name: {{ include "velocity.fullname" . }}-letsencrypt-prod-key
+    solvers:
+      - http01:
+          ingress:
+            class: {{ .Values.tls.certManager.ingressClass | default "nginx" }}
+      {{- if .Values.tls.certManager.dns01.enabled }}
+      - dns01:
+          {{- if .Values.tls.certManager.dns01.route53.enabled }}
+          route53:
+            region: {{ .Values.tls.certManager.dns01.route53.region | quote }}
+            hostedZoneID: {{ .Values.tls.certManager.dns01.route53.hostedZoneID | quote }}
+          {{- end }}
+          {{- if .Values.tls.certManager.dns01.cloudflare.enabled }}
+          cloudflare:
+            email: {{ .Values.tls.certManager.dns01.cloudflare.email | quote }}
+            apiTokenSecretRef:
+              name: {{ .Values.tls.certManager.dns01.cloudflare.apiTokenSecretRef | quote }}
+              key: api-token
+          {{- end }}
+      {{- end }}
+---
+# ── Let's Encrypt Staging ClusterIssuer ─────────────────────────────────────
+{{- if .Values.tls.certManager.staging.enabled }}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ include "velocity.fullname" . }}-letsencrypt-staging
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-manager
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: {{ .Values.tls.certManager.email | quote }}
+    privateKeySecretRef:
+      name: {{ include "velocity.fullname" . }}-letsencrypt-staging-key
+    solvers:
+      - http01:
+          ingress:
+            class: {{ .Values.tls.certManager.ingressClass | default "nginx" }}
+{{- end }}
+{{- end }}

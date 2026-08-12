@@ -1,0 +1,16 @@
+{{- if .Values.networkPolicy.denyAll.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "velocity.fullname" . }}-deny-all
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: security
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "velocity.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+{{- end }}

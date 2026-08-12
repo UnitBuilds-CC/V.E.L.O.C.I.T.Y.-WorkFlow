@@ -1,0 +1,44 @@
+{{- if .Values.security.podSecurityPolicy.enabled }}
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: {{ include "velocity.fullname" . }}
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: security
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfiles: runtime/default
+    {{- if .Values.security.podSecurityPolicy.allowPrivilegeEscalation }}
+    seccomp.security.alpha.kubernetes.io/allowedProfiles: runtime/default
+    {{- end }}
+spec:
+  privileged: false
+  allowPrivilegeEscalation: {{ .Values.security.podSecurityPolicy.allowPrivilegeEscalation | default false }}
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: MustRunAsNonRoot
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: MustRunAs
+    ranges:
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+      - min: 1
+        max: 65535
+  readOnlyRootFilesystem: {{ .Values.security.podSecurityPolicy.readOnlyRootFilesystem | default true }}
+{{- end }}

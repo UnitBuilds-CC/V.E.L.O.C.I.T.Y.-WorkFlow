@@ -1,0 +1,35 @@
+{{- if .Values.serviceMesh.istio.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "velocity.fullname" . }}
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: service-mesh
+spec:
+  host: {{ include "velocity.fullname" . }}
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: {{ .Values.serviceMesh.istio.trafficManagement.connectionPool.tcp.maxConnections | default 100 }}
+        connectTimeout: {{ .Values.serviceMesh.istio.trafficManagement.connectionPool.tcp.connectTimeout | default "5s" }}
+      http:
+        h2UpgradePolicy: DEFAULT
+        maxRequestsPerConnection: {{ .Values.serviceMesh.istio.trafficManagement.connectionPool.http.maxRequestsPerConnection | default 0 }}
+        maxRetries: {{ .Values.serviceMesh.istio.trafficManagement.connectionPool.http.maxRetries | default 3 }}
+    loadBalancer:
+      simple: {{ .Values.serviceMesh.istio.trafficManagement.loadBalancer | default "ROUND_ROBIN" }}
+    outlierDetection:
+      consecutive5xxErrors: {{ .Values.serviceMesh.istio.trafficManagement.outlierDetection.consecutiveErrors | default 5 }}
+      interval: {{ .Values.serviceMesh.istio.trafficManagement.outlierDetection.interval | default "30s" }}
+      baseEjectionTime: {{ .Values.serviceMesh.istio.trafficManagement.outlierDetection.baseEjectionTime | default "30s" }}
+      maxEjectionPercent: {{ .Values.serviceMesh.istio.trafficManagement.outlierDetection.maxEjectionPercent | default 50 }}
+  subsets:
+    - name: stable
+      labels:
+        {{- include "velocity.selectorLabels" . | nindent 8 }}
+    - name: canary
+      labels:
+        {{- include "velocity.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/canary: "true"
+{{- end }}

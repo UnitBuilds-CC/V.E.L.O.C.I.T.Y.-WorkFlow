@@ -1,0 +1,40 @@
+{{- if .Values.serviceMesh.linkerd.enabled }}
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
+metadata:
+  name: {{ include "velocity.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: service-mesh
+spec:
+  retryBudget:
+    retryRatio: {{ .Values.serviceMesh.linkerd.serviceProfile.retryBudget.retryRatio | default 0.2 }}
+    minRetriesPerSecond: {{ .Values.serviceMesh.linkerd.serviceProfile.retryBudget.minRetriesPerSecond | default 10 }}
+    ttl: {{ .Values.serviceMesh.linkerd.serviceProfile.retryBudget.ttl | default "10s" }}
+  routes:
+    - name: Health Check
+      condition:
+        pathRegex: /health
+        method: GET
+      timeout: {{ .Values.serviceMesh.linkerd.serviceProfile.healthTimeout | default "2s" }}
+      isRetryable: false
+    - name: Metrics
+      condition:
+        pathRegex: /metrics
+        method: GET
+      timeout: {{ .Values.serviceMesh.linkerd.serviceProfile.metricsTimeout | default "5s" }}
+      isRetryable: false
+    - name: gRPC API
+      condition:
+        pathRegex: /.*
+        method: POST
+      timeout: {{ .Values.serviceMesh.linkerd.serviceProfile.grpcTimeout | default "30s" }}
+      isRetryable: {{ .Values.serviceMesh.linkerd.serviceProfile.grpcRetryable | default true }}
+    - name: REST API
+      condition:
+        pathRegex: /api/v1/.*
+        method: GET
+      timeout: {{ .Values.serviceMesh.linkerd.serviceProfile.restTimeout | default "15s" }}
+      isRetryable: true
+{{- end }}

@@ -1,0 +1,21 @@
+{{- if .Values.serviceMesh.istio.sidecar.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: Sidecar
+metadata:
+  name: {{ include "velocity.fullname" . }}-sidecar
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: service-mesh
+spec:
+  workloadSelector:
+    labels:
+      {{- include "velocity.selectorLabels" . | nindent 6 }}
+  egress:
+    - hosts:
+        - "istio-system/*"
+        {{- range .Values.serviceMesh.istio.sidecar.egressHosts }}
+        - {{ . | quote }}
+        {{- end }}
+  outboundTrafficPolicy:
+    mode: {{ .Values.serviceMesh.istio.sidecar.outboundTrafficPolicy | default "REGISTRY_ONLY" }}
+{{- end }}

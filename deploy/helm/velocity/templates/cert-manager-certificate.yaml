@@ -1,0 +1,27 @@
+{{- if .Values.tls.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "velocity.fullname" . }}-cert
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-manager
+spec:
+  secretName: {{ .Values.tls.certManager.secretName | default (printf "%s-tls" (include "velocity.fullname" .)) }}
+  duration: {{ .Values.tls.certManager.duration | default "2160h" }}
+  renewBefore: {{ .Values.tls.certManager.renewBefore | default "360h" }}
+  commonName: {{ .Values.tls.certManager.commonName | default .Values.tls.commonName | quote }}
+  isCA: false
+  usages:
+    - server auth
+    - client auth
+  dnsNames:
+    {{- range .Values.ingress.hosts }}
+    - {{ .host | quote }}
+    {{- end }}
+    - {{ printf "%s.%s.svc.cluster.local" (include "velocity.fullname" .) .Release.Namespace | quote }}
+    - {{ printf "*.%s.svc.cluster.local" .Release.Namespace | quote }}
+  issuerRef:
+    name: {{ include "velocity.fullname" . }}-letsencrypt-{{ .Values.tls.certManager.issuer | default "prod" }}
+    kind: ClusterIssuer
+{{- end }}

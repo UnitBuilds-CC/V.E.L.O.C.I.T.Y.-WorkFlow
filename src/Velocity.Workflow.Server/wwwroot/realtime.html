@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Dashboard — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .rt-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        .rt-full { grid-column: 1 / -1; }
+        @media (max-width: 900px) { .rt-layout { grid-template-columns: 1fr; } }
+
+        .conn-indicator { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; }
+        .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent-red); transition: background 0.3s; }
+        .conn-dot.connected { background: var(--accent-green); animation: pulse 2s infinite; }
+        .conn-dot.connecting { background: var(--accent-yellow); animation: pulse 1s infinite; }
+
+        .pulse-count { animation: pulse-count 2s ease-in-out infinite; }
+        @keyframes pulse-count { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+        .event-stream { max-height: 400px; overflow-y: auto; scroll-behavior: smooth; }
+        .event-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.625rem 1rem; border-bottom: 1px solid var(--border-color); font-size: 0.8125rem; transition: background 0.2s; }
+        .event-item:hover { background: var(--bg-tertiary); }
+        .event-item.new-event { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .event-time { color: var(--text-muted); font-size: 0.75rem; white-space: nowrap; min-width: 70px; font-family: monospace; }
+        .event-type { font-weight: 600; min-width: 80px; text-transform: uppercase; font-size: 0.6875rem; letter-spacing: 0.3px; padding: 0.15rem 0.5rem; border-radius: 4px; text-align: center; }
+        .event-type.started { background: rgba(63,185,80,0.15); color: var(--accent-green); }
+        .event-type.completed { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
+        .event-type.failed { background: rgba(248,81,73,0.15); color: var(--accent-red); }
+        .event-type.cancelled { background: rgba(210,153,34,0.15); color: var(--accent-yellow); }
+
+        .event-detail { color: var(--text-secondary); flex: 1; }
+        .event-workflow { color: var(--accent-cyan); font-weight: 500; }
+
+        .metric-bar-container { display: flex; flex-direction: column; gap: 0.75rem; }
+        .metric-bar-row { display: flex; align-items: center; gap: 0.75rem; }
+        .metric-bar-label { min-width: 100px; font-size: 0.8125rem; color: var(--text-secondary); }
+        .metric-bar-track { flex: 1; height: 24px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; position: relative; }
+        .metric-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; display: flex; align-items: center; padding-left: 0.5rem; font-size: 0.75rem; font-weight: 600; color: white; min-width: fit-content; }
+        .metric-bar-fill.running { background: linear-gradient(90deg, var(--accent-green), #2ea043); }
+        .metric-bar-fill.completed { background: linear-gradient(90deg, var(--accent-blue), #388bfd); }
+        .metric-bar-fill.failed { background: linear-gradient(90deg, var(--accent-red), #da3633); }
+        .metric-bar-fill.cancelled { background: linear-gradient(90deg, var(--accent-yellow), #bb8009); }
+
+        .filter-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+        .filter-bar select, .filter-bar input { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.35rem 0.625rem; font-size: 0.8125rem; color: var(--text-primary); }
+        .filter-bar select:focus, .filter-bar input:focus { outline: none; border-color: var(--accent-blue); }
+
+        .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .mini-stat { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 1rem; text-align: center; }
+        .mini-stat-value { font-size: 1.75rem; font-weight: 700; }
+        .mini-stat-label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0.25rem; }
+
+        .paused-overlay { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--accent-yellow); color: #000; padding: 0.5rem 1.25rem; border-radius: 9999px; font-weight: 600; font-size: 0.8125rem; z-index: 100; display: none; box-shadow: var(--shadow); }
+        .paused-overlay.visible { display: block; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>›</span>
+                <strong>Real-Time Dashboard</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+            <div class="conn-indicator">
+                <div class="conn-dot" id="connDot"></div>
+                <span id="connText">Disconnected</span>
+            </div>
+            <button class="btn btn-sm" id="pauseBtn" onclick="togglePause()">⏸ Pause</button>
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">◑</button>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <!-- Stats Row -->
+        <div class="stats-row">
+            <div class="mini-stat">
+                <div class="mini-stat-value pulse-count" id="activeCount" style="color:var(--accent-green)">0</div>
+                <div class="mini-stat-label">Active Workflows</div>
+            </div>
+            <div class="mini-stat">
+                <div class="mini-stat-value" id="completedCount" style="color:var(--accent-blue)">0</div>
+                <div class="mini-stat-label">Completed</div>
+            </div>
+            <div class="mini-stat">
+                <div class="mini-stat-value" id="failedCount" style="color:var(--accent-red)">0</div>
+                <div class="mini-stat-label">Failed</div>
+            </div>
+            <div class="mini-stat">
+                <div class="mini-stat-value" id="cancelledCount" style="color:var(--accent-yellow)">0</div>
+                <div class="mini-stat-label">Cancelled</div>
+            </div>
+            <div class="mini-stat">
+                <div class="mini-stat-value" id="eventsPerSec" style="color:var(--accent-cyan)">0</div>
+                <div class="mini-stat-label">Events/sec</div>
+            </div>
+        </div>
+
+        <div class="rt-layout">
+            <!-- Live Event Stream -->
+            <div class="section rt-full">
+                <div class="section-header">
+                    <div class="section-title">⚡ Live Workflow Events</div>
+                    <div class="filter-bar">
+                        <select id="filterNamespace" onchange="applyFilters()">
+                            <option value="">All Namespaces</option>
+                        </select>
+                        <select id="filterType" onchange="applyFilters()">
+                            <option value="">All Types</option>
+                            <option value="started">Started</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                        <button class="btn btn-sm" onclick="clearEvents()">🗑 Clear</button>
+                    </div>
+                </div>
+                <div class="section-body no-pad">
+                    <div class="event-stream" id="eventStream">
+                        <div style="padding:2rem;text-align:center;color:var(--text-muted);">
+                            Waiting for events... Connect WebSocket to start streaming.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metrics Chart -->
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">📊 Workflow Distribution</div>
+                </div>
+                <div class="section-body">
+                    <div class="metric-bar-container" id="metricsBars">
+                        <div class="metric-bar-row">
+                            <span class="metric-bar-label">Running</span>
+                            <div class="metric-bar-track"><div class="metric-bar-fill running" id="barRunning" style="width:0%">0</div></div>
+                        </div>
+                        <div class="metric-bar-row">
+                            <span class="metric-bar-label">Completed</span>
+                            <div class="metric-bar-track"><div class="metric-bar-fill completed" id="barCompleted" style="width:0%">0</div></div>
+                        </div>
+                        <div class="metric-bar-row">
+                            <span class="metric-bar-label">Failed</span>
+                            <div class="metric-bar-track"><div class="metric-bar-fill failed" id="barFailed" style="width:0%">0</div></div>
+                        </div>
+                        <div class="metric-bar-row">
+                            <span class="metric-bar-label">Cancelled</span>
+                            <div class="metric-bar-track"><div class="metric-bar-fill cancelled" id="barCancelled" style="width:0%">0</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connection & Controls -->
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">🔌 Connection</div>
+                </div>
+                <div class="section-body">
+                    <div style="display:flex;flex-direction:column;gap:0.75rem;">
+                        <div style="display:flex;justify-content:space-between;font-size:0.8125rem;">
+                            <span style="color:var(--text-secondary)">Status</span>
+                            <span id="wsStatus">Disconnected</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:0.8125rem;">
+                            <span style="color:var(--text-secondary)">Reconnects</span>
+                            <span id="reconnectCount">0</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:0.8125rem;">
+                            <span style="color:var(--text-secondary)">Queued Messages</span>
+                            <span id="queuedMessages">0</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:0.8125rem;">
+                            <span style="color:var(--text-secondary)">Total Events</span>
+                            <span id="totalEvents">0</span>
+                        </div>
+                        <button class="btn btn-primary" onclick="connectWS()">🔗 Connect</button>
+                        <button class="btn btn-danger" onclick="disconnectWS()">⛓ Disconnect</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="paused-overlay" id="pausedOverlay">⏸ Stream Paused</div>
+
+    <script src="js/velocity.js"></script>
+    <script src="js/websocket.js"></script>
+    <script>
+        velocityTheme.init();
+
+        let paused = false;
+        let eventBuffer = [];
+        let totalEventCount = 0;
+        let eventRateCounter = { count: 0, lastReset: Date.now() };
+        let counts = { running: 0, completed: 0, failed: 0, cancelled: 0 };
+        const MAX_EVENTS = 500;
+
+        // Connect WebSocket
+        function connectWS() {
+            velocityWS.onOpen = () => {
+                updateConnectionUI(true);
+                addSystemEvent('Connected to WebSocket server');
+            };
+            velocityWS.onClose = () => {
+                updateConnectionUI(false);
+                addSystemEvent('Disconnected from server');
+            };
+            velocityWS.onError = () => {
+                addSystemEvent('WebSocket error occurred');
+            };
+
+            // Subscribe to workflow events
+            velocityWS.subscribe('workflow-events', (msg) => {
+                if (!paused) handleWorkflowEvent(msg);
+            });
+
+            // Subscribe to metrics
+            velocityWS.subscribe('metrics', (msg) => {
+                updateMetrics(msg);
+            });
+
+            velocityWS.connect();
+        }
+
+        function disconnectWS() {
+            velocityWS.disconnect();
+            updateConnectionUI(false);
+        }
+
+        function updateConnectionUI(connected) {
+            const dot = document.getElementById('connDot');
+            const text = document.getElementById('connText');
+            const status = document.getElementById('wsStatus');
+            dot.className = connected ? 'conn-dot connected' : 'conn-dot';
+            text.textContent = connected ? 'Connected' : 'Disconnected';
+            status.textContent = connected ? 'Connected' : 'Disconnected';
+            document.getElementById('reconnectCount').textContent = velocityWS.reconnectAttempts;
+        }
+
+        function handleWorkflowEvent(msg) {
+            totalEventCount++;
+            eventRateCounter.count++;
+            document.getElementById('totalEvents').textContent = totalEventCount;
+            document.getElementById('queuedMessages').textContent = velocityWS.getQueueLength();
+
+            const eventType = (msg.event || msg.status || 'unknown').toLowerCase();
+            const namespace = msg.namespace || 'default';
+            const workflowId = msg.workflow_id || msg.id || 'unknown';
+            const workflowType = msg.workflow_type || msg.type || '';
+
+            // Update counts
+            if (eventType.includes('start')) counts.running++;
+            else if (eventType.includes('complete')) { counts.completed++; counts.running = Math.max(0, counts.running - 1); }
+            else if (eventType.includes('fail')) { counts.failed++; counts.running = Math.max(0, counts.running - 1); }
+            else if (eventType.includes('cancel')) { counts.cancelled++; counts.running = Math.max(0, counts.running - 1); }
+
+            updateCounters();
+            updateMetricsBars();
+
+            // Add to event stream
+            addEventToStream({
+                time: new Date(msg.timestamp || Date.now()),
+                type: eventType,
+                namespace,
+                workflowId,
+                workflowType,
+                detail: msg.message || msg.detail || ''
+            });
+        }
+
+        function addEventToStream(evt) {
+            eventBuffer.unshift(evt);
+            if (eventBuffer.length > MAX_EVENTS) eventBuffer.pop();
+
+            const stream = document.getElementById('eventStream');
+            const el = document.createElement('div');
+            el.className = 'event-item new-event';
+            el.dataset.type = evt.type;
+            el.dataset.namespace = evt.namespace;
+
+            const typeClass = evt.type.includes('start') ? 'started' : evt.type.includes('complete') ? 'completed' : evt.type.includes('fail') ? 'failed' : 'cancelled';
+
+            el.innerHTML = `
+                <span class="event-time">${evt.time.toLocaleTimeString()}</span>
+                <span class="event-type ${typeClass}">${evt.type}</span>
+                <span class="event-detail">
+                    <span class="event-workflow">${escapeHtml(evt.workflowId)}</span>
+                    ${evt.workflowType ? `<span style="color:var(--text-muted)">(${escapeHtml(evt.workflowType)})</span>` : ''}
+                    ${evt.detail ? `<br><span style="color:var(--text-muted)">${escapeHtml(evt.detail)}</span>` : ''}
+                </span>
+            `;
+
+            if (stream.firstChild) {
+                stream.insertBefore(el, stream.firstChild);
+            } else {
+                stream.appendChild(el);
+            }
+
+            // Trim DOM
+            while (stream.children.length > MAX_EVENTS) {
+                stream.removeChild(stream.lastChild);
+            }
+
+            // Remove animation class after animation
+            setTimeout(() => el.classList.remove('new-event'), 300);
+        }
+
+        function addSystemEvent(message) {
+            const stream = document.getElementById('eventStream');
+            const el = document.createElement('div');
+            el.className = 'event-item';
+            el.innerHTML = `<span class="event-time">${new Date().toLocaleTimeString()}</span><span class="event-detail" style="color:var(--accent-cyan);font-style:italic;">⚙ ${escapeHtml(message)}</span>`;
+            stream.insertBefore(el, stream.firstChild);
+        }
+
+        function updateCounters() {
+            document.getElementById('activeCount').textContent = counts.running;
+            document.getElementById('completedCount').textContent = counts.completed;
+            document.getElementById('failedCount').textContent = counts.failed;
+            document.getElementById('cancelledCount').textContent = counts.cancelled;
+        }
+
+        function updateMetricsBars() {
+            const total = Math.max(1, counts.running + counts.completed + counts.failed + counts.cancelled);
+            document.getElementById('barRunning').style.width = `${(counts.running / total) * 100}%`;
+            document.getElementById('barRunning').textContent = counts.running;
+            document.getElementById('barCompleted').style.width = `${(counts.completed / total) * 100}%`;
+            document.getElementById('barCompleted').textContent = counts.completed;
+            document.getElementById('barFailed').style.width = `${(counts.failed / total) * 100}%`;
+            document.getElementById('barFailed').textContent = counts.failed;
+            document.getElementById('barCancelled').style.width = `${(counts.cancelled / total) * 100}%`;
+            document.getElementById('barCancelled').textContent = counts.cancelled;
+        }
+
+        function updateMetrics(msg) {
+            if (msg.running !== undefined) counts.running = msg.running;
+            if (msg.completed !== undefined) counts.completed = msg.completed;
+            if (msg.failed !== undefined) counts.failed = msg.failed;
+            if (msg.cancelled !== undefined) counts.cancelled = msg.cancelled;
+            updateCounters();
+            updateMetricsBars();
+        }
+
+        function togglePause() {
+            paused = !paused;
+            const btn = document.getElementById('pauseBtn');
+            const overlay = document.getElementById('pausedOverlay');
+            btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
+            overlay.classList.toggle('visible', paused);
+        }
+
+        function clearEvents() {
+            eventBuffer = [];
+            document.getElementById('eventStream').innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Event stream cleared.</div>';
+            totalEventCount = 0;
+            document.getElementById('totalEvents').textContent = 0;
+        }
+
+        function applyFilters() {
+            const ns = document.getElementById('filterNamespace').value;
+            const type = document.getElementById('filterType').value;
+            const items = document.querySelectorAll('.event-item');
+            items.forEach(item => {
+                const matchNs = !ns || item.dataset.namespace === ns;
+                const matchType = !type || (item.dataset.type && item.dataset.type.includes(type));
+                item.style.display = (matchNs && matchType) ? '' : 'none';
+            });
+        }
+
+        // Events per second counter
+        setInterval(() => {
+            const elapsed = (Date.now() - eventRateCounter.lastReset) / 1000;
+            const rate = elapsed > 0 ? Math.round(eventRateCounter.count / elapsed) : 0;
+            document.getElementById('eventsPerSec').textContent = rate;
+            eventRateCounter.count = 0;
+            eventRateCounter.lastReset = Date.now();
+        }, 3000);
+
+        // Load namespaces for filter
+        (async () => {
+            try {
+                const ns = await velocityAPI.getNamespaces();
+                const sel = document.getElementById('filterNamespace');
+                if (Array.isArray(ns)) {
+                    ns.forEach(n => {
+                        const opt = document.createElement('option');
+                        opt.value = n.name || n;
+                        opt.textContent = n.name || n;
+                        sel.appendChild(opt);
+                    });
+                }
+            } catch { /* ignore */ }
+        })();
+
+        // Simulate some events for demo when no WS server
+        function simulateEvents() {
+            const types = ['started', 'completed', 'failed', 'cancelled'];
+            const wfs = ['OrderProcessing', 'PaymentGateway', 'UserOnboarding', 'InventorySync', 'NotificationDispatch'];
+            setInterval(() => {
+                if (!velocityWS.isConnected() && !paused) {
+                    const type = types[Math.floor(Math.random() * types.length)];
+                    const wf = wfs[Math.floor(Math.random() * wfs.length)];
+                    handleWorkflowEvent({
+                        event: type,
+                        namespace: 'default',
+                        workflow_id: `${wf}-${Math.random().toString(36).slice(2, 8)}`,
+                        workflow_type: wf,
+                        timestamp: Date.now()
+                    });
+                }
+            }, 2000);
+        }
+        simulateEvents();
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{{/*
+  SecurityContext snippet — include this in deployment containers via:
+  {{- include "velocity.securityContext" . | nindent 12 }}
+*/}}
+{{- define "velocity.containerSecurityContext" -}}
+securityContext:
+  runAsNonRoot: {{ .Values.security.securityContext.runAsNonRoot | default true }}
+  readOnlyRootFilesystem: {{ .Values.security.securityContext.readOnlyRootFilesystem | default true }}
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  {{- if .Values.security.securityContext.seccompProfile }}
+  seccompProfile:
+    type: {{ .Values.security.securityContext.seccompProfile | default "RuntimeDefault" }}
+  {{- end }}
+{{- end -}}

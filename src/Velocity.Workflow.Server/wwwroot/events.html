@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event History — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .events-layout { display: grid; grid-template-columns: 1fr 360px; gap: 1.5rem; }
+        @media (max-width: 1000px) { .events-layout { grid-template-columns: 1fr; } }
+
+        .timeline { position: relative; padding-left: 2rem; }
+        .timeline::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: var(--border-color); }
+        .timeline-item { position: relative; margin-bottom: 0.25rem; }
+        .timeline-dot { position: absolute; left: -2rem; top: 0.75rem; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bg-primary); z-index: 2; }
+        .timeline-dot.started { background: var(--accent-green); }
+        .timeline-dot.completed { background: var(--accent-blue); }
+        .timeline-dot.failed { background: var(--accent-red); }
+        .timeline-dot.signaled { background: var(--accent-purple); }
+        .timeline-dot.queried { background: var(--accent-cyan); }
+        .timeline-dot.cancelled { background: var(--accent-yellow); }
+        .timeline-dot.timerfired { background: var(--accent-orange); }
+        .timeline-dot.childworkflowstarted { background: var(--accent-purple); }
+
+        .timeline-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.75rem 1rem; cursor: pointer; transition: var(--transition); }
+        .timeline-card:hover { border-color: var(--accent-blue); }
+        .timeline-card.active { border-color: var(--accent-cyan); box-shadow: 0 0 0 2px rgba(57,210,192,0.2); }
+        .timeline-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
+        .timeline-event-type { font-weight: 600; font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.3px; }
+        .timeline-time { font-size: 0.75rem; color: var(--text-muted); font-family: monospace; }
+        .timeline-summary { font-size: 0.8125rem; color: var(--text-secondary); }
+        .timeline-id { font-size: 0.6875rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .timeline-duration { font-size: 0.6875rem; color: var(--accent-cyan); font-weight: 600; }
+        .timeline-correlation { font-size: 0.6875rem; color: var(--accent-purple); margin-top: 0.125rem; }
+
+        .detail-panel { position: sticky; top: 1rem; }
+        .detail-section { margin-bottom: 1rem; }
+        .detail-section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; margin-bottom: 0.5rem; }
+        .detail-row { display: flex; justify-content: space-between; padding: 0.375rem 0; border-bottom: 1px solid var(--border-color); font-size: 0.8125rem; }
+        .detail-label { color: var(--text-secondary); }
+        .detail-value { font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
+        .detail-payload { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.75rem; font-family: monospace; font-size: 0.75rem; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: var(--text-secondary); }
+
+        .filter-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+        .filter-bar select, .filter-bar input { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.35rem 0.625rem; font-size: 0.8125rem; color: var(--text-primary); }
+        .filter-bar select:focus, .filter-bar input:focus { outline: none; border-color: var(--accent-blue); }
+        .filter-bar input[type="text"] { min-width: 200px; }
+
+        .event-count-badge { font-size: 0.75rem; color: var(--text-muted); padding: 0.25rem 0.5rem; background: var(--bg-tertiary); border-radius: 4px; }
+
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-muted); }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; }
+
+        .workflow-selector { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1.5rem; }
+        .workflow-selector input { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.5rem 0.875rem; font-size: 0.875rem; color: var(--text-primary); }
+        .workflow-selector input:focus { outline: none; border-color: var(--accent-blue); }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>›</span>
+                <strong>Event History</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-sm" onclick="exportEvents()">📤 Export JSON</button>
+            <button class="btn btn-primary btn-sm" onclick="replayWorkflow()">▶ Replay</button>
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">◑</button>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <!-- Workflow Selector -->
+        <div class="workflow-selector">
+            <input type="text" id="workflowIdInput" placeholder="Enter Workflow ID to view events..." onkeydown="if(event.key==='Enter')loadEvents()">
+            <button class="btn btn-primary" onclick="loadEvents()">🔍 Load Events</button>
+            <button class="btn" onclick="loadSampleEvents()">📋 Demo</button>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-bar">
+            <select id="filterEventType" onchange="applyFilters()">
+                <option value="">All Event Types</option>
+                <option value="started">Started</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="signaled">Signaled</option>
+                <option value="queried">Queried</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="timerfired">Timer Fired</option>
+                <option value="childworkflowstarted">Child Workflow</option>
+            </select>
+            <input type="text" id="searchPayload" placeholder="Search in payloads..." oninput="applyFilters()">
+            <input type="datetime-local" id="filterTimeFrom" onchange="applyFilters()">
+            <input type="datetime-local" id="filterTimeTo" onchange="applyFilters()">
+            <button class="btn btn-sm" onclick="clearFilters()">✕ Clear</button>
+            <span class="event-count-badge" id="eventCountBadge">0 events</span>
+        </div>
+
+        <!-- Main Layout -->
+        <div class="events-layout">
+            <!-- Timeline -->
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">📅 Event Timeline</div>
+                </div>
+                <div class="section-body">
+                    <div class="timeline" id="timeline">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📅</div>
+                            <div>Enter a Workflow ID and click Load, or try the Demo.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detail Panel -->
+            <div class="detail-panel">
+                <div class="section">
+                    <div class="section-header">
+                        <div class="section-title">🔎 Event Details</div>
+                    </div>
+                    <div class="section-body" id="detailPanel">
+                        <div class="empty-state" style="padding:1.5rem;">
+                            <div style="color:var(--text-muted);font-size:0.8125rem;">Select an event to view details</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/velocity.js"></script>
+    <script src="js/websocket.js"></script>
+    <script>
+        velocityTheme.init();
+
+        let allEvents = [];
+        let filteredEvents = [];
+        let selectedEvent = null;
+
+        // ─── Load Events ───────────────────────────────────────────────────────
+        async function loadEvents() {
+            const wfId = document.getElementById('workflowIdInput').value.trim();
+            if (!wfId) { alert('Please enter a Workflow ID'); return; }
+
+            try {
+                const events = await velocityAPI.getEvents(wfId);
+                allEvents = Array.isArray(events) ? events.map(normalizeEvent) : [];
+                applyFilters();
+            } catch (err) {
+                console.warn('API load failed, showing demo:', err);
+                loadSampleEvents();
+            }
+        }
+
+        function loadSampleEvents() {
+            const wfId = 'demo-' + Math.random().toString(36).slice(2, 8);
+            document.getElementById('workflowIdInput').value = wfId;
+
+            const baseTime = Date.now() - 60000;
+            allEvents = [
+                { id: 1, event_type: 'WorkflowExecutionStarted', timestamp: baseTime, workflow_id: wfId, workflow_type: 'OrderProcessing', namespace: 'default', payload: { input: { order_id: 'ORD-12345', customer: 'John Doe', total: 299.99 } }, metadata: { task_queue: 'orders-queue' } },
+                { id: 2, event_type: 'ActivityTaskScheduled', timestamp: baseTime + 1000, payload: { activity: 'ValidateOrder', timeout: '30s' } },
+                { id: 3, event_type: 'ActivityTaskStarted', timestamp: baseTime + 1500, payload: { activity: 'ValidateOrder', worker: 'worker-1' } },
+                { id: 4, event_type: 'ActivityTaskCompleted', timestamp: baseTime + 5000, payload: { activity: 'ValidateOrder', result: { valid: true } }, duration_ms: 3500 },
+                { id: 5, event_type: 'TimerStarted', timestamp: baseTime + 5500, payload: { timer_id: 'payment-timeout', duration: '5m' } },
+                { id: 6, event_type: 'ActivityTaskScheduled', timestamp: baseTime + 6000, payload: { activity: 'ProcessPayment', timeout: '60s' } },
+                { id: 7, event_type: 'ActivityTaskStarted', timestamp: baseTime + 6500, payload: { activity: 'ProcessPayment', worker: 'worker-2' } },
+                { id: 8, event_type: 'ActivityTaskCompleted', timestamp: baseTime + 12000, payload: { activity: 'ProcessPayment', result: { transaction_id: 'TXN-789', status: 'success' } }, duration_ms: 5500 },
+                { id: 9, event_type: 'WorkflowExecutionSignaled', timestamp: baseTime + 15000, payload: { signal_name: 'approval', input: { approved_by: 'manager@example.com' } } },
+                { id: 10, event_type: 'ChildWorkflowExecutionStarted', timestamp: baseTime + 16000, parent_workflow_id: wfId, payload: { child_workflow: 'SendConfirmation', child_id: 'conf-' + Math.random().toString(36).slice(2,6) } },
+                { id: 11, event_type: 'TimerFired', timestamp: baseTime + 20000, payload: { timer_id: 'payment-timeout' } },
+                { id: 12, event_type: 'ActivityTaskScheduled', timestamp: baseTime + 21000, payload: { activity: 'FulfillOrder', timeout: '120s' } },
+                { id: 13, event_type: 'ActivityTaskCompleted', timestamp: baseTime + 35000, payload: { activity: 'FulfillOrder', result: { tracking: 'TRK-456' } }, duration_ms: 14000 },
+                { id: 14, event_type: 'WorkflowExecutionQuery', timestamp: baseTime + 38000, payload: { query_name: 'getStatus', result: { status: 'fulfilling', progress: 80 } } },
+                { id: 15, event_type: 'WorkflowExecutionCompleted', timestamp: baseTime + 45000, payload: { result: { order_status: 'completed', tracking: 'TRK-456' } }, duration_ms: 45000 }
+            ].map(normalizeEvent);
+
+            applyFilters();
+        }
+
+        function normalizeEvent(evt) {
+            return {
+                id: evt.id || evt.event_id || Math.random().toString(36).slice(2),
+                event_type: evt.event_type || evt.type || evt.event || 'Unknown',
+                timestamp: evt.timestamp || evt.time || Date.now(),
+                workflow_id: evt.workflow_id || '',
+                workflow_type: evt.workflow_type || '',
+                namespace: evt.namespace || 'default',
+                payload: evt.payload || evt.attributes || {},
+                metadata: evt.metadata || {},
+                duration_ms: evt.duration_ms || evt.duration || null,
+                parent_workflow_id: evt.parent_workflow_id || null,
+                child_workflow_id: evt.child_workflow_id || null
+            };
+        }
+
+        // ─── Render Timeline ───────────────────────────────────────────────────
+        function renderTimeline(events) {
+            const timeline = document.getElementById('timeline');
+            timeline.innerHTML = '';
+
+            if (events.length === 0) {
+                timeline.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📅</div><div>No events match the current filters.</div></div>';
+                return;
+            }
+
+            document.getElementById('eventCountBadge').textContent = `${events.length} event${events.length !== 1 ? 's' : ''}`;
+
+            events.forEach(evt => {
+                const typeClass = getEventClass(evt.event_type);
+                const item = document.createElement('div');
+                item.className = 'timeline-item';
+                item.dataset.eventId = evt.id;
+
+                const summary = getEventSummary(evt);
+                const time = new Date(evt.timestamp);
+
+                item.innerHTML = `
+                    <div class="timeline-dot ${typeClass}"></div>
+                    <div class="timeline-card" onclick="selectEvent(${evt.id})">
+                        <div class="timeline-card-header">
+                            <span class="timeline-event-type" style="color:var(--accent-${getTypeColor(typeClass)})">${formatEventType(evt.event_type)}</span>
+                            <span class="timeline-time">${time.toLocaleTimeString()}</span>
+                        </div>
+                        <div class="timeline-summary">${escapeHtml(summary)}</div>
+                        ${evt.duration_ms ? `<div class="timeline-duration">⏱ ${VelocityUtils.formatDuration(evt.duration_ms)}</div>` : ''}
+                        ${evt.parent_workflow_id ? `<div class="timeline-correlation">↳ Parent: ${escapeHtml(evt.parent_workflow_id)}</div>` : ''}
+                        ${evt.child_workflow_id ? `<div class="timeline-correlation">↪ Child: ${escapeHtml(evt.child_workflow_id)}</div>` : ''}
+                        <div class="timeline-id">Event #${evt.id}</div>
+                    </div>
+                `;
+                timeline.appendChild(item);
+            });
+        }
+
+        function selectEvent(eventId) {
+            selectedEvent = allEvents.find(e => e.id === eventId);
+            if (!selectedEvent) return;
+
+            document.querySelectorAll('.timeline-card').forEach(c => c.classList.remove('active'));
+            const card = document.querySelector(`[data-event-id="${eventId}"] .timeline-card`);
+            if (card) card.classList.add('active');
+
+            renderDetailPanel(selectedEvent);
+        }
+
+        function renderDetailPanel(evt) {
+            const panel = document.getElementById('detailPanel');
+            const time = new Date(evt.timestamp);
+
+            panel.innerHTML = `
+                <div class="detail-section">
+                    <div class="detail-section-title">General</div>
+                    <div class="detail-row"><span class="detail-label">Event ID</span><span class="detail-value">#${evt.id}</span></div>
+                    <div class="detail-row"><span class="detail-label">Type</span><span class="detail-value">${formatEventType(evt.event_type)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Timestamp</span><span class="detail-value">${time.toISOString()}</span></div>
+                    ${evt.duration_ms ? `<div class="detail-row"><span class="detail-label">Duration</span><span class="detail-value" style="color:var(--accent-cyan)">${VelocityUtils.formatDuration(evt.duration_ms)}</span></div>` : ''}
+                    ${evt.workflow_id ? `<div class="detail-row"><span class="detail-label">Workflow ID</span><span class="detail-value">${escapeHtml(evt.workflow_id)}</span></div>` : ''}
+                    ${evt.workflow_type ? `<div class="detail-row"><span class="detail-label">Workflow Type</span><span class="detail-value">${escapeHtml(evt.workflow_type)}</span></div>` : ''}
+                    <div class="detail-row"><span class="detail-label">Namespace</span><span class="detail-value">${escapeHtml(evt.namespace)}</span></div>
+                </div>
+                ${evt.parent_workflow_id || evt.child_workflow_id ? `
+                <div class="detail-section">
+                    <div class="detail-section-title">Correlation</div>
+                    ${evt.parent_workflow_id ? `<div class="detail-row"><span class="detail-label">Parent Workflow</span><span class="detail-value" style="color:var(--accent-purple)">${escapeHtml(evt.parent_workflow_id)}</span></div>` : ''}
+                    ${evt.child_workflow_id ? `<div class="detail-row"><span class="detail-label">Child Workflow</span><span class="detail-value" style="color:var(--accent-purple)">${escapeHtml(evt.child_workflow_id)}</span></div>` : ''}
+                </div>` : ''}
+                <div class="detail-section">
+                    <div class="detail-section-title">Metadata</div>
+                    <div class="detail-payload">${escapeHtml(JSON.stringify(evt.metadata || {}, null, 2))}</div>
+                </div>
+                <div class="detail-section">
+                    <div class="detail-section-title">Payload</div>
+                    <div class="detail-payload">${escapeHtml(JSON.stringify(evt.payload || {}, null, 2))}</div>
+                </div>
+            `;
+        }
+
+        // ─── Filters ───────────────────────────────────────────────────────────
+        function applyFilters() {
+            const typeFilter = document.getElementById('filterEventType').value.toLowerCase();
+            const search = document.getElementById('searchPayload').value.toLowerCase();
+            const timeFrom = document.getElementById('filterTimeFrom').value ? new Date(document.getElementById('filterTimeFrom').value).getTime() : 0;
+            const timeTo = document.getElementById('filterTimeTo').value ? new Date(document.getElementById('filterTimeTo').value).getTime() : Infinity;
+
+            filteredEvents = allEvents.filter(evt => {
+                if (typeFilter && !evt.event_type.toLowerCase().includes(typeFilter)) return false;
+                if (search && !JSON.stringify(evt.payload).toLowerCase().includes(search)) return false;
+                if (evt.timestamp < timeFrom || evt.timestamp > timeTo) return false;
+                return true;
+            });
+
+            renderTimeline(filteredEvents);
+        }
+
+        function clearFilters() {
+            document.getElementById('filterEventType').value = '';
+            document.getElementById('searchPayload').value = '';
+            document.getElementById('filterTimeFrom').value = '';
+            document.getElementById('filterTimeTo').value = '';
+            applyFilters();
+        }
+
+        // ─── Actions ───────────────────────────────────────────────────────────
+        function exportEvents() {
+            if (filteredEvents.length === 0) { alert('No events to export'); return; }
+            VelocityUtils.exportJSON(filteredEvents, `events-${Date.now()}.json`);
+        }
+
+        async function replayWorkflow() {
+            const wfId = document.getElementById('workflowIdInput').value.trim();
+            if (!wfId) { alert('Load a workflow first'); return; }
+            try {
+                await velocityAPI.request('POST', `/api/workflows/${wfId}/replay`);
+                alert('Replay initiated!');
+            } catch {
+                alert('Replay request sent (or server unavailable).');
+            }
+        }
+
+        // ─── Helpers ───────────────────────────────────────────────────────────
+        function getEventClass(type) {
+            const t = type.toLowerCase();
+            if (t.includes('start')) return 'started';
+            if (t.includes('complete')) return 'completed';
+            if (t.includes('fail')) return 'failed';
+            if (t.includes('signal')) return 'signaled';
+            if (t.includes('quer')) return 'queried';
+            if (t.includes('cancel')) return 'cancelled';
+            if (t.includes('timer')) return 'timerfired';
+            if (t.includes('child')) return 'childworkflowstarted';
+            return 'started';
+        }
+
+        function getTypeColor(cls) {
+            const map = { started: 'green', completed: 'blue', failed: 'red', signaled: 'purple', queried: 'cyan', cancelled: 'yellow', timerfired: 'orange', childworkflowstarted: 'purple' };
+            return map[cls] || 'blue';
+        }
+
+        function formatEventType(type) {
+            return type.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
+        }
+
+        function getEventSummary(evt) {
+            const p = evt.payload || {};
+            if (p.activity) return `Activity: ${p.activity}`;
+            if (p.signal_name) return `Signal: ${p.signal_name}`;
+            if (p.query_name) return `Query: ${p.query_name}`;
+            if (p.timer_id) return `Timer: ${p.timer_id}`;
+            if (p.child_workflow) return `Child: ${p.child_workflow}`;
+            if (p.result) return `Result: ${JSON.stringify(p.result).slice(0, 80)}`;
+            if (evt.workflow_type) return `Type: ${evt.workflow_type}`;
+            return '';
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str || '';
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

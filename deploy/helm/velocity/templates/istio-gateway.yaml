@@ -1,0 +1,26 @@
+{{- if .Values.serviceMesh.istio.gateway.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ include "velocity.fullname" . }}-gateway
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: service-mesh
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: {{ .Values.serviceMesh.istio.gateway.port | default 443 }}
+        name: {{ .Values.serviceMesh.istio.gateway.portName | default "https" }}
+        protocol: {{ .Values.serviceMesh.istio.gateway.protocol | default "HTTPS" }}
+      hosts:
+        {{- range .Values.ingress.hosts }}
+        - {{ .host | quote }}
+        {{- end }}
+      {{- if .Values.tls.certManager.enabled }}
+      tls:
+        mode: SIMPLE
+        credentialName: {{ .Values.tls.certManager.secretName | default (printf "%s-tls" (include "velocity.fullname" .)) }}
+      {{- end }}
+{{- end }}

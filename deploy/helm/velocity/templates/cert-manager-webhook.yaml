@@ -1,0 +1,26 @@
+{{- if .Values.tls.certManager.webhook.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "velocity.fullname" . }}-cert-webhook
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-manager
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "velocity.fullname" . }}-cert
+webhooks:
+  - name: webhook.cert-manager.io
+    rules:
+      - apiGroups: ["apps", "batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "jobs", "statefulsets"]
+    clientConfig:
+      service:
+        namespace: cert-manager
+        name: cert-manager-webhook
+        path: /mutate
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+{{- end }}

@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Designer — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .designer-layout { display: flex; height: calc(100vh - 52px); }
+        .toolbox { width: 200px; background: var(--bg-secondary); border-right: 1px solid var(--border-color); padding: 1rem; flex-shrink: 0; overflow-y: auto; }
+        .canvas-wrap { flex: 1; position: relative; overflow: hidden; background: var(--bg-primary); }
+        .config-panel { width: 280px; background: var(--bg-secondary); border-left: 1px solid var(--border-color); padding: 1rem; flex-shrink: 0; overflow-y: auto; display: none; }
+        .config-panel.open { display: block; }
+
+        .tool-group { margin-bottom: 1.25rem; }
+        .tool-group-title { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600; }
+        .tool-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.625rem; border-radius: var(--radius); cursor: grab; font-size: 0.8125rem; color: var(--text-secondary); border: 1px solid var(--border-color); margin-bottom: 0.375rem; transition: var(--transition); user-select: none; }
+        .tool-item:hover { border-color: var(--accent-blue); color: var(--text-primary); background: var(--bg-tertiary); }
+        .tool-item:active { cursor: grabbing; }
+        .tool-icon { width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: white; flex-shrink: 0; }
+        .tool-icon.start { background: var(--accent-green); }
+        .tool-icon.task { background: var(--accent-blue); }
+        .tool-icon.decision { background: var(--accent-yellow); }
+        .tool-icon.parallel { background: var(--accent-purple); }
+        .tool-icon.wait { background: var(--accent-orange); }
+        .tool-icon.end { background: var(--accent-red); }
+
+        #canvas { width: 100%; height: 100%; cursor: default; }
+        #canvas.dragging { cursor: move; }
+
+        .step-node { position: absolute; min-width: 120px; background: var(--bg-secondary); border: 2px solid var(--border-color); border-radius: var(--radius); padding: 0.625rem 0.875rem; cursor: move; user-select: none; transition: box-shadow 0.2s; display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; z-index: 10; }
+        .step-node:hover { box-shadow: 0 0 0 2px var(--accent-blue); }
+        .step-node.selected { border-color: var(--accent-cyan); box-shadow: 0 0 0 3px rgba(57,210,192,0.3); }
+        .step-node .step-icon { width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; color: white; flex-shrink: 0; }
+        .step-node .step-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+        .step-node .step-port { width: 10px; height: 10px; border-radius: 50%; background: var(--accent-cyan); border: 2px solid var(--bg-secondary); position: absolute; right: -6px; top: 50%; transform: translateY(-50%); cursor: crosshair; opacity: 0; transition: opacity 0.2s; }
+        .step-node:hover .step-port { opacity: 1; }
+        .step-node .step-port-in { left: -6px; right: auto; cursor: default; }
+
+        .zoom-controls { position: absolute; bottom: 1rem; right: 1rem; display: flex; gap: 0.375rem; z-index: 20; }
+        .zoom-controls .btn { padding: 0.375rem 0.625rem; font-size: 0.875rem; }
+
+        .toolbar-top { position: absolute; top: 0.75rem; left: 0.75rem; display: flex; gap: 0.375rem; z-index: 20; }
+
+        .config-field { margin-bottom: 0.875rem; }
+        .config-field label { display: block; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 0.25rem; font-weight: 600; }
+        .config-field input, .config-field select, .config-field textarea { width: 100%; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.375rem 0.5rem; font-size: 0.8125rem; color: var(--text-primary); }
+        .config-field input:focus, .config-field select:focus, .config-field textarea:focus { outline: none; border-color: var(--accent-blue); }
+        .config-field textarea { resize: vertical; min-height: 60px; font-family: monospace; }
+
+        .canvas-grid { background-image: radial-gradient(circle, var(--border-color) 1px, transparent 1px); background-size: 20px 20px; }
+
+        svg.connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        svg.connections line, svg.connections path { stroke: var(--accent-cyan); stroke-width: 2; fill: none; pointer-events: stroke; }
+        svg.connections line:hover, svg.connections path:hover { stroke-width: 3; stroke: var(--accent-blue); }
+        svg.connections .arrow-head { fill: var(--accent-cyan); }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>›</span>
+                <strong>Workflow Designer</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-sm" onclick="undoAction()">↶ Undo</button>
+            <button class="btn btn-sm" onclick="redoAction()">↷ Redo</button>
+            <button class="btn btn-sm" onclick="exportWorkflow()">📤 Export</button>
+            <button class="btn btn-sm" onclick="document.getElementById('importFile').click()">📥 Import</button>
+            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importWorkflow(event)">
+            <button class="btn btn-primary btn-sm" onclick="saveWorkflow()">💾 Save</button>
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">◑</button>
+        </div>
+    </div>
+
+    <div class="designer-layout">
+        <!-- Toolbox -->
+        <div class="toolbox">
+            <div class="tool-group">
+                <div class="tool-group-title">Flow Elements</div>
+                <div class="tool-item" draggable="true" data-type="start"><span class="tool-icon start">▶</span> Start</div>
+                <div class="tool-item" draggable="true" data-type="task"><span class="tool-icon task">T</span> Task</div>
+                <div class="tool-item" draggable="true" data-type="decision"><span class="tool-icon decision">?</span> Decision</div>
+                <div class="tool-item" draggable="true" data-type="parallel"><span class="tool-icon parallel">≡</span> Parallel</div>
+                <div class="tool-item" draggable="true" data-type="wait"><span class="tool-icon wait">◷</span> Wait / Timer</div>
+                <div class="tool-item" draggable="true" data-type="end"><span class="tool-icon end">■</span> End</div>
+            </div>
+            <div class="tool-group">
+                <div class="tool-group-title">Actions</div>
+                <button class="btn btn-sm" style="width:100%;margin-bottom:0.375rem;" onclick="clearCanvas()">🗑 Clear All</button>
+                <button class="btn btn-sm" style="width:100%;" onclick="autoLayout()">⊞ Auto Layout</button>
+            </div>
+        </div>
+
+        <!-- Canvas -->
+        <div class="canvas-wrap" id="canvasWrap">
+            <div class="toolbar-top">
+                <span style="font-size:0.75rem;color:var(--text-muted);background:var(--bg-secondary);padding:0.25rem 0.5rem;border-radius:4px;border:1px solid var(--border-color);" id="stepCount">0 steps</span>
+            </div>
+            <div class="canvas-wrap canvas-grid" id="canvas" style="position:relative;">
+                <svg class="connections" id="svgConnections"></svg>
+            </div>
+            <div class="zoom-controls">
+                <button class="btn" onclick="zoomIn()">+</button>
+                <button class="btn" onclick="zoomOut()">−</button>
+                <button class="btn" onclick="zoomReset()">⊙</button>
+            </div>
+        </div>
+
+        <!-- Config Panel -->
+        <div class="config-panel" id="configPanel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <strong style="font-size:0.9375rem;">Step Configuration</strong>
+                <button class="btn btn-sm" onclick="closeConfig()">✕</button>
+            </div>
+            <div class="config-field">
+                <label>Name</label>
+                <input type="text" id="cfgName" oninput="updateStepConfig()">
+            </div>
+            <div class="config-field">
+                <label>Type</label>
+                <select id="cfgType" disabled><option>start</option><option>task</option><option>decision</option><option>parallel</option><option>wait</option><option>end</option></select>
+            </div>
+            <div class="config-field">
+                <label>Timeout (seconds)</label>
+                <input type="number" id="cfgTimeout" value="30" min="1" oninput="updateStepConfig()">
+            </div>
+            <div class="config-field">
+                <label>Retry Policy</label>
+                <select id="cfgRetry" oninput="updateStepConfig()">
+                    <option value="none">None</option>
+                    <option value="linear">Linear</option>
+                    <option value="exponential">Exponential</option>
+                </select>
+            </div>
+            <div class="config-field">
+                <label>Max Retries</label>
+                <input type="number" id="cfgMaxRetries" value="3" min="0" max="10" oninput="updateStepConfig()">
+            </div>
+            <div class="config-field">
+                <label>Input Mapping (JSON)</label>
+                <textarea id="cfgInput" oninput="updateStepConfig()">{}</textarea>
+            </div>
+            <div style="margin-top:1rem;">
+                <button class="btn btn-danger btn-sm" onclick="deleteSelectedStep()" style="width:100%;">🗑 Delete Step</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        velocityTheme.init();
+
+        // ─── State ─────────────────────────────────────────────────────────────
+        let steps = [];
+        let connections = [];
+        let selectedStep = null;
+        let connectingFrom = null;
+        let zoom = 1;
+        let idCounter = 0;
+        let undoStack = [];
+        let redoStack = [];
+
+        const canvas = document.getElementById('canvas');
+        const svgLayer = document.getElementById('svgConnections');
+        const configPanel = document.getElementById('configPanel');
+
+        const STEP_COLORS = { start: 'start', task: 'task', decision: 'decision', parallel: 'parallel', wait: 'wait', end: 'end' };
+        const STEP_LABELS = { start: '▶', task: 'T', decision: '?', parallel: '≡', wait: '◷', end: '■' };
+
+        // ─── Drag from Toolbox ─────────────────────────────────────────────────
+        document.querySelectorAll('.tool-item[draggable]').forEach(tool => {
+            tool.addEventListener('dragstart', e => {
+                e.dataTransfer.setData('text/plain', tool.dataset.type);
+                e.dataTransfer.effectAllowed = 'copy';
+            });
+        });
+
+        canvas.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+        canvas.addEventListener('drop', e => {
+            e.preventDefault();
+            const type = e.dataTransfer.getData('text/plain');
+            if (!type) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / zoom;
+            const y = (e.clientY - rect.top) / zoom;
+            addStep(type, x, y);
+        });
+
+        // ─── Step Management ───────────────────────────────────────────────────
+        function addStep(type, x, y) {
+            saveUndo();
+            const id = `step_${++idCounter}`;
+            const step = {
+                id, type, x, y,
+                name: `${type.charAt(0).toUpperCase() + type.slice(1)} ${idCounter}`,
+                timeout: 30,
+                retry: 'none',
+                maxRetries: 3,
+                input: '{}'
+            };
+            steps.push(step);
+            renderStep(step);
+            updateStepCount();
+            return step;
+        }
+
+        function renderStep(step) {
+            const el = document.createElement('div');
+            el.className = 'step-node';
+            el.id = step.id;
+            el.style.left = step.x + 'px';
+            el.style.top = step.y + 'px';
+            el.innerHTML = `
+                <div class="step-icon ${STEP_COLORS[step.type]}">${STEP_LABELS[step.type]}</div>
+                <span class="step-name">${escapeHtml(step.name)}</span>
+                <div class="step-port step-port-in"></div>
+                <div class="step-port" data-port="out"></div>
+            `;
+
+            // Click to select
+            el.addEventListener('mousedown', e => {
+                if (e.target.dataset.port === 'out') {
+                    startConnection(step.id);
+                    return;
+                }
+                selectStep(step.id);
+                startDrag(e, step);
+            });
+
+            // Port click for connection
+            el.querySelector('.step-port-in').addEventListener('mousedown', e => {
+                e.stopPropagation();
+            });
+
+            el.querySelector('[data-port="out"]').addEventListener('mousedown', e => {
+                e.stopPropagation();
+                startConnection(step.id);
+            });
+
+            el.addEventListener('mouseup', e => {
+                if (connectingFrom && connectingFrom !== step.id) {
+                    finishConnection(step.id);
+                }
+            });
+
+            canvas.appendChild(el);
+        }
+
+        function startDrag(e, step) {
+            e.preventDefault();
+            const startX = e.clientX, startY = e.clientY;
+            const origX = step.x, origY = step.y;
+            canvas.classList.add('dragging');
+
+            function onMove(ev) {
+                step.x = origX + (ev.clientX - startX) / zoom;
+                step.y = origY + (ev.clientY - startY) / zoom;
+                const el = document.getElementById(step.id);
+                if (el) { el.style.left = step.x + 'px'; el.style.top = step.y + 'px'; }
+                renderConnections();
+            }
+            function onUp() {
+                canvas.classList.remove('dragging');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                saveUndo();
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        }
+
+        function selectStep(id) {
+            document.querySelectorAll('.step-node').forEach(n => n.classList.remove('selected'));
+            selectedStep = steps.find(s => s.id === id) || null;
+            const el = document.getElementById(id);
+            if (el) el.classList.add('selected');
+            if (selectedStep) openConfig(selectedStep);
+        }
+
+        function deleteSelectedStep() {
+            if (!selectedStep) return;
+            saveUndo();
+            const id = selectedStep.id;
+            steps = steps.filter(s => s.id !== id);
+            connections = connections.filter(c => c.from !== id && c.to !== id);
+            const el = document.getElementById(id);
+            if (el) el.remove();
+            selectedStep = null;
+            closeConfig();
+            renderConnections();
+            updateStepCount();
+        }
+
+        // ─── Connections ───────────────────────────────────────────────────────
+        function startConnection(fromId) {
+            connectingFrom = fromId;
+            canvas.style.cursor = 'crosshair';
+        }
+
+        function finishConnection(toId) {
+            if (connectingFrom && connectingFrom !== toId) {
+                const exists = connections.some(c => c.from === connectingFrom && c.to === toId);
+                if (!exists) {
+                    saveUndo();
+                    connections.push({ from: connectingFrom, to: toId });
+                    renderConnections();
+                }
+            }
+            connectingFrom = null;
+            canvas.style.cursor = 'default';
+        }
+
+        function renderConnections() {
+            svgLayer.innerHTML = '';
+            // Arrow marker
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            defs.innerHTML = `<marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" class="arrow-head"/></marker>`;
+            svgLayer.appendChild(defs);
+
+            connections.forEach(conn => {
+                const fromEl = document.getElementById(conn.from);
+                const toEl = document.getElementById(conn.to);
+                if (!fromEl || !toEl) return;
+
+                const fromRect = { x: parseFloat(fromEl.style.left), y: parseFloat(fromEl.style.top), w: fromEl.offsetWidth, h: fromEl.offsetHeight };
+                const toRect = { x: parseFloat(toEl.style.left), y: parseFloat(toEl.style.top), w: toEl.offsetWidth, h: toEl.offsetHeight };
+
+                const x1 = fromRect.x + fromRect.w;
+                const y1 = fromRect.y + fromRect.h / 2;
+                const x2 = toRect.x;
+                const y2 = toRect.y + toRect.h / 2;
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const cx1 = x1 + Math.abs(x2 - x1) * 0.5;
+                const cx2 = x2 - Math.abs(x2 - x1) * 0.5;
+                path.setAttribute('d', `M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`);
+                path.setAttribute('marker-end', 'url(#arrowhead)');
+                path.style.cursor = 'pointer';
+                path.style.pointerEvents = 'stroke';
+                path.addEventListener('click', () => {
+                    if (confirm('Remove this connection?')) {
+                        saveUndo();
+                        connections = connections.filter(c => c !== conn);
+                        renderConnections();
+                    }
+                });
+                svgLayer.appendChild(path);
+            });
+        }
+
+        // ─── Config Panel ──────────────────────────────────────────────────────
+        function openConfig(step) {
+            configPanel.classList.add('open');
+            document.getElementById('cfgName').value = step.name;
+            document.getElementById('cfgType').value = step.type;
+            document.getElementById('cfgTimeout').value = step.timeout;
+            document.getElementById('cfgRetry').value = step.retry;
+            document.getElementById('cfgMaxRetries').value = step.maxRetries;
+            document.getElementById('cfgInput').value = step.input;
+        }
+
+        function closeConfig() {
+            configPanel.classList.remove('open');
+        }
+
+        function updateStepConfig() {
+            if (!selectedStep) return;
+            selectedStep.name = document.getElementById('cfgName').value;
+            selectedStep.timeout = parseInt(document.getElementById('cfgTimeout').value) || 30;
+            selectedStep.retry = document.getElementById('cfgRetry').value;
+            selectedStep.maxRetries = parseInt(document.getElementById('cfgMaxRetries').value) || 3;
+            selectedStep.input = document.getElementById('cfgInput').value;
+            const el = document.getElementById(selectedStep.id);
+            if (el) el.querySelector('.step-name').textContent = selectedStep.name;
+        }
+
+        // ─── Zoom ──────────────────────────────────────────────────────────────
+        function zoomIn() { zoom = Math.min(2, zoom + 0.1); applyZoom(); }
+        function zoomOut() { zoom = Math.max(0.3, zoom - 0.1); applyZoom(); }
+        function zoomReset() { zoom = 1; applyZoom(); }
+        function applyZoom() {
+            canvas.style.transform = `scale(${zoom})`;
+            canvas.style.transformOrigin = 'top left';
+        }
+
+        // ─── Undo / Redo ───────────────────────────────────────────────────────
+        function saveUndo() {
+            undoStack.push(JSON.stringify({ steps: steps.map(s => ({...s})), connections: [...connections] }));
+            if (undoStack.length > 50) undoStack.shift();
+            redoStack = [];
+        }
+
+        function undoAction() {
+            if (undoStack.length === 0) return;
+            redoStack.push(JSON.stringify({ steps: steps.map(s => ({...s})), connections: [...connections] }));
+            const state = JSON.parse(undoStack.pop());
+            restoreState(state);
+        }
+
+        function redoAction() {
+            if (redoStack.length === 0) return;
+            undoStack.push(JSON.stringify({ steps: steps.map(s => ({...s})), connections: [...connections] }));
+            const state = JSON.parse(redoStack.pop());
+            restoreState(state);
+        }
+
+        function restoreState(state) {
+            // Clear canvas
+            canvas.querySelectorAll('.step-node').forEach(n => n.remove());
+            steps = state.steps;
+            connections = state.connections;
+            steps.forEach(s => renderStep(s));
+            renderConnections();
+            updateStepCount();
+        }
+
+        // ─── Export / Import ───────────────────────────────────────────────────
+        function exportWorkflow() {
+            const definition = {
+                name: 'Untitled Workflow',
+                steps: steps.map(s => ({
+                    id: s.id, type: s.type, name: s.name,
+                    x: Math.round(s.x), y: Math.round(s.y),
+                    timeout: s.timeout, retry_policy: { type: s.retry, max_retries: s.maxRetries },
+                    input_mapping: tryParseJSON(s.input)
+                })),
+                connections: connections.map(c => ({ from: c.from, to: c.to }))
+            };
+            VelocityUtils.exportJSON(definition, 'workflow-definition.json');
+        }
+
+        function importWorkflow(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    saveUndo();
+                    canvas.querySelectorAll('.step-node').forEach(n => n.remove());
+                    steps = [];
+                    connections = [];
+                    if (data.steps) {
+                        data.steps.forEach(s => {
+                            const step = { id: s.id || `step_${++idCounter}`, type: s.type, name: s.name, x: s.x || 100, y: s.y || 100, timeout: s.timeout || 30, retry: s.retry_policy?.type || 'none', maxRetries: s.retry_policy?.max_retries || 3, input: JSON.stringify(s.input_mapping || {}) };
+                            steps.push(step);
+                            renderStep(step);
+                        });
+                    }
+                    if (data.connections) {
+                        connections = data.connections.map(c => ({ from: c.from, to: c.to }));
+                    }
+                    renderConnections();
+                    updateStepCount();
+                } catch (err) { alert('Invalid workflow file: ' + err.message); }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        async function saveWorkflow() {
+            const definition = {
+                name: prompt('Workflow name:', 'Untitled Workflow'),
+                steps, connections
+            };
+            if (!definition.name) return;
+            try {
+                await velocityAPI.request('POST', '/api/workflows/designer/save', definition);
+                alert('Workflow saved!');
+            } catch {
+                // Fallback: export locally
+                VelocityUtils.exportJSON(definition, 'workflow-saved.json');
+                alert('Server save unavailable. Downloaded locally.');
+            }
+        }
+
+        // ─── Utilities ─────────────────────────────────────────────────────────
+        function clearCanvas() {
+            if (!confirm('Clear all steps and connections?')) return;
+            saveUndo();
+            canvas.querySelectorAll('.step-node').forEach(n => n.remove());
+            steps = [];
+            connections = [];
+            selectedStep = null;
+            closeConfig();
+            renderConnections();
+            updateStepCount();
+        }
+
+        function autoLayout() {
+            if (steps.length === 0) return;
+            saveUndo();
+            const startX = 60, startY = 60, gapX = 180, gapY = 100;
+            // Simple left-to-right layout
+            const sorted = topologicalSort();
+            const levels = {};
+            sorted.forEach(id => {
+                const incoming = connections.filter(c => c.to === id);
+                const level = incoming.length === 0 ? 0 : Math.max(...incoming.map(c => (levels[c.from] || 0) + 1));
+                levels[id] = level;
+            });
+            const byLevel = {};
+            Object.entries(levels).forEach(([id, lv]) => {
+                if (!byLevel[lv]) byLevel[lv] = [];
+                byLevel[lv].push(id);
+            });
+            Object.entries(byLevel).forEach(([lv, ids]) => {
+                ids.forEach((id, idx) => {
+                    const step = steps.find(s => s.id === id);
+                    if (step) {
+                        step.x = startX + parseInt(lv) * gapX;
+                        step.y = startY + idx * gapY;
+                        const el = document.getElementById(id);
+                        if (el) { el.style.left = step.x + 'px'; el.style.top = step.y + 'px'; }
+                    }
+                });
+            });
+            renderConnections();
+        }
+
+        function topologicalSort() {
+            const visited = new Set();
+            const result = [];
+            function visit(id) {
+                if (visited.has(id)) return;
+                visited.add(id);
+                connections.filter(c => c.from === id).forEach(c => visit(c.to));
+                result.unshift(id);
+            }
+            steps.forEach(s => visit(s.id));
+            return result;
+        }
+
+        function updateStepCount() {
+            document.getElementById('stepCount').textContent = `${steps.length} step${steps.length !== 1 ? 's' : ''}`;
+        }
+
+        function tryParseJSON(str) {
+            try { return JSON.parse(str); } catch { return {}; }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str || '';
+            return div.innerHTML;
+        }
+
+        // Click canvas to deselect
+        canvas.addEventListener('mousedown', e => {
+            if (e.target === canvas || e.target === svgLayer) {
+                document.querySelectorAll('.step-node').forEach(n => n.classList.remove('selected'));
+                selectedStep = null;
+                closeConfig();
+                if (connectingFrom) { connectingFrom = null; canvas.style.cursor = 'default'; }
+            }
+        });
+    </script>
+</body>
+</html>
