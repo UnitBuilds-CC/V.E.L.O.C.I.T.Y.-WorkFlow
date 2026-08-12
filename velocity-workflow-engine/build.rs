@@ -14,22 +14,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .join("proto");
 
     let protos = &[
-        proto_root.join("velocity/v1/common.proto"),
-        proto_root.join("velocity/v1/messages.proto"),
-        proto_root.join("velocity/v1/errordetails.proto"),
-        proto_root.join("velocity/v1/workflow_service.proto"),
+        "velocity/v1/common.proto",
+        "velocity/v1/messages.proto",
+        "velocity/v1/errordetails.proto",
+        "velocity/v1/workflow_service.proto",
     ];
 
-    let includes = &[proto_root];
+    // Use protox (pure Rust) instead of prost-build (requires protoc binary)
+    let fds = protox::compile(protos, [&proto_root])?;
 
     tonic_build::configure()
         .build_server(true)
         .build_client(true)
-        .compile(protos, includes)?;
+        .compile_fds(fds)?;
 
     // Re-run if any proto file changes
     for proto in protos {
-        println!("cargo:rerun-if-changed={}", proto.display());
+        println!("cargo:rerun-if-changed={}", proto_root.join(proto).display());
     }
 
     Ok(())

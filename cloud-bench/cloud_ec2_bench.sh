@@ -120,17 +120,17 @@ fi
 log "[4/6] Building binaries (release mode)..."
 log "  This takes ~3-5 minutes on first build (dependency compilation)..."
 cargo build --release \
-    -p velocity-dev-server \
+    -p velocity-workflow-server \
     -p velocity-bench \
     2>&1 | grep -E '(Compiling|Finished|error)' || true
 
-if [ ! -f target/release/velocity-dev ] || [ ! -f target/release/velocity-bench ] || [ ! -f target/release/temporal-bridge ]; then
+if [ ! -f target/release/velocity-server ] || [ ! -f target/release/velocity-bench ] || [ ! -f target/release/temporal-bridge ]; then
     # Try building temporal-bridge separately (it's a separate [[bin]])
     cargo build --release --bin temporal-bridge 2>&1 | grep -E '(Compiling|Finished|error)' || true
 fi
 
 log "  Binaries:"
-ls -lh target/release/velocity-dev \
+ls -lh target/release/velocity-server \
        target/release/temporal-bridge \
        target/release/velocity-bench 2>/dev/null || {
     err "Build failed — binaries not found"
@@ -169,16 +169,16 @@ else
     log "  Temporal ready (gRPC :7233)"
 fi
 
-# 5b. VELOCITY dev-server
-log "  Starting VELOCITY dev-server (gRPC :7234)..."
-./target/release/velocity-dev --grpc-port 7234 > /tmp/velocity-dev.log 2>&1 &
+# 5b. VELOCITY production server
+log "  Starting VELOCITY production server (gRPC :7234)..."
+./target/release/velocity-server --grpc-port 7234 > /tmp/velocity-server.log 2>&1 &
 DEV_PID=$!
 
 for i in $(seq 1 15); do
     nc -z localhost 7234 2>/dev/null && break
     sleep 1
 done
-log "  VELOCITY dev-server ready (PID $DEV_PID)"
+log "  VELOCITY production server ready (PID $DEV_PID)"
 
 # 5c. temporal-bridge
 log "  Starting temporal-bridge (gRPC :7235)..."
@@ -208,7 +208,7 @@ info "  VELOCITY:  $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 info "  Profile:   $PROFILE"
 info "  Workloads: $WORKLOADS"
 info "────────────────────────────────────────────────────────"
-info "  VELOCITY dev-server:  localhost:7234"
+info "  VELOCITY prod server: localhost:7234"
 info "  temporal-bridge:      localhost:7235"
 info "  Real Temporal:        localhost:7233"
 info "════════════════════════════════════════════════════════"

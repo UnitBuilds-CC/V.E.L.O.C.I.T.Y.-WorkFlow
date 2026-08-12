@@ -85,14 +85,14 @@ jobs:
 
       - name: Build VELOCITY servers
         run: |
-          cargo build --release -p velocity-dev-server -p velocity-bench
+          cargo build --release -p velocity-workflow-server -p velocity-bench
           cargo build --release --bin temporal-bridge
-          ls -lh target/release/velocity-dev target/release/temporal-bridge target/release/velocity-bench
+          ls -lh target/release/velocity-server target/release/temporal-bridge target/release/velocity-bench
 
       - name: Start VELOCITY servers
         run: |
-          # Start VELOCITY dev-server
-          ./target/release/velocity-dev --grpc-port 7234 --port 7230 > /tmp/velocity.log 2>&1 &
+          # Start VELOCITY production server
+          ./target/release/velocity-server --grpc-port 7234 > /tmp/velocity.log 2>&1 &
           echo "VELOCITY PID: $!"
           
           # Start temporal-bridge

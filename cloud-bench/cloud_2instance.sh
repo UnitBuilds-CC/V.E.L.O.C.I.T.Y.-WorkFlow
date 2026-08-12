@@ -210,9 +210,9 @@ export PATH="$HOME/.cargo/bin:$PATH"
 # Build
 cd ~/VELOCITY-WorkFlow
 echo "[server] Building (release mode)..."
-cargo build --release -p velocity-dev-server -p velocity-bench 2>&1 | grep -E '(Compiling|Finished|error)' || true
+cargo build --release -p velocity-workflow-server -p velocity-bench 2>&1 | grep -E '(Compiling|Finished|error)' || true
 echo "[server] Binaries:"
-ls -lh target/release/velocity-dev target/release/velocity-bench target/release/temporal-bridge 2>/dev/null || echo "BUILD FAILED"
+ls -lh target/release/velocity-server target/release/velocity-bench target/release/temporal-bridge 2>/dev/null || echo "BUILD FAILED"
 
 # Start Real Temporal
 echo "[server] Starting Real Temporal (PostgreSQL)..."
@@ -236,20 +236,20 @@ else
     sudo docker logs velocity-bench-temporal --tail 15 2>&1 || true
 fi
 
-# Start VELOCITY dev-server on 0.0.0.0 (accessible from client VPC)
-echo "[server] Starting VELOCITY dev-server on 0.0.0.0:7234..."
+# Start VELOCITY production server on 0.0.0.0 (accessible from client VPC)
+echo "[server] Starting VELOCITY production server on 0.0.0.0:7234..."
 cd ~/VELOCITY-WorkFlow
-nohup ./target/release/velocity-dev --grpc-port 7234 --bind 0.0.0.0 > /tmp/velocity-dev.log 2>&1 &
+nohup ./target/release/velocity-server --grpc-port 7234 --ip 0.0.0.0 > /tmp/velocity-server.log 2>&1 &
 sleep 2
 if nc -z localhost 7234 2>/dev/null; then
-    echo "[server] VELOCITY dev-server READY on :7234"
+    echo "[server] VELOCITY production server READY on :7234"
 else
-    echo "[server] WARNING: VELOCITY dev-server not ready"
+    echo "[server] WARNING: VELOCITY production server not ready"
 fi
 
 # Start temporal-bridge on 0.0.0.0
 echo "[server] Starting temporal-bridge on 0.0.0.0:7235..."
-nohup ./target/release/temporal-bridge --port 7235 --bind 0.0.0.0 > /tmp/temporal-bridge.log 2>&1 &
+nohup ./target/release/temporal-bridge --grpc-port 7235 --ip 0.0.0.0 > /tmp/temporal-bridge.log 2>&1 &
 sleep 2
 if nc -z localhost 7235 2>/dev/null; then
     echo "[server] temporal-bridge READY on :7235"
@@ -260,7 +260,7 @@ fi
 echo "[server] ═══ SERVER READY ═══"
 echo "[server] Engines available:"
 echo "[server]   Real Temporal:    0.0.0.0:7233"
-echo "[server]   VELOCITY dev:     0.0.0.0:7234"
+echo "[server]   VELOCITY prod:    0.0.0.0:7234"
 echo "[server]   temporal-bridge:  0.0.0.0:7235"
 SERVER_SCRIPT
 

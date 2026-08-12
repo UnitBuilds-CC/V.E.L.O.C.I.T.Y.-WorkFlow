@@ -26,12 +26,13 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"], optio
 
 [build-dependencies]
 tonic-build = { version = "0.12", optional = true }
+protox = { version = "0.7", optional = true }
 
 [features]
 default = []
 cloud-s3 = ["dep:hmac", "dep:hex", "dep:reqwest"]
 cloud-gcs = ["dep:reqwest"]
-grpc = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio", "dep:tonic-build"]
+grpc = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio", "dep:tonic-build", "dep:protox"]
 
 [[bench]]
 name = "engine_benchmarks"

@@ -4,6 +4,7 @@
 [![Performance](https://img.shields.io/badge/Performance-Zero--Allocation%20%2F%20O(1)-blue)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow)
 [![License: AGPLv3](https://img.shields.io/badge/License-AGPL--3.0-orange.svg)](LICENSE)
 [![Transport](https://img.shields.io/badge/Protocol-V.C.T.P.%20Zero--Copy-purple)](#)
+[![Benchmark](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/benchmark.yml/badge.svg)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/benchmark.yml)
 
 **V.E.L.O.C.I.T.Y.-WorkFlow** is a hardware-native, zero-allocation durable execution engine and state machine runtime. Synthesizing `#![no_std]` Rust validation, C# Roslyn compile-time AST transpilation, `repr(C)` memory-mapped slabs, and VCTP zero-copy UDP transport, it eliminates the performance, memory, and database write bottlenecks inherent in standard event-sourcing orchestration platforms like Temporal.
 
@@ -333,9 +334,45 @@ scp -i <key.pem> ubuntu@<ec2-public-ip>:~/VELOCITY-WorkFlow/bench_results.md ./
 
 The `cloud-bench/run.sh` script starts:
 - **Real Temporal server** via Docker (PostgreSQL + Temporal + Web UI on ports 7233/8233)
-- **VELOCITY dev-server** (gRPC on port 7234)
+- **VELOCITY production server** (`velocity-server`, gRPC on port 7234, real `WorkflowEngine`)
 - **temporal-bridge** (gRPC on port 7235, BenchmarkService proto)
 - Runs the benchmark harness against both engines on localhost
+
+### Option C: Production Server Benchmark
+
+Benchmark the **real VELOCITY `WorkflowEngine`** (not the simplified dev-server) with full production features: task queues, timer engine, WAL, history store, namespace registry, saga orchestrator, batch executor, heartbeat tracker, replay engine, and worker versioning.
+
+```bash
+# Start the production VELOCITY server (real engine, BenchmarkService gRPC)
+cargo run --release -p velocity-workflow-server -- --ip 0.0.0.0 --grpc-port 7234
+
+# In another terminal, run benchmarks against it
+cargo run --release -p velocity-bench -- \
+    --workloads all --engine velocity \
+    --velocity-address http://localhost:7234
+```
+
+All 33 `BenchmarkService` RPCs are fully implemented against the real engine — no stubs.
+
+### Option D: Cross-Region Benchmark (Deterministic Network Latency)
+
+Launch two EC2 instances in **separate AWS regions** for fixed, deterministic cross-region latency (~20-80ms RTT). The server runs in Region A, the benchmark client in Region B.
+
+```bash
+# From your local machine, run the cross-region orchestrator
+chmod +x cloud-bench/cloud_cross_region.sh
+./cloud-bench/cloud_cross_region.sh \
+    --region-a us-east-1 \
+    --region-b eu-west-1 \
+    --instance-type t3.medium
+```
+
+The script:
+1. Launches a **server instance** in `us-east-1` (VELOCITY production server + Temporal)
+2. Launches a **client instance** in `eu-west-1` (benchmark harness)
+3. Measures cross-region ping latency
+4. Runs all 18 workloads from client→server across the network
+5. Tears down both instances automatically
 
 ### Option B: Local Benchmark
 
@@ -348,8 +385,8 @@ Run on your own machine (results will vary by hardware).
 cd VELOCITY-WorkFlow
 cargo build --release
 
-# 2. Start VELOCITY dev-server (Terminal 1)
-cargo run --release -p velocity-dev-server -- --grpc-port 7234
+# 2. Start VELOCITY production server (Terminal 1)
+cargo run --release -p velocity-workflow-server -- --ip 0.0.0.0 --grpc-port 7234
 
 # 3. Start temporal-bridge (Terminal 2)
 cargo run --release -p velocity-bench --bin temporal-bridge -- --grpc-port 7235
@@ -361,6 +398,17 @@ cargo run --release -p velocity-bench -- \
     --temporal-address http://localhost:7235 \
     --output bench_results.md
 ```
+
+### GitHub Actions CI Benchmark
+
+Run benchmarks on-demand via GitHub Actions:
+
+1. Go to **Actions → Benchmark** in the repo
+2. Click **Run workflow**
+3. Select profile (`quick`, `standard`, `stress`) and workloads (`smoke`, `all`)
+4. The workflow builds both engines, runs all workloads, and uploads results as artifacts
+
+Results appear in the Actions run's **Artifacts** section as `bench_results.md`.
 
 ### Benchmark Profiles
 

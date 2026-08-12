@@ -2473,6 +2473,7 @@ dependencies = [
  "hmac",
  "prost",
  "prost-types",
+ "protox",
  "reqwest",
  "serde",
  "serde_json",
@@ -2481,6 +2482,22 @@ dependencies = [
  "tonic",
  "tonic-build",
  "velocity-workflow-core",
+]
+
+[[package]]
+name = "velocity-workflow-server"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "prost",
+ "prost-types",
+ "protox",
+ "tokio",
+ "tonic",
+ "tonic-build",
+ "tracing",
+ "tracing-subscriber",
+ "velocity-workflow-engine",
 ]
 
 [[package]]

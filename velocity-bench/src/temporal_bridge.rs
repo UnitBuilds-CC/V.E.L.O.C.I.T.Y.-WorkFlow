@@ -2010,7 +2010,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(7235);
 
-    let grpc_addr: SocketAddr = format!("127.0.0.1:{}", grpc_port).parse()?;
+    let bind_ip: String = args
+        .iter()
+        .position(|a| a == "--ip")
+        .and_then(|i| args.get(i + 1))
+        .cloned()
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+
+    let grpc_addr: SocketAddr = format!("{}:{}", bind_ip, grpc_port).parse()?;
 
     info!("╦  ╦ ╔╗╔ ╦╔═ Temporal Bridge");
     info!("╚╗╔╝ ║║║ ╠╩╗ v0.2.0 — Event-sourcing mode");
