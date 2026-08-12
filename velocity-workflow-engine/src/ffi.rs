@@ -818,7 +818,7 @@ pub unsafe extern "C" fn velocity_engine_rate_limit_check(handle: *mut EngineHan
 pub unsafe extern "C" fn velocity_engine_register_heartbeat(handle: *mut EngineHandle, workflow_key: u64, activity_id: u64, timeout_ms: u64) -> i32 {
     if handle.is_null() { return -1; }
     let h = &*handle;
-    h.engine.heartbeat_tracker().register(workflow_key, activity_id, timeout_ms);
+    h.engine.heartbeat_tracker().register(workflow_key, activity_id, timeout_ms, 3);
     0
 }
 
@@ -847,7 +847,7 @@ pub unsafe extern "C" fn velocity_engine_heartbeat_register(
 ) {
     if handle.is_null() { return; }
     let h = &*handle;
-    h.engine.heartbeat_tracker().register(workflow_key, activity_id, timeout_ms);
+    h.engine.heartbeat_tracker().register(workflow_key, activity_id, timeout_ms, 3);
 }
 
 /// Check heartbeat timeouts. Returns count of timed-out heartbeats.
@@ -998,7 +998,7 @@ pub unsafe extern "C" fn velocity_engine_set_memo(handle: *mut EngineHandle, wor
     let h = &*handle;
     let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
     let val = if val_ptr.is_null() || val_len == 0 { vec![] } else { std::slice::from_raw_parts(val_ptr, val_len as usize).to_vec() };
-    h.engine.memo_store().set_memo(workflow_key, key, val);
+    h.engine.memo_store().set(workflow_key, key, val, None);
     0
 }
 
@@ -1006,7 +1006,7 @@ pub unsafe extern "C" fn velocity_engine_set_memo(handle: *mut EngineHandle, wor
 pub unsafe extern "C" fn velocity_engine_memo_count(handle: *mut EngineHandle, workflow_key: u64) -> u64 {
     if handle.is_null() { return 0; }
     let h = &*handle;
-    h.engine.memo_store().get_all_memos(workflow_key).len() as u64
+    h.engine.memo_store().get_all(workflow_key).len() as u64
 }
 
 /// Get a memo value by key. Writes to caller buffer; actual length written to `out_len`.
@@ -1021,7 +1021,7 @@ pub unsafe extern "C" fn velocity_engine_get_memo(
     if handle.is_null() || key_ptr.is_null() || out_ptr.is_null() || out_len.is_null() { return -1; }
     let h = &*handle;
     let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    match h.engine.memo_store().get_memo(workflow_key, key) {
+    match h.engine.memo_store().get(workflow_key, key) {
         Some(val) => {
             let write_len = std::cmp::min(val.len(), out_cap as usize);
             std::ptr::copy_nonoverlapping(val.as_ptr(), out_ptr, write_len);
@@ -1454,7 +1454,7 @@ pub unsafe extern "C" fn velocity_engine_remove_memo(
     if handle.is_null() || key_ptr.is_null() { return -1; }
     let h = &*handle;
     let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    if h.engine.memo_store().remove_memo(workflow_key, key) { 1 } else { 0 }
+    if h.engine.memo_store().remove(workflow_key, key) { 1 } else { 0 }
 }
 
 #[no_mangle]
@@ -4031,8 +4031,8 @@ pub unsafe extern "C" fn velocity_engine_check_heartbeat_timeouts(
     let max_entries = out_cap as usize / 2;
     let count = std::cmp::min(timed_out.len(), max_entries);
     for i in 0..count {
-        *out_ptr.add(i * 2) = timed_out[i].0;
-        *out_ptr.add(i * 2 + 1) = timed_out[i].1;
+        *out_ptr.add(i * 2) = timed_out[i].workflow_key;
+        *out_ptr.add(i * 2 + 1) = timed_out[i].activity_id;
     }
     count as u32
 }
@@ -5994,6 +5994,360 @@ pub unsafe extern "C" fn velocity_obs_workflow_failed() {
     }
 }
 
+// ─── Update API ──────────────────────────────────────────────────────────────
+
+use crate::update::{UpdateController, UpdateRequest, UpdateWaitPolicy};
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+static UPDATE_CONTROLLERS: Mutex<Option<HashMap<u64, UpdateController>>> = Mutex::new(None);
+
+fn update_controllers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, UpdateController>>> {
+    let mut guard = UPDATE_CONTROLLERS.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some(HashMap::new());
+    }
+    guard
+}
+
+/// Create an update controller. Returns controller ID.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_update_controller_create() -> u64 {
+    let mut controllers = update_controllers();
+    let map = controllers.as_mut().unwrap();
+    let id = map.len() as u64 + 1;
+    map.insert(id, UpdateController::new());
+    id
+}
+
+/// Register an update handler (identity handler for FFI — just echoes args).
+#[no_mangle]
+pub unsafe extern "C" fn velocity_update_register_handler(controller_id: u64, name_ptr: *const u8, name_len: u32) -> i32 {
+    let mut controllers = update_controllers();
+    let map = controllers.as_mut().unwrap();
+    let controller = match map.get_mut(&controller_id) {
+        Some(c) => c,
+        None => return -1,
+    };
+    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("unknown");
+    controller.register_handler(name, |args| Ok(args.to_vec()));
+    0
+}
+
+/// Submit an update. Returns 0 on success.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_update_submit(
+    controller_id: u64,
+    workflow_key: u64,
+    name_ptr: *const u8, name_len: u32,
+    args_ptr: *const u8, args_len: u32,
+) -> i32 {
+    let controllers = update_controllers();
+    let map = controllers.as_ref().unwrap();
+    let controller = match map.get(&controller_id) {
+        Some(c) => c,
+        None => return -1,
+    };
+    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("unknown");
+    let args = if args_ptr.is_null() || args_len == 0 { vec![] } else { std::slice::from_raw_parts(args_ptr, args_len as usize).to_vec() };
+    let request = UpdateRequest {
+        workflow_key,
+        update_id: format!("ffi-update-{}", workflow_key),
+        update_name: name.to_string(),
+        args,
+        wait_policy: UpdateWaitPolicy::Completed,
+    };
+    let result = controller.submit_update(request);
+    if result.status == crate::update::UpdateStatus::Completed { 0 } else { -1 }
+}
+
+/// Get handler count for a controller.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_update_handler_count(controller_id: u64) -> u32 {
+    let controllers = update_controllers();
+    let map = controllers.as_ref().unwrap();
+    match map.get(&controller_id) {
+        Some(c) => c.list_handlers().len() as u32,
+        None => 0,
+    }
+}
+
+// ─── Reachability API ────────────────────────────────────────────────────────
+
+use crate::reachability::ReachabilityTracker;
+
+static REACHABILITY_TRACKERS: Mutex<Option<HashMap<u64, ReachabilityTracker>>> = Mutex::new(None);
+
+fn reachability_trackers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, ReachabilityTracker>>> {
+    let mut guard = REACHABILITY_TRACKERS.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some(HashMap::new());
+    }
+    guard
+}
+
+/// Create a reachability tracker. Returns tracker ID.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_reachability_tracker_create() -> u64 {
+    let mut trackers = reachability_trackers();
+    let map = trackers.as_mut().unwrap();
+    let id = map.len() as u64 + 1;
+    map.insert(id, ReachabilityTracker::new());
+    id
+}
+
+/// Record a worker poll on a task queue.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_reachability_record_poll(tracker_id: u64, queue_ptr: *const u8, queue_len: u32, timestamp: u64) {
+    let trackers = reachability_trackers();
+    let map = trackers.as_ref().unwrap();
+    if let Some(tracker) = map.get(&tracker_id) {
+        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize)).unwrap_or("unknown");
+        tracker.record_poll(queue, timestamp);
+    }
+}
+
+/// Check if a task queue is reachable. Returns 1 if reachable, 0 otherwise.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_reachability_check(tracker_id: u64, queue_ptr: *const u8, queue_len: u32) -> i32 {
+    let trackers = reachability_trackers();
+    let map = trackers.as_ref().unwrap();
+    if let Some(tracker) = map.get(&tracker_id) {
+        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize)).unwrap_or("unknown");
+        let result = tracker.check_task_queue(queue);
+        if result.is_reachable { 1 } else { 0 }
+    } else { 0 }
+}
+
+/// Get worker count for a task queue.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_reachability_worker_count(tracker_id: u64, queue_ptr: *const u8, queue_len: u32) -> u32 {
+    let trackers = reachability_trackers();
+    let map = trackers.as_ref().unwrap();
+    if let Some(tracker) = map.get(&tracker_id) {
+        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize)).unwrap_or("unknown");
+        tracker.check_task_queue(queue).worker_count as u32
+    } else { 0 }
+}
+
+// ─── Deployment API ──────────────────────────────────────────────────────────
+
+use crate::deployment_api::DeploymentManager;
+
+static DEPLOYMENT_MANAGERS: Mutex<Option<HashMap<u64, DeploymentManager>>> = Mutex::new(None);
+
+fn deployment_managers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, DeploymentManager>>> {
+    let mut guard = DEPLOYMENT_MANAGERS.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some(HashMap::new());
+    }
+    guard
+}
+
+/// Create a deployment manager. Returns manager ID.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_deployment_manager_create() -> u64 {
+    let mut managers = deployment_managers();
+    let map = managers.as_mut().unwrap();
+    let id = map.len() as u64 + 1;
+    map.insert(id, DeploymentManager::new());
+    id
+}
+
+/// Create a deployment. Returns 0 on success.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_deployment_create(
+    manager_id: u64,
+    id_ptr: *const u8, id_len: u32,
+    series_ptr: *const u8, series_len: u32,
+    build_ptr: *const u8, build_len: u32,
+    timestamp: u64,
+) -> i32 {
+    let managers = deployment_managers();
+    let map = managers.as_ref().unwrap();
+    if let Some(mgr) = map.get(&manager_id) {
+        let id = std::str::from_utf8(std::slice::from_raw_parts(id_ptr, id_len as usize)).unwrap_or("unknown");
+        let series = std::str::from_utf8(std::slice::from_raw_parts(series_ptr, series_len as usize)).unwrap_or("unknown");
+        let build = std::str::from_utf8(std::slice::from_raw_parts(build_ptr, build_len as usize)).unwrap_or("unknown");
+        mgr.create_deployment(id, series, build, timestamp);
+        0
+    } else { -1 }
+}
+
+/// Activate a deployment. Returns 0 on success.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_deployment_activate(manager_id: u64, id_ptr: *const u8, id_len: u32) -> i32 {
+    let managers = deployment_managers();
+    let map = managers.as_ref().unwrap();
+    if let Some(mgr) = map.get(&manager_id) {
+        let id = std::str::from_utf8(std::slice::from_raw_parts(id_ptr, id_len as usize)).unwrap_or("unknown");
+        mgr.activate_deployment(id).map(|_| 0).unwrap_or(-1)
+    } else { -1 }
+}
+
+/// Get deployment count.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_deployment_count(manager_id: u64) -> u32 {
+    let managers = deployment_managers();
+    let map = managers.as_ref().unwrap();
+    match map.get(&manager_id) {
+        Some(mgr) => mgr.deployment_count() as u32,
+        None => 0,
+    }
+}
+
+// ─── Codec Server ────────────────────────────────────────────────────────────
+
+use crate::codec_server::{CodecServer, CodecRequest};
+
+static CODEC_SERVERS: Mutex<Option<HashMap<u64, CodecServer>>> = Mutex::new(None);
+
+fn codec_servers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, CodecServer>>> {
+    let mut guard = CODEC_SERVERS.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some(HashMap::new());
+    }
+    guard
+}
+
+/// Create a codec server. Returns server ID.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_codec_server_create() -> u64 {
+    let mut servers = codec_servers();
+    let map = servers.as_mut().unwrap();
+    let id = map.len() as u64 + 1;
+    map.insert(id, CodecServer::new());
+    id
+}
+
+/// Get codec count.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_codec_server_codec_count(server_id: u64) -> u32 {
+    let servers = codec_servers();
+    let map = servers.as_ref().unwrap();
+    match map.get(&server_id) {
+        Some(s) => s.codec_count() as u32,
+        None => 0,
+    }
+}
+
+// ─── Worker Sessions ─────────────────────────────────────────────────────────
+
+use crate::worker_sessions::{SessionManager, SessionConfig};
+
+static SESSION_MANAGERS: Mutex<Option<HashMap<u64, SessionManager>>> = Mutex::new(None);
+
+fn session_managers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, SessionManager>>> {
+    let mut guard = SESSION_MANAGERS.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some(HashMap::new());
+    }
+    guard
+}
+
+/// Create a session manager. Returns manager ID.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_session_manager_create() -> u64 {
+    let mut managers = session_managers();
+    let map = managers.as_mut().unwrap();
+    let id = map.len() as u64 + 1;
+    map.insert(id, SessionManager::new(SessionConfig::default()));
+    id
+}
+
+/// Create a session. Returns session count.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_session_create(manager_id: u64, worker_ptr: *const u8, worker_len: u32, queue_ptr: *const u8, queue_len: u32) -> u32 {
+    let managers = session_managers();
+    let map = managers.as_ref().unwrap();
+    if let Some(mgr) = map.get(&manager_id) {
+        let worker = std::str::from_utf8(std::slice::from_raw_parts(worker_ptr, worker_len as usize)).unwrap_or("unknown");
+        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize)).unwrap_or("unknown");
+        mgr.create_session(worker, queue);
+        mgr.session_count() as u32
+    } else { 0 }
+}
+
+/// Get session count.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_session_count(manager_id: u64) -> u32 {
+    let managers = session_managers();
+    let map = managers.as_ref().unwrap();
+    match map.get(&manager_id) {
+        Some(mgr) => mgr.session_count() as u32,
+        None => 0,
+    }
+}
+
+/// Get active session count.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_session_active_count(manager_id: u64) -> u32 {
+    let managers = session_managers();
+    let map = managers.as_ref().unwrap();
+    match map.get(&manager_id) {
+        Some(mgr) => mgr.active_session_count() as u32,
+        None => 0,
+    }
+}
+
+// ─── Worker Determinism ──────────────────────────────────────────────────────
+
+use crate::worker_determinism::DeterminismChecker;
+
+static DETERMINISM_CHECKERS: Mutex<Option<HashMap<u64, DeterminismChecker>>> = Mutex::new(None);
+
+fn determinism_checkers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, DeterminismChecker>>> {
+    let mut guard = DETERMINISM_CHECKERS.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some(HashMap::new());
+    }
+    guard
+}
+
+/// Create a determinism checker. Returns checker ID.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_determinism_checker_create() -> u64 {
+    let mut checkers = determinism_checkers();
+    let map = checkers.as_mut().unwrap();
+    let id = map.len() as u64 + 1;
+    map.insert(id, DeterminismChecker::new());
+    id
+}
+
+/// Record a side effect. Returns side effect ID.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_determinism_record_side_effect(checker_id: u64, op_ptr: *const u8, op_len: u32, result_ptr: *const u8, result_len: u32, timestamp: u64) -> u64 {
+    let checkers = determinism_checkers();
+    let map = checkers.as_ref().unwrap();
+    if let Some(checker) = map.get(&checker_id) {
+        let op = std::str::from_utf8(std::slice::from_raw_parts(op_ptr, op_len as usize)).unwrap_or("unknown");
+        let result = if result_ptr.is_null() || result_len == 0 { vec![] } else { std::slice::from_raw_parts(result_ptr, result_len as usize).to_vec() };
+        checker.record_side_effect(op, &result, timestamp)
+    } else { 0 }
+}
+
+/// Get violation count.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_determinism_violation_count(checker_id: u64) -> u32 {
+    let checkers = determinism_checkers();
+    let map = checkers.as_ref().unwrap();
+    match map.get(&checker_id) {
+        Some(c) => c.violation_count() as u32,
+        None => 0,
+    }
+}
+
+/// Get side effect count.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_determinism_side_effect_count(checker_id: u64) -> u32 {
+    let checkers = determinism_checkers();
+    let map = checkers.as_ref().unwrap();
+    match map.get(&checker_id) {
+        Some(c) => c.side_effect_count() as u32,
+        None => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6055,6 +6409,91 @@ mod tests {
             assert_eq!(velocity_engine_has_signal(engine, key, 100), 1);
 
             velocity_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_ffi_update_api() {
+        unsafe {
+            let ctrl_id = velocity_update_controller_create();
+            assert!(ctrl_id > 0);
+
+            let name = b"setAmount";
+            assert_eq!(velocity_update_register_handler(ctrl_id, name.as_ptr(), name.len() as u32), 0);
+            assert_eq!(velocity_update_handler_count(ctrl_id), 1);
+
+            let args = b"100";
+            let result = velocity_update_submit(ctrl_id, 1, name.as_ptr(), name.len() as u32, args.as_ptr(), args.len() as u32);
+            assert_eq!(result, 0);
+        }
+    }
+
+    #[test]
+    fn test_ffi_reachability_api() {
+        unsafe {
+            let tracker_id = velocity_reachability_tracker_create();
+            assert!(tracker_id > 0);
+
+            let queue = b"main-queue";
+            velocity_reachability_record_poll(tracker_id, queue.as_ptr(), queue.len() as u32, 1000);
+            assert_eq!(velocity_reachability_check(tracker_id, queue.as_ptr(), queue.len() as u32), 1);
+            assert!(velocity_reachability_worker_count(tracker_id, queue.as_ptr(), queue.len() as u32) >= 1);
+        }
+    }
+
+    #[test]
+    fn test_ffi_deployment_api() {
+        unsafe {
+            let mgr_id = velocity_deployment_manager_create();
+            assert!(mgr_id > 0);
+
+            let id = b"deploy-1";
+            let series = b"production";
+            let build = b"v1.0.0";
+            assert_eq!(velocity_deployment_create(mgr_id, id.as_ptr(), id.len() as u32, series.as_ptr(), series.len() as u32, build.as_ptr(), build.len() as u32, 1000), 0);
+            assert_eq!(velocity_deployment_count(mgr_id), 1);
+
+            assert_eq!(velocity_deployment_activate(mgr_id, id.as_ptr(), id.len() as u32), 0);
+        }
+    }
+
+    #[test]
+    fn test_ffi_codec_server_api() {
+        unsafe {
+            let server_id = velocity_codec_server_create();
+            assert!(server_id > 0);
+            assert!(velocity_codec_server_codec_count(server_id) >= 3);
+        }
+    }
+
+    #[test]
+    fn test_ffi_session_manager_api() {
+        unsafe {
+            let mgr_id = velocity_session_manager_create();
+            assert!(mgr_id > 0);
+
+            let worker = b"worker-1";
+            let queue = b"main-queue";
+            let count = velocity_session_create(mgr_id, worker.as_ptr(), worker.len() as u32, queue.as_ptr(), queue.len() as u32);
+            assert!(count >= 1);
+            assert_eq!(velocity_session_count(mgr_id), count);
+            assert!(velocity_session_active_count(mgr_id) >= 1);
+        }
+    }
+
+    #[test]
+    fn test_ffi_determinism_checker_api() {
+        unsafe {
+            let checker_id = velocity_determinism_checker_create();
+            assert!(checker_id > 0);
+
+            let op = b"db_query";
+            let result = b"42";
+            let id = velocity_determinism_record_side_effect(checker_id, op.as_ptr(), op.len() as u32, result.as_ptr(), result.len() as u32, 1000);
+            assert!(id == 0); // First side effect gets ID 0
+
+            assert_eq!(velocity_determinism_side_effect_count(checker_id), 1);
+            assert_eq!(velocity_determinism_violation_count(checker_id), 0);
         }
     }
 }

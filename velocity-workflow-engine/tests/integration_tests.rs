@@ -152,7 +152,7 @@ fn test_workflow_with_rate_limiting() {
 #[test]
 fn test_workflow_with_heartbeat_tracking() {
     let tracker = HeartbeatTracker::new();
-    tracker.register(1, 100, 5000);
+    tracker.register(1, 100, 5000, 3);
     assert_eq!(tracker.active_count(), 1);
     assert!(tracker.record_heartbeat(1, 100, Some(b"progress".to_vec())));
     assert!(!tracker.record_heartbeat(1, 999, None)); // not registered
@@ -163,15 +163,15 @@ fn test_workflow_with_heartbeat_tracking() {
 #[test]
 fn test_workflow_with_memo() {
     let store = MemoStore::new();
-    store.set_memo(42, "user_id", b"alice".to_vec());
-    store.set_memo(42, "order_id", b"ORD-123".to_vec());
-    assert_eq!(store.get_memo(42, "user_id"), Some(b"alice".to_vec()));
+    store.set(42, "user_id", b"alice".to_vec(), None);
+    store.set(42, "order_id", b"ORD-123".to_vec(), None);
+    assert_eq!(store.get(42, "user_id"), Some(b"alice".to_vec()));
     assert_eq!(store.count(42), 2);
     assert_eq!(store.workflow_count(), 1);
 
-    let all = store.get_all_memos(42);
+    let all = store.get_all(42);
     assert_eq!(all.len(), 2);
-    assert!(store.remove_memo(42, "user_id"));
+    assert!(store.remove(42, "user_id"));
     assert_eq!(store.count(42), 1);
 }
 

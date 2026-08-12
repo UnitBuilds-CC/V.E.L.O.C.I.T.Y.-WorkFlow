@@ -100,7 +100,7 @@ pub use hardware_integration::{HardwareAbstractionLayer, EccParityStore, EccStat
 pub use heartbeat::HeartbeatTracker;
 pub use history_compaction::{HistoryCompactor, CompactionConfig, CompactionStats, CompactionLevel, CompactableEventType};
 pub use hot_swap::{HotSwapRegistry, HotSwapPatch, HotSwapResult, HotSwapStats};
-pub use memo::MemoStore;
+pub use memo::{MemoStore, MemoEntry, MemoStats, MemoSetResult};
 pub use metrics::MetricsRegistry;
 pub use migration_runner::{Migration, MigrationRunner, MigrationResult, MigrationStatus, MigrationError, MigrationAdapter};
 pub use namespace::{NamespaceRegistry, NamespaceConfig, NamespaceError};
@@ -110,7 +110,7 @@ pub use observability::{ObservabilityConfig, ObservabilityContext, StructuredLog
 pub use partition::{PartitionManager, PartitionInfo};
 pub use patch::{PatchRegistry, WorkflowPatch};
 pub use payload_codec::{PayloadCodec, CodecChain};
-pub use query_handler::QueryRegistry;
+pub use query_handler::{QueryRegistry, QueryHandler, QueryDefinition, QueryRecord, QueryState, QueryConsistency, QueryStats, BufferedQuery, RejectionPolicy};
 pub use raft_consensus::{RaftNode, RaftCluster, RaftConfig, RaftStats, RaftState, RaftLogEntry};
 pub use rate_limiter::RateLimiter;
 pub use replication_daemon::{ReplicationDaemon, ReplicationDaemonConfig, ReplicationDaemonStats, DeliveredTask};
@@ -122,7 +122,7 @@ pub use search_index::{SearchAttributeIndex, SearchIndexStats, IndexedValue, Ind
 pub use sharding::ShardManager;
 pub use task_queue::{TaskQueue, TaskItem, TaskKind};
 pub use timer_engine::TimerEngine;
-pub use visibility::{VisibilityIndex, WorkflowExecutionInfo, SearchAttributeValue};
+pub use visibility::{VisibilityIndex, WorkflowExecutionInfo, SearchAttributeValue, VisibilityFilter, VisibilityQuery as AdvancedVisibilityQuery, PaginatedResult, PageToken, SortField, SortOrder, VisibilityAggregation};
 pub use visibility_query::{VisibilityQuery, QueryCondition, QueryField, QueryOp};
 pub use wal::{WalManager, WalWriter, WalRecord, WalEventType};
 pub use worker_versioning::WorkerVersioning;
