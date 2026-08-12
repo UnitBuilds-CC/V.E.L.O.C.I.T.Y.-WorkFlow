@@ -128,6 +128,11 @@ pub mod deletion_manager;
 pub mod notification_system;
 pub mod namespace_manager;
 pub mod cluster_membership;
+pub mod self_healing;
+pub mod predictive_autoscaler;
+pub mod chaos_engineering;
+pub mod deep_observability;
+pub mod workflow_commands;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
 // Requires protoc to be installed for proto compilation.
@@ -758,4 +763,79 @@ pub use cluster_membership::{
     RingHash as ClusterRingHash,
     HealthChecker as ClusterHealthChecker2, HealthResult as ClusterHealthResult,
     ClusterTopology, ClusterReport,
+};
+
+// self_healing: anomaly detection, auto-recovery, deadlock detection, memory pressure
+pub use self_healing::{
+    HealthScore, AnomalyDetector, MetricWindow, AnomalyDetectorStats,
+    RecoveryAction, RecoveryPlan, RecoveryPriority, RecoveryStatus, RecoveryResult,
+    AutoRecovery, AutoRecoveryStats,
+    AnomalyEvent, AnomalyType, AnomalySeverity,
+    DeadlockDetector, DeadlockDetectorStats,
+    MemoryMonitor, EvictionEvent, MemoryMonitorStats,
+    ShardRebalancer, ShardRebalancerStats,
+    SelfHealingOrchestrator, SelfHealingStats, HealingCycleResult,
+};
+
+// predictive_autoscaler: time-series forecasting, load prediction, proactive scaling
+pub use predictive_autoscaler::{
+    TimeSeriesBuffer, DataPoint, LoadForecaster, ForecasterStats,
+    ScalingDecision, ScalingDirection, ScalingDecisionStatus, ScalingEngine, ScalingEngineStats,
+    WorkerPoolScaler, PoolMetrics, WorkerPoolScalerStats,
+    CapacityPlanner, ResourceLimit, CapacityPlan, CapacityUrgency,
+    AutoscalerOrchestrator, AutoscalerStats, ScalingCycleResult,
+};
+
+// chaos_engineering: fault injection, resilience verification, game-day scenarios
+pub use chaos_engineering::{
+    FaultType, FaultSeverity, FaultInjector, ActiveFault, FaultStatus, FaultRecord,
+    FaultInjectorStats,
+    ChaosExperiment, ScheduledFault, SteadyStateCheck, CheckCondition,
+    ExperimentConfig, ExperimentStatus, ExperimentResult,
+    ResilienceVerifier, ResilienceCheck, ResilienceCheckType, ResilienceCheckResult, VerifierStats,
+    GameDayRunner, GameDayStats,
+    ResilienceReport, ResilienceGrade, ReportSection, SectionStatus, ReportGenerator,
+};
+
+// deep_observability: distributed tracing, metrics, structured logging, profiling, alerts
+pub use deep_observability::{
+    TraceCollector, Trace, Span, SpanEvent, SpanLink, TraceStatus, SpanStatus as DoSpanStatus,
+    TraceCollectorStats,
+    MetricsRegistry as DeepMetricsRegistry, HistogramData, MetricsRegistryStats,
+    StructuredLogger as DoStructuredLogger, LogEntry, LogLevel as DoLogLevel, LoggerStats,
+    PerformanceProfiler, ProfileData, HotPath, ProfilerStats,
+    PredictiveAlertEngine, AlertRule, AlertCondition, AlertSeverity as DoAlertSeverity,
+    ActiveAlert, AlertRecord, AlertEngineStats,
+    ObservabilityHub, ObservabilityHubStats,
+};
+
+// workflow_commands: deep command validation, execution, pipeline
+pub use workflow_commands::{
+    WorkflowCommand as WcWorkflowCommand, ScheduleActivityCommand as WcScheduleActivityCommand,
+    StartTimerCommand as WcStartTimerCommand,
+    CompleteWorkflowCommand as WcCompleteWorkflowCommand,
+    FailWorkflowCommand as WcFailWorkflowCommand,
+    ContinueAsNewCommand as WcContinueAsNewCommand,
+    SignalExternalCommand as WcSignalExternalCommand,
+    StartChildWorkflowCommand as WcStartChildWorkflowCommand,
+    ModifyPropertiesCommand as WcModifyPropertiesCommand,
+    RecordMarkerCommand as WcRecordMarkerCommand,
+    ScheduleNexusCommand as WcScheduleNexusCommand,
+    ProtocolMessageCommand as WcProtocolMessageCommand,
+    CommandWorkflowExecution as WcCommandWorkflowExecution,
+    CommandFailure as WcCommandFailure,
+    CommandRetryPolicy as WcCommandRetryPolicy,
+    CancellationType as WcCancellationType, ParentClosePolicy as WcParentClosePolicy,
+    CommandValidator as WcCommandValidator, ValidationError as WcValidationError,
+    CommandValidatorStats,
+    CommandExecutor as WcCommandExecutor, PendingActivity as WcPendingActivity,
+    PendingActivityState as WcPendingActivityState,
+    PendingTimer as WcPendingTimer,
+    ChildWorkflowState as WcChildWorkflowState,
+    ChildState as WcChildState,
+    SignalRecord as WcSignalRecord,
+    MarkerRecord as WcMarkerRecord,
+    WorkflowResult as WcWorkflowResult,
+    CommandExecutorStats, CommandExecutionResult,
+    CommandPipeline, CommandPipelineStats,
 };
