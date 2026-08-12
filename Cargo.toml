@@ -5,6 +5,7 @@ members = [
     "velocity-workflow-daemon",
     "velocity-bench",
     "velocity-dev-server",
+    "velocity-test-framework",
 ]
 resolver = "2"
 

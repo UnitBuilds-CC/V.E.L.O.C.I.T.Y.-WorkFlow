@@ -2428,6 +2428,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "velocity-test-framework"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "velocity-workflow-engine",
+]
+
+[[package]]
 name = "velocity-workflow-core"
 version = "0.1.0"
 dependencies = [
