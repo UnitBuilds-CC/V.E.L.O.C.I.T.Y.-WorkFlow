@@ -171,7 +171,7 @@ impl ReplicationDaemon {
             if tasks.is_empty() {
                 continue;
             }
-            let batch_count = tasks.len();
+            let _batch_count = tasks.len();
             let mut applied = 0usize;
 
             for task in &tasks {
@@ -204,7 +204,7 @@ impl ReplicationDaemon {
         }
 
         // Update cycle counter
-        let cycle = self.cycles.fetch_add(1, Ordering::Relaxed) + 1;
+        let _cycle = self.cycles.fetch_add(1, Ordering::Relaxed) + 1;
 
         // Trim delivery log if it gets too large (keep last 10K entries)
         {

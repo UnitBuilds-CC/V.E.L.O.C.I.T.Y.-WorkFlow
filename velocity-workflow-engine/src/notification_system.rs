@@ -8,7 +8,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Notification Types

@@ -4,12 +4,12 @@
 //! chaos engineering framework that can inject failures, verify resilience,
 //! run game-day scenarios, and generate resilience reports.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Fault Types
@@ -506,7 +506,7 @@ impl GameDayRunner {
         let mut faults_succeeded = 0u32;
         // Execute each fault
         for scheduled in &experiment.faults {
-            let fault_id = self
+            let _fault_id = self
                 .injector
                 .inject(scheduled.fault.clone(), scheduled.severity);
             faults_succeeded += 1;

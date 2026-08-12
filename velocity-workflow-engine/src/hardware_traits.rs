@@ -375,7 +375,7 @@ impl SelfHealingEcc for SimulatedEcc {
         &self,
         data: &mut [u8],
         parity: &[u8],
-        expected_merkle_root: &[u8; 32],
+        _expected_merkle_root: &[u8; 32],
     ) -> Result<VerificationResult, HardwareError> {
         // Recompute parity and check
         let computed = self.compute_parity(data);

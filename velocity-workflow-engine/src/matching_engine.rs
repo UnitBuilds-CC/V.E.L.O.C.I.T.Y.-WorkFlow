@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+    atomic::{AtomicI64, AtomicU64, Ordering},
     Arc, RwLock,
 };
 use std::time::{Duration, SystemTime};
@@ -139,14 +139,14 @@ impl TaskQueue {
         self.stats.tasks_added.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn match_task(&self, poller_id: &str) -> Option<MatchTask> {
+    pub fn match_task(&self, _poller_id: &str) -> Option<MatchTask> {
         let task = self.tasks.write().unwrap().pop_front()?;
         self.stats.tasks_matched.fetch_add(1, Ordering::Relaxed);
         Some(task)
     }
 
     pub fn try_sync_match(&self, task: MatchTask) -> Result<MatchTask, MatchTask> {
-        let mut pollers = self.pollers.write().unwrap();
+        let pollers = self.pollers.write().unwrap();
         if !pollers.is_empty() {
             self.stats.sync_match_count.fetch_add(1, Ordering::Relaxed);
             Ok(task)
@@ -391,6 +391,7 @@ fn fnv1a_hash(s: &str) -> u32 {
     hash
 }
 
+#[allow(dead_code)]
 fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

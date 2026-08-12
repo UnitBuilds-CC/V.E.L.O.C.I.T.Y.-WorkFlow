@@ -12,10 +12,10 @@
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Mutex, RwLock,
 };
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 // ─── 1. Queue Executor Framework ──────────────────────────────────────────────
 
@@ -645,6 +645,7 @@ pub struct ArchivalQueueProcessor {
     config: QueueProcessorConfig,
     total_submitted: AtomicU64,
     total_completed: AtomicU64,
+    #[allow(dead_code)]
     total_failed: AtomicU64,
 }
 

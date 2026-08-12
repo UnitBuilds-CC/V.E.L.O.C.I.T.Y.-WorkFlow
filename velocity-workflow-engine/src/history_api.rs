@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicI64, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    Arc, RwLock,
 };
 use std::time::{Instant, SystemTime};
 
@@ -418,6 +418,7 @@ pub trait HistoryApiHandler: Send + Sync {
 pub struct HistoryApiServiceImpl {
     workflows: RwLock<HashMap<String, WorkflowState>>,
     activity_tokens: RwLock<HashMap<Vec<u8>, ActivityState>>,
+    #[allow(dead_code)]
     signals: RwLock<HashMap<String, Vec<SignalRecord>>>,
     queries: RwLock<HashMap<String, QueryHandler>>,
     event_counter: AtomicI64,
@@ -425,6 +426,7 @@ pub struct HistoryApiServiceImpl {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct WorkflowState {
     pub namespace: String,
     pub workflow_id: String,
@@ -456,6 +458,7 @@ struct ActivityState {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct SignalRecord {
     pub signal_name: String,
     pub input: Option<Vec<u8>>,
@@ -535,7 +538,7 @@ impl HistoryApiServiceImpl {
 impl HistoryApiHandler for HistoryApiServiceImpl {
     fn start_workflow_execution(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &StartWorkflowExecutionRequest,
     ) -> Result<StartWorkflowExecutionResponse, HistoryApiError> {
         self.stats.start_requests.fetch_add(1, Ordering::Relaxed);
@@ -586,7 +589,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn record_activity_heartbeat(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &RecordActivityTaskHeartbeatRequest,
     ) -> Result<RecordActivityTaskHeartbeatResponse, HistoryApiError> {
         let mut activities = self.activity_tokens.write().unwrap();
@@ -603,7 +606,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn poll_activity_task(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &PollActivityTaskQueueRequest,
     ) -> Result<PollActivityTaskQueueResponse, HistoryApiError> {
         let activities = self.activity_tokens.read().unwrap();
@@ -633,7 +636,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn respond_activity_completed(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &RespondActivityTaskCompletedRequest,
     ) -> Result<(), HistoryApiError> {
         self.stats
@@ -650,7 +653,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn respond_activity_failed(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &RespondActivityTaskFailedRequest,
     ) -> Result<(), HistoryApiError> {
         self.stats.activity_failures.fetch_add(1, Ordering::Relaxed);
@@ -665,7 +668,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn respond_activity_canceled(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &RespondActivityTaskCanceledRequest,
     ) -> Result<(), HistoryApiError> {
         let mut activities = self.activity_tokens.write().unwrap();
@@ -677,7 +680,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn signal_workflow(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &SignalWorkflowExecutionRequest,
     ) -> Result<(), HistoryApiError> {
         self.stats.signal_requests.fetch_add(1, Ordering::Relaxed);
@@ -715,7 +718,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn query_workflow(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &QueryWorkflowRequest,
     ) -> Result<QueryWorkflowResponse, HistoryApiError> {
         self.stats.query_requests.fetch_add(1, Ordering::Relaxed);
@@ -755,7 +758,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn request_cancel(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &RequestCancelWorkflowExecutionRequest,
     ) -> Result<(), HistoryApiError> {
         self.stats.cancel_requests.fetch_add(1, Ordering::Relaxed);
@@ -788,7 +791,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn terminate_workflow(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &TerminateWorkflowExecutionRequest,
     ) -> Result<(), HistoryApiError> {
         self.stats
@@ -822,7 +825,7 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
 
     fn get_history(
         &self,
-        ctx: &HistoryApiContext,
+        _ctx: &HistoryApiContext,
         req: &GetWorkflowExecutionHistoryRequest,
     ) -> Result<GetWorkflowExecutionHistoryResponse, HistoryApiError> {
         self.stats.history_reads.fetch_add(1, Ordering::Relaxed);

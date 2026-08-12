@@ -4,7 +4,7 @@
 //! new work, wait for in-flight workflows to drain, and force-terminate if the drain timeout
 //! expires. Thread-safe via `Arc<AtomicBool>` + `Mutex` + `Condvar`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};

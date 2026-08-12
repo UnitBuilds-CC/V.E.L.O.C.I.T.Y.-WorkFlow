@@ -4,10 +4,9 @@
 //! state transition history, task generator, task refresher, retry logic,
 //! state machine timers, checksum computation, and activity management.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
-    Arc, RwLock,
+    atomic::{AtomicI64, AtomicU64, Ordering}, RwLock,
 };
 use std::time::{Duration, SystemTime};
 
@@ -403,7 +402,7 @@ impl MutableState {
     }
 
     // Event management
-    pub fn append_event(&self, event: HistoryEvent) -> i64 {
+    pub fn append_event(&self, _event: HistoryEvent) -> i64 {
         let event_id = self.next_event_id.fetch_add(1, Ordering::Relaxed);
         self.stats.events_applied.fetch_add(1, Ordering::Relaxed);
         event_id

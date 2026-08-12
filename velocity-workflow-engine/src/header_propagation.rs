@@ -4,10 +4,7 @@
 //! header interceptors, and propagation rules.
 
 use std::collections::HashMap;
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
-};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Header

@@ -6,8 +6,8 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
 };
 use std::time::{Instant, SystemTime};
 

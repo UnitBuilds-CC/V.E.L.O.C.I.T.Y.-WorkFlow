@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 
 use crate::engine::{WorkflowContext, WorkflowStatus};
 use crate::event_history::{HistoryEvent, HistoryEventType, HistoryStore};

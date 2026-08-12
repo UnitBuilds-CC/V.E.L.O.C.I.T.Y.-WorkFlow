@@ -232,7 +232,7 @@ impl UpdateController {
 
     /// Submit and execute an update.
     pub fn submit_update(&self, request: UpdateRequest) -> UpdateResult {
-        let update_id = self.store.submit_update(request.clone());
+        let _update_id = self.store.submit_update(request.clone());
         let result = self.handler.execute_update(&request);
         self.store.complete_update(result.clone());
         result

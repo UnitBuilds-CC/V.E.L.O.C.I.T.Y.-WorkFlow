@@ -5,9 +5,9 @@
 //! memory pressure relief, and self-optimization. This makes VELOCITY fundamentally
 //! more resilient and easier to operate than Temporal.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, RwLock,
 };
 use std::time::{Duration, SystemTime};
@@ -284,6 +284,7 @@ pub struct AutoRecoveryStats {
     pub plans_created: AtomicU64,
     pub plans_executed: AtomicU64,
     pub plans_succeeded: AtomicU64,
+    #[allow(dead_code)]
     plans_failed: AtomicU64,
     pub actions_executed: AtomicU64,
     pub cooldown_vetos: AtomicU64,
@@ -694,7 +695,7 @@ impl ShardRebalancer {
         moves
     }
 
-    pub fn apply_move(&self, shard_id: u32, from: &str, to: &str) {
+    pub fn apply_move(&self, shard_id: u32, _from: &str, to: &str) {
         self.shard_to_host
             .write()
             .unwrap()

@@ -4,10 +4,10 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::io::{self, Write};
+use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
+use std::sync::RwLock;
 
 use crate::engine::WorkflowStatus;
 
@@ -35,6 +35,7 @@ pub struct ColdStorageRecord {
 pub struct FileColdStorage {
     base_dir: PathBuf,
     index: RwLock<HashMap<u64, ColdStorageRecord>>,
+    #[allow(dead_code)]
     next_id: AtomicU64,
 }
 
@@ -82,7 +83,7 @@ impl FileColdStorage {
         }
 
         // Try to load from file
-        let file_name = format!("wf_*_{}.bin", workflow_key);
+        let _file_name = format!("wf_*_{}.bin", workflow_key);
         let data_dir = self.base_dir.join("data");
         if let Ok(entries) = fs::read_dir(&data_dir) {
             for entry in entries.flatten() {
@@ -334,7 +335,9 @@ pub trait CloudStorageAdapter: Send + Sync {
 /// In-memory mock S3 adapter for testing.
 pub struct MockS3Adapter {
     records: RwLock<HashMap<u64, ColdStorageRecord>>,
+    #[allow(dead_code)]
     bucket: String,
+    #[allow(dead_code)]
     region: String,
 }
 
@@ -400,6 +403,7 @@ impl CloudStorageAdapter for MockS3Adapter {
 /// In-memory mock GCS adapter for testing.
 pub struct MockGcsAdapter {
     records: RwLock<HashMap<u64, ColdStorageRecord>>,
+    #[allow(dead_code)]
     bucket: String,
 }
 
@@ -464,6 +468,7 @@ impl CloudStorageAdapter for MockGcsAdapter {
 // ─── Binary Serialization for Cloud Records ─────────────────────────────────
 
 /// Serialize a ColdStorageRecord to a binary format for cloud upload.
+#[allow(dead_code)]
 fn serialize_record_binary(record: &ColdStorageRecord) -> io::Result<Vec<u8>> {
     let mut buf: Vec<u8> = Vec::with_capacity(256);
     buf.extend_from_slice(&record.workflow_key.to_le_bytes());
@@ -515,11 +520,13 @@ fn serialize_record_binary(record: &ColdStorageRecord) -> io::Result<Vec<u8>> {
 }
 
 /// Deserialize a ColdStorageRecord from binary format downloaded from cloud.
+#[allow(dead_code)]
 fn deserialize_record_binary(data: &[u8]) -> io::Result<ColdStorageRecord> {
     struct Reader<'a> {
         data: &'a [u8],
         pos: usize,
     }
+    #[allow(dead_code)]
     impl<'a> Reader<'a> {
         fn read_u64(&mut self) -> io::Result<u64> {
             if self.pos + 8 > self.data.len() {

@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock};
 
 // ─── Configuration ────────────────────────────────────────────────────────────
@@ -212,6 +212,7 @@ pub enum MetricKind {
 }
 
 /// A single metric instrument with atomic storage.
+#[allow(dead_code)]
 struct MetricInstrument {
     name: String,
     help: String,

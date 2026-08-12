@@ -5,8 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
 use std::time::{Duration, Instant};
 
@@ -299,7 +298,7 @@ impl LeaderElection {
         let mut leader = self.leader_id.write().unwrap();
 
         // Check if current leader's lease has expired
-        if let Some(current_leader) = leader.as_ref() {
+        if let Some(_current_leader) = leader.as_ref() {
             let heartbeat = self.last_heartbeat.read().unwrap();
             if let Some(last) = *heartbeat {
                 if last.elapsed() < self.lease_duration {

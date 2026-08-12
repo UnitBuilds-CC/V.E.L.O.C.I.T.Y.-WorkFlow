@@ -13,7 +13,6 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Mutex, RwLock,
 };
-use std::time::Instant;
 
 // ─── 1. History Event Types ──────────────────────────────────────────────────
 

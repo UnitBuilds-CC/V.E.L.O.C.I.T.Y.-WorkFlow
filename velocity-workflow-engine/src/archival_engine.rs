@@ -3,10 +3,9 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchivalKind {
@@ -143,7 +142,9 @@ impl ArchivalQueue {
 // Archival Manager
 pub struct ArchivalManager {
     queue: ArchivalQueue,
+    #[allow(dead_code)]
     history_archival_uri: String,
+    #[allow(dead_code)]
     visibility_archival_uri: String,
     namespace_configs: RwLock<HashMap<String, NamespaceArchivalConfig>>,
     stats: ArchivalManagerStats,

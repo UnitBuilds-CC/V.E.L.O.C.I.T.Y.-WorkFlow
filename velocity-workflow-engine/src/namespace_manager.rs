@@ -8,7 +8,7 @@ use std::sync::{
     atomic::{AtomicI64, AtomicU64, Ordering},
     Arc, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Namespace Registry — cached namespace lookup with change notification
@@ -76,7 +76,7 @@ impl NamespaceRegistry {
         }
         by_name.insert(entry.name.clone(), entry.id.clone());
         by_id.insert(entry.id.clone(), arc);
-        let version = self.notification_version.fetch_add(1, Ordering::Relaxed);
+        let _version = self.notification_version.fetch_add(1, Ordering::Relaxed);
         self.notify(NamespaceChangeEvent::Created {
             namespace_id: entry.id,
             name: entry.name,
@@ -161,7 +161,7 @@ impl NamespaceRegistry {
             e.config.replication_config.active_cluster_name = new_active.clone();
             e.failover_version += 1;
         })?;
-        let entry = self.get_by_id(id)?;
+        let _entry = self.get_by_id(id)?;
         self.notify(NamespaceChangeEvent::Failover {
             namespace_id: id.into(),
             active_cluster: new_active_cluster.into(),
@@ -361,7 +361,7 @@ impl FailoverManager {
     ) -> Result<(), NamespaceError> {
         let ns = self.registry.get_by_id(namespace_id)?;
         let from = ns.active_cluster.clone();
-        let name = ns.name.clone();
+        let _name = ns.name.clone();
         self.registry.failover(namespace_id, target_cluster)?;
         let state = FailoverState {
             namespace_id: namespace_id.into(),

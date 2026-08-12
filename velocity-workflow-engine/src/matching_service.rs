@@ -3,7 +3,7 @@
 //! and blocking poll for efficient worker dispatch. Mirrors Temporal's matching service.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Condvar, Mutex, RwLock};
+use std::sync::{Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 // ─── Match Task ──────────────────────────────────────────────────────────────
@@ -336,7 +336,7 @@ impl MatchingService {
         &self,
         task: &MatchTask,
         build_id: &Option<String>,
-        kind: TaskKindFilter,
+        _kind: TaskKindFilter,
     ) -> bool {
         // Version compatibility
         match (&task.build_id, build_id) {
@@ -351,6 +351,7 @@ impl MatchingService {
         true
     }
 
+    #[allow(dead_code)]
     fn try_forward(&self, task: MatchTask, queue_name: &str, from_partition: u64) -> bool {
         if from_partition == 0 {
             return false;
@@ -367,6 +368,7 @@ impl MatchingService {
         false
     }
 
+    #[allow(dead_code)]
     fn try_forward_ref(&self, task: &MatchTask, queue_name: &str, from_partition: u64) -> bool {
         if from_partition == 0 {
             return false;

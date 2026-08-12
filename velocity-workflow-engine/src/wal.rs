@@ -6,7 +6,7 @@
 //! Total header: 1 + 8 + 4 = 13 bytes + data + 4 bytes CRC
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 

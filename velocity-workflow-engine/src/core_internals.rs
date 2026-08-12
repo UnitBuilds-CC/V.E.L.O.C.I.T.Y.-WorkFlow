@@ -10,12 +10,11 @@
 //! 7. **TimerSequence**: Ordered timer management with sequence tracking.
 //! 8. **MutableStateChecksum**: State integrity validation via checksumming.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicU64, AtomicU8, Ordering},
     Mutex, RwLock,
 };
-use std::time::{Duration, Instant};
 
 // ─── 1. Workflow Mutable State ────────────────────────────────────────────────
 
@@ -427,13 +426,13 @@ impl WorkflowMutableState {
 
     // ─── Workflow Completion ──────────────────────────────────────────────
 
-    pub fn complete_workflow(&self, result: Option<Vec<u8>>) {
+    pub fn complete_workflow(&self, _result: Option<Vec<u8>>) {
         self.status.store(2, Ordering::Relaxed); // Completed
         *self.close_time_ms.lock().unwrap() = Some(now_ms());
         self.mutation_count.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn fail_workflow(&self, failure: &str) {
+    pub fn fail_workflow(&self, _failure: &str) {
         self.status.store(3, Ordering::Relaxed); // Failed
         *self.close_time_ms.lock().unwrap() = Some(now_ms());
         self.mutation_count.fetch_add(1, Ordering::Relaxed);

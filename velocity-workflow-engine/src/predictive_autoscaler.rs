@@ -6,10 +6,10 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicI64, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Arc, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Time-Series Data Collection
@@ -291,7 +291,7 @@ impl ScalingEngine {
     pub fn evaluate(
         &self,
         component: &str,
-        current_load: f64,
+        _current_load: f64,
         current_capacity: f64,
     ) -> ScalingDecision {
         let predicted = self.forecaster.predict_peak(component, 30);
@@ -503,7 +503,7 @@ impl WorkerPoolScaler {
             None
         };
 
-        if let Some(ref d) = decision {
+        if decision.is_some() {
             self.stats.scale_events.fetch_add(1, Ordering::Relaxed);
         }
         decision

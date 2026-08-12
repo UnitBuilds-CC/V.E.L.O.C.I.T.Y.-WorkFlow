@@ -1174,6 +1174,7 @@ impl DatabaseAdapter for MysqlAdapter {
 /// Cassandra provides wide-row storage ideal for workflow event histories.
 /// Uses partition key (workflow_key) and clustering key (sequence_num).
 pub struct CassandraAdapter {
+    #[allow(dead_code)]
     config: DatabaseConfig,
     connected: Arc<RwLock<bool>>,
     /// Consistency level for reads.

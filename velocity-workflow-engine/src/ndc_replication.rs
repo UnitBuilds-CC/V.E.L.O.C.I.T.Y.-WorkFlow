@@ -4,10 +4,10 @@
 //! consistency verification — matching Temporal's XDC replication layer.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, RwLock};
 
-use crate::cluster::{ReplicationTask, ReplicationTaskType, VersionHistory, VersionHistoryStore};
+use crate::cluster::{ReplicationTask, VersionHistory, VersionHistoryStore};
 
 // ─── Conflict Resolution ─────────────────────────────────────────────────────
 
@@ -44,6 +44,7 @@ pub struct ConflictResolver {
     version_store: Arc<VersionHistoryStore>,
     local_cluster_id: u64,
     conflicts: Mutex<Vec<ReplicationConflict>>,
+    #[allow(dead_code)]
     next_conflict_id: AtomicU64,
 }
 
@@ -649,6 +650,7 @@ pub struct ConsistencyCheckResult {
 
 /// Verifies eventual consistency across clusters by comparing version histories.
 pub struct ConsistencyChecker {
+    #[allow(dead_code)]
     version_store: Arc<VersionHistoryStore>,
     /// (workflow_key, cluster_id) -> version history snapshot
     cluster_histories: RwLock<HashMap<(u64, u64), VersionHistory>>,

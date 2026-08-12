@@ -4,7 +4,7 @@
 //! task queue counters, matching workers, version set management, redirect rules,
 //! task forwarding protocol, sticky matching, and rate-limited dispatch.
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex, RwLock,
@@ -400,7 +400,7 @@ impl TaskQueueCounter {
         count: u64,
     ) {
         let key = Self::make_key(task_queue, build_id, partition);
-        let mut counts = self.counts.write().unwrap();
+        let counts = self.counts.write().unwrap();
         if let Some(entry) = counts.get(&key) {
             let current = entry.value.load(Ordering::Relaxed);
             entry

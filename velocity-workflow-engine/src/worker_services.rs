@@ -6,10 +6,9 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Worker Deployment Management (11,361 lines in Temporal)
@@ -355,7 +354,7 @@ impl SchedulerService {
         &self,
         namespace_id: &str,
         schedule_id: &str,
-        overlap: Option<SchedulerOverlapPolicy>,
+        _overlap: Option<SchedulerOverlapPolicy>,
     ) -> Result<SchedulerActionResult, SchedulerError> {
         let key = format!("{}/{}", namespace_id, schedule_id);
         let mut schedules = self.schedules.write().unwrap();

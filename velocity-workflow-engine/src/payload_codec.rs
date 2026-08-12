@@ -399,7 +399,7 @@ impl CodecChain {
     pub fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
         let mut result = payload.to_vec();
         for (i, codec) in self.codecs.iter().enumerate() {
-            result = codec.encode(&result).map_err(|e| {
+            result = codec.encode(&result).map_err(|_e| {
                 self.stats.encode_errors.fetch_add(1, Ordering::Relaxed);
                 CodecError::ChainBroken {
                     codec_name: codec.name().to_string(),
@@ -414,7 +414,7 @@ impl CodecChain {
     pub fn decode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
         let mut result = payload.to_vec();
         for (i, codec) in self.codecs.iter().rev().enumerate() {
-            result = codec.decode(&result).map_err(|e| {
+            result = codec.decode(&result).map_err(|_e| {
                 self.stats.decode_errors.fetch_add(1, Ordering::Relaxed);
                 CodecError::ChainBroken {
                     codec_name: codec.name().to_string(),

@@ -4,8 +4,6 @@
 //! for payload transformation.
 
 use std::collections::HashMap;
-use std::io::{Read as IoRead, Write as IoWrite};
-use std::sync::{Arc, Mutex};
 
 /// Trait for payload codecs.
 pub trait PayloadCodec: Send + Sync {

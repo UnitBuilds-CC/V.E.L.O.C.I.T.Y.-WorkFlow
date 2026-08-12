@@ -1559,7 +1559,7 @@ impl WorkflowEngine {
             }
 
             // Create a reset point
-            let reset_id = self.workflow_resetter.create_reset_point(
+            let _reset_id = self.workflow_resetter.create_reset_point(
                 workflow_key,
                 reset_to_event_id,
                 ResetReason::ManualReset,
@@ -1632,7 +1632,7 @@ impl WorkflowEngine {
     /// Complete current workflow and start a new run with the given input.
     /// Returns the new workflow key.
     pub fn continue_as_new(&self, workflow_key: u64, new_input: Option<Vec<u8>>) -> u64 {
-        let (workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps) = {
+        let (_workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps) = {
             let workflows = self.workflows.read().unwrap();
             match workflows.get(&workflow_key) {
                 Some(ctx) => (

@@ -6,10 +6,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Workflow Task Completion
@@ -336,7 +334,7 @@ impl WorkflowTaskHandler {
                         fire_time_ms: cmd.start_to_fire_timeout_ms,
                     });
                 }
-                WorkflowCommand::CompleteWorkflow(cmd) => {
+                WorkflowCommand::CompleteWorkflow(_cmd) => {
                     self.stats
                         .workflows_completed
                         .fetch_add(1, Ordering::Relaxed);
@@ -346,7 +344,7 @@ impl WorkflowTaskHandler {
                         attributes: HashMap::new(),
                     });
                 }
-                WorkflowCommand::FailWorkflow(cmd) => {
+                WorkflowCommand::FailWorkflow(_cmd) => {
                     self.stats.workflows_failed.fetch_add(1, Ordering::Relaxed);
                     result.generated_events.push(GeneratedEvent {
                         event_id,
@@ -354,7 +352,7 @@ impl WorkflowTaskHandler {
                         attributes: HashMap::new(),
                     });
                 }
-                WorkflowCommand::StartChildWorkflow(cmd) => {
+                WorkflowCommand::StartChildWorkflow(_cmd) => {
                     self.stats
                         .child_workflows_started
                         .fetch_add(1, Ordering::Relaxed);
@@ -364,7 +362,7 @@ impl WorkflowTaskHandler {
                         attributes: HashMap::new(),
                     });
                 }
-                WorkflowCommand::SignalExternalWorkflow(cmd) => {
+                WorkflowCommand::SignalExternalWorkflow(_cmd) => {
                     self.stats.signals_sent.fetch_add(1, Ordering::Relaxed);
                     result.generated_events.push(GeneratedEvent {
                         event_id,
@@ -372,7 +370,7 @@ impl WorkflowTaskHandler {
                         attributes: HashMap::new(),
                     });
                 }
-                WorkflowCommand::ContinueAsNew(cmd) => {
+                WorkflowCommand::ContinueAsNew(_cmd) => {
                     self.stats.continue_as_new.fetch_add(1, Ordering::Relaxed);
                     result.generated_events.push(GeneratedEvent {
                         event_id,
@@ -401,7 +399,7 @@ impl WorkflowTaskHandler {
                         attributes: HashMap::new(),
                     });
                 }
-                WorkflowCommand::RecordMarker(cmd) => {
+                WorkflowCommand::RecordMarker(_cmd) => {
                     result.generated_events.push(GeneratedEvent {
                         event_id,
                         event_type: "MarkerRecorded".to_string(),

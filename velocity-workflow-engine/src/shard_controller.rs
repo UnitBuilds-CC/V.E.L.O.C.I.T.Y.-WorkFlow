@@ -582,7 +582,7 @@ impl ShardController {
 
     pub fn health_report(&self) -> ShardHealthReport {
         let contexts = self.shard_contexts.read().unwrap();
-        let total = contexts.len();
+        let _total = contexts.len();
         let owned = contexts.values().filter(|c| c.is_owned()).count();
         let handing_over = contexts
             .values()

@@ -130,6 +130,7 @@ impl PendingAsyncActivity {
 pub struct AsyncActivityRegistry {
     /// Map from token hash to pending activity.
     pending: Mutex<HashMap<u64, PendingAsyncActivity>>,
+    #[allow(dead_code)]
     next_id: AtomicU64,
     /// Stats.
     total_registered: AtomicU64,

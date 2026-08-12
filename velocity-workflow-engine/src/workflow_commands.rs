@@ -485,7 +485,7 @@ impl CommandExecutor {
 
     pub fn execute_commands(&self, commands: &[WorkflowCommand]) -> CommandExecutionResult {
         let mut result = CommandExecutionResult::default();
-        for (idx, cmd) in commands.iter().enumerate() {
+        for (_idx, cmd) in commands.iter().enumerate() {
             self.stats.commands_executed.fetch_add(1, Ordering::Relaxed);
             match cmd {
                 WorkflowCommand::ScheduleActivityTask(act) => {
@@ -553,7 +553,7 @@ impl CommandExecutor {
                     });
                     result.workflow_cancelled = true;
                 }
-                WorkflowCommand::ContinueAsNew(cont) => {
+                WorkflowCommand::ContinueAsNew(_cont) => {
                     let new_run_id = format!("run-{}", now_millis());
                     *self.workflow_result.write().unwrap() =
                         Some(WorkflowResult::ContinuedAsNew { new_run_id });

@@ -45,6 +45,7 @@ impl Counter {
 pub struct Gauge {
     name: String,
     value: AtomicI64,
+    #[allow(dead_code)]
     labels: HashMap<String, String>,
 }
 

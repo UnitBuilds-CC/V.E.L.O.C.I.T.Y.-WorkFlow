@@ -17,10 +17,10 @@
 //!   replication transport is backed by io_uring/RDMA.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 use crate::hardware_traits::{
-    EccAlgorithm, EnclaveHandle, HardwareError, PeerHandle, PeerToPeerReplication, SelfHealingEcc,
+    EccAlgorithm, EnclaveHandle, HardwareError, PeerToPeerReplication, SelfHealingEcc,
     SimulatedEcc, SimulatedSmartNic, SimulatedTee, SmartNicOffload, TeeEnclave, TransferHandle,
     TransferStatus, VerificationResult,
 };
@@ -123,6 +123,7 @@ pub struct HardwareAbstractionLayer {
     ecc: Box<dyn SelfHealingEcc + Send + Sync>,
     nic: Option<Box<dyn SmartNicOffload + Send + Sync>>,
     tee: Option<Box<dyn TeeEnclave + Send + Sync>>,
+    #[allow(dead_code)]
     p2p: Option<Box<dyn PeerToPeerReplication + Send + Sync>>,
     parity_store: RwLock<EccParityStore>,
     /// Whether ECC verification is enabled on the read path.
@@ -349,7 +350,7 @@ impl HardwareAbstractionLayer {
     /// Create a TEE enclave for a workflow slab. Returns the enclave handle.
     pub fn create_slab_enclave(
         &mut self,
-        workflow_key: u64,
+        _workflow_key: u64,
         slab_size: usize,
     ) -> Result<u64, HardwareError> {
         if !self.tee_protection_enabled {

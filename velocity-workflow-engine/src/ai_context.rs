@@ -16,7 +16,6 @@
 //! - Crash-safe context recovery
 
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 /// Maximum context window size in tokens (configurable).
 const DEFAULT_MAX_TOKENS: usize = 128_000;
@@ -145,6 +144,7 @@ impl ContextArena {
     }
 
     /// Read data from the arena at a given offset.
+    #[allow(dead_code)]
     fn read(&self, offset: usize, len: usize) -> &[u8] {
         &self.buffer[offset..offset + len]
     }

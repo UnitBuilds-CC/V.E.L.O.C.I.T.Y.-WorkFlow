@@ -4,12 +4,12 @@
 //! poller management, task versioning, rate limiting, partition management,
 //! load balancing, and task forwarding.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
 };
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Task Queue Partition
@@ -314,7 +314,7 @@ impl LogicalTaskQueue {
         }
     }
 
-    pub fn poll_for_task(&self, identity: &str, build_id: &str) -> Option<InternalTask> {
+    pub fn poll_for_task(&self, _identity: &str, _build_id: &str) -> Option<InternalTask> {
         // Try root partition first
         if let Some(task) = self.root_partition.poll_task() {
             return Some(task);

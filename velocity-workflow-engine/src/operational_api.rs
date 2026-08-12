@@ -16,7 +16,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Mutex, RwLock,
 };
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 // ─── 1. Schedule Backfill ─────────────────────────────────────────────────────
 
@@ -786,7 +786,7 @@ impl WorkflowTaskScheduler {
     pub fn schedule_with_child_verification(
         &self,
         workflow_key: u64,
-        parent_workflow_key: u64,
+        _parent_workflow_key: u64,
     ) -> ScheduledWorkflowTask {
         let mut task = self.schedule(workflow_key, ScheduledTaskType::AfterChildCompletion);
         task.child_verified = true;

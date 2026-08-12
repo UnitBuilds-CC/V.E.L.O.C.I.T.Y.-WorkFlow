@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Mutex, RwLock,
 };
 use std::time::{Duration, Instant};
@@ -274,7 +274,9 @@ pub struct HealthCheckResult {
 /// Periodic health checker for cluster members.
 pub struct ClusterHealthChecker {
     results: RwLock<HashMap<u64, HealthCheckResult>>,
+    #[allow(dead_code)]
     check_interval_ms: u64,
+    #[allow(dead_code)]
     timeout_ms: u64,
     total_checks: AtomicU64,
     total_failures: AtomicU64,

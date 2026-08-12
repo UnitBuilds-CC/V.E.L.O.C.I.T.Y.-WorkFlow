@@ -12,7 +12,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Mutex,
 };
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // ─── Overlap Policy ──────────────────────────────────────────────────────────
 
@@ -546,7 +546,7 @@ fn epoch_secs_to_components(secs: u64) -> DateTimeComponents {
     let dow = ((days + 4) % 7) as u32; // Jan 1, 1970 was Thursday (4)
 
     // Calculate year, month, day from days since epoch
-    let (year, month, day) = days_to_ymd(days);
+    let (_year, month, day) = days_to_ymd(days);
 
     DateTimeComponents {
         second,

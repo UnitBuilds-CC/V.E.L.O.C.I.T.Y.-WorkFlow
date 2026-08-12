@@ -5,10 +5,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // API Request/Response Types
@@ -502,7 +500,7 @@ impl FrontendServiceImpl {
 
     pub fn count_workflow_executions(
         &self,
-        req: &CountWorkflowExecutionsRequest,
+        _req: &CountWorkflowExecutionsRequest,
     ) -> Result<CountWorkflowExecutionsResponse, FrontendError> {
         self.stats
             .workflow_operations
@@ -516,7 +514,7 @@ impl FrontendServiceImpl {
 
     pub fn get_search_attributes(
         &self,
-        req: &GetSearchAttributesRequest,
+        _req: &GetSearchAttributesRequest,
     ) -> Result<GetSearchAttributesResponse, FrontendError> {
         self.stats
             .search_attribute_operations
@@ -573,7 +571,7 @@ impl FrontendServiceImpl {
 
     pub fn reset_workflow_execution(
         &self,
-        req: &ResetWorkflowExecutionRequest,
+        _req: &ResetWorkflowExecutionRequest,
     ) -> Result<ResetWorkflowExecutionResponse, FrontendError> {
         self.stats
             .workflow_operations

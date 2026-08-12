@@ -6,8 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
 use std::time::{Duration, Instant, SystemTime};
 
@@ -410,7 +409,7 @@ impl InsertBuilder {
             let placeholders: Vec<String> = row
                 .iter()
                 .enumerate()
-                .map(|(i, v)| {
+                .map(|(_i, v)| {
                     params.push(v.clone());
                     match self.dialect {
                         SqlDialect::Postgres => format!("${}", params.len()),
@@ -563,6 +562,7 @@ impl DeleteBuilder {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub struct SchemaManager {
+    #[allow(dead_code)]
     dialect: SqlDialect,
     migrations: RwLock<Vec<SchemaMigration>>,
     current_version: AtomicU64,
@@ -819,7 +819,7 @@ pub struct PoolStats {
 impl ConnectionPool {
     pub fn new(config: PoolConfig) -> Self {
         let min_conns = config.min_connections;
-        let mut pool = Self {
+        let pool = Self {
             config,
             connections: RwLock::new(Vec::new()),
             stats: PoolStats::default(),

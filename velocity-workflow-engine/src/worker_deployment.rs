@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeploymentState {

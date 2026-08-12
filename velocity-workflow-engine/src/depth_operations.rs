@@ -7,7 +7,7 @@
 //! - **NamespaceRetention**: History TTL, retention policies, cleanup scheduling
 //! - **WorkflowTaskTracker**: Workflow task scheduling, attempt tracking, sticky reset
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Mutex, RwLock,

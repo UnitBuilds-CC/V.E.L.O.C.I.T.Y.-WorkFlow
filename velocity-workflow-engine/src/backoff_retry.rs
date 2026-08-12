@@ -3,8 +3,7 @@
 //! Covers: exponential backoff, jitter, retry policy calculation,
 //! backoff coordinator, and retry budget tracking.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 // ═══════════════════════════════════════════════════════════════════════════════

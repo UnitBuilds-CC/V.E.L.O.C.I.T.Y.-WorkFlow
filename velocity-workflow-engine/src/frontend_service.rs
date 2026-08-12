@@ -6,10 +6,10 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
 };
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Frontend Service Core
@@ -19,6 +19,7 @@ pub struct FrontendService {
     interceptors: RwLock<Vec<Arc<dyn RequestInterceptor>>>,
     handlers: RwLock<HashMap<String, Arc<dyn ApiHandler>>>,
     stats: FrontendStats,
+    #[allow(dead_code)]
     config: FrontendConfig,
 }
 
@@ -131,7 +132,7 @@ pub struct RateLimitInterceptor {
     pub default_rate: f64,
 }
 
-struct RateLimitState {
+pub struct RateLimitState {
     tokens: f64,
     max_tokens: f64,
     last_refill: Instant,
@@ -268,7 +269,7 @@ impl ApiHandler for SignalWorkflowHandler {
     fn method_name(&self) -> &str {
         "SignalWorkflowExecution"
     }
-    fn handle(&self, request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
+    fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
             payload: b"signal sent".to_vec(),
@@ -284,7 +285,7 @@ impl ApiHandler for QueryWorkflowHandler {
     fn method_name(&self) -> &str {
         "QueryWorkflowExecution"
     }
-    fn handle(&self, request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
+    fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
             payload: b"query result".to_vec(),
@@ -300,7 +301,7 @@ impl ApiHandler for DescribeWorkflowHandler {
     fn method_name(&self) -> &str {
         "DescribeWorkflowExecution"
     }
-    fn handle(&self, request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
+    fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
             payload: b"workflow description".to_vec(),

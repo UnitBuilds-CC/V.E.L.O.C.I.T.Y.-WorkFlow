@@ -4,7 +4,6 @@
 
 use crate::engine::WorkflowStatus;
 use crate::visibility::{SearchAttributeValue, VisibilityIndex, WorkflowExecutionInfo};
-use std::collections::HashMap;
 
 /// A parsed visibility query with filter conditions.
 #[derive(Debug, Clone, Default)]

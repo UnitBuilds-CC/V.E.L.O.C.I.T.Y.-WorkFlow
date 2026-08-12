@@ -5,12 +5,12 @@
 //! history replicator, history importer, branch manager, events reappier, workflow resetter,
 //! mutable state initializer, mutable state mapper, buffer event flusher.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
 };
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
 
 // ─── Replication Task Types ──────────────────────────────────────────────────
 
@@ -569,7 +569,7 @@ impl NewWorkflowTransaction {
         &self,
         state: &mut ReplicatedWorkflowState,
         events: &[ReplicatedEvent],
-        current_run_id: &str,
+        _current_run_id: &str,
     ) -> Result<TransactionResult, ReplicationError> {
         // If current workflow is closed, replace it
         if state.exists && !state.is_running {

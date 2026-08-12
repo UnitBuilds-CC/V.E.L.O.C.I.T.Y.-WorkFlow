@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 /// A single memo entry with metadata.
 #[derive(Debug, Clone)]

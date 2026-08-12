@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    RwLock,
 };
 use std::time::SystemTime;
 
@@ -306,10 +306,10 @@ impl EventApplier {
             HistoryEventType::WorkflowExecutionStarted { .. } => {
                 state.workflow_started = true;
             }
-            HistoryEventType::WorkflowExecutionCompleted { result } => {
+            HistoryEventType::WorkflowExecutionCompleted { result: _ } => {
                 state.workflow_completed = true;
             }
-            HistoryEventType::WorkflowExecutionFailed { reason, .. } => {
+            HistoryEventType::WorkflowExecutionFailed { reason: _, .. } => {
                 state.workflow_failed = true;
             }
             HistoryEventType::WorkflowExecutionTimedOut => {
@@ -351,7 +351,7 @@ impl EventApplier {
             }
             HistoryEventType::ActivityTaskCompleted {
                 result,
-                scheduled_event_id,
+                scheduled_event_id: _,
             } => {
                 if let Some(act) = state
                     .activities
@@ -475,7 +475,7 @@ impl EventApplier {
         Ok(())
     }
 
-    fn find_activity_by_event(&self, state: &AppliedState, event_id: i64) -> Option<String> {
+    fn find_activity_by_event(&self, state: &AppliedState, _event_id: i64) -> Option<String> {
         state.activities.keys().next().cloned()
     }
 
@@ -527,6 +527,7 @@ pub struct ApplyError {
     pub message: String,
 }
 
+#[allow(dead_code)]
 fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

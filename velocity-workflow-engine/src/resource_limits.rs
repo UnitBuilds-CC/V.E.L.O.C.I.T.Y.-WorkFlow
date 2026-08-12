@@ -5,7 +5,7 @@
 //! live counters and rejects operations that would exceed configured limits.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, RwLock};
 
 // ─── Resource Limits ──────────────────────────────────────────────────────────

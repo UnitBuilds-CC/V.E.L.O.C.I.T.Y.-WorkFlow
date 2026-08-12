@@ -5,10 +5,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Visibility Record
@@ -447,7 +445,7 @@ impl QueryEvaluator {
 
     fn like_match(&self, pattern: &str, value: &str) -> bool {
         let pattern = pattern.replace('%', ".*").replace('_', ".");
-        let regex_pattern = format!("^{}$", pattern);
+        let _regex_pattern = format!("^{}$", pattern);
         value.to_lowercase().contains(&pattern.to_lowercase())
     }
 }

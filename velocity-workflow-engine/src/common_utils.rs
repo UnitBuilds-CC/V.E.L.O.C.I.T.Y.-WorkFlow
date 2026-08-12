@@ -4,10 +4,10 @@
 //! metrics framework depth (6.9K), task framework (4.2K),
 //! worker versioning depth (3.7K), RPC utilities.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Mutex, RwLock,
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
 };
 use std::time::{Duration, Instant, SystemTime};
 

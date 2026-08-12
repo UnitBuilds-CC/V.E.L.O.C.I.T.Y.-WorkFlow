@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    Arc,
 };
 use std::time::{Duration, Instant, SystemTime};
 
@@ -165,8 +165,8 @@ impl WorkflowClient {
 
     pub fn list_workflows(
         &self,
-        query: &str,
-        page_size: i32,
+        _query: &str,
+        _page_size: i32,
     ) -> Result<WorkflowListResult, ClientError> {
         Ok(WorkflowListResult {
             executions: vec![],
@@ -174,7 +174,7 @@ impl WorkflowClient {
         })
     }
 
-    pub fn count_workflows(&self, query: &str) -> Result<i64, ClientError> {
+    pub fn count_workflows(&self, _query: &str) -> Result<i64, ClientError> {
         Ok(0)
     }
 
@@ -184,7 +184,9 @@ impl WorkflowClient {
 }
 
 struct WorkflowClientInner {
+    #[allow(dead_code)]
     config: ClientConfig,
+    #[allow(dead_code)]
     connection: ClientConnection,
 }
 
@@ -201,19 +203,19 @@ pub struct WorkflowHandle {
 }
 
 impl WorkflowHandle {
-    pub fn signal(&self, signal_name: &str, input: Option<Vec<u8>>) -> Result<(), ClientError> {
+    pub fn signal(&self, _signal_name: &str, _input: Option<Vec<u8>>) -> Result<(), ClientError> {
         Ok(())
     }
 
     pub fn query(
         &self,
-        query_type: &str,
-        args: Option<Vec<u8>>,
+        _query_type: &str,
+        _args: Option<Vec<u8>>,
     ) -> Result<Option<Vec<u8>>, ClientError> {
         Ok(Some(b"null".to_vec()))
     }
 
-    pub fn terminate(&self, reason: &str) -> Result<(), ClientError> {
+    pub fn terminate(&self, _reason: &str) -> Result<(), ClientError> {
         Ok(())
     }
 
@@ -239,7 +241,7 @@ impl WorkflowHandle {
         })
     }
 
-    pub fn get_history(&self, page_size: i32) -> Result<WorkflowHistory, ClientError> {
+    pub fn get_history(&self, _page_size: i32) -> Result<WorkflowHistory, ClientError> {
         Ok(WorkflowHistory {
             events: vec![],
             next_page_token: None,
@@ -248,7 +250,7 @@ impl WorkflowHandle {
 
     pub fn wait_for_completion(
         &self,
-        timeout: Option<Duration>,
+        _timeout: Option<Duration>,
     ) -> Result<WorkflowResult, ClientError> {
         Ok(WorkflowResult {
             status: WorkflowStatus::Completed,
@@ -259,8 +261,8 @@ impl WorkflowHandle {
 
     pub fn reset(
         &self,
-        reason: &str,
-        reset_point: ResetPointSelector,
+        _reason: &str,
+        _reset_point: ResetPointSelector,
     ) -> Result<String, ClientError> {
         Ok(format!("run-{}", uuid_simple()))
     }
@@ -268,8 +270,8 @@ impl WorkflowHandle {
     pub fn signal_with_start(
         &self,
         options: &StartWorkflowOptions,
-        signal_name: &str,
-        signal_input: Option<Vec<u8>>,
+        _signal_name: &str,
+        _signal_input: Option<Vec<u8>>,
     ) -> Result<WorkflowHandle, ClientError> {
         Ok(WorkflowHandle {
             client: self.client.clone(),
@@ -422,7 +424,9 @@ impl ClientConnection {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub struct ScheduleClient {
+    #[allow(dead_code)]
     config: ClientConfig,
+    #[allow(dead_code)]
     connection: ClientConnection,
 }
 
@@ -528,10 +532,10 @@ impl ScheduleHandle {
     pub fn trigger(&self) -> Result<(), ClientError> {
         Ok(())
     }
-    pub fn pause(&self, note: &str) -> Result<(), ClientError> {
+    pub fn pause(&self, _note: &str) -> Result<(), ClientError> {
         Ok(())
     }
-    pub fn unpause(&self, note: &str) -> Result<(), ClientError> {
+    pub fn unpause(&self, _note: &str) -> Result<(), ClientError> {
         Ok(())
     }
     pub fn delete(&self) -> Result<(), ClientError> {
@@ -539,13 +543,13 @@ impl ScheduleHandle {
     }
     pub fn backfill(
         &self,
-        start: i64,
-        end: i64,
-        overlap: ScheduleOverlapPolicy,
+        _start: i64,
+        _end: i64,
+        _overlap: ScheduleOverlapPolicy,
     ) -> Result<(), ClientError> {
         Ok(())
     }
-    pub fn update(&self, spec: ScheduleSpec) -> Result<(), ClientError> {
+    pub fn update(&self, _spec: ScheduleSpec) -> Result<(), ClientError> {
         Ok(())
     }
 }
@@ -562,7 +566,9 @@ pub struct ScheduleDescription {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub struct NamespaceClient {
+    #[allow(dead_code)]
     config: ClientConfig,
+    #[allow(dead_code)]
     connection: ClientConnection,
 }
 
@@ -574,7 +580,7 @@ impl NamespaceClient {
         }
     }
 
-    pub fn register(&self, name: &str, options: NamespaceOptions) -> Result<String, ClientError> {
+    pub fn register(&self, _name: &str, _options: NamespaceOptions) -> Result<String, ClientError> {
         Ok(format!("ns-{}", uuid_simple()))
     }
 
@@ -589,11 +595,11 @@ impl NamespaceClient {
         })
     }
 
-    pub fn update(&self, name: &str, options: NamespaceOptions) -> Result<(), ClientError> {
+    pub fn update(&self, _name: &str, _options: NamespaceOptions) -> Result<(), ClientError> {
         Ok(())
     }
 
-    pub fn deprecate(&self, name: &str) -> Result<(), ClientError> {
+    pub fn deprecate(&self, _name: &str) -> Result<(), ClientError> {
         Ok(())
     }
 
@@ -628,7 +634,9 @@ pub struct NamespaceDescription {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub struct SearchAttributeClient {
+    #[allow(dead_code)]
     config: ClientConfig,
+    #[allow(dead_code)]
     connection: ClientConnection,
 }
 
@@ -649,8 +657,8 @@ impl SearchAttributeClient {
 
     pub fn register_custom_attribute(
         &self,
-        name: &str,
-        attr_type: SearchAttributeType,
+        _name: &str,
+        _attr_type: SearchAttributeType,
     ) -> Result<(), ClientError> {
         Ok(())
     }
@@ -681,14 +689,14 @@ pub enum SearchAttributeType {
 pub trait ClientInterceptor: Send + Sync {
     fn intercept_start_workflow(
         &self,
-        options: &mut StartWorkflowOptions,
+        _options: &mut StartWorkflowOptions,
     ) -> Result<(), ClientError> {
         Ok(())
     }
-    fn intercept_signal(&self, workflow_id: &str, signal_name: &str) -> Result<(), ClientError> {
+    fn intercept_signal(&self, _workflow_id: &str, _signal_name: &str) -> Result<(), ClientError> {
         Ok(())
     }
-    fn intercept_query(&self, workflow_id: &str, query_type: &str) -> Result<(), ClientError> {
+    fn intercept_query(&self, _workflow_id: &str, _query_type: &str) -> Result<(), ClientError> {
         Ok(())
     }
 }

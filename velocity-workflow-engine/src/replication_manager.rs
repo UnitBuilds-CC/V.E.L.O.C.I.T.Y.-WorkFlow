@@ -8,7 +8,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Cluster Replication Config
@@ -344,7 +344,7 @@ impl ReplicationManager {
         clusters
             .values()
             .map(|c| {
-                let stream_key = format!("{}->", c.cluster_name);
+                let _stream_key = format!("{}->", c.cluster_name);
                 let connected = streams
                     .values()
                     .any(|s| s.source_cluster == c.cluster_name && s.is_connected());

@@ -4,9 +4,9 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::sync::{Condvar, Mutex, RwLock};
+use std::sync::{Mutex, RwLock};
 
-use crate::task_queue::{TaskItem, TaskKind, TaskQueue};
+use crate::task_queue::{TaskItem, TaskQueue};
 
 /// A single partition of a task queue with hierarchical depth.
 pub struct TaskQueuePartition {
@@ -131,6 +131,7 @@ pub enum ScaleDecision {
 pub struct PartitionManager {
     partitions: RwLock<HashMap<u32, TaskQueuePartition>>,
     next_partition_id: AtomicU64,
+    #[allow(dead_code)]
     num_partitions: u32,
     /// Maximum depth of the partition tree.
     max_depth: u32,

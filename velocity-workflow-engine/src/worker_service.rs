@@ -4,7 +4,7 @@
 //! Mirrors Temporal's worker service.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 // ─── System Workflow Kinds ───────────────────────────────────────────────────
@@ -155,6 +155,7 @@ pub struct WorkerService {
     max_total_queue_depth: u64,
     /// Max total concurrent workers.
     max_total_workers: u32,
+    #[allow(dead_code)]
     next_task_id: std::sync::atomic::AtomicU64,
 }
 

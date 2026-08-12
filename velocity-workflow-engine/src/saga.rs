@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 
 /// A single step in a saga, with a compensation action.
 #[derive(Debug, Clone)]

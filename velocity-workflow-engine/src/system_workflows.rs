@@ -9,9 +9,9 @@
 //! 6. **QueueCleanupWorkflow**: Cleans up completed queue entries.
 //! 7. **ReplicationRepairWorkflow**: Repairs replication inconsistencies.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Mutex, RwLock,
 };
 use std::time::{Duration, Instant};
@@ -66,7 +66,7 @@ impl ParentClosePolicyExecutor {
     }
 
     /// Register child workflows for a parent.
-    pub fn register_children(&self, parent_key: u64, children: Vec<ChildWorkflowRef>) {
+    pub fn register_children(&self, _parent_key: u64, children: Vec<ChildWorkflowRef>) {
         self.pending_children.lock().unwrap().extend(children);
     }
 
@@ -320,6 +320,7 @@ pub struct WorkflowScanner {
     next_scan_id: AtomicU64,
     total_scans: AtomicU64,
     total_repaired: AtomicU64,
+    #[allow(dead_code)]
     total_failed: AtomicU64,
     scan_interval_ms: u64,
     last_scan_time: Mutex<Option<Instant>>,
@@ -670,6 +671,7 @@ pub struct HistoryArchivalWorkflow {
     pending_archivals: Mutex<Vec<ArchivalWorkflowState>>,
     completed_archivals: Mutex<Vec<ArchivalWorkflowState>>,
     total_archived: AtomicU64,
+    #[allow(dead_code)]
     total_failed: AtomicU64,
 }
 
@@ -808,6 +810,7 @@ pub struct ReplicationRepairWorkflow {
     pending_repairs: Mutex<Vec<ReplicationRepairTask>>,
     completed_repairs: Mutex<Vec<ReplicationRepairTask>>,
     total_repaired: AtomicU64,
+    #[allow(dead_code)]
     total_failed: AtomicU64,
 }
 

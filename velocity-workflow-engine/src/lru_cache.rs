@@ -5,8 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
 use std::time::{Duration, Instant};
 
@@ -15,6 +14,7 @@ use std::time::{Duration, Instant};
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct CacheNode<K: Clone, V: Clone> {
     key: K,
     value: V,

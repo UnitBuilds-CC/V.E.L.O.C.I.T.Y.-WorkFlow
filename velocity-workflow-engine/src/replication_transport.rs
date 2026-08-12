@@ -3,9 +3,9 @@
 //! Supports both push (enqueue for delivery) and pull (poll-based retrieval) models.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
-use crate::cluster::{ReplicationTask, ReplicationTaskType};
+use crate::cluster::ReplicationTask;
 
 /// Status of a replication link to a remote cluster.
 #[derive(Debug, Clone)]

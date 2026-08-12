@@ -6,10 +6,9 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicI64, AtomicU64, Ordering},
-    Arc, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // History Engine Config
@@ -58,6 +57,7 @@ pub struct HistoryEngine {
     signal_buffer: RwLock<HashMap<String, Vec<BufferedSignal>>>,
     query_registry: RwLock<HashMap<String, Vec<PendingQuery>>>,
     replication_tasks: RwLock<VecDeque<ReplicationTaskInfo>>,
+    #[allow(dead_code)]
     timer_tasks: RwLock<VecDeque<TimerTaskInfo>>,
     transfer_tasks: RwLock<VecDeque<TransferTaskInfo>>,
     stats: HistoryEngineStats,
@@ -501,7 +501,7 @@ impl HistoryEngine {
     ) -> Result<String, HistoryEngineError> {
         let key = format!("{}:{}", namespace_id, workflow_id);
         let workflows = self.workflows.read().unwrap();
-        let wf = workflows
+        let _wf = workflows
             .get(&key)
             .ok_or(HistoryEngineError::WorkflowNotFound)?;
 
@@ -576,7 +576,7 @@ impl HistoryEngine {
         &self,
         namespace_id: &str,
         workflow_id: &str,
-        reason: &str,
+        _reason: &str,
     ) -> Result<(), HistoryEngineError> {
         let key = format!("{}:{}", namespace_id, workflow_id);
         let mut workflows = self.workflows.write().unwrap();
@@ -613,9 +613,9 @@ impl HistoryEngine {
 
     pub fn complete_workflow_task(
         &self,
-        task_token: &[u8],
+        _task_token: &[u8],
         commands: Vec<WorkflowCommandInfo>,
-        identity: &str,
+        _identity: &str,
     ) -> Result<WorkflowTaskCompletionResult, HistoryEngineError> {
         self.stats
             .workflow_tasks_completed
@@ -631,15 +631,15 @@ impl HistoryEngine {
             match cmd {
                 WorkflowCommandInfo::ScheduleActivity {
                     activity_id,
-                    activity_type,
-                    task_queue,
+                    activity_type: _,
+                    task_queue: _,
                 } => {
                     self.stats
                         .activities_scheduled
                         .fetch_add(1, Ordering::Relaxed);
                     result.scheduled_activities.push(activity_id.clone());
                 }
-                WorkflowCommandInfo::StartTimer { timer_id, fire_at } => {
+                WorkflowCommandInfo::StartTimer { timer_id, fire_at: _ } => {
                     self.stats.timers_created.fetch_add(1, Ordering::Relaxed);
                     result.started_timers.push(timer_id.clone());
                 }
@@ -648,7 +648,7 @@ impl HistoryEngine {
                         .workflows_completed
                         .fetch_add(1, Ordering::Relaxed);
                 }
-                WorkflowCommandInfo::FailWorkflow { message } => {
+                WorkflowCommandInfo::FailWorkflow { message: _ } => {
                     self.stats.workflows_failed.fetch_add(1, Ordering::Relaxed);
                 }
                 WorkflowCommandInfo::CancelWorkflow => {
@@ -656,32 +656,32 @@ impl HistoryEngine {
                         .workflows_cancelled
                         .fetch_add(1, Ordering::Relaxed);
                 }
-                WorkflowCommandInfo::ContinueAsNew { workflow_type } => {
+                WorkflowCommandInfo::ContinueAsNew { workflow_type: _ } => {
                     // Handled by state machine
                 }
                 WorkflowCommandInfo::SignalExternal {
-                    workflow_id,
-                    signal_name,
+                    workflow_id: _,
+                    signal_name: _,
                 } => {
                     // Queue external signal
                 }
                 WorkflowCommandInfo::StartChildWorkflow {
-                    workflow_id,
-                    workflow_type,
+                    workflow_id: _,
+                    workflow_type: _,
                 } => {
                     self.stats
                         .child_workflows_started
                         .fetch_add(1, Ordering::Relaxed);
                 }
-                WorkflowCommandInfo::RecordMarker { marker_name } => {
+                WorkflowCommandInfo::RecordMarker { marker_name: _ } => {
                     // Record marker event
                 }
-                WorkflowCommandInfo::UpsertSearchAttributes { attributes } => {
+                WorkflowCommandInfo::UpsertSearchAttributes { attributes: _ } => {
                     // Update search attributes
                 }
                 WorkflowCommandInfo::ScheduleNexusOperation {
-                    endpoint,
-                    operation,
+                    endpoint: _,
+                    operation: _,
                 } => {
                     // Schedule nexus operation
                 }

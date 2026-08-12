@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Arc, RwLock,
 };
 use std::time::{Duration, SystemTime};

@@ -12,7 +12,6 @@
 //! - Short-lived workflow optimization (sub-second consensus)
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Raft node states.

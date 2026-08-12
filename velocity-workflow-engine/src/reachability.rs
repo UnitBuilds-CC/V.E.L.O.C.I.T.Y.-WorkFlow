@@ -4,7 +4,7 @@
 //! which helps determine if workflows can make progress.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 /// Type of reachability being checked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

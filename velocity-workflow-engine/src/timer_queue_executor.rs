@@ -1,12 +1,11 @@
 //! Timer queue executor matching Temporal's timer queue task processing (~3K lines).
 //! Covers: timer task types, scheduling, firing, timeout detection, backoff timers.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TimerTaskKind {

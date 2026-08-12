@@ -4,12 +4,12 @@
 //! real-time anomaly detection, performance profiling, structured logging,
 //! and predictive alerting — all built-in, zero-config.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
     atomic::{AtomicI64, AtomicU64, Ordering},
     Arc, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Distributed Trace

@@ -1,12 +1,11 @@
 //! Transfer queue executor matching Temporal's transfer task processing (~3K lines).
 //! Covers: transfer task types, processing, activity/task dispatch, close workflow, child workflow, signal, delete.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    atomic::{AtomicU64, Ordering}, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferTaskKind {

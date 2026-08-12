@@ -3,12 +3,11 @@
 //! Covers: TimeSource trait, real time, mock time, time-skipping time source,
 //! hybrid logical clock, timer handles, and scheduled timers.
 
-use std::collections::BTreeMap;
 use std::sync::{
-    atomic::{AtomicI64, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Arc, RwLock,
 };
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Time Source Trait
@@ -108,6 +107,7 @@ pub struct MockTimeSource {
 
 #[derive(Debug)]
 struct MockTimerEntry {
+    #[allow(dead_code)]
     id: u64,
     fire_at: SystemTime,
     fired: Arc<std::sync::atomic::AtomicBool>,

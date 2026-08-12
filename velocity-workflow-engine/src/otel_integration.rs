@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tracing
@@ -561,17 +561,17 @@ impl WorkflowTelemetry {
     }
 
     /// Record a signal delivery.
-    pub fn record_signal(&self, signal_name: &str) {
+    pub fn record_signal(&self, _signal_name: &str) {
         self.metrics.counter_add("velocity.signals.delivered", 1);
     }
 
     /// Record a query.
-    pub fn record_query(&self, query_type: &str) {
+    pub fn record_query(&self, _query_type: &str) {
         self.metrics.counter_add("velocity.queries.served", 1);
     }
 
     /// Record a task queue poll.
-    pub fn record_poll(&self, task_queue: &str, latency_ms: u64) {
+    pub fn record_poll(&self, _task_queue: &str, latency_ms: u64) {
         self.metrics
             .histogram_record("velocity.poll.latency", latency_ms as f64);
     }

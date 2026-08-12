@@ -11,7 +11,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Arc, Condvar, Mutex,
 };
 use std::time::{Duration, Instant};
@@ -94,8 +94,10 @@ pub struct Reservation {
     /// How long to wait before the action can proceed.
     delay: Duration,
     /// Reference back to the limiter for cancellation.
+    #[allow(dead_code)]
     limiter_id: u64,
     /// Tokens reserved.
+    #[allow(dead_code)]
     tokens: u32,
 }
 
@@ -162,6 +164,7 @@ pub struct ClockedRateLimiter {
     last_refill: Mutex<Instant>,
     /// Channel-like mechanism for token recycling.
     recycle_notify: Condvar,
+    #[allow(dead_code)]
     recycle_mutex: Mutex<bool>,
     id: u64,
 }
@@ -491,7 +494,9 @@ impl PriorityRateLimiter {
 /// Mirrors Temporal's `RoutingRateLimiterImpl` and `MapRequestRateLimiter`.
 pub struct RoutingRateLimiter {
     per_api: Mutex<HashMap<String, Arc<ClockedRateLimiter>>>,
+    #[allow(dead_code)]
     default_rate: f64,
+    #[allow(dead_code)]
     default_burst: u64,
 }
 
@@ -657,7 +662,9 @@ impl DelayedRateLimiter {
 pub struct NamespaceRateLimiter {
     global: Arc<ClockedRateLimiter>,
     namespace_limiters: Mutex<HashMap<String, Arc<ClockedRateLimiter>>>,
+    #[allow(dead_code)]
     default_ns_rate: f64,
+    #[allow(dead_code)]
     default_ns_burst: u64,
 }
 
@@ -766,7 +773,9 @@ impl NamespaceRateLimiter {
 pub struct RateLimiter {
     global_bucket: TokenBucket,
     namespace_buckets: Mutex<HashMap<u64, TokenBucket>>,
+    #[allow(dead_code)]
     default_rate: f64,
+    #[allow(dead_code)]
     default_capacity: u64,
 }
 

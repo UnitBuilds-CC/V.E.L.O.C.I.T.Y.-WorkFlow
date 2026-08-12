@@ -15,7 +15,6 @@
 //! - Crash recovery for in-flight RPCs
 
 use std::collections::{HashMap, VecDeque};
-use std::time::Instant;
 
 /// Unique identifier for a durable RPC call.
 pub type DurableRpcId = u64;

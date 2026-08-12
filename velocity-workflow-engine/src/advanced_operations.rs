@@ -610,7 +610,7 @@ impl TimeSkipController {
     /// Process any scheduled skips that are due.
     pub fn process_scheduled(&mut self) -> Vec<String> {
         let mut fired = Vec::new();
-        while let Some((at, label)) = self.scheduled_skips.front() {
+        while let Some((at, _label)) = self.scheduled_skips.front() {
             if *at <= self.skipped {
                 let (_, label) = self.scheduled_skips.pop_front().unwrap();
                 fired.push(label);
@@ -1050,7 +1050,7 @@ impl DlqAdminController {
 
     /// Purge (delete) all tasks from a DLQ. Returns count of purged tasks.
     pub fn purge(&mut self, queue_name: &str) -> u64 {
-        let count = self
+        let _count = self
             .queues
             .get(queue_name)
             .map(|q| q.len() as u64)

@@ -4,12 +4,12 @@
 //! active/standby executor, grouper, iterator, queue actions, alerts, and monitoring.
 //! This is the core task processing pipeline that drives all queue-based operations.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, RwLock,
 };
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Task Predicate
@@ -270,7 +270,7 @@ impl QueueSlice {
         self.stats
             .total_latency_ms
             .fetch_add(latency, Ordering::Relaxed);
-        let mut max = self.stats.max_latency_ms.load(Ordering::Relaxed);
+        let max = self.stats.max_latency_ms.load(Ordering::Relaxed);
         if latency > max {
             self.stats.max_latency_ms.store(latency, Ordering::Relaxed);
         }
@@ -732,7 +732,7 @@ impl ActiveStandbyExecutor {
             ClusterRole::Active => {
                 let slices = self.active_slices.read().unwrap();
                 for slice in slices.iter() {
-                    if let Some((key, wf_id, state, attempt)) = slice.process_next() {
+                    if let Some((key, _wf_id, _state, _attempt)) = slice.process_next() {
                         self.stats.active_executions.fetch_add(1, Ordering::Relaxed);
                         return Some(ActionResult::Success {
                             message: format!("Task {} completed", key.task_id),

@@ -3,7 +3,6 @@
 //! Workflow code must be deterministic for replay to work correctly.
 //! This module tracks side effects and detects non-deterministic operations.
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// Severity of a determinism violation.
@@ -87,7 +86,7 @@ impl DeterminismChecker {
     }
 
     /// Check determinism for a workflow step.
-    pub fn check_determinism(&self, workflow_key: u64, step: u32) -> DeterminismResult {
+    pub fn check_determinism(&self, _workflow_key: u64, step: u32) -> DeterminismResult {
         let violations = self.violations.lock().unwrap();
         let side_effects = self.side_effects.lock().unwrap();
 

@@ -541,7 +541,7 @@ impl GradualChange {
             let progress = elapsed.as_secs_f64() / self.duration.as_secs_f64();
             match (&self.from_value, &self.to_value) {
                 (ConfigValue::Int(from), ConfigValue::Int(to)) => {
-                    let interpolated = *from + ((*to - *from) as f64 * progress) as i64;
+                    let _interpolated = *from + ((*to - *from) as f64 * progress) as i64;
                     // We can't return a reference to a temporary, so we use the to_value
                     // In a real impl, we'd cache this. For now, use majority vote.
                     if progress >= 0.5 {
@@ -550,7 +550,7 @@ impl GradualChange {
                         &self.from_value
                     }
                 }
-                (ConfigValue::Float(from), ConfigValue::Float(to)) => {
+                (ConfigValue::Float(_from), ConfigValue::Float(_to)) => {
                     if progress >= 0.5 {
                         &self.to_value
                     } else {

@@ -3,8 +3,8 @@
 //! Enables intelligent load-aware task dispatch.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::RwLock;
 use std::time::Instant;
 
 /// A registered worker with its capabilities and health state.
@@ -46,6 +46,7 @@ pub struct WorkerRegistry {
     next_worker_id: AtomicU64,
     start_time: Instant,
     /// Round-robin counter for load-balanced dispatch.
+    #[allow(dead_code)]
     dispatch_counter: AtomicU64,
 }
 

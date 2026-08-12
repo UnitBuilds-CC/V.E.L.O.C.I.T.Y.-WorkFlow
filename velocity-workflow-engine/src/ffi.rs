@@ -2834,7 +2834,7 @@ pub unsafe extern "C" fn velocity_engine_complete_activity(
 pub unsafe extern "C" fn velocity_engine_fail_activity(
     handle: *mut EngineHandle,
     workflow_key: u64,
-    step: u32,
+    _step: u32,
 ) -> i32 {
     if handle.is_null() {
         return -1;
@@ -2969,6 +2969,7 @@ pub unsafe extern "C" fn velocity_engine_set_gauge(
 
 /// Callback for saga step definitions. Called for each step.
 /// Returns: (workflow_type_id, comp_type_id, has_comp)
+#[allow(dead_code)]
 type SagaStepCallback = unsafe extern "C" fn(u32, *const u8, u32, u64, u64, *mut std::ffi::c_void);
 
 #[no_mangle]
@@ -3903,7 +3904,7 @@ pub unsafe extern "C" fn velocity_engine_retrieve_workflow(
     if handle.is_null() || out_status.is_null() {
         return -1;
     }
-    let h = &*handle;
+    let _h = &*handle;
 
     let base_dir = if base_dir_ptr.is_null() || base_dir_len == 0 {
         "velocity_cold_storage".to_string()
@@ -6638,7 +6639,7 @@ pub extern "C" fn velocity_engine_repl_daemon_start(engine: *mut std::ffi::c_voi
 
 /// Stop the replication daemon.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_stop(engine: *mut std::ffi::c_void) -> u32 {
+pub extern "C" fn velocity_engine_repl_daemon_stop(_engine: *mut std::ffi::c_void) -> u32 {
     if let Some(daemon) = REPL_DAEMON.get() {
         daemon.stop();
         1
@@ -6649,7 +6650,7 @@ pub extern "C" fn velocity_engine_repl_daemon_stop(engine: *mut std::ffi::c_void
 
 /// Check if the daemon is running.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_is_running(engine: *mut std::ffi::c_void) -> u32 {
+pub extern "C" fn velocity_engine_repl_daemon_is_running(_engine: *mut std::ffi::c_void) -> u32 {
     if let Some(daemon) = REPL_DAEMON.get() {
         if daemon.is_running() {
             1
@@ -6672,7 +6673,7 @@ pub extern "C" fn velocity_engine_repl_daemon_poll_once(engine: *mut std::ffi::c
 
 /// Get daemon stats: total_cycles.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_stat_cycles(engine: *mut std::ffi::c_void) -> u64 {
+pub extern "C" fn velocity_engine_repl_daemon_stat_cycles(_engine: *mut std::ffi::c_void) -> u64 {
     if let Some(daemon) = REPL_DAEMON.get() {
         daemon.stats().total_cycles
     } else {
@@ -6682,7 +6683,7 @@ pub extern "C" fn velocity_engine_repl_daemon_stat_cycles(engine: *mut std::ffi:
 
 /// Get daemon stats: total_outgoing_delivered.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_stat_delivered(engine: *mut std::ffi::c_void) -> u64 {
+pub extern "C" fn velocity_engine_repl_daemon_stat_delivered(_engine: *mut std::ffi::c_void) -> u64 {
     if let Some(daemon) = REPL_DAEMON.get() {
         daemon.stats().total_outgoing_delivered
     } else {
@@ -6692,7 +6693,7 @@ pub extern "C" fn velocity_engine_repl_daemon_stat_delivered(engine: *mut std::f
 
 /// Get daemon stats: total_incoming_applied.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_stat_applied(engine: *mut std::ffi::c_void) -> u64 {
+pub extern "C" fn velocity_engine_repl_daemon_stat_applied(_engine: *mut std::ffi::c_void) -> u64 {
     if let Some(daemon) = REPL_DAEMON.get() {
         daemon.stats().total_incoming_applied
     } else {
@@ -6702,7 +6703,7 @@ pub extern "C" fn velocity_engine_repl_daemon_stat_applied(engine: *mut std::ffi
 
 /// Get daemon stats: total failures (outgoing + incoming).
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_stat_failures(engine: *mut std::ffi::c_void) -> u64 {
+pub extern "C" fn velocity_engine_repl_daemon_stat_failures(_engine: *mut std::ffi::c_void) -> u64 {
     if let Some(daemon) = REPL_DAEMON.get() {
         let s = daemon.stats();
         s.total_outgoing_failed + s.total_incoming_failed
@@ -6713,7 +6714,7 @@ pub extern "C" fn velocity_engine_repl_daemon_stat_failures(engine: *mut std::ff
 
 /// Get daemon stats: uptime_ms.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_stat_uptime(engine: *mut std::ffi::c_void) -> u64 {
+pub extern "C" fn velocity_engine_repl_daemon_stat_uptime(_engine: *mut std::ffi::c_void) -> u64 {
     if let Some(daemon) = REPL_DAEMON.get() {
         daemon.stats().uptime_ms
     } else {
@@ -6723,7 +6724,7 @@ pub extern "C" fn velocity_engine_repl_daemon_stat_uptime(engine: *mut std::ffi:
 
 /// Get count of recent delivery log entries.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_delivery_count(engine: *mut std::ffi::c_void) -> u64 {
+pub extern "C" fn velocity_engine_repl_daemon_delivery_count(_engine: *mut std::ffi::c_void) -> u64 {
     if let Some(daemon) = REPL_DAEMON.get() {
         daemon.recent_deliveries(10_000).len() as u64
     } else {
@@ -6961,10 +6962,10 @@ pub extern "C" fn velocity_ai_add_tool_call(
     args: *const u8,
     args_len: u32,
 ) -> u64 {
-    let t = unsafe {
+    let _t = unsafe {
         std::str::from_utf8_unchecked(std::slice::from_raw_parts(tool, tool_len as usize))
     };
-    let a = unsafe {
+    let _a = unsafe {
         std::str::from_utf8_unchecked(std::slice::from_raw_parts(args, args_len as usize))
     };
     let ctx = get_ai_ctx().lock().unwrap();
@@ -7946,7 +7947,7 @@ pub unsafe extern "C" fn velocity_deployment_count(manager_id: u64) -> u32 {
 
 // ─── Codec Server ────────────────────────────────────────────────────────────
 
-use crate::codec_server::{CodecRequest, CodecServer};
+use crate::codec_server::CodecServer;
 
 static CODEC_SERVERS: Mutex<Option<HashMap<u64, CodecServer>>> = Mutex::new(None);
 
