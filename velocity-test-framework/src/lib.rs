@@ -25,7 +25,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -89,7 +89,7 @@ struct TestWorkflowExecution {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct TestHistoryEvent {
+pub struct TestHistoryEvent {
     event_id: u64,
     event_type: String,
     timestamp: i64,
@@ -114,6 +114,7 @@ pub struct TestServer {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct NamespaceState {
     name: String,
     is_active: bool,
@@ -121,6 +122,7 @@ struct NamespaceState {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct TaskQueueState {
     name: String,
     pending_tasks: u64,

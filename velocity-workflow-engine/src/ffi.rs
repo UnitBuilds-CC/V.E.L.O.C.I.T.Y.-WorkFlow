@@ -10,7 +10,7 @@ use crate::workflow_reset::ResetReason;
 // ─── Opaque handle ────────────────────────────────────────────────────────────
 
 /// Opaque engine handle exposed to C#. The C# side holds a `void*` to this.
-struct EngineHandle {
+pub struct EngineHandle {
     engine: Arc<WorkflowEngine>,
 }
 

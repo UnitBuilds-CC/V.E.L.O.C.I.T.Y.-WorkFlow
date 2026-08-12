@@ -350,13 +350,13 @@ impl MetricsCollector {
 
 /// Probes system-level metrics (memory, CPU) for the current process.
 pub struct SystemMetricsProbe {
-    pid: u32,
+    _pid: u32,
 }
 
 impl SystemMetricsProbe {
     pub fn new() -> Self {
         Self {
-            pid: std::process::id(),
+            _pid: std::process::id(),
         }
     }
 
