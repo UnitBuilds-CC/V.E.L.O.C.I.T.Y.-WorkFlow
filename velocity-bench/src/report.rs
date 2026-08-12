@@ -65,18 +65,17 @@ impl ComparisonRow {
             0.0
         };
 
-        let p50_delta = if temporal.start_latency.p50_us > 0 {
-            ((velocity.start_latency.p50_us as f64 - temporal.start_latency.p50_us as f64)
-                / temporal.start_latency.p50_us as f64)
-                * 100.0
+        let vel_lat = velocity.primary_latency(name);
+        let tmp_lat = temporal.primary_latency(name);
+
+        let p50_delta = if tmp_lat.p50_us > 0 {
+            ((vel_lat.p50_us as f64 - tmp_lat.p50_us as f64) / tmp_lat.p50_us as f64) * 100.0
         } else {
             0.0
         };
 
-        let p99_delta = if temporal.start_latency.p99_us > 0 {
-            ((velocity.start_latency.p99_us as f64 - temporal.start_latency.p99_us as f64)
-                / temporal.start_latency.p99_us as f64)
-                * 100.0
+        let p99_delta = if tmp_lat.p99_us > 0 {
+            ((vel_lat.p99_us as f64 - tmp_lat.p99_us as f64) / tmp_lat.p99_us as f64) * 100.0
         } else {
             0.0
         };
@@ -109,19 +108,19 @@ impl ComparisonRow {
             workload_name: name.into(),
             workload_description: description.into(),
             velocity_ops_per_sec: velocity.operations_per_second,
-            velocity_p50_us: velocity.start_latency.p50_us,
-            velocity_p95_us: velocity.start_latency.p95_us,
-            velocity_p99_us: velocity.start_latency.p99_us,
-            velocity_p999_us: velocity.start_latency.p999_us,
+            velocity_p50_us: vel_lat.p50_us,
+            velocity_p95_us: vel_lat.p95_us,
+            velocity_p99_us: vel_lat.p99_us,
+            velocity_p999_us: vel_lat.p999_us,
             velocity_peak_memory_mb: velocity.peak_memory_mb,
             velocity_peak_cpu: velocity.peak_cpu_percent,
             velocity_error_rate: vel_err,
             velocity_total_ops: velocity.total_operations,
             temporal_ops_per_sec: temporal.operations_per_second,
-            temporal_p50_us: temporal.start_latency.p50_us,
-            temporal_p95_us: temporal.start_latency.p95_us,
-            temporal_p99_us: temporal.start_latency.p99_us,
-            temporal_p999_us: temporal.start_latency.p999_us,
+            temporal_p50_us: tmp_lat.p50_us,
+            temporal_p95_us: tmp_lat.p95_us,
+            temporal_p99_us: tmp_lat.p99_us,
+            temporal_p999_us: tmp_lat.p999_us,
             temporal_peak_memory_mb: temporal.peak_memory_mb,
             temporal_peak_cpu: temporal.peak_cpu_percent,
             temporal_error_rate: tmp_err,

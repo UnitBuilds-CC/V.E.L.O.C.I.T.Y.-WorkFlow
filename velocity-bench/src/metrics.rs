@@ -88,6 +88,16 @@ impl MetricsSnapshot {
         }
         self.failed_operations as f64 / self.total_operations as f64 * 100.0
     }
+
+    /// Return the primary latency bucket for a given workload kind.
+    /// signal_storm → signal_latency, query_burst → query_latency, else → start_latency.
+    pub fn primary_latency(&self, workload_kind: &str) -> &LatencyBucket {
+        match workload_kind {
+            "signal_storm" => &self.signal_latency,
+            "query_burst" => &self.query_latency,
+            _ => &self.start_latency,
+        }
+    }
 }
 
 impl Default for MetricsSnapshot {
