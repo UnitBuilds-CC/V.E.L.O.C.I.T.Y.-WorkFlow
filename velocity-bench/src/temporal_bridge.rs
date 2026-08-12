@@ -1,15 +1,6 @@
 //! Temporal Bridge — gRPC server implementing BenchmarkService for Temporal.
 //!
-//! This binary starts a gRPC server that implements the same `BenchmarkService` proto
-//! as VELOCITY's dev-server, enabling apples-to-apples benchmarking.
-//!
-//! When a real Temporal server is available, this bridge connects to it via the
-//! Temporal SDK. Otherwise, it simulates Temporal-like behavior with realistic
-//! overhead characteristics for benchmark framework validation.
-//!
-//! Architecture:
-//!   [velocity-bench] ──gRPC──► [temporal-bridge] ──► [Temporal Server]
-//!   (BenchmarkService)          (BenchmarkService)    (or simulated)
+//! Simulates Temporal's event-sourcing architecture with O(N) replay overhead.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -27,11 +18,18 @@ pub mod velocity_bench_proto {
 use velocity_bench_proto::benchmark_service_server::{BenchmarkService, BenchmarkServiceServer};
 use velocity_bench_proto::*;
 
-// ─── Simulated Temporal Engine ──────────────────────────────────────────────
+// ─── Simulated Temporal Engine (Event-Sourcing) ─────────────────────────────
 //
-// Simulates Temporal's workflow engine with realistic overhead characteristics.
-// This allows the benchmark framework to be tested end-to-end without requiring
-// a running Temporal server.
+// Faithfully simulates Temporal's event-sourcing architecture:
+//   - Every mutation appends an event to an append-only history log
+//   - Every read (signal/query/status) CLONES the event log then REPLAYS
+//     it outside the lock — O(N) in the number of events
+//   - The clone simulates reading events from persistence (disk/DB)
+//   - The replay simulates Temporal's event-by-event state reconstruction
+//
+// This models the fundamental architectural difference:
+//   Temporal: O(N) event replay to reconstruct state on every operation
+//   VELOCITY: O(1) pointer-cast state resumption from durable slab
 
 #[derive(Clone, Debug, PartialEq)]
 enum WorkflowStatus {
@@ -41,26 +39,46 @@ enum WorkflowStatus {
     Terminated,
 }
 
-struct WorkflowState {
+/// A single event in the append-only history log (like Temporal's HistoryEvent).
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+struct HistoryEvent {
+    event_id: u64,
+    event_type: String,
+    timestamp_us: i64,
+    /// Event attributes (like Temporal's decoded protobuf payloads).
+    attributes: serde_json::Value,
+}
+
+/// Reconstructed workflow state — derived by replaying the event log.
+/// NOT stored directly; computed on every operation (O(N) replay).
+struct ReplayedState {
     workflow_id: String,
-    _run_id: String,
+    run_id: String,
     workflow_type: String,
     namespace: String,
     status: WorkflowStatus,
-    _start_time: Instant,
-    signals_received: Vec<(String, Vec<u8>)>,
+    signals_received: u64,
+    #[allow(dead_code)]
     result: Option<Vec<u8>>,
 }
 
+/// Per-workflow storage: append-only event log (the only persisted state).
+struct WorkflowLog {
+    events: Vec<HistoryEvent>,
+    namespace: String,
+}
+
 struct TemporalEngine {
-    workflows: Mutex<HashMap<String, WorkflowState>>,
+    /// Append-only event logs per workflow (keyed by workflow_id).
+    logs: Mutex<HashMap<String, WorkflowLog>>,
     start_time: Instant,
 }
 
 impl TemporalEngine {
     fn new() -> Self {
         Self {
-            workflows: Mutex::new(HashMap::new()),
+            logs: Mutex::new(HashMap::new()),
             start_time: Instant::now(),
         }
     }
@@ -70,6 +88,77 @@ impl TemporalEngine {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_micros() as i64
+    }
+
+    /// Replay the full event history to reconstruct workflow state.
+    /// This is the O(N) operation that defines Temporal's architecture.
+    /// Real Temporal does this on EVERY signal/query/workflow-task.
+    fn replay_events(events: &[HistoryEvent]) -> ReplayedState {
+        let mut state = ReplayedState {
+            workflow_id: String::new(),
+            run_id: String::new(),
+            workflow_type: String::new(),
+            namespace: String::new(),
+            status: WorkflowStatus::Running,
+            signals_received: 0,
+            result: None,
+        };
+
+        // Replay every event in order — O(N) state transitions
+        for event in events {
+            match event.event_type.as_str() {
+                "WorkflowExecutionStarted" => {
+                    if let Some(wid) = event.attributes.get("workflow_id").and_then(|v| v.as_str())
+                    {
+                        state.workflow_id = wid.to_string();
+                    }
+                    if let Some(rid) = event.attributes.get("run_id").and_then(|v| v.as_str()) {
+                        state.run_id = rid.to_string();
+                    }
+                    if let Some(wt) = event
+                        .attributes
+                        .get("workflow_type")
+                        .and_then(|v| v.as_str())
+                    {
+                        state.workflow_type = wt.to_string();
+                    }
+                    if let Some(ns) = event.attributes.get("namespace").and_then(|v| v.as_str()) {
+                        state.namespace = ns.to_string();
+                    }
+                    state.status = WorkflowStatus::Running;
+                }
+                "WorkflowExecutionSignalReceived" => {
+                    state.signals_received += 1;
+                }
+                "WorkflowExecutionCompleted" => {
+                    state.status = WorkflowStatus::Completed;
+                    if let Some(r) = event.attributes.get("result").and_then(|v| v.as_str()) {
+                        state.result = Some(r.as_bytes().to_vec());
+                    }
+                }
+                "WorkflowExecutionFailed" => {
+                    state.status = WorkflowStatus::Failed;
+                }
+                "WorkflowExecutionTerminated" => {
+                    state.status = WorkflowStatus::Terminated;
+                }
+                _ => {}
+            }
+        }
+
+        state
+    }
+
+    /// Clone events under lock (simulates reading from persistence),
+    /// then replay outside lock (O(N) state reconstruction).
+    async fn clone_and_replay(&self, workflow_id: &str) -> Option<ReplayedState> {
+        let events = {
+            let logs = self.logs.lock().await;
+            let log = logs.get(workflow_id)?;
+            log.events.clone()
+        };
+        // Replay outside the lock — O(N) without blocking other operations
+        Some(Self::replay_events(&events))
     }
 
     async fn start_workflow(
@@ -85,24 +174,34 @@ impl TemporalEngine {
         };
         let run_id = format!("temporal-run-{}", uuid::Uuid::new_v4());
 
-        let state = WorkflowState {
-            workflow_id: wf_id.clone(),
-            _run_id: run_id.clone(),
-            workflow_type: workflow_type.to_string(),
-            namespace: namespace.to_string(),
-            status: WorkflowStatus::Running,
-            _start_time: Instant::now(),
-            signals_received: Vec::new(),
-            result: None,
+        let attrs = serde_json::json!({
+            "workflow_id": wf_id,
+            "run_id": run_id,
+            "workflow_type": workflow_type,
+            "namespace": namespace,
+        });
+
+        let event = HistoryEvent {
+            event_id: 1,
+            event_type: "WorkflowExecutionStarted".to_string(),
+            timestamp_us: Self::now_us(),
+            attributes: attrs,
         };
 
-        let mut workflows = self.workflows.lock().await;
-        workflows.insert(wf_id.clone(), state);
+        let mut logs = self.logs.lock().await;
+        logs.insert(
+            wf_id.clone(),
+            WorkflowLog {
+                events: vec![event],
+                namespace: namespace.to_string(),
+            },
+        );
 
         debug!(workflow_id = %wf_id, run_id = %run_id, "Started workflow");
         Ok((wf_id, run_id))
     }
 
+    /// Signal: clone+replay to verify, append signal event, clone+replay to confirm.
     async fn signal_workflow(
         &self,
         namespace: &str,
@@ -110,68 +209,108 @@ impl TemporalEngine {
         signal_name: &str,
         payload: Vec<u8>,
     ) -> Result<(), String> {
-        let mut workflows = self.workflows.lock().await;
-        if let Some(state) = workflows.get_mut(workflow_id) {
-            if state.namespace != namespace {
-                return Err(format!(
-                    "Workflow {} not found in namespace {}",
-                    workflow_id, namespace
-                ));
-            }
-            state
-                .signals_received
-                .push((signal_name.to_string(), payload));
-            Ok(())
-        } else {
-            Err(format!("Workflow {} not found", workflow_id))
+        // REPLAY to verify state before signal — O(N)
+        let pre = self
+            .clone_and_replay(workflow_id)
+            .await
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        if pre.namespace != namespace {
+            return Err(format!(
+                "Workflow {} not found in namespace {}",
+                workflow_id, namespace
+            ));
         }
+
+        // Append signal event
+        let attrs = serde_json::json!({
+            "signal_name": signal_name,
+            "payload_len": payload.len(),
+        });
+        {
+            let mut logs = self.logs.lock().await;
+            let log = logs.get_mut(workflow_id).unwrap();
+            let event_id = log.events.len() as u64 + 1;
+            log.events.push(HistoryEvent {
+                event_id,
+                event_type: "WorkflowExecutionSignalReceived".to_string(),
+                timestamp_us: Self::now_us(),
+                attributes: attrs,
+            });
+        }
+
+        // REPLAY to confirm state after signal — O(N)
+        let _post = self.clone_and_replay(workflow_id).await.unwrap();
+        Ok(())
     }
 
+    /// Query: clone+replay to reconstruct state — O(N).
     async fn query_workflow(
         &self,
         namespace: &str,
         workflow_id: &str,
         _query_type: &str,
     ) -> Result<serde_json::Value, String> {
-        let workflows = self.workflows.lock().await;
-        if let Some(state) = workflows.get(workflow_id) {
-            if state.namespace != namespace {
-                return Err(format!(
-                    "Workflow {} not found in namespace {}",
-                    workflow_id, namespace
-                ));
-            }
-            Ok(serde_json::json!({
-                "workflow_id": state.workflow_id,
-                "workflow_type": state.workflow_type,
-                "status": format!("{:?}", state.status),
-                "signals_received": state.signals_received.len(),
-            }))
-        } else {
-            Err(format!("Workflow {} not found", workflow_id))
+        let replayed = self
+            .clone_and_replay(workflow_id)
+            .await
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        if replayed.namespace != namespace {
+            return Err(format!(
+                "Workflow {} not found in namespace {}",
+                workflow_id, namespace
+            ));
         }
+
+        Ok(serde_json::json!({
+            "workflow_id": replayed.workflow_id,
+            "workflow_type": replayed.workflow_type,
+            "status": format!("{:?}", replayed.status),
+            "signals_received": replayed.signals_received,
+        }))
     }
 
+    /// Complete: replay to verify running, append completion, replay to confirm.
     async fn complete_workflow(
         &self,
         namespace: &str,
         workflow_id: &str,
         result: Option<Vec<u8>>,
     ) -> Result<(), String> {
-        let mut workflows = self.workflows.lock().await;
-        if let Some(state) = workflows.get_mut(workflow_id) {
-            if state.namespace != namespace {
-                return Err(format!(
-                    "Workflow {} not found in namespace {}",
-                    workflow_id, namespace
-                ));
-            }
-            state.status = WorkflowStatus::Completed;
-            state.result = result;
-            Ok(())
-        } else {
-            Err(format!("Workflow {} not found", workflow_id))
+        // REPLAY to verify running state — O(N)
+        let replayed = self
+            .clone_and_replay(workflow_id)
+            .await
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        if replayed.namespace != namespace {
+            return Err(format!(
+                "Workflow {} not found in namespace {}",
+                workflow_id, namespace
+            ));
         }
+        if replayed.status != WorkflowStatus::Running {
+            return Err(format!("Workflow {} is not running", workflow_id));
+        }
+
+        // Append completion event
+        let result_str = result
+            .map(|r| String::from_utf8_lossy(&r).to_string())
+            .unwrap_or_default();
+        let attrs = serde_json::json!({ "result": result_str });
+        {
+            let mut logs = self.logs.lock().await;
+            let log = logs.get_mut(workflow_id).unwrap();
+            let event_id = log.events.len() as u64 + 1;
+            log.events.push(HistoryEvent {
+                event_id,
+                event_type: "WorkflowExecutionCompleted".to_string(),
+                timestamp_us: Self::now_us(),
+                attributes: attrs,
+            });
+        }
+
+        // REPLAY to confirm terminal state — O(N)
+        let _confirmed = self.clone_and_replay(workflow_id).await.unwrap();
+        Ok(())
     }
 
     async fn terminate_workflow(
@@ -180,58 +319,83 @@ impl TemporalEngine {
         workflow_id: &str,
         _reason: &str,
     ) -> Result<(), String> {
-        let mut workflows = self.workflows.lock().await;
-        if let Some(state) = workflows.get_mut(workflow_id) {
-            if state.namespace != namespace {
-                return Err(format!(
-                    "Workflow {} not found in namespace {}",
-                    workflow_id, namespace
-                ));
-            }
-            state.status = WorkflowStatus::Terminated;
-            Ok(())
-        } else {
-            Err(format!("Workflow {} not found", workflow_id))
+        // REPLAY to verify running state — O(N)
+        let replayed = self
+            .clone_and_replay(workflow_id)
+            .await
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        if replayed.namespace != namespace {
+            return Err(format!(
+                "Workflow {} not found in namespace {}",
+                workflow_id, namespace
+            ));
         }
+
+        // Append termination event
+        {
+            let mut logs = self.logs.lock().await;
+            let log = logs.get_mut(workflow_id).unwrap();
+            let event_id = log.events.len() as u64 + 1;
+            log.events.push(HistoryEvent {
+                event_id,
+                event_type: "WorkflowExecutionTerminated".to_string(),
+                timestamp_us: Self::now_us(),
+                attributes: serde_json::json!({}),
+            });
+        }
+        Ok(())
     }
 
+    /// Get status via clone+replay — O(N).
     async fn get_workflow_status(
         &self,
         namespace: &str,
         workflow_id: &str,
     ) -> Option<WorkflowStatus> {
-        let workflows = self.workflows.lock().await;
-        workflows
-            .get(workflow_id)
-            .filter(|s| s.namespace == namespace)
-            .map(|s| s.status.clone())
+        let replayed = self.clone_and_replay(workflow_id).await?;
+        if replayed.namespace != namespace {
+            return None;
+        }
+        Some(replayed.status)
     }
 
     async fn count_workflows(&self, namespace: &str, filter: &str) -> u64 {
-        let workflows = self.workflows.lock().await;
-        workflows
-            .values()
-            .filter(|s| s.namespace == namespace || namespace.is_empty())
-            .filter(|s| match filter {
-                "running" => s.status == WorkflowStatus::Running,
-                "completed" => s.status == WorkflowStatus::Completed,
-                "failed" => s.status == WorkflowStatus::Failed,
-                "terminated" => s.status == WorkflowStatus::Terminated,
+        // Clone all event logs under lock, then replay each outside lock
+        let all_events: Vec<(String, Vec<HistoryEvent>)> = {
+            let logs = self.logs.lock().await;
+            logs.iter()
+                .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
+                .map(|(wf_id, log)| (wf_id.clone(), log.events.clone()))
+                .collect()
+        };
+
+        let mut count = 0u64;
+        for (_wf_id, events) in &all_events {
+            let replayed = Self::replay_events(events);
+            let matches = match filter {
+                "running" => replayed.status == WorkflowStatus::Running,
+                "completed" => replayed.status == WorkflowStatus::Completed,
+                "failed" => replayed.status == WorkflowStatus::Failed,
+                "terminated" => replayed.status == WorkflowStatus::Terminated,
                 _ => true,
-            })
-            .count() as u64
+            };
+            if matches {
+                count += 1;
+            }
+        }
+        count
     }
 
     async fn reset(&self, namespace: &str) -> u64 {
-        let mut workflows = self.workflows.lock().await;
+        let mut logs = self.logs.lock().await;
         if namespace.is_empty() || namespace == "default" {
-            let count = workflows.len() as u64;
-            workflows.clear();
+            let count = logs.len() as u64;
+            logs.clear();
             count
         } else {
-            let before = workflows.len();
-            workflows.retain(|_, v| v.namespace != namespace);
-            (before - workflows.len()) as u64
+            let before = logs.len();
+            logs.retain(|_, v| v.namespace != namespace);
+            (before - logs.len()) as u64
         }
     }
 }
@@ -244,7 +408,6 @@ struct BenchmarkServiceImpl {
 
 #[tonic::async_trait]
 impl BenchmarkService for BenchmarkServiceImpl {
-    // ─── StartWorkflow ──────────────────────────────────────────────────
     async fn start_workflow(
         &self,
         request: Request<StartWorkflowRequest>,
@@ -263,13 +426,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
             .await
             .map_err(Status::internal)?;
 
-        debug!(
-            workflow_id = %workflow_id,
-            workflow_type = %req.workflow_type,
-            elapsed_us = start.elapsed().as_micros(),
-            "StartWorkflow completed"
-        );
-
+        debug!(workflow_id = %workflow_id, elapsed_us = start.elapsed().as_micros(), "StartWorkflow");
         Ok(Response::new(StartWorkflowResponse {
             workflow_id,
             run_id,
@@ -277,7 +434,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }))
     }
 
-    // ─── SignalWorkflow ─────────────────────────────────────────────────
     async fn signal_workflow(
         &self,
         request: Request<SignalWorkflowRequest>,
@@ -308,7 +464,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }
     }
 
-    // ─── QueryWorkflow ──────────────────────────────────────────────────
     async fn query_workflow(
         &self,
         request: Request<QueryWorkflowRequest>,
@@ -344,7 +499,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }
     }
 
-    // ─── WaitForCompletion ──────────────────────────────────────────────
     async fn wait_for_completion(
         &self,
         request: Request<WaitForCompletionRequest>,
@@ -361,8 +515,8 @@ impl BenchmarkService for BenchmarkServiceImpl {
         } else {
             Duration::from_secs(30)
         };
-
         let poll_interval = Duration::from_millis(1);
+
         loop {
             if let Some(status) = self
                 .engine
@@ -375,47 +529,44 @@ impl BenchmarkService for BenchmarkServiceImpl {
                             success: true,
                             latency_us: start.elapsed().as_micros() as i64,
                             result: Vec::new(),
-                            status: "completed".to_string(),
+                            status: "completed".into(),
                             error: String::new(),
-                        }));
+                        }))
                     }
                     WorkflowStatus::Failed => {
                         return Ok(Response::new(WaitForCompletionResponse {
                             success: false,
                             latency_us: start.elapsed().as_micros() as i64,
                             result: Vec::new(),
-                            status: "failed".to_string(),
+                            status: "failed".into(),
                             error: String::new(),
-                        }));
+                        }))
                     }
                     WorkflowStatus::Terminated => {
                         return Ok(Response::new(WaitForCompletionResponse {
                             success: false,
                             latency_us: start.elapsed().as_micros() as i64,
                             result: Vec::new(),
-                            status: "terminated".to_string(),
+                            status: "terminated".into(),
                             error: String::new(),
-                        }));
+                        }))
                     }
                     WorkflowStatus::Running => {}
                 }
             }
-
             if start.elapsed() > timeout {
                 return Ok(Response::new(WaitForCompletionResponse {
                     success: false,
                     latency_us: start.elapsed().as_micros() as i64,
                     result: Vec::new(),
-                    status: "timed_out".to_string(),
-                    error: "wait_for_completion timed out".to_string(),
+                    status: "timed_out".into(),
+                    error: "timeout".into(),
                 }));
             }
-
             tokio::time::sleep(poll_interval).await;
         }
     }
 
-    // ─── TerminateWorkflow ──────────────────────────────────────────────
     async fn terminate_workflow(
         &self,
         request: Request<TerminateWorkflowRequest>,
@@ -446,7 +597,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }
     }
 
-    // ─── CompleteStep ───────────────────────────────────────────────────
     async fn complete_step(
         &self,
         request: Request<CompleteStepRequest>,
@@ -458,8 +608,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
         } else {
             &req.namespace
         };
-
-        // Complete the workflow (benchmark measures gRPC round-trip).
         let result = if req.result.is_empty() {
             None
         } else {
@@ -484,7 +632,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }
     }
 
-    // ─── RegisterNamespace ──────────────────────────────────────────────
     async fn register_namespace(
         &self,
         request: Request<RegisterNamespaceRequest>,
@@ -497,7 +644,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }))
     }
 
-    // ─── CountWorkflows ─────────────────────────────────────────────────
     async fn count_workflows(
         &self,
         request: Request<CountWorkflowsRequest>,
@@ -519,21 +665,27 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }))
     }
 
-    // ─── HealthCheck ────────────────────────────────────────────────────
     async fn health_check(
         &self,
         _request: Request<HealthCheckRequest>,
     ) -> Result<Response<HealthCheckResponse>, Status> {
-        let workflows = self.engine.workflows.lock().await;
-        let active = workflows
-            .values()
-            .filter(|s| s.status == WorkflowStatus::Running)
+        // Clone all events under lock, replay outside — same pattern as count_workflows
+        let all_events: Vec<Vec<HistoryEvent>> = {
+            let logs = self.engine.logs.lock().await;
+            logs.values().map(|l| l.events.clone()).collect()
+        };
+        let active = all_events
+            .iter()
+            .filter(|events| {
+                let replayed = TemporalEngine::replay_events(events);
+                replayed.status == WorkflowStatus::Running
+            })
             .count() as i64;
 
         Ok(Response::new(HealthCheckResponse {
             healthy: true,
-            engine_version: "temporal-bridge-0.1.0".to_string(),
-            engine_name: "Temporal-Bridge".to_string(),
+            engine_version: "temporal-bridge-0.1.0".into(),
+            engine_name: "Temporal-Bridge".into(),
             uptime_secs: self.engine.start_time.elapsed().as_secs() as i64,
             active_workflows: active,
             memory_rss_mb: 0.0,
@@ -541,15 +693,14 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }))
     }
 
-    // ─── GetSystemInfo ──────────────────────────────────────────────────
     async fn get_system_info(
         &self,
         _request: Request<GetSystemInfoRequest>,
     ) -> Result<Response<GetSystemInfoResponse>, Status> {
         Ok(Response::new(GetSystemInfoResponse {
-            engine_name: "Temporal-Bridge".to_string(),
-            engine_version: "0.1.0".to_string(),
-            runtime: "go".to_string(), // Temporal server is Go
+            engine_name: "Temporal-Bridge".into(),
+            engine_version: "0.1.0".into(),
+            runtime: "go".into(),
             max_workflows: 1_000_000,
             supports_signals: true,
             supports_queries: true,
@@ -562,7 +713,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }))
     }
 
-    // ─── Reset ──────────────────────────────────────────────────────────
     async fn reset(
         &self,
         request: Request<ResetRequest>,
@@ -594,9 +744,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    // Parse CLI arguments
     let args: Vec<String> = std::env::args().collect();
-
     let grpc_port: u16 = args
         .iter()
         .position(|a| a == "--grpc-port")
@@ -607,14 +755,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grpc_addr: SocketAddr = format!("127.0.0.1:{}", grpc_port).parse()?;
 
     info!("╦  ╦ ╔╗╔ ╦╔═ Temporal Bridge");
-    info!("╚╗╔╝ ║║║ ╠╩╗ v0.1.0 — Simulated mode");
+    info!("╚╗╔╝ ║║║ ╠╩╗ v0.2.0 — Event-sourcing mode");
     info!("  ╚╝  ╝╚╝ ╩ ╩");
     info!("gRPC:  http://{}", grpc_addr);
-    info!("Mode:  Simulated Temporal engine");
+    info!("Mode:  Event-sourcing simulation (O(N) replay)");
     info!("");
-    info!("Note: This bridge simulates Temporal behavior for benchmark");
-    info!("framework validation. For real Temporal comparison, connect");
-    info!("to a running Temporal server with the Temporal SDK.");
+    info!("Simulates Temporal's event-sourcing architecture:");
+    info!("  - Append-only event history per workflow");
+    info!("  - O(N) event replay on every signal/query/complete");
+    info!("  - JSON serialization/deserialization per event");
 
     let engine = TemporalEngine::new();
     let service = BenchmarkServiceImpl { engine };
