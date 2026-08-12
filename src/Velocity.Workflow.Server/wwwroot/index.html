@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VELOCITY WorkFlow Inspector</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-purple: #bc8cff;
+            --accent-cyan: #39d2c0;
+            --shadow: 0 8px 24px rgba(0,0,0,0.4);
+            --radius: 8px;
+            --transition: all 0.2s ease;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f6f8fa;
+            --bg-tertiary: #eaeef2;
+            --border-color: #d0d7de;
+            --text-primary: #1f2328;
+            --text-secondary: #656d76;
+            --text-muted: #6e7781;
+            --accent-blue: #0969da;
+            --accent-green: #1a7f37;
+            --accent-red: #cf222e;
+            --accent-yellow: #9a6700;
+            --accent-purple: #8250df;
+            --accent-cyan: #0598bc;
+            --shadow: 0 8px 24px rgba(140,149,159,0.2);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .theme-toggle {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            color: var(--text-primary);
+            transition: var(--transition);
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--accent-blue);
+        }
+
+        /* Main Layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Dashboard Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            transition: var(--transition);
+        }
+
+        .stat-card:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .stat-value.running { color: var(--accent-green); }
+        .stat-value.completed { color: var(--accent-blue); }
+        .stat-value.failed { color: var(--accent-red); }
+
+        /* Section */
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-title {
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-body {
+            padding: 1.5rem;
+        }
+
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tr:hover td {
+            background: var(--bg-tertiary);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Status Badge */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.625rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .badge-running { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+        .badge-running::before { background: var(--accent-green); animation: pulse 2s infinite; }
+        .badge-completed { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+        .badge-completed::before { background: var(--accent-blue); }
+        .badge-failed { background: rgba(248, 81, 73, 0.15); color: var(--accent-red); }
+        .badge-failed::before { background: var(--accent-red); }
+        .badge-canceled { background: rgba(210, 153, 34, 0.15); color: var(--accent-yellow); }
+        .badge-canceled::before { background: var(--accent-yellow); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn:hover {
+            border-color: var(--accent-blue);
+            background: var(--bg-secondary);
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-danger {
+            background: var(--accent-red);
+            border-color: var(--accent-red);
+            color: white;
+        }
+
+        /* Detail View */
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-value {
+            font-size: 0.9375rem;
+            color: var(--text-primary);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        /* Merkle Visualization */
+        .merkle-viz {
+            background: var(--bg-tertiary);
+            border-radius: var(--radius);
+            padding: 1rem;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 0.8125rem;
+            overflow-x: auto;
+        }
+
+        .merkle-root {
+            color: var(--accent-cyan);
+            font-weight: 600;
+        }
+
+        /* Bitmask */
+        .bitmask {
+            display: flex;
+            gap: 2px;
+            flex-wrap: wrap;
+        }
+
+        .bit {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.625rem;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        .bit-set { background: var(--accent-green); color: white; }
+        .bit-unset { background: var(--bg-tertiary); color: var(--text-muted); }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 8px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--border-color);
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 1.5rem;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -1.625rem;
+            top: 0.25rem;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            border: 2px solid var(--bg-secondary);
+        }
+
+        .timeline-item.event-signal::before { background: var(--accent-purple); }
+        .timeline-item.event-timer::before { background: var(--accent-yellow); }
+        .timeline-item.event-complete::before { background: var(--accent-green); }
+        .timeline-item.event-fail::before { background: var(--accent-red); }
+
+        .timeline-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+
+        .timeline-type {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .timeline-details {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: var(--transition);
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 500px;
+            box-shadow: var(--shadow);
+        }
+
+        .modal-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.375rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            transition: var(--transition);
+        }
+
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+        }
+
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
+            font-family: monospace;
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        /* Connection Status */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-red);
+        }
+
+        .connection-dot.connected {
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        /* Clickable rows */
+        tr.clickable {
+            cursor: pointer;
+        }
+
+        tr.clickable:hover td {
+            background: var(--bg-tertiary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .header { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">V</div>
+            <span>VELOCITY WorkFlow</span>
+        </div>
+        <div class="header-actions">
+            <div class="connection-status">
+                <span class="connection-dot" id="connectionDot"></span>
+                <span id="connectionText">Connecting...</span>
+            </div>
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <span id="themeIcon">☀️</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Dashboard Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-label">Total Workflows</div>
+                <div class="stat-value" id="statTotal">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Running</div>
+                <div class="stat-value running" id="statRunning">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Completed</div>
+                <div class="stat-value completed" id="statCompleted">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Failed</div>
+                <div class="stat-value failed" id="statFailed">-</div>
+            </div>
+        </div>
+
+        <!-- Workflow List -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span>📋</span> Workflow Executions
+                </h2>
+                <div style="display: flex; gap: 0.5rem;">
+                    <select class="form-select" id="statusFilter" onchange="loadWorkflows()" style="width: auto;">
+                        <option value="">All Status</option>
+                        <option value="running">Running</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                        <option value="canceled">Canceled</option>
+                    </select>
+                    <button class="btn" onclick="loadWorkflows()">↻ Refresh</button>
+                    <button class="btn btn-primary" onclick="showStartModal()">+ Start Workflow</button>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Workflow ID</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Started</th>
+                                <th>History</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workflowTable">
+                            <tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workflow Detail (hidden by default) -->
+        <div class="section" id="detailSection" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span>⟡</span> Workflow Detail
+                </h2>
+                <button class="btn" onclick="hideDetail()">✕ Close</button>
+            </div>
+            <div class="section-body">
+                <div class="detail-grid" id="detailGrid"></div>
+
+                <!-- Bitmask Visualization -->
+                <div style="margin-bottom: 1.5rem;">
+                    <h3 style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Step Completion Bitmask</h3>
+                    <div class="bitmask" id="bitmaskViz"></div>
+                </div>
+
+                <!-- Merkle Root -->
+                <div style="margin-bottom: 1.5rem;">
+                    <h3 style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Merkle Root</h3>
+                    <div class="merkle-viz">
+                        <span class="merkle-root" id="merkleRoot">-</span>
+                    </div>
+                </div>
+
+                <!-- Event Timeline -->
+                <div>
+                    <h3 style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">Event Timeline</h3>
+                    <div class="timeline" id="eventTimeline"></div>
+                </div>
+
+                <!-- Signal/Query Actions -->
+                <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+                    <button class="btn" onclick="showSignalModal()">📡 Signal</button>
+                    <button class="btn" onclick="showQueryModal()">🔍 Query</button>
+                    <button class="btn btn-danger" onclick="cancelWorkflow()">✕ Cancel</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Start Workflow Modal -->
+    <div class="modal-overlay" id="startModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Start New Workflow</h3>
+                <button class="btn" onclick="hideStartModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Workflow Type</label>
+                    <input type="text" class="form-input" id="startType" placeholder="e.g., OrderProcessingWorkflow">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Task Queue</label>
+                    <input type="text" class="form-input" id="startTaskQueue" placeholder="e.g., main-queue" value="default">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Input (JSON)</label>
+                    <textarea class="form-textarea" id="startInput" placeholder='{"key": "value"}'>{}</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Total Steps</label>
+                    <input type="number" class="form-input" id="startSteps" value="1" min="1">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="hideStartModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="startWorkflow()">Start Workflow</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Signal Modal -->
+    <div class="modal-overlay" id="signalModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Signal Workflow</h3>
+                <button class="btn" onclick="hideSignalModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Signal Name</label>
+                    <input type="text" class="form-input" id="signalName" placeholder="e.g., approveOrder">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Payload (JSON)</label>
+                    <textarea class="form-textarea" id="signalInput" placeholder='{"approved": true}'>{}</textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="hideSignalModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="sendSignal()">Send Signal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Query Modal -->
+    <div class="modal-overlay" id="queryModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Query Workflow</h3>
+                <button class="btn" onclick="hideQueryModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Query Type</label>
+                    <input type="text" class="form-input" id="queryName" placeholder="e.g., getStatus">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Arguments (JSON)</label>
+                    <textarea class="form-textarea" id="queryInput" placeholder='{}'>{}</textarea>
+                </div>
+                <div class="form-group" id="queryResultGroup" style="display: none;">
+                    <label class="form-label">Result</label>
+                    <pre class="merkle-viz" id="queryResult"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="hideQueryModal()">Close</button>
+                <button class="btn btn-primary" onclick="sendQuery()">Execute Query</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ─── State ────────────────────────────────────────────────────────────────
+        let currentWorkflowId = null;
+        let eventSource = null;
+
+        // ─── Theme ────────────────────────────────────────────────────────────────
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', next);
+            document.getElementById('themeIcon').textContent = next === 'dark' ? '☀️' : '🌙';
+            localStorage.setItem('theme', next);
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.getElementById('themeIcon').textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+
+        // ─── API Calls ────────────────────────────────────────────────────────────
+        const API_BASE = '';
+
+        async function apiGet(path) {
+            const res = await fetch(`${API_BASE}${path}`);
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }
+
+        async function apiPost(path, data) {
+            const res = await fetch(`${API_BASE}${path}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }
+
+        // ─── Data Loading ─────────────────────────────────────────────────────────
+        async function loadStats() {
+            try {
+                const info = await apiGet('/api/server/info');
+                document.getElementById('statTotal').textContent = info.workflow_count || 0;
+                
+                // Get counts by status
+                const workflows = await apiGet('/api/workflows?limit=1000');
+                let running = 0, completed = 0, failed = 0;
+                (workflows.workflows || []).forEach(w => {
+                    const s = w.status?.toLowerCase();
+                    if (s === 'running') running++;
+                    else if (s === 'completed') completed++;
+                    else if (s === 'failed') failed++;
+                });
+                document.getElementById('statRunning').textContent = running;
+                document.getElementById('statCompleted').textContent = completed;
+                document.getElementById('statFailed').textContent = failed;
+                
+                setConnected(true);
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+                setConnected(false);
+            }
+        }
+
+        async function loadWorkflows() {
+            const status = document.getElementById('statusFilter').value;
+            const query = status ? `?status=${status}&limit=50` : '?limit=50';
+            
+            try {
+                const data = await apiGet(`/api/workflows${query}`);
+                renderWorkflowTable(data.workflows || []);
+            } catch (e) {
+                document.getElementById('workflowTable').innerHTML = 
+                    '<tr><td colspan="6" class="empty-state"><div class="empty-state-icon">⚠️</div>Failed to load workflows</td></tr>';
+            }
+        }
+
+        function renderWorkflowTable(workflows) {
+            const tbody = document.getElementById('workflowTable');
+            
+            if (workflows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><div class="empty-state-icon">📭</div>No workflows found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = workflows.map(w => `
+                <tr class="clickable" onclick="showDetail('${w.workflow_id}')">
+                    <td><code>${escapeHtml(w.workflow_id)}</code></td>
+                    <td>${escapeHtml(w.workflow_type || '-')}</td>
+                    <td><span class="badge badge-${(w.status || 'unknown').toLowerCase()}">${w.status || 'Unknown'}</span></td>
+                    <td>${formatTime(w.start_time)}</td>
+                    <td>${w.history_length || 0}</td>
+                    <td>
+                        <button class="btn" onclick="event.stopPropagation(); showDetail('${w.workflow_id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">View</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function showDetail(workflowId) {
+            currentWorkflowId = workflowId;
+            document.getElementById('detailSection').style.display = 'block';
+            document.getElementById('detailSection').scrollIntoView({ behavior: 'smooth' });
+
+            try {
+                const detail = await apiGet(`/api/workflows/${workflowId}`);
+                renderDetail(detail);
+                loadHistory(workflowId);
+            } catch (e) {
+                document.getElementById('detailGrid').innerHTML = `<div class="empty-state">Failed to load workflow details</div>`;
+            }
+        }
+
+        function renderDetail(d) {
+            document.getElementById('detailGrid').innerHTML = `
+                <div class="detail-item">
+                    <span class="detail-label">Workflow ID</span>
+                    <span class="detail-value">${escapeHtml(d.workflow_id)}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Run ID</span>
+                    <span class="detail-value">${escapeHtml(d.run_id || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Type</span>
+                    <span class="detail-value">${escapeHtml(d.workflow_type || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Status</span>
+                    <span class="detail-value"><span class="badge badge-${(d.status || '').toLowerCase()}">${d.status || 'Unknown'}</span></span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Namespace</span>
+                    <span class="detail-value">${escapeHtml(d.namespace || 'default')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Task Queue</span>
+                    <span class="detail-value">${escapeHtml(d.task_queue || '-')}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Started</span>
+                    <span class="detail-value">${formatTime(d.start_time)}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Steps</span>
+                    <span class="detail-value">${d.completed_steps || 0} / ${d.total_steps || 0}</span>
+                </div>
+            `;
+
+            // Bitmask visualization
+            const totalSteps = d.total_steps || 8;
+            const completedSteps = d.completed_steps || 0;
+            let bitmaskHtml = '';
+            for (let i = 0; i < Math.min(totalSteps, 64); i++) {
+                const isSet = i < completedSteps;
+                bitmaskHtml += `<div class="bit ${isSet ? 'bit-set' : 'bit-unset'}" title="Step ${i + 1}: ${isSet ? 'Completed' : 'Pending'}">${i + 1}</div>`;
+            }
+            document.getElementById('bitmaskViz').innerHTML = bitmaskHtml;
+
+            // Merkle root
+            document.getElementById('merkleRoot').textContent = d.merkle_root || '0000000000000000000000000000000000000000000000000000000000000000';
+        }
+
+        async function loadHistory(workflowId) {
+            try {
+                const data = await apiGet(`/api/workflows/${workflowId}/history?limit=50`);
+                renderTimeline(data.events || []);
+            } catch (e) {
+                document.getElementById('eventTimeline').innerHTML = '<div class="empty-state">Failed to load history</div>';
+            }
+        }
+
+        function renderTimeline(events) {
+            const timeline = document.getElementById('eventTimeline');
+            
+            if (events.length === 0) {
+                timeline.innerHTML = '<div class="empty-state">No events recorded</div>';
+                return;
+            }
+
+            timeline.innerHTML = events.map(e => {
+                let eventClass = '';
+                const type = (e.event_type || '').toLowerCase();
+                if (type.includes('signal')) eventClass = 'event-signal';
+                else if (type.includes('timer')) eventClass = 'event-timer';
+                else if (type.includes('complete')) eventClass = 'event-complete';
+                else if (type.includes('fail')) eventClass = 'event-fail';
+
+                return `
+                    <div class="timeline-item ${eventClass}">
+                        <div class="timeline-time">${formatTime(e.event_time)} · Event #${e.event_id}</div>
+                        <div class="timeline-type">${escapeHtml(e.event_type)}</div>
+                        ${e.details ? `<div class="timeline-details">${escapeHtml(truncate(e.details, 100))}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function hideDetail() {
+            document.getElementById('detailSection').style.display = 'none';
+            currentWorkflowId = null;
+        }
+
+        // ─── Workflow Actions ─────────────────────────────────────────────────────
+        function showStartModal() { document.getElementById('startModal').classList.add('active'); }
+        function hideStartModal() { document.getElementById('startModal').classList.remove('active'); }
+
+        async function startWorkflow() {
+            const type = document.getElementById('startType').value;
+            const taskQueue = document.getElementById('startTaskQueue').value;
+            const input = document.getElementById('startInput').value;
+            const steps = parseInt(document.getElementById('startSteps').value) || 1;
+
+            if (!type) { alert('Please enter a workflow type'); return; }
+
+            try {
+                let inputJson;
+                try { inputJson = JSON.parse(input); } catch { inputJson = {}; }
+
+                await apiPost('/api/workflows', {
+                    workflow_type: type,
+                    task_queue: taskQueue,
+                    input: inputJson,
+                    total_steps: steps
+                });
+
+                hideStartModal();
+                loadWorkflows();
+                loadStats();
+            } catch (e) {
+                alert('Failed to start workflow: ' + e.message);
+            }
+        }
+
+        function showSignalModal() { 
+            if (!currentWorkflowId) return;
+            document.getElementById('signalModal').classList.add('active'); 
+        }
+        function hideSignalModal() { document.getElementById('signalModal').classList.remove('active'); }
+
+        async function sendSignal() {
+            const name = document.getElementById('signalName').value;
+            const input = document.getElementById('signalInput').value;
+
+            if (!name) { alert('Please enter a signal name'); return; }
+
+            try {
+                let inputJson;
+                try { inputJson = JSON.parse(input); } catch { inputJson = {}; }
+
+                await apiPost(`/api/workflows/${currentWorkflowId}/signal`, {
+                    signal_name: name,
+                    input: inputJson
+                });
+
+                hideSignalModal();
+                alert('Signal sent successfully');
+            } catch (e) {
+                alert('Failed to send signal: ' + e.message);
+            }
+        }
+
+        function showQueryModal() { 
+            if (!currentWorkflowId) return;
+            document.getElementById('queryResultGroup').style.display = 'none';
+            document.getElementById('queryModal').classList.add('active'); 
+        }
+        function hideQueryModal() { document.getElementById('queryModal').classList.remove('active'); }
+
+        async function sendQuery() {
+            const name = document.getElementById('queryName').value;
+            const input = document.getElementById('queryInput').value;
+
+            if (!name) { alert('Please enter a query type'); return; }
+
+            try {
+                let inputJson;
+                try { inputJson = JSON.parse(input); } catch { inputJson = {}; }
+
+                const result = await apiPost(`/api/workflows/${currentWorkflowId}/query`, {
+                    query_type: name,
+                    input: inputJson
+                });
+
+                document.getElementById('queryResultGroup').style.display = 'block';
+                document.getElementById('queryResult').textContent = JSON.stringify(result, null, 2);
+            } catch (e) {
+                alert('Query failed: ' + e.message);
+            }
+        }
+
+        async function cancelWorkflow() {
+            if (!currentWorkflowId) return;
+            if (!confirm(`Cancel workflow ${currentWorkflowId}?`)) return;
+
+            try {
+                await apiPost(`/api/workflows/${currentWorkflowId}/cancel`, {});
+                alert('Cancellation requested');
+                loadWorkflows();
+                showDetail(currentWorkflowId);
+            } catch (e) {
+                alert('Failed to cancel: ' + e.message);
+            }
+        }
+
+        // ─── SSE Connection ───────────────────────────────────────────────────────
+        function connectSSE() {
+            if (eventSource) eventSource.close();
+            
+            eventSource = new EventSource('/api/events');
+            
+            eventSource.onopen = () => setConnected(true);
+            eventSource.onerror = () => setConnected(false);
+            
+            eventSource.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'workflow_updated') {
+                        loadWorkflows();
+                        loadStats();
+                        if (currentWorkflowId === data.workflow_id) {
+                            showDetail(currentWorkflowId);
+                        }
+                    }
+                } catch (err) {
+                    console.error('SSE parse error:', err);
+                }
+            };
+        }
+
+        function setConnected(connected) {
+            const dot = document.getElementById('connectionDot');
+            const text = document.getElementById('connectionText');
+            if (connected) {
+                dot.classList.add('connected');
+                text.textContent = 'Connected';
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'Disconnected';
+            }
+        }
+
+        // ─── Helpers ──────────────────────────────────────────────────────────────
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        function truncate(str, len) {
+            return str.length > len ? str.slice(0, len) + '...' : str;
+        }
+
+        function formatTime(ts) {
+            if (!ts) return '-';
+            try {
+                const d = new Date(ts);
+                return d.toLocaleString();
+            } catch {
+                return ts;
+            }
+        }
+
+        // ─── Init ─────────────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadWorkflows();
+            connectSSE();
+            
+            // Refresh stats every 30 seconds
+            setInterval(loadStats, 30000);
+        });
+    </script>
+</body>
+</html>

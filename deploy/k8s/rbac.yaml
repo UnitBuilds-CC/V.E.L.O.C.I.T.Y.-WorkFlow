@@ -1,0 +1,58 @@
+# =============================================================================
+# RBAC for Velocity Workflow Server
+# ServiceAccount, ClusterRole, ClusterRoleBinding
+# =============================================================================
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: velocity-server
+  namespace: velocity-system
+  labels:
+    app.kubernetes.io/name: velocity
+    app.kubernetes.io/component: server
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: velocity-server-role
+  labels:
+    app.kubernetes.io/name: velocity
+rules:
+  # Core resources — workflow management
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  # Apps — for managing worker deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  # Batch — for workflow job management
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  # Coordination — leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: velocity-server-binding
+  labels:
+    app.kubernetes.io/name: velocity
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: velocity-server-role
+subjects:
+  - kind: ServiceAccount
+    name: velocity-server
+    namespace: velocity-system

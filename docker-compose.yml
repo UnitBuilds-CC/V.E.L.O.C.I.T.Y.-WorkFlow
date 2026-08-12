@@ -1,0 +1,110 @@
+# =============================================================================
+# Docker Compose for Velocity Workflow Platform
+# Services: velocity-server, postgres, prometheus, grafana
+# =============================================================================
+
+version: "3.9"
+
+services:
+  # ── Velocity Workflow Server ──────────────────────────────────────────────
+  velocity-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: velocity-server
+    ports:
+      - "5000:5000"   # HTTP API
+      - "50051:50051" # gRPC
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=velocity;Username=velocity;Password=${POSTGRES_PASSWORD:-velocity_secret}
+      - GRPC__PORT=50051
+      - VELOCITY__METRICS__ENABLED=true
+      - VELOCITY__LOGGING__LEVEL=Information
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - velocity-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: velocity-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=velocity
+      - POSTGRES_USER=velocity
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-velocity_secret}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - velocity-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velocity -d velocity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: velocity-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    networks:
+      - velocity-net
+    restart: unless-stopped
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: velocity-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - velocity-net
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+networks:
+  velocity-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

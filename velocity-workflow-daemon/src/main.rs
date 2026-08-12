@@ -1,189 +1,813 @@
-use std::net::UdpSocket;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use velocity_workflow_core::{SlabHeader, VctpPacketHeader};
-use velocity_workflow_engine::{
-    WorkflowEngine, WorkerRegistry, TaskQueue, TaskItem, TaskKind,
-};
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
 
-/// VCTP Packet Types for daemon protocol
-#[repr(u8)]
-enum VctpPacketType {
-    /// Worker registration: worker announces itself with capabilities
-    WorkerRegister = 1,
-    /// Worker heartbeat: periodic keep-alive
-    WorkerHeartbeat = 2,
-    /// Task dispatch request: worker polls for tasks
-    TaskPoll = 3,
-    /// Task result: worker returns completed task
-    TaskResult = 4,
-    /// Worker deregister: graceful shutdown
-    WorkerDeregister = 5,
-    /// Ack response from daemon
-    Ack = 128,
+//! VELOCITY-WorkFlow CLI — Professional workflow management tool.
+//!
+//! Provides commands for workflow lifecycle, namespace management, and server inspection.
+//! Connects to the VELOCITY-WorkFlow engine via gRPC.
+
+use clap::{Parser, Subcommand, ValueEnum};
+use comfy_table::{Cell, Color, Table, ContentArrangement, presets::UTF8_FULL};
+use crossterm::style::Stylize;
+use serde::{Deserialize, Serialize};
+use std::process::ExitCode;
+
+// ─── CLI Argument Definitions ──────────────────────────────────────────────────
+
+/// VELOCITY-WorkFlow CLI — Professional workflow management.
+#[derive(Parser, Debug)]
+#[command(name = "velocity", version, about, long_about = None)]
+#[command(propagate_version = true)]
+struct Cli {
+    /// gRPC server address.
+    #[arg(long, default_value = "http://localhost:50051", env = "VELOCITY_SERVER", global = true)]
+    server: String,
+
+    /// Default namespace.
+    #[arg(long, default_value = "default", env = "VELOCITY_NAMESPACE", global = true)]
+    namespace: String,
+
+    /// Output format.
+    #[arg(long, default_value = "table", global = true)]
+    output: OutputFormat,
+
+    #[command(subcommand)]
+    command: Commands,
 }
 
-/// Simple packet framing: [type(1)] [worker_id(8)] [payload_len(4)] [payload...]
-struct DaemonPacket {
-    packet_type: u8,
-    worker_id: u64,
-    payload: Vec<u8>,
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Workflow operations.
+    Workflow {
+        #[command(subcommand)]
+        action: WorkflowAction,
+    },
+    /// Namespace operations.
+    Namespace {
+        #[command(subcommand)]
+        action: NamespaceAction,
+    },
+    /// Server information.
+    Server {
+        #[command(subcommand)]
+        action: ServerAction,
+    },
+    /// Task queue operations.
+    Taskqueue {
+        #[command(subcommand)]
+        action: TaskQueueAction,
+    },
 }
 
-impl DaemonPacket {
-    fn parse(data: &[u8]) -> Option<Self> {
-        if data.len() < 13 { return None; }
-        let packet_type = data[0];
-        let worker_id = u64::from_le_bytes(data[1..9].try_into().ok()?);
-        let payload_len = u32::from_le_bytes(data[9..13].try_into().ok()?) as usize;
-        if data.len() < 13 + payload_len { return None; }
-        let payload = data[13..13 + payload_len].to_vec();
-        Some(Self { packet_type, worker_id, payload })
-    }
-
-    fn encode_ack(worker_id: u64, status: u8, payload: &[u8]) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(14 + payload.len());
-        buf.push(VctpPacketType::Ack as u8);
-        buf.extend_from_slice(&worker_id.to_le_bytes());
-        buf.push(status);
-        buf.extend_from_slice(&(payload.len() as u32).to_le_bytes());
-        buf.extend_from_slice(payload);
-        buf
-    }
+#[derive(Subcommand, Debug)]
+enum WorkflowAction {
+    /// Start a new workflow execution.
+    Start {
+        /// Workflow type name.
+        #[arg(long)]
+        r#type: String,
+        /// Task queue name.
+        #[arg(long)]
+        task_queue: String,
+        /// Input JSON payload.
+        #[arg(long, default_value = "{}")]
+        input: String,
+        /// Workflow ID (auto-generated if not provided).
+        #[arg(long)]
+        workflow_id: Option<String>,
+        /// Total steps for the workflow slab.
+        #[arg(long, default_value = "1")]
+        total_steps: u32,
+    },
+    /// List workflow executions.
+    List {
+        /// Filter by status.
+        #[arg(long)]
+        status: Option<StatusFilter>,
+        /// Maximum number of results.
+        #[arg(long, default_value = "20")]
+        limit: i32,
+    },
+    /// Show workflow details.
+    Describe {
+        /// Workflow ID.
+        #[arg(long)]
+        workflow_id: String,
+        /// Run ID (optional).
+        #[arg(long)]
+        run_id: Option<String>,
+    },
+    /// Signal a running workflow.
+    Signal {
+        /// Workflow ID.
+        #[arg(long)]
+        workflow_id: String,
+        /// Signal name.
+        #[arg(long)]
+        name: String,
+        /// Signal input JSON.
+        #[arg(long, default_value = "{}")]
+        input: String,
+    },
+    /// Query a running workflow.
+    Query {
+        /// Workflow ID.
+        #[arg(long)]
+        workflow_id: String,
+        /// Query type name.
+        #[arg(long)]
+        name: String,
+        /// Query args JSON.
+        #[arg(long, default_value = "{}")]
+        input: String,
+    },
+    /// Cancel a running workflow.
+    Cancel {
+        /// Workflow ID.
+        #[arg(long)]
+        workflow_id: String,
+    },
+    /// Show workflow event history.
+    History {
+        /// Workflow ID.
+        #[arg(long)]
+        workflow_id: String,
+        /// Maximum events to return.
+        #[arg(long, default_value = "100")]
+        limit: i32,
+    },
 }
 
-fn main() -> std::io::Result<()> {
-    println!("=========================================================");
-    println!(" V.E.L.O.C.I.T.Y.-WorkFlow Hardware Daemon ");
-    println!(" Listening on UDP 0.0.0.0:9090 (VCTP Memory Transport)  ");
-    println!("=========================================================");
+#[derive(Subcommand, Debug)]
+enum NamespaceAction {
+    /// Register a new namespace.
+    Register {
+        /// Namespace name.
+        #[arg(long)]
+        name: String,
+        /// Description.
+        #[arg(long, default_value = "")]
+        description: String,
+    },
+    /// Describe a namespace.
+    Describe {
+        /// Namespace name.
+        #[arg(long)]
+        name: String,
+    },
+    /// List all namespaces.
+    List,
+}
 
-    let socket = UdpSocket::bind("127.0.0.1:9090")?;
-    socket.set_nonblocking(false)?;
-    let mut buf = [0u8; 65536];
+#[derive(Subcommand, Debug)]
+enum ServerAction {
+    /// Get server information.
+    Info,
+}
 
-    // Create the engine with worker registry
-    let engine = Arc::new(WorkflowEngine::new());
-    let running = Arc::new(AtomicBool::new(true));
+#[derive(Subcommand, Debug)]
+enum TaskQueueAction {
+    /// Describe a task queue.
+    Describe {
+        /// Task queue name.
+        #[arg(long)]
+        name: String,
+    },
+}
 
-    // Handle Ctrl+C for graceful shutdown
-    let r = running.clone();
-    ctrlc_handler(r);
+#[derive(ValueEnum, Clone, Debug, Default)]
+enum OutputFormat {
+    #[default]
+    Table,
+    Json,
+}
 
-    println!("[Daemon] Engine initialized with worker registry");
-    println!("[Daemon] Accepting VCTP packets...");
+#[derive(ValueEnum, Clone, Debug)]
+enum StatusFilter {
+    Running,
+    Completed,
+    Failed,
+    Canceled,
+    Terminated,
+}
 
-    let mut packet_count = 0u64;
+// ─── gRPC Client Stub ──────────────────────────────────────────────────────────
+// In production, these would be generated from proto files via tonic-build.
+// For now, we use a simple HTTP-based approach.
 
-    while running.load(Ordering::Relaxed) {
-        match socket.recv_from(&mut buf) {
-            Ok((amt, src)) => {
-                packet_count += 1;
-                if let Some(packet) = DaemonPacket::parse(&buf[..amt]) {
-                    match packet.packet_type {
-                        // Worker registration
-                        1 => {
-                            let addr = String::from_utf8_lossy(&packet.payload).to_string();
-                            let worker_id = engine.worker_registry().register_worker(
-                                &addr, &[], &[], "1.0"
-                            );
-                            println!("[Daemon] Worker registered: id={} addr={} (from {})", worker_id, addr, src);
-                            let ack = DaemonPacket::encode_ack(worker_id, 1, &worker_id.to_le_bytes());
-                            let _ = socket.send_to(&ack, src);
-                        }
-                        // Worker heartbeat
-                        2 => {
-                            let found = engine.worker_registry().heartbeat(packet.worker_id);
-                            let status = if found { 1u8 } else { 0u8 };
-                            let ack = DaemonPacket::encode_ack(packet.worker_id, status, &[]);
-                            let _ = socket.send_to(&ack, src);
-                        }
-                        // Task poll request
-                        3 => {
-                            if packet.payload.len() >= 8 {
-                                let tq_hash = u64::from_le_bytes(packet.payload[0..8].try_into().unwrap_or([0;8]));
-                                if let Some(task) = engine.task_queue().try_poll(tq_hash) {
-                                    // Encode task response
-                                    let mut resp = Vec::with_capacity(32);
-                                    resp.extend_from_slice(&task.task_id.to_le_bytes());
-                                    resp.push(task.kind as u8);
-                                    resp.extend_from_slice(&task.workflow_key.to_le_bytes());
-                                    resp.extend_from_slice(&task.step_index.to_le_bytes());
-                                    resp.extend_from_slice(&task.activity_name_id.to_le_bytes());
-                                    resp.extend_from_slice(&task.attempt.to_le_bytes());
-                                    let ack = DaemonPacket::encode_ack(packet.worker_id, 1, &resp);
-                                    let _ = socket.send_to(&ack, src);
-                                    // Record task as being worked on
-                                    engine.worker_registry().record_task_completed(packet.worker_id);
-                                } else {
-                                    let ack = DaemonPacket::encode_ack(packet.worker_id, 0, &[]);
-                                    let _ = socket.send_to(&ack, src);
-                                }
-                            }
-                        }
-                        // Task result
-                        4 => {
-                            println!("[Daemon] Task result from worker {} ({} bytes)", packet.worker_id, packet.payload.len());
-                            engine.worker_registry().record_task_completed(packet.worker_id);
-                            let ack = DaemonPacket::encode_ack(packet.worker_id, 1, &[]);
-                            let _ = socket.send_to(&ack, src);
-                        }
-                        // Worker deregister
-                        5 => {
-                            let removed = engine.worker_registry().unregister_worker(packet.worker_id);
-                            println!("[Daemon] Worker {} deregistered: {}", packet.worker_id, removed);
-                            let status = if removed { 1u8 } else { 0u8 };
-                            let ack = DaemonPacket::encode_ack(packet.worker_id, status, &[]);
-                            let _ = socket.send_to(&ack, src);
-                        }
-                        _ => {
-                            println!("[Daemon] Unknown packet type {} from {}", packet.packet_type, src);
-                        }
-                    }
-                } else {
-                    println!("[Daemon] Invalid packet from {} ({} bytes)", src, amt);
-                }
+struct VelocityClient {
+    server: String,
+    client: reqwest::Client,
+}
 
-                // Periodic status report every 100 packets
-                if packet_count % 100 == 0 {
-                    println!("[Daemon] Status: {} packets processed, {} workers ({} active), {} tasks completed",
-                        packet_count,
-                        engine.worker_registry().worker_count(),
-                        engine.worker_registry().active_worker_count(),
-                        engine.worker_registry().total_tasks_completed());
-                    
-                    // Detect stale workers (30s timeout)
-                    let stale = engine.worker_registry().detect_stale_workers(30_000);
-                    if !stale.is_empty() {
-                        println!("[Daemon] Detected {} stale workers", stale.len());
-                    }
-                }
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            Err(e) => {
-                eprintln!("[Daemon] Socket error: {}", e);
-                break;
-            }
+#[derive(Debug, Serialize)]
+struct StartWorkflowRequest {
+    namespace: String,
+    workflow_id: String,
+    workflow_type: String,
+    task_queue: String,
+    input: serde_json::Value,
+    total_steps: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct StartWorkflowResponse {
+    workflow_id: String,
+    run_id: String,
+    workflow_key: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WorkflowInfo {
+    workflow_id: String,
+    run_id: String,
+    workflow_type: String,
+    status: String,
+    start_time: String,
+    close_time: Option<String>,
+    history_length: i64,
+    namespace: String,
+    task_queue: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListWorkflowsResponse {
+    workflows: Vec<WorkflowInfo>,
+    total_count: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WorkflowDetail {
+    workflow_id: String,
+    run_id: String,
+    workflow_type: String,
+    status: String,
+    start_time: String,
+    close_time: Option<String>,
+    history_length: i64,
+    namespace: String,
+    task_queue: String,
+    total_steps: u32,
+    completed_steps: u32,
+    merkle_root: String,
+    pending_activities: Vec<PendingActivity>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PendingActivity {
+    activity_id: String,
+    activity_type: String,
+    state: String,
+    attempt: i32,
+    max_attempts: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct HistoryEvent {
+    event_id: u64,
+    event_time: String,
+    event_type: String,
+    details: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct HistoryResponse {
+    events: Vec<HistoryEvent>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct NamespaceInfo {
+    name: String,
+    namespace_id: u64,
+    description: String,
+    is_active: bool,
+    retention_secs: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ServerInfoResponse {
+    server_version: String,
+    supported_features: Vec<String>,
+    workflow_count: u64,
+    namespace_count: u64,
+    uptime_secs: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct TaskQueueInfo {
+    name: String,
+    pending_tasks: u64,
+    active_workers: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct ErrorResponse {
+    error: String,
+}
+
+impl VelocityClient {
+    fn new(server: &str) -> Self {
+        Self {
+            server: server.trim_end_matches('/').to_string(),
+            client: reqwest::Client::new(),
         }
     }
 
-    println!("[Daemon] Shutting down after {} packets", packet_count);
-    engine.worker_registry().list_worker_ids().iter().for_each(|&wid| {
-        engine.worker_registry().set_worker_status(wid, velocity_workflow_engine::WorkerStatus::Offline);
-    });
+    async fn start_workflow(&self, req: StartWorkflowRequest) -> Result<StartWorkflowResponse, String> {
+        let resp = self.client
+            .post(format!("{}/api/workflows", self.server))
+            .json(&req)
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
 
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            let err: ErrorResponse = resp.json().await.unwrap_or(ErrorResponse { error: "Unknown error".into() });
+            Err(err.error)
+        }
+    }
+
+    async fn list_workflows(&self, namespace: &str, status: Option<&str>, limit: i32) -> Result<ListWorkflowsResponse, String> {
+        let mut url = format!("{}/api/workflows?namespace={}&limit={}", self.server, namespace, limit);
+        if let Some(s) = status {
+            url.push_str(&format!("&status={}", s));
+        }
+        let resp = self.client.get(&url).send().await.map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            Err("Failed to list workflows".into())
+        }
+    }
+
+    async fn describe_workflow(&self, workflow_id: &str) -> Result<WorkflowDetail, String> {
+        let resp = self.client
+            .get(format!("{}/api/workflows/{}", self.server, workflow_id))
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            Err(format!("Workflow '{}' not found", workflow_id))
+        }
+    }
+
+    async fn signal_workflow(&self, workflow_id: &str, signal_name: &str, input: serde_json::Value) -> Result<(), String> {
+        let body = serde_json::json!({ "signal_name": signal_name, "input": input });
+        let resp = self.client
+            .post(format!("{}/api/workflows/{}/signal", self.server, workflow_id))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() { Ok(()) } else { Err("Failed to signal workflow".into()) }
+    }
+
+    async fn query_workflow(&self, workflow_id: &str, query_name: &str, input: serde_json::Value) -> Result<serde_json::Value, String> {
+        let body = serde_json::json!({ "query_type": query_name, "input": input });
+        let resp = self.client
+            .post(format!("{}/api/workflows/{}/query", self.server, workflow_id))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            Err("Failed to query workflow".into())
+        }
+    }
+
+    async fn cancel_workflow(&self, workflow_id: &str) -> Result<(), String> {
+        let resp = self.client
+            .post(format!("{}/api/workflows/{}/cancel", self.server, workflow_id))
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() { Ok(()) } else { Err("Failed to cancel workflow".into()) }
+    }
+
+    async fn get_history(&self, workflow_id: &str, limit: i32) -> Result<HistoryResponse, String> {
+        let resp = self.client
+            .get(format!("{}/api/workflows/{}/history?limit={}", self.server, workflow_id, limit))
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            Err(format!("Failed to get history for '{}'", workflow_id))
+        }
+    }
+
+    async fn register_namespace(&self, name: &str, description: &str) -> Result<u64, String> {
+        let body = serde_json::json!({ "name": name, "description": description });
+        let resp = self.client
+            .post(format!("{}/api/namespaces", self.server))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            let result: serde_json::Value = resp.json().await.map_err(|e| format!("Parse error: {}", e))?;
+            Ok(result["namespace_id"].as_u64().unwrap_or(0))
+        } else {
+            Err("Failed to register namespace".into())
+        }
+    }
+
+    async fn describe_namespace(&self, name: &str) -> Result<NamespaceInfo, String> {
+        let resp = self.client
+            .get(format!("{}/api/namespaces/{}", self.server, name))
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            Err(format!("Namespace '{}' not found", name))
+        }
+    }
+
+    async fn list_namespaces(&self) -> Result<Vec<NamespaceInfo>, String> {
+        let resp = self.client
+            .get(format!("{}/api/namespaces", self.server))
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            Err("Failed to list namespaces".into())
+        }
+    }
+
+    async fn get_server_info(&self) -> Result<ServerInfoResponse, String> {
+        let resp = self.client
+            .get(format!("{}/api/server/info", self.server))
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            Err("Failed to get server info".into())
+        }
+    }
+
+    async fn describe_task_queue(&self, name: &str) -> Result<TaskQueueInfo, String> {
+        let resp = self.client
+            .get(format!("{}/api/taskqueues/{}", self.server, name))
+            .send()
+            .await
+            .map_err(|e| format!("Connection error: {}", e))?;
+        if resp.status().is_success() {
+            resp.json().await.map_err(|e| format!("Parse error: {}", e))
+        } else {
+            Err(format!("Task queue '{}' not found", name))
+        }
+    }
+}
+
+// ─── Output Formatting ─────────────────────────────────────────────────────────
+
+fn status_color(status: &str) -> Cell {
+    let cell = Cell::new(status);
+    match status.to_lowercase().as_str() {
+        "running" => cell.fg(Color::Green),
+        "completed" => cell.fg(Color::Blue),
+        "failed" => cell.fg(Color::Red),
+        "canceled" => cell.fg(Color::Yellow),
+        "terminated" => cell.fg(Color::Magenta),
+        _ => cell,
+    }
+}
+
+fn print_workflows_table(workflows: &[WorkflowInfo]) {
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic);
+
+    table.set_header(vec!["WORKFLOW ID", "TYPE", "STATUS", "STARTED", "HISTORY"]);
+
+    for wf in workflows {
+        table.add_row(vec![
+            Cell::new(&wf.workflow_id),
+            Cell::new(&wf.workflow_type),
+            status_color(&wf.status),
+            Cell::new(&wf.start_time),
+            Cell::new(wf.history_length),
+        ]);
+    }
+
+    println!("\n{table}\n");
+}
+
+fn print_workflows_json(workflows: &[WorkflowInfo]) {
+    println!("{}", serde_json::to_string_pretty(workflows).unwrap());
+}
+
+fn print_history_table(events: &[HistoryEvent]) {
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic);
+
+    table.set_header(vec!["ID", "TIME", "TYPE", "DETAILS"]);
+
+    for evt in events {
+        let details = evt.details.as_deref().unwrap_or("-");
+        let truncated = if details.len() > 50 { &details[..50] } else { details };
+        table.add_row(vec![
+            Cell::new(evt.event_id),
+            Cell::new(&evt.event_time),
+            Cell::new(&evt.event_type).fg(Color::Cyan),
+            Cell::new(truncated),
+        ]);
+    }
+
+    println!("\n{table}\n");
+}
+
+fn print_namespaces_table(namespaces: &[NamespaceInfo]) {
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic);
+
+    table.set_header(vec!["NAME", "ID", "ACTIVE", "RETENTION", "DESCRIPTION"]);
+
+    for ns in namespaces {
+        let active = if ns.is_active { "Yes".green() } else { "No".red() };
+        let retention = format!("{}s", ns.retention_secs);
+        table.add_row(vec![
+            Cell::new(&ns.name).fg(Color::Green),
+            Cell::new(ns.namespace_id),
+            Cell::new(active),
+            Cell::new(retention),
+            Cell::new(&ns.description),
+        ]);
+    }
+
+    println!("\n{table}\n");
+}
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    let cli = Cli::parse();
+    let client = VelocityClient::new(&cli.server);
+
+    let result = match cli.command {
+        Commands::Workflow { action } => handle_workflow(action, &client, &cli.namespace, &cli.output).await,
+        Commands::Namespace { action } => handle_namespace(action, &client, &cli.output).await,
+        Commands::Server { action } => handle_server(action, &client, &cli.output).await,
+        Commands::Taskqueue { action } => handle_taskqueue(action, &client, &cli.output).await,
+    };
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{} {}", "Error:".red().bold(), e);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn handle_workflow(action: WorkflowAction, client: &VelocityClient, namespace: &str, output: &OutputFormat) -> Result<(), String> {
+    match action {
+        WorkflowAction::Start { r#type, task_queue, input, workflow_id, total_steps } => {
+            let wf_id = workflow_id.unwrap_or_else(|| format!("wf-{}", uuid_simple()));
+            let input_json: serde_json::Value = serde_json::from_str(&input)
+                .map_err(|e| format!("Invalid JSON input: {}", e))?;
+
+            let req = StartWorkflowRequest {
+                namespace: namespace.to_string(),
+                workflow_id: wf_id.clone(),
+                workflow_type: r#type,
+                task_queue,
+                input: input_json,
+                total_steps,
+            };
+
+            let resp = client.start_workflow(req).await?;
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&resp).unwrap()),
+                OutputFormat::Table => {
+                    println!("\n{} Workflow started successfully", "✓".green().bold());
+                    println!("  Workflow ID: {}", resp.workflow_id.bold());
+                    println!("  Run ID:      {}", resp.run_id);
+                    println!("  Key:         {}", resp.workflow_key);
+                    println!();
+                }
+            }
+        }
+
+        WorkflowAction::List { status, limit } => {
+            let status_str = status.map(|s| format!("{:?}", s).to_lowercase());
+            let resp = client.list_workflows(namespace, status_str.as_deref(), limit).await?;
+
+            match output {
+                OutputFormat::Json => print_workflows_json(&resp.workflows),
+                OutputFormat::Table => {
+                    println!("\n{} workflows (namespace: {})", resp.total_count, namespace.bold());
+                    print_workflows_table(&resp.workflows);
+                }
+            }
+        }
+
+        WorkflowAction::Describe { workflow_id, run_id: _ } => {
+            let detail = client.describe_workflow(&workflow_id).await?;
+
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&detail).unwrap()),
+                OutputFormat::Table => {
+                    println!("\n{} Workflow Details", "⟡".cyan().bold());
+                    println!("  ┌─────────────────────────────────────────────────────────────");
+                    println!("  │ Workflow ID:  {}", detail.workflow_id.bold());
+                    println!("  │ Run ID:       {}", detail.run_id);
+                    println!("  │ Type:         {}", detail.workflow_type);
+                    println!("  │ Status:       {}", format_status(&detail.status));
+                    println!("  │ Namespace:    {}", detail.namespace);
+                    println!("  │ Task Queue:   {}", detail.task_queue);
+                    println!("  │ Started:      {}", detail.start_time);
+                    if let Some(ct) = &detail.close_time {
+                        println!("  │ Closed:       {}", ct);
+                    }
+                    println!("  │ Steps:        {}/{} completed", detail.completed_steps, detail.total_steps);
+                    println!("  │ Merkle Root:  {}", detail.merkle_root);
+                    println!("  │ History:      {} events", detail.history_length);
+                    println!("  └─────────────────────────────────────────────────────────────");
+
+                    if !detail.pending_activities.is_empty() {
+                        println!("\n  {} Pending Activities:", "⚡".yellow());
+                        let mut table = Table::new();
+                        table.set_header(vec!["ACTIVITY", "TYPE", "STATE", "ATTEMPT"]);
+                        for act in &detail.pending_activities {
+                            table.add_row(vec![
+                                Cell::new(&act.activity_id),
+                                Cell::new(&act.activity_type),
+                                status_color(&act.state),
+                                Cell::new(format!("{}/{}", act.attempt, act.max_attempts)),
+                            ]);
+                        }
+                        println!("{table}");
+                    }
+                    println!();
+                }
+            }
+        }
+
+        WorkflowAction::Signal { workflow_id, name, input } => {
+            let input_json: serde_json::Value = serde_json::from_str(&input)
+                .map_err(|e| format!("Invalid JSON input: {}", e))?;
+            client.signal_workflow(&workflow_id, &name, input_json).await?;
+            println!("{} Signal '{}' sent to workflow '{}'", "✓".green().bold(), name.bold(), workflow_id);
+        }
+
+        WorkflowAction::Query { workflow_id, name, input } => {
+            let input_json: serde_json::Value = serde_json::from_str(&input)
+                .map_err(|e| format!("Invalid JSON input: {}", e))?;
+            let result = client.query_workflow(&workflow_id, &name, input_json).await?;
+
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&result).unwrap()),
+                OutputFormat::Table => {
+                    println!("\n{} Query Result for '{}':", "⟡".cyan(), name.bold());
+                    println!("{}\n", serde_json::to_string_pretty(&result).unwrap());
+                }
+            }
+        }
+
+        WorkflowAction::Cancel { workflow_id } => {
+            client.cancel_workflow(&workflow_id).await?;
+            println!("{} Workflow '{}' cancellation requested", "✓".green().bold(), workflow_id.bold());
+        }
+
+        WorkflowAction::History { workflow_id, limit } => {
+            let resp = client.get_history(&workflow_id, limit).await?;
+
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&resp.events).unwrap()),
+                OutputFormat::Table => {
+                    println!("\n{} Event History for '{}':", "⟡".cyan(), workflow_id.bold());
+                    print_history_table(&resp.events);
+                }
+            }
+        }
+    }
     Ok(())
 }
 
-fn ctrlc_handler(running: Arc<AtomicBool>) {
-    // Simple signal handling - in production would use signal_hook crate
-    std::thread::spawn(move || {
-        // Wait for a signal or just run indefinitely
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(3600));
-            if !running.load(Ordering::Relaxed) { break; }
+async fn handle_namespace(action: NamespaceAction, client: &VelocityClient, output: &OutputFormat) -> Result<(), String> {
+    match action {
+        NamespaceAction::Register { name, description } => {
+            let id = client.register_namespace(&name, &description).await?;
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::json!({ "name": name, "namespace_id": id })),
+                OutputFormat::Table => {
+                    println!("\n{} Namespace '{}' registered (ID: {})", "✓".green().bold(), name.bold(), id);
+                }
+            }
         }
-    });
+
+        NamespaceAction::Describe { name } => {
+            let info = client.describe_namespace(&name).await?;
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&info).unwrap()),
+                OutputFormat::Table => {
+                    println!("\n{} Namespace Details", "⟡".cyan().bold());
+                    println!("  Name:        {}", info.name.bold());
+                    println!("  ID:          {}", info.namespace_id);
+                    println!("  Active:      {}", if info.is_active { "Yes".green() } else { "No".red() });
+                    println!("  Retention:   {}s", info.retention_secs);
+                    println!("  Description: {}", if info.description.is_empty() { "(none)" } else { &info.description });
+                    println!();
+                }
+            }
+        }
+
+        NamespaceAction::List => {
+            let namespaces = client.list_namespaces().await?;
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&namespaces).unwrap()),
+                OutputFormat::Table => print_namespaces_table(&namespaces),
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_server(action: ServerAction, client: &VelocityClient, output: &OutputFormat) -> Result<(), String> {
+    match action {
+        ServerAction::Info => {
+            let info = client.get_server_info().await?;
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&info).unwrap()),
+                OutputFormat::Table => {
+                    println!("\n{} Server Information", "⟡".cyan().bold());
+                    println!("  ┌─────────────────────────────────────────────────────────────");
+                    println!("  │ Version:       {}", info.server_version.bold());
+                    println!("  │ Uptime:        {}", format_uptime(info.uptime_secs));
+                    println!("  │ Workflows:     {}", info.workflow_count);
+                    println!("  │ Namespaces:    {}", info.namespace_count);
+                    println!("  │ Features:      {}", info.supported_features.join(", "));
+                    println!("  └─────────────────────────────────────────────────────────────\n");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_taskqueue(action: TaskQueueAction, client: &VelocityClient, output: &OutputFormat) -> Result<(), String> {
+    match action {
+        TaskQueueAction::Describe { name } => {
+            let info = client.describe_task_queue(&name).await?;
+            match output {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&info).unwrap()),
+                OutputFormat::Table => {
+                    println!("\n{} Task Queue: {}", "⟡".cyan().bold(), name.bold());
+                    println!("  Pending Tasks:   {}", info.pending_tasks);
+                    println!("  Active Workers:  {}", info.active_workers);
+                    println!();
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+fn format_status(status: &str) -> crossterm::style::StyledContent<&str> {
+    match status.to_lowercase().as_str() {
+        "running" => status.green().bold(),
+        "completed" => status.blue().bold(),
+        "failed" => status.red().bold(),
+        "canceled" => status.yellow().bold(),
+        "terminated" => status.magenta().bold(),
+        _ => status.white(),
+    }
+}
+
+fn format_uptime(secs: u64) -> String {
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    let mins = (secs % 3600) / 60;
+    if days > 0 {
+        format!("{}d {}h {}m", days, hours, mins)
+    } else if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else {
+        format!("{}m", mins)
+    }
+}
+
+fn uuid_simple() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    format!("{:x}", ts)
 }

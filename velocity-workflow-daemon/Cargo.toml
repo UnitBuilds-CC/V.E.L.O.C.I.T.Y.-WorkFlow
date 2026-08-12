@@ -2,7 +2,40 @@
 name = "velocity-workflow-daemon"
 version = "0.1.0"
 edition = "2021"
+authors = ["UnitBuilds <ian@unitbuilds.com>"]
+description = "VELOCITY-WorkFlow CLI — professional workflow management tool"
+
+[[bin]]
+name = "velocity"
+path = "src/main.rs"
 
 [dependencies]
 velocity-workflow-core = { path = "../velocity-workflow-core" }
 velocity-workflow-engine = { path = "../velocity-workflow-engine" }
+
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive", "env", "color"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# gRPC client
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+
+# Async runtime (for tonic)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+
+# Table formatting
+comfy-table = "7.1"
+
+# HTTP client (for REST API fallback)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Terminal colors
+crossterm = "0.28"
+
+[build-dependencies]
+tonic-build = "0.12"

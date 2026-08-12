@@ -1,0 +1,109 @@
+# =============================================================================
+# Default values for the Velocity Workflow Helm chart
+# =============================================================================
+
+replicaCount: 2
+
+image:
+  repository: velocity-workflow-server
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "velocity-server"
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "5000"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  httpPort: 5000
+  grpcPort: 50051
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: velocity.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: "2"
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── Application Configuration ──────────────────────────────────────────────
+config:
+  environment: Production
+  logging:
+    level: Information
+  metrics:
+    enabled: true
+
+# ── PostgreSQL ──────────────────────────────────────────────────────────────
+postgresql:
+  enabled: true
+  host: ""
+  port: 5432
+  database: velocity
+  username: velocity
+  password: velocity_secret
+  existingSecret: ""
+  existingSecretKey: password
+
+# ── gRPC ────────────────────────────────────────────────────────────────────
+grpc:
+  port: 50051
+
+# ── Auth ────────────────────────────────────────────────────────────────────
+auth:
+  jwtIssuer: ""
+  jwtAudience: ""
+  apiKeys: []
+
+# ── Persistence ─────────────────────────────────────────────────────────────
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 10Gi
+  accessModes:
+    - ReadWriteOnce

@@ -5837,6 +5837,163 @@ pub unsafe extern "C" fn velocity_slab_verify_merkle(handle: *mut EngineHandle, 
     }
 }
 
+// ─── Observability FFI ───────────────────────────────────────────────────────
+
+use crate::observability::{self, ObservabilityConfig, ObservabilityContext, LogLevel};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static OBS_INIT: AtomicU64 = AtomicU64::new(0);
+
+/// Initialize the global observability context. Returns 0 on success.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_obs_init(
+    enable_tracing: u8,
+    enable_metrics: u8,
+    enable_logging: u8,
+    log_level: u8,
+    service_name_ptr: *const u8,
+    service_name_len: u32,
+) -> i32 {
+    let service_name = if service_name_ptr.is_null() || service_name_len == 0 {
+        "velocity-workflow-engine".to_string()
+    } else {
+        let slice = std::slice::from_raw_parts(service_name_ptr, service_name_len as usize);
+        String::from_utf8_lossy(slice).into_owned()
+    };
+
+    let config = ObservabilityConfig {
+        enable_tracing: enable_tracing != 0,
+        enable_metrics: enable_metrics != 0,
+        enable_logging: enable_logging != 0,
+        log_level: LogLevel::from_u8(log_level),
+        metrics_export_interval_ms: 10_000,
+        service_name,
+    };
+
+    observability::init_global(config);
+    OBS_INIT.store(1, Ordering::Release);
+    0
+}
+
+fn obs_ctx() -> Option<&'static ObservabilityContext> {
+    if OBS_INIT.load(Ordering::Acquire) == 0 { return None; }
+    observability::global()
+}
+
+/// Log a structured event. Fields are passed as parallel arrays of key/value byte pointers.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_obs_log_event(
+    level: u8,
+    name_ptr: *const u8,
+    name_len: u32,
+    field_keys: *const *const u8,
+    field_key_lens: *const u32,
+    field_vals: *const *const u8,
+    field_val_lens: *const u32,
+    field_count: u32,
+) -> i32 {
+    let ctx = match obs_ctx() { Some(c) => c, None => return -1 };
+
+    let event_name = if name_ptr.is_null() || name_len == 0 {
+        "unknown"
+    } else {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        std::str::from_utf8(slice).unwrap_or("unknown")
+    };
+
+    let log_level = LogLevel::from_u8(level);
+
+    // Build field pairs on the stack (up to 32 fields)
+    let mut fields_buf: [(&str, &str); 32] = [("", ""); 32];
+    let mut field_count_actual = 0usize;
+
+    if !field_keys.is_null() && !field_vals.is_null() && field_count > 0 {
+        let keys = std::slice::from_raw_parts(field_keys, field_count as usize);
+        let key_lens = std::slice::from_raw_parts(field_key_lens, field_count as usize);
+        let vals = std::slice::from_raw_parts(field_vals, field_count as usize);
+        let val_lens = std::slice::from_raw_parts(field_val_lens, field_count as usize);
+
+        for i in 0..(field_count as usize).min(32) {
+            let k = if keys[i].is_null() || key_lens[i] == 0 { "" } else {
+                std::str::from_utf8(std::slice::from_raw_parts(keys[i], key_lens[i] as usize)).unwrap_or("")
+            };
+            let v = if vals[i].is_null() || val_lens[i] == 0 { "" } else {
+                std::str::from_utf8(std::slice::from_raw_parts(vals[i], val_lens[i] as usize)).unwrap_or("")
+            };
+            fields_buf[i] = (k, v);
+            field_count_actual += 1;
+        }
+    }
+
+    ctx.logger().log_event(log_level, event_name, &fields_buf[..field_count_actual]);
+    0
+}
+
+/// Export Prometheus metrics into the provided buffer. Returns bytes written.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_obs_export_metrics(
+    buf: *mut u8,
+    buf_len: u32,
+) -> u64 {
+    let ctx = match obs_ctx() { Some(c) => c, None => return 0 };
+    let output = ctx.metrics().export_prometheus();
+    let bytes = output.as_bytes();
+    let copy_len = bytes.len().min(buf_len as usize);
+    if !buf.is_null() && copy_len > 0 {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, copy_len);
+    }
+    copy_len as u64
+}
+
+/// Start a trace span. Returns the span ID (0 if tracing disabled).
+#[no_mangle]
+pub unsafe extern "C" fn velocity_obs_start_span(
+    name_ptr: *const u8,
+    name_len: u32,
+    parent_id: u64,
+) -> u64 {
+    let ctx = match obs_ctx() { Some(c) => c, None => return 0 };
+    let name = if name_ptr.is_null() || name_len == 0 {
+        "unknown"
+    } else {
+        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
+        std::str::from_utf8(slice).unwrap_or("unknown")
+    };
+    let parent = if parent_id == 0 { None } else { Some(parent_id) };
+    ctx.tracer().start_span(name, parent)
+}
+
+/// End a trace span.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_obs_end_span(span_id: u64) -> i32 {
+    let ctx = match obs_ctx() { Some(c) => c, None => return -1 };
+    if ctx.tracer().end_span(span_id) { 0 } else { -1 }
+}
+
+/// Increment the workflow_started_total counter.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_obs_workflow_started() {
+    if let Some(ctx) = obs_ctx() {
+        ctx.metrics().inc_counter("workflow_started_total");
+    }
+}
+
+/// Increment the workflow_completed_total counter.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_obs_workflow_completed() {
+    if let Some(ctx) = obs_ctx() {
+        ctx.metrics().inc_counter("workflow_completed_total");
+    }
+}
+
+/// Increment the workflow_failed_total counter.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_obs_workflow_failed() {
+    if let Some(ctx) = obs_ctx() {
+        ctx.metrics().inc_counter("workflow_failed_total");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

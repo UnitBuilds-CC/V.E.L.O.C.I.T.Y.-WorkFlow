@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "velocity-server"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["velocity-server:5000"]
+        labels:
+          app: velocity
+          environment: production
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

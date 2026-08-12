@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "velocity.fullname" . }}-config
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+data:
+  ASPNETCORE_ENVIRONMENT: {{ .Values.config.environment | quote }}
+  VELOCITY__LOGGING__LEVEL: {{ .Values.config.logging.level | quote }}
+  VELOCITY__METRICS__ENABLED: {{ .Values.config.metrics.enabled | quote }}
+  GRPC__PORT: {{ .Values.grpc.port | quote }}
