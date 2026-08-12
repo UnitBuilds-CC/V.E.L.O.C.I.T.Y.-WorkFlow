@@ -1,0 +1,70 @@
+# =============================================================================
+# Lightweight Docker Compose for E2E testing (CI only)
+# Only includes velocity-server + postgres — no monitoring stack
+# =============================================================================
+
+x-common-env:
+  TZ: UTC
+  LOG_LEVEL: information
+
+services:
+  # ── Velocity Workflow Server ──────────────────────────────────────────────
+  velocity-server:
+    image: ${VELOCITY_SERVER_IMAGE:-velocity-server:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: velocity-server-e2e
+    ports:
+      - "5000:5000"
+      - "50051:50051"
+    environment:
+      - TZ=UTC
+      - LOG_LEVEL=information
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=velocity;Username=velocity;Password=${POSTGRES_PASSWORD:-velocity_secret}
+      - GRPC__PORT=50051
+      - VELOCITY__METRICS__ENABLED=true
+      - VELOCITY__LOGGING__LEVEL=Information
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: velocity-postgres-e2e
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=velocity
+      - POSTGRES_USER=velocity
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-velocity_secret}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    tmpfs:
+      - /var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velocity -d velocity"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

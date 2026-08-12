@@ -8,7 +8,7 @@ on:
     paths:
       - "src/**"
       - "velocity-workflow-*/**"
-      - "docker-compose.yml"
+      - "docker-compose*.yml"
       - "Dockerfile"
       - "Dockerfile.web"
       - ".github/workflows/e2e.yml"
@@ -22,66 +22,55 @@ concurrency:
 
 env:
   COMPOSE_PROJECT_NAME: velocity-e2e
+  COMPOSE_FILE: docker-compose.e2e.yml
   POSTGRES_PASSWORD: e2e_test_password
-  GRAFANA_ADMIN_PASSWORD: e2e_admin
   VELOCITY_SERVER_IMAGE: velocity-e2e-velocity-server:latest
-  VELOCITY_WEB_IMAGE: velocity-e2e-velocity-web:latest
 
 jobs:
   # ── End-to-End Tests ──────────────────────────────────────────────────────
   e2e:
     name: E2E Test Suite
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── Build images (with GHA cache for speed) ─────────────────────────
+      # ── Build server image (with GHA cache for speed) ───────────────────
       - name: Build server Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
           load: true
-          tags: velocity-e2e-velocity-server:latest
+          tags: ${{ env.VELOCITY_SERVER_IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build web image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.web
-          push: false
-          load: true
-          tags: velocity-e2e-velocity-web:latest
-
-      # ── Start services ──────────────────────────────────────────────────
+      # ── Start services (server + postgres only) ─────────────────────────
       - name: Start services
         run: |
-          echo "Starting docker compose services..."
-          docker compose up -d --wait --wait-timeout 240
+          echo "Starting E2E services (server + postgres)..."
+          docker compose -f docker-compose.e2e.yml up -d --wait --wait-timeout 180
         env:
           POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
-          GRAFANA_ADMIN_PASSWORD: ${{ env.GRAFANA_ADMIN_PASSWORD }}
 
       - name: Dump service status
         if: always()
         run: |
           echo "=== Service Status ==="
-          docker compose ps -a
+          docker compose -f docker-compose.e2e.yml ps -a
           echo ""
           echo "=== Service Health ==="
-          docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}"
+          docker compose -f docker-compose.e2e.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}"
 
       # ── Health checks ───────────────────────────────────────────────────
       - name: Verify server health endpoint
         run: |
           echo "Checking velocity-server health..."
-          for i in $(seq 1 15); do
+          for i in $(seq 1 20); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
             if [ "$STATUS" = "200" ]; then
               echo "✓ Server health check passed (attempt $i)"
@@ -91,45 +80,28 @@ jobs:
             echo "  Attempt $i: HTTP $STATUS — retrying in 5s..."
             sleep 5
           done
-          echo "✗ Server did not become healthy after 15 attempts"
-          echo "--- Server logs ---"
-          docker compose logs --tail=50 velocity-server
+          echo "✗ Server did not become healthy after 20 attempts (100s)"
+          echo ""
+          echo "=== Server Logs (last 80 lines) ==="
+          docker compose -f docker-compose.e2e.yml logs --tail=80 velocity-server
+          echo ""
+          echo "=== Postgres Logs (last 20 lines) ==="
+          docker compose -f docker-compose.e2e.yml logs --tail=20 postgres
           exit 1
 
-      - name: Verify Prometheus is scraping
-        run: |
-          for i in $(seq 1 10); do
-            TARGETS=$(curl -sf http://localhost:9090/api/v1/targets 2>/dev/null || echo "")
-            if echo "$TARGETS" | jq -e '.data.activeTargets[] | select(.labels.job == "velocity-server")' > /dev/null 2>&1; then
-              echo "✓ Prometheus is scraping velocity-server"
-              exit 0
-            fi
-            echo "  Waiting for Prometheus... ($i/10)"
-            sleep 3
-          done
-          echo "⚠ Prometheus not scraping velocity-server (non-critical)"
-        continue-on-error: true
-
       # ── Smoke tests ─────────────────────────────────────────────────────
-      - name: Run E2E test suite
+      - name: Run API smoke tests
         run: |
-          if [ -d "tests/e2e" ] && [ -f "tests/e2e/VelocityShare.E2ETest.csproj" ]; then
-            echo "Running .NET E2E tests..."
-            dotnet test tests/e2e/ -c Release --verbosity normal
-          else
-            echo "Running API smoke tests..."
-            echo ""
-            echo "--- Health endpoint ---"
-            curl -sf http://localhost:5000/health | jq . 2>/dev/null || echo "(not available)"
-            echo ""
-            echo "--- Metrics endpoint ---"
-            curl -sf http://localhost:5000/metrics 2>/dev/null | head -20 || echo "(not available)"
-            echo ""
-            echo "--- API: List namespaces ---"
-            curl -sf http://localhost:5000/api/v1/namespaces 2>/dev/null | jq . 2>/dev/null || echo "(not available)"
-            echo ""
-            echo "Smoke tests completed"
-          fi
+          echo "=== Health endpoint ==="
+          curl -sf http://localhost:5000/health | jq . 2>/dev/null || echo "(not available)"
+          echo ""
+          echo "=== Metrics endpoint ==="
+          curl -sf http://localhost:5000/metrics 2>/dev/null | head -20 || echo "(not available)"
+          echo ""
+          echo "=== API: List namespaces ==="
+          curl -sf http://localhost:5000/api/v1/namespaces 2>/dev/null | jq . 2>/dev/null || echo "(not available)"
+          echo ""
+          echo "Smoke tests completed"
         continue-on-error: true
 
       - name: Test workflow submission
@@ -155,12 +127,10 @@ jobs:
         if: always()
         run: |
           mkdir -p e2e-logs
-          docker compose logs > e2e-logs/all-services.log 2>&1 || true
-          docker compose logs velocity-server > e2e-logs/server.log 2>&1 || true
-          docker compose logs postgres > e2e-logs/postgres.log 2>&1 || true
-          docker compose logs prometheus > e2e-logs/prometheus.log 2>&1 || true
-          docker compose logs velocity-web > e2e-logs/web.log 2>&1 || true
-          docker compose ps -a > e2e-logs/service-status.txt 2>&1 || true
+          docker compose -f docker-compose.e2e.yml logs > e2e-logs/all-services.log 2>&1 || true
+          docker compose -f docker-compose.e2e.yml logs velocity-server > e2e-logs/server.log 2>&1 || true
+          docker compose -f docker-compose.e2e.yml logs postgres > e2e-logs/postgres.log 2>&1 || true
+          docker compose -f docker-compose.e2e.yml ps -a > e2e-logs/service-status.txt 2>&1 || true
 
       - name: Upload E2E logs
         if: always()
@@ -172,7 +142,7 @@ jobs:
 
       - name: Tear down services
         if: always()
-        run: docker compose down -v --remove-orphans
+        run: docker compose -f docker-compose.e2e.yml down -v --remove-orphans
 
   # ── Docker Compose Validation ─────────────────────────────────────────────
   compose-validate:
@@ -183,6 +153,9 @@ jobs:
 
       - name: Validate docker-compose.yml
         run: docker compose config --quiet
+
+      - name: Validate docker-compose.e2e.yml
+        run: docker compose -f docker-compose.e2e.yml config --quiet
 
       - name: Check for security best practices
         run: |

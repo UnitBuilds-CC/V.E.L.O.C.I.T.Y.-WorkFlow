@@ -34,7 +34,7 @@ RUN mkdir -p velocity-workflow-core/src && echo "pub fn dummy(){}" > velocity-wo
     mkdir -p velocity-test-framework/src && echo "pub fn dummy(){}" > velocity-test-framework/src/lib.rs
 
 # Pre-build dependencies (ignore errors from dummy sources)
-RUN cargo build --release --workspace || true
+RUN cargo build --profile ci --workspace || true
 
 # Copy actual source and build
 COPY velocity-workflow-core/ velocity-workflow-core/
@@ -44,7 +44,7 @@ COPY velocity-bench/ velocity-bench/
 COPY velocity-dev-server/ velocity-dev-server/
 COPY velocity-test-framework/ velocity-test-framework/
 
-RUN cargo build --release --workspace
+RUN cargo build --profile ci --workspace
 
 # ── Stage 2: .NET Builder ────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS dotnet-builder
@@ -52,9 +52,9 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS dotnet-builder
 WORKDIR /build/dotnet
 
 # Copy Rust native libraries to the expected location for .NET build
-COPY --from=rust-builder /build/rust/target/release/libvelocity_workflow_core.so \
+COPY --from=rust-builder /build/rust/target/ci/libvelocity_workflow_core.so \
     /build/dotnet/src/Velocity.Workflow.Core/runtimes/linux-x64/native/velocity_workflow_core.so
-COPY --from=rust-builder /build/rust/target/release/libvelocity_workflow_engine.so \
+COPY --from=rust-builder /build/rust/target/ci/libvelocity_workflow_engine.so \
     /build/dotnet/src/Velocity.Workflow.Core/runtimes/linux-x64/native/velocity_workflow_engine.so
 
 # Copy .NET solution
@@ -84,8 +84,8 @@ WORKDIR /app
 COPY --from=dotnet-builder /app/publish .
 
 # Copy native Rust libraries to runtime location
-COPY --from=rust-builder /build/rust/target/release/libvelocity_workflow_core.so /app/lib/
-COPY --from=rust-builder /build/rust/target/release/libvelocity_workflow_engine.so /app/lib/
+COPY --from=rust-builder /build/rust/target/ci/libvelocity_workflow_core.so /app/lib/
+COPY --from=rust-builder /build/rust/target/ci/libvelocity_workflow_engine.so /app/lib/
 
 ENV LD_LIBRARY_PATH="/app/lib"
 ENV ASPNETCORE_URLS="http://+:5000"
