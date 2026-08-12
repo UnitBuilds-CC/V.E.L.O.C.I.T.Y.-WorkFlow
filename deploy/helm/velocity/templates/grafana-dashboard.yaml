@@ -32,7 +32,7 @@ data:
           "targets": [
             {
               "expr": "sum(rate(velocity_workflow_executions_total[5m])) by (workflow_type, status)",
-              "legendFormat": "{{workflow_type}} - {{status}}"
+              "legendFormat": "{{ "{{" }}workflow_type{{ "}}" }} - {{ "{{" }}status{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -70,7 +70,7 @@ data:
           "targets": [
             {
               "expr": "sum(rate(velocity_workflow_executions_total{status=\"failed\"}[5m])) by (workflow_type) / sum(rate(velocity_workflow_executions_total[5m])) by (workflow_type)",
-              "legendFormat": "{{workflow_type}}"
+              "legendFormat": "{{ "{{" }}workflow_type{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -85,7 +85,7 @@ data:
           "targets": [
             {
               "expr": "velocity_slab_utilization_ratio",
-              "legendFormat": "slab-{{slab_id}}"
+              "legendFormat": "slab-{{ "{{" }}slab_id{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -123,7 +123,7 @@ data:
           "targets": [
             {
               "expr": "sum(velocity_task_queue_depth) by (task_queue)",
-              "legendFormat": "{{task_queue}}"
+              "legendFormat": "{{ "{{" }}task_queue{{ "}}" }}"
             }
           ]
         }

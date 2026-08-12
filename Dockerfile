@@ -75,7 +75,7 @@ COPY --from=dotnet-builder /app/publish .
 COPY --from=rust-builder /build/rust/target/release/libvelocity_workflow_core.so /app/lib/
 COPY --from=rust-builder /build/rust/target/release/libvelocity_workflow_engine.so /app/lib/
 
-ENV LD_LIBRARY_PATH="/app/lib:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/app/lib"
 ENV ASPNETCORE_URLS="http://+:5000"
 ENV ASPNETCORE_ENVIRONMENT="Production"
 

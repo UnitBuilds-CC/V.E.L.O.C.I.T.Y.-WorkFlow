@@ -100,6 +100,21 @@ pub mod persistence_visibility;
 pub mod history_api;
 pub mod matching_workers;
 pub mod frontend_handlers;
+pub mod client_sdk;
+pub mod rpc_framework;
+pub mod distributed_locks;
+pub mod header_propagation;
+pub mod persistence_serialization;
+pub mod workflow_task_handler;
+pub mod nexus_deep;
+pub mod clock_abstraction;
+pub mod search_attributes;
+pub mod task_framework;
+pub mod quota_management;
+pub mod lru_cache;
+pub mod backoff_retry;
+pub mod service_errors;
+pub mod workflow_state_machine;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
 // Requires protoc to be installed for proto compilation.
@@ -449,4 +464,113 @@ pub use frontend_handlers::{
     PendingWorkflowTaskInfo, WorkflowTaskType,
     ResetWorkflowExecutionRequest, ResetWorkflowExecutionResponse,
     FrontendServiceImpl, FrontendError, FrontendStats as HandlerFrontendStats,
+};
+// client_sdk: workflow client, handle, schedule/namespace/search attribute clients.
+pub use client_sdk::{
+    WorkflowClient, ClientConfig, ClientStats, ClientError,
+    WorkflowHandle, StartWorkflowOptions, WorkflowStatus as ClientWorkflowStatus, WorkflowDescription,
+    WorkflowHistory, WorkflowResult, WorkflowFailure as ClientWorkflowFailure, WorkflowListResult, ResetPointSelector,
+    WorkflowRetryPolicy, HistoryEventEntry,
+    ClientConnection, TlsConfig, ClientRetryConfig, GrpcClientConfig,
+    ScheduleClient, ScheduleHandle, CreateScheduleOptions, ScheduleSpec, ScheduleAction as ClientScheduleAction,
+    ScheduleOverlapPolicy, ScheduleDescription, ScheduleInterval, ScheduleCalendarSpec,
+    NamespaceClient, NamespaceOptions, NamespaceDescription,
+    SearchAttributeClient, SearchAttributeList, SearchAttributeType as ClientSearchAttributeType,
+    ClientInterceptor, LoggingInterceptor, TracingInterceptor, MetricsInterceptor, AuthInterceptor as ClientAuthInterceptor,
+};
+// rpc_framework: gRPC interceptors, connection management, load balancing.
+pub use rpc_framework::{
+    RpcServerConfig, RpcTlsConfig, TlsVersion, KeepAliveConfig,
+    RpcInterceptor, RpcRequest, RpcResponse, RpcStatus, RpcError,
+    InterceptorChain,
+    AuthInterceptor as RpcAuthInterceptor, RateLimitInterceptor as RpcRateLimitInterceptor, TelemetryInterceptor as RpcTelemetryInterceptor,
+    ValidationInterceptor as RpcValidationInterceptor, RetryInterceptor, TimeoutInterceptor,
+    NamespaceValidationInterceptor, RedirectionInterceptor,
+    ServiceRegistry, ServiceDescriptor, MethodDescriptor, RegistryStats as RpcRegistryStats,
+    ConnectionManager, ConnectionManagerConfig, ConnectionState, ConnectionManagerStats,
+    RpcLoadBalancer, BackendInfo, LoadBalanceStrategy,
+};
+// distributed_locks: shard ownership, leader election, fencing tokens.
+pub use distributed_locks::{
+    DistributedLock, LockManager, LockManagerStats, LockError,
+    ShardOwnershipManager as LockShardOwnershipManager, ShardOwnershipInfo,
+    LeaderElection,
+};
+// header_propagation: context propagation, header encoding/decoding.
+pub use header_propagation::{
+    Header, ContextPropagator, PropagationContext,
+    PropagationChain, PropagationStats,
+    HeaderCodec, BinaryHeaderCodec, JsonHeaderCodec,
+    HeaderError,
+};
+// persistence_serialization: event serialization, batch serialization, schema registry.
+pub use persistence_serialization::{
+    EncodingType as SerializationEncoding, SerializedData,
+    EventSerializer, SerializableEvent, SerializerStats,
+    BatchSerializer,
+    SchemaRegistry, SchemaEntry, SchemaField, FieldType,
+    SerializationError,
+};
+// workflow_task_handler: deep RespondWorkflowTaskCompleted handler.
+pub use workflow_task_handler::{
+    WorkflowTaskCompletion, StickyAttributes, SdkMetadata, MeteringMetadata, ProtocolMessage,
+    WorkflowCommand as TaskWorkflowCommand, ScheduleActivityCommand as TaskScheduleActivityCommand, StartTimerCommand as TaskStartTimerCommand,
+    CompleteWorkflowCommand as TaskCompleteWorkflowCommand, FailWorkflowCommand as TaskFailWorkflowCommand, CancelWorkflowCommand as TaskCancelWorkflowCommand,
+    RequestCancelActivityCommand as TaskRequestCancelActivityCommand, CancelTimerCommand as TaskCancelTimerCommand,
+    StartChildWorkflowCommand as TaskStartChildWorkflowCommand, RequestCancelChildWorkflowCommand,
+    SignalExternalWorkflowCommand, CancelExternalWorkflowCommand,
+    RecordMarkerCommand as TaskRecordMarkerCommand, ContinueAsNewCommand as TaskContinueAsNewCommand,
+    UpsertSearchAttributesCommand, ModifyWorkflowPropertiesCommand,
+    ScheduleNexusOperationCommand, CancelNexusOperationCommand, ProtocolMessageCommand as TaskProtocolMessageCommand,
+    CommandRetryPolicy,
+    WorkflowTaskHandler, ProcessedCommand, HandlerStats, HandlerError as TaskHandlerError,
+    CommandValidator, ValidationError as TaskValidationError,
+    CompletionResult, GeneratedEvent, TransferTaskEntry, TimerTask as HandlerTimerTask,
+    VisibilityTask as HandlerVisibilityTask, ActivityTask as HandlerActivityTask,
+};
+// nexus_deep: deep nexus operations, endpoints, callbacks.
+pub use nexus_deep::{
+    NexusEndpoint, EndpointTarget, AuthMethod as NexusAuthMethod,
+    NexusEndpointManager as DeepNexusEndpointManager, EndpointManagerStats,
+    NexusOperation as DeepNexusOperation, NexusOperationState as DeepNexusOperationState, NexusFailure, NexusLink,
+    NexusOperationManager, CallbackResult,
+    NexusError,
+};
+// clock_abstraction: time source, mock time, hybrid logical clock.
+pub use clock_abstraction::{
+    TimeSource, RealTimeSource, MockTimeSource, TimeSkippingTimeSource,
+    HybridLogicalClock, TimerHandle, ClockStats,
+};
+// search_attributes: search attribute type system, validation, mapping.
+pub use search_attributes::{
+    SearchAttributeType as SaType, SearchAttributeValue as SaValue, SearchAttributeField as SaField,
+    SearchAttributeDefinition as SaDefinition, SearchAttributeMapper, SearchAttributeError as SaError, SearchAttributeStats as SaStats,
+};
+// task_framework: task executor, scheduler, priority queue.
+pub use task_framework::{
+    Task as FwTask, TaskCategory, TaskState as FrameworkTaskState, TaskPriority,
+    PriorityTaskQueue, TaskQueueStats as FrameworkQueueStats,
+    TaskExecutor as FwTaskExecutor, TaskExecutionResult as FwTaskExecutionResult, TaskExecutionError,
+    TaskScheduler, SchedulerStats as FrameworkSchedulerStats,
+};
+// quota_management: quota policies, namespace quotas, quota calculator.
+pub use quota_management::{
+    QuotaPolicy as QuotaPolicyV2, QuotaPriority, QuotaBucket, BucketStats,
+    NamespaceQuotaTracker, NamespaceQuotaStats, QuotaCalculator, OperationQuotaTracker,
+};
+// lru_cache: LRU cache with TTL, pinning, metrics.
+pub use lru_cache::{LruCache, CacheStats as LruCacheStats};
+// backoff_retry: exponential backoff, jitter, retry budget.
+pub use backoff_retry::{
+    BackoffCalculator, JitterMode, RetryBudget, BackoffCoordinator,
+};
+// service_errors: typed gRPC service error hierarchy.
+pub use service_errors::{
+    ServiceErrorStatus, ServiceError, ErrorCounter,
+};
+// workflow_state_machine: mutable state, activity/timer/child/signal/query state.
+pub use workflow_state_machine::{
+    MutableState as WfMutableState, WorkflowExecutionState as WfExecutionState, ActivityState, ActivityExecutionState,
+    TimerState, TimerExecutionState, ChildWorkflowState, ChildWorkflowExecutionState, ParentClosePolicy,
+    SignalState, QueryState as WfQueryState, QueryExecutionState, StateError, ActivityRetryPolicy,
 };

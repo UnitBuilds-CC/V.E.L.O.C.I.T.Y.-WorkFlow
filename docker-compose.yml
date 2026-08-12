@@ -28,7 +28,8 @@ services:
       - "5000:5000"   # HTTP API
       - "50051:50051" # gRPC
     environment:
-      <<: *common-env
+      - TZ=UTC
+      - LOG_LEVEL=information
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:5000
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=velocity;Username=velocity;Password=${POSTGRES_PASSWORD:-velocity_secret}
@@ -179,7 +180,8 @@ services:
     entrypoint: ["dotnet", "Velocity.Workflow.Server.dll"]
     command: ["cli", "--help"]
     environment:
-      <<: *common-env
+      - TZ=UTC
+      - LOG_LEVEL=information
       - ASPNETCORE_ENVIRONMENT=Production
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=velocity;Username=velocity;Password=${POSTGRES_PASSWORD:-velocity_secret}
       - VELOCITY__SERVER__URL=http://velocity-server:5000
