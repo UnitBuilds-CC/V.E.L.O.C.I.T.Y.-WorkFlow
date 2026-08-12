@@ -174,7 +174,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
         };
 
         // Poll until the workflow reaches a terminal state or timeout.
-        let poll_interval = std::time::Duration::from_millis(1);
+        let poll_interval = std::time::Duration::from_micros(100);
         loop {
             if let Some(wf) = self.engine.get_workflow(namespace, &req.workflow_id) {
                 let status = wf.status.as_str();

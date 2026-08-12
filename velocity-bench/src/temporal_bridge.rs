@@ -515,7 +515,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
         } else {
             Duration::from_secs(30)
         };
-        let poll_interval = Duration::from_millis(1);
+        let poll_interval = Duration::from_micros(100);
 
         loop {
             if let Some(status) = self

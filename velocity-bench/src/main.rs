@@ -332,12 +332,79 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 // ─── Workload Runner ─────────────────────────────────────────────────────────
 
+/// Run a warm-up pass on the engine before measuring.
+/// This eliminates cold-start artifacts: connection setup, lazy init,
+/// first-allocation overhead, JIT warming, etc.
+async fn warm_up(engine: &mut dyn BenchmarkEngine, workload: &WorkloadDefinition) {
+    let warmup_count = match &workload.kind {
+        WorkloadKind::ColdStart => 0, // Cold start must stay cold!
+        _ => std::cmp::min(5, workload.config.workflow_count / 10).max(1),
+    };
+
+    if warmup_count == 0 {
+        return;
+    }
+
+    tracing::info!("  Warm-up: {} operations...", warmup_count);
+
+    // Reset engine state before warm-up
+    let _ = engine.reset().await;
+
+    for i in 0..warmup_count {
+        let wf_id = format!("warmup-{}-{}", workload.name, i);
+        if let Ok(handle) = engine.start_workflow("warmup", &wf_id, b"warmup").await {
+            let _ = black_box(engine.complete_step(&handle, 0, b"done").await);
+            let _ = black_box(
+                engine
+                    .wait_for_completion(&handle, Duration::from_secs(5))
+                    .await,
+            );
+        }
+    }
+
+    // Reset again so warm-up state doesn't leak into measurement
+    let _ = engine.reset().await;
+}
+
+/// Spawn a background thread that samples memory/CPU at ~10Hz during the benchmark.
+fn start_system_sampler(
+    collector: &MetricsCollector,
+) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop_clone = stop.clone();
+
+    // MetricsCollector uses internal Mutex/AtomicU64 — safe to share raw pointer
+    // across threads as long as the collector outlives the sampler thread.
+    let collector_ptr = collector as *const MetricsCollector as usize;
+
+    std::thread::spawn(move || {
+        let probe = SystemMetricsProbe::new();
+        let collector = unsafe { &*(collector_ptr as *const MetricsCollector) };
+        while !stop_clone.load(std::sync::atomic::Ordering::Relaxed) {
+            collector.record_memory(probe.current_rss_mb(), 0.0);
+            collector.record_cpu(probe.current_cpu_percent());
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    });
+
+    stop
+}
+
 async fn run_workload(
     engine: &mut dyn BenchmarkEngine,
     workload: &WorkloadDefinition,
 ) -> MetricsSnapshot {
+    // Reset engine state before each workload for clean measurement
+    let _ = engine.reset().await;
+
+    // Warm-up pass (eliminates cold-start artifacts)
+    warm_up(engine, workload).await;
+
+    // Create collector AFTER warm-up so timing only covers measurement
     let collector = MetricsCollector::new();
-    let probe = SystemMetricsProbe::new();
+
+    // Start background system metrics sampler (~10Hz)
+    let sampler_stop = start_system_sampler(&collector);
 
     match workload.kind {
         WorkloadKind::SimpleWorkflow => {
@@ -358,7 +425,11 @@ async fn run_workload(
         }
     }
 
+    // Stop the background sampler
+    sampler_stop.store(true, std::sync::atomic::Ordering::Relaxed);
+
     // Capture final memory sample
+    let probe = SystemMetricsProbe::new();
     collector.record_memory(probe.current_rss_mb(), 0.0);
 
     collector.snapshot()
@@ -378,17 +449,15 @@ async fn run_simple_workflow(
         match engine.start_workflow("simple", &wf_id, b"input").await {
             Ok(handle) => {
                 let elapsed = start.elapsed();
-                // Force the elapsed time to be observed — prevent DCE
                 black_box(elapsed);
                 collector.record_start(elapsed);
 
-                // Drive the workflow to completion via gRPC (same path for both engines).
+                // Drive the workflow to completion via gRPC
                 let complete_start = Instant::now();
                 match engine.complete_step(&handle, 0, b"done").await {
                     Ok(result) => {
                         black_box(&result);
                         if result.success {
-                            // Now wait for the server to confirm completion.
                             match engine
                                 .wait_for_completion(
                                     &handle,

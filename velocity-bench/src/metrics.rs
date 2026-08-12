@@ -58,15 +58,18 @@ pub struct MetricsSnapshot {
     pub query_latency: LatencyBucket,
     /// Latency distribution for completions.
     pub completion_latency: LatencyBucket,
-    /// Total operations completed.
+    /// Total operations completed (sub-operations: starts, signals, queries, completions).
     pub total_operations: u64,
     /// Successful operations.
     pub successful_operations: u64,
     /// Failed operations.
     pub failed_operations: u64,
+    /// Number of complete workflows (start → completion cycle).
+    /// This is the primary throughput metric.
+    pub workflows_completed: u64,
     /// Total benchmark duration.
     pub total_duration: Duration,
-    /// Operations per second.
+    /// Workflow throughput (workflows completed per second).
     pub operations_per_second: f64,
     /// Memory samples over time.
     pub memory_samples: Vec<MemorySnapshot>,
@@ -110,6 +113,7 @@ impl Default for MetricsSnapshot {
             total_operations: 0,
             successful_operations: 0,
             failed_operations: 0,
+            workflows_completed: 0,
             total_duration: Duration::ZERO,
             operations_per_second: 0.0,
             memory_samples: Vec::new(),
@@ -201,6 +205,9 @@ pub struct MetricsCollector {
     pub total_ops: std::sync::atomic::AtomicU64,
     pub success_ops: std::sync::atomic::AtomicU64,
     pub failed_ops: std::sync::atomic::AtomicU64,
+    /// Count of complete workflows (start → completion cycles).
+    /// This is the primary throughput metric.
+    pub workflows_completed: std::sync::atomic::AtomicU64,
     pub errors: std::sync::Mutex<HashMap<String, u64>>,
     pub memory_samples: std::sync::Mutex<Vec<MemorySnapshot>>,
     pub cpu_samples: std::sync::Mutex<Vec<CpuSnapshot>>,
@@ -223,6 +230,7 @@ impl MetricsCollector {
             total_ops: std::sync::atomic::AtomicU64::new(0),
             success_ops: std::sync::atomic::AtomicU64::new(0),
             failed_ops: std::sync::atomic::AtomicU64::new(0),
+            workflows_completed: std::sync::atomic::AtomicU64::new(0),
             errors: std::sync::Mutex::new(HashMap::new()),
             memory_samples: std::sync::Mutex::new(Vec::new()),
             cpu_samples: std::sync::Mutex::new(Vec::new()),
@@ -267,6 +275,9 @@ impl MetricsCollector {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.success_ops
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Count this as a completed workflow
+        self.workflows_completed
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Record an error.
@@ -301,9 +312,13 @@ impl MetricsCollector {
         let total = self.total_ops.load(std::sync::atomic::Ordering::Relaxed);
         let success = self.success_ops.load(std::sync::atomic::Ordering::Relaxed);
         let failed = self.failed_ops.load(std::sync::atomic::Ordering::Relaxed);
+        let workflows = self
+            .workflows_completed
+            .load(std::sync::atomic::Ordering::Relaxed);
         let duration = self.start_time.elapsed();
+        // Primary throughput metric: workflows completed per second
         let ops_per_sec = if duration.as_secs_f64() > 0.0 {
-            total as f64 / duration.as_secs_f64()
+            workflows as f64 / duration.as_secs_f64()
         } else {
             0.0
         };
@@ -324,6 +339,7 @@ impl MetricsCollector {
             total_operations: total,
             successful_operations: success,
             failed_operations: failed,
+            workflows_completed: workflows,
             total_duration: duration,
             operations_per_second: ops_per_sec,
             memory_samples: mem_samples,
@@ -345,6 +361,8 @@ impl MetricsCollector {
         self.success_ops
             .store(0, std::sync::atomic::Ordering::Relaxed);
         self.failed_ops
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        self.workflows_completed
             .store(0, std::sync::atomic::Ordering::Relaxed);
         self.errors.lock().unwrap().clear();
         self.memory_samples.lock().unwrap().clear();
