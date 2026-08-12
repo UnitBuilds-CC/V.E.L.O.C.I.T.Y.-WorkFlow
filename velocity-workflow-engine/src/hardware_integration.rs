@@ -107,10 +107,10 @@ impl EccParityStore {
 ///   5. If repair succeeds → re-verify and continue
 ///   6. If unrecoverable → return error, engine can trigger workflow reset
 pub struct HardwareAbstractionLayer {
-    ecc: Box<dyn SelfHealingEcc + Send>,
-    nic: Option<Box<dyn SmartNicOffload + Send>>,
-    tee: Option<Box<dyn TeeEnclave + Send>>,
-    p2p: Option<Box<dyn PeerToPeerReplication + Send>>,
+    ecc: Box<dyn SelfHealingEcc + Send + Sync>,
+    nic: Option<Box<dyn SmartNicOffload + Send + Sync>>,
+    tee: Option<Box<dyn TeeEnclave + Send + Sync>>,
+    p2p: Option<Box<dyn PeerToPeerReplication + Send + Sync>>,
     parity_store: RwLock<EccParityStore>,
     /// Whether ECC verification is enabled on the read path.
     ecc_verification_enabled: bool,

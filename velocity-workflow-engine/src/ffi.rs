@@ -5516,6 +5516,239 @@ pub unsafe extern "C" fn velocity_hal_compute_merkle_root(
     std::ptr::copy_nonoverlapping(root.as_ptr(), out_root, 32);
 }
 
+// ─── Network Replication FFI ──────────────────────────────────────────────────
+
+use crate::network_replication::{TcpReplicationServer, TcpReplicationConfig, UdpReplicationTransport, UdpReplicationConfig};
+use crate::search_index::SearchAttributeIndex;
+
+static TCP_REPL_SERVER: OnceLock<std::sync::Mutex<Option<TcpReplicationServer>>> = OnceLock::new();
+static UDP_REPL_TRANSPORT: OnceLock<std::sync::Mutex<Option<UdpReplicationTransport>>> = OnceLock::new();
+static SEARCH_INDEX: OnceLock<SearchAttributeIndex> = OnceLock::new();
+
+fn get_tcp_repl() -> &'static std::sync::Mutex<Option<TcpReplicationServer>> {
+    TCP_REPL_SERVER.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn get_udp_repl() -> &'static std::sync::Mutex<Option<UdpReplicationTransport>> {
+    UDP_REPL_TRANSPORT.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn get_search_index() -> &'static SearchAttributeIndex {
+    SEARCH_INDEX.get_or_init(|| SearchAttributeIndex::new())
+}
+
+/// Initialize TCP replication server. Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn velocity_net_tcp_init(
+    bind_addr_ptr: *const u8,
+    bind_addr_len: u32,
+    cluster_id: u64,
+    failover_version: u64,
+) -> i32 {
+    let bind_addr = if bind_addr_ptr.is_null() || bind_addr_len == 0 {
+        "127.0.0.1:9090".to_string()
+    } else {
+        let slice = unsafe { std::slice::from_raw_parts(bind_addr_ptr, bind_addr_len as usize) };
+        String::from_utf8_lossy(slice).to_string()
+    };
+
+    let config = TcpReplicationConfig {
+        bind_addr,
+        cluster_id,
+        failover_version,
+        ..Default::default()
+    };
+    let mut server = TcpReplicationServer::new(config);
+    match server.bind() {
+        Ok(_) => {
+            *get_tcp_repl().lock().unwrap() = Some(server);
+            0
+        }
+        Err(_) => -1,
+    }
+}
+
+/// Get TCP replication connections accepted count.
+#[no_mangle]
+pub extern "C" fn velocity_net_tcp_connections_accepted() -> u64 {
+    let guard = get_tcp_repl().lock().unwrap();
+    guard.as_ref().map(|s| s.stats().connections_accepted).unwrap_or(0)
+}
+
+/// Get TCP replication frames sent count.
+#[no_mangle]
+pub extern "C" fn velocity_net_tcp_frames_sent() -> u64 {
+    let guard = get_tcp_repl().lock().unwrap();
+    guard.as_ref().map(|s| s.stats().frames_sent).unwrap_or(0)
+}
+
+/// Get TCP replication bytes sent count.
+#[no_mangle]
+pub extern "C" fn velocity_net_tcp_bytes_sent() -> u64 {
+    let guard = get_tcp_repl().lock().unwrap();
+    guard.as_ref().map(|s| s.stats().bytes_sent).unwrap_or(0)
+}
+
+/// Get TCP replication tasks sent count.
+#[no_mangle]
+pub extern "C" fn velocity_net_tcp_tasks_sent() -> u64 {
+    let guard = get_tcp_repl().lock().unwrap();
+    guard.as_ref().map(|s| s.stats().tasks_sent).unwrap_or(0)
+}
+
+/// Initialize UDP replication transport. Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn velocity_net_udp_init(
+    bind_addr_ptr: *const u8,
+    bind_addr_len: u32,
+    peer_addr_ptr: *const u8,
+    peer_addr_len: u32,
+    cluster_id: u64,
+) -> i32 {
+    let bind_addr = if bind_addr_ptr.is_null() || bind_addr_len == 0 {
+        "127.0.0.1:9091".to_string()
+    } else {
+        let slice = unsafe { std::slice::from_raw_parts(bind_addr_ptr, bind_addr_len as usize) };
+        String::from_utf8_lossy(slice).to_string()
+    };
+    let peer_addr = if peer_addr_ptr.is_null() || peer_addr_len == 0 {
+        "127.0.0.1:9092".to_string()
+    } else {
+        let slice = unsafe { std::slice::from_raw_parts(peer_addr_ptr, peer_addr_len as usize) };
+        String::from_utf8_lossy(slice).to_string()
+    };
+
+    let config = UdpReplicationConfig {
+        bind_addr,
+        peer_addr,
+        cluster_id,
+        ..Default::default()
+    };
+    let mut transport = UdpReplicationTransport::new(config);
+    match transport.bind() {
+        Ok(_) => {
+            *get_udp_repl().lock().unwrap() = Some(transport);
+            0
+        }
+        Err(_) => -1,
+    }
+}
+
+/// Get UDP packets sent count.
+#[no_mangle]
+pub extern "C" fn velocity_net_udp_packets_sent() -> u64 {
+    let guard = get_udp_repl().lock().unwrap();
+    guard.as_ref().map(|t| t.stats().packets_sent).unwrap_or(0)
+}
+
+/// Get UDP bytes sent count.
+#[no_mangle]
+pub extern "C" fn velocity_net_udp_bytes_sent() -> u64 {
+    let guard = get_udp_repl().lock().unwrap();
+    guard.as_ref().map(|t| t.stats().bytes_sent).unwrap_or(0)
+}
+
+// ─── Search Index FFI ─────────────────────────────────────────────────────────
+
+/// Index a string search attribute for a workflow.
+#[no_mangle]
+pub extern "C" fn velocity_search_index_string(
+    workflow_key: u64,
+    attr_ptr: *const u8,
+    attr_len: u32,
+    val_ptr: *const u8,
+    val_len: u32,
+) {
+    let attr = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize)) };
+    let val = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(val_ptr, val_len as usize)) };
+    get_search_index().index_attribute(
+        workflow_key, attr,
+        &crate::visibility::SearchAttributeValue::String(val.to_string()),
+    );
+}
+
+/// Index an integer search attribute for a workflow.
+#[no_mangle]
+pub extern "C" fn velocity_search_index_integer(
+    workflow_key: u64,
+    attr_ptr: *const u8,
+    attr_len: u32,
+    value: i64,
+) {
+    let attr = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize)) };
+    get_search_index().index_attribute(
+        workflow_key, attr,
+        &crate::visibility::SearchAttributeValue::Integer(value),
+    );
+}
+
+/// Query exact match. Returns count of matching workflows.
+#[no_mangle]
+pub extern "C" fn velocity_search_query_exact_count(
+    attr_ptr: *const u8,
+    attr_len: u32,
+    val_ptr: *const u8,
+    val_len: u32,
+) -> u64 {
+    let attr = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize)) };
+    let val = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(val_ptr, val_len as usize)) };
+    get_search_index().exact_match(
+        attr,
+        &crate::visibility::SearchAttributeValue::String(val.to_string()),
+    ).len() as u64
+}
+
+/// Query integer range [low, high]. Returns count of matching workflows.
+#[no_mangle]
+pub extern "C" fn velocity_search_query_range_count(
+    attr_ptr: *const u8,
+    attr_len: u32,
+    low: i64,
+    high: i64,
+) -> u64 {
+    let attr = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize)) };
+    get_search_index().range_integer(attr, low, high).len() as u64
+}
+
+/// Get total entries in the search index.
+#[no_mangle]
+pub extern "C" fn velocity_search_index_entry_count() -> u64 {
+    get_search_index().entry_count() as u64
+}
+
+/// Get indexed workflow count.
+#[no_mangle]
+pub extern "C" fn velocity_search_index_workflow_count() -> u64 {
+    get_search_index().workflow_count() as u64
+}
+
+// ─── Chaos Endurance FFI ──────────────────────────────────────────────────────
+
+/// Run a short soak test (returns total operations count).
+#[no_mangle]
+pub extern "C" fn velocity_chaos_soak_test(
+    duration_ms: u64,
+    thread_count: u32,
+    inject_failures: i32,
+) -> u64 {
+    let config = crate::chaos_endurance::SoakTestConfig {
+        duration: std::time::Duration::from_millis(duration_ms),
+        thread_count: thread_count as usize,
+        inject_failures: inject_failures != 0,
+        failure_rate: if inject_failures != 0 { 0.2 } else { 0.0 },
+        ..Default::default()
+    };
+    let metrics = crate::chaos_endurance::run_soak_test(&config);
+    metrics.total_operations()
+}
+
+/// Run a crash recovery test. Returns (started << 32) | recovered.
+#[no_mangle]
+pub extern "C" fn velocity_chaos_crash_recovery_test(workflow_count: u32) -> u64 {
+    let (started, recovered) = crate::chaos_endurance::run_crash_recovery_test(workflow_count as usize);
+    ((started as u64) << 32) | (recovered as u64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

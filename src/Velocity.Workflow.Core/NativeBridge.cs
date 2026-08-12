@@ -1288,4 +1288,45 @@ public static unsafe partial class NativeBridge
     public static partial bool HalIsTeeEnabled();
     [LibraryImport(EngineDll, EntryPoint = "velocity_hal_compute_merkle_root")]
     public static partial void HalComputeMerkleRoot(byte* dataPtr, uint dataLen, byte* outRoot);
+
+    // ─── Batch 38: Network Replication ──────────────────────────────────────
+
+    [LibraryImport(EngineDll, EntryPoint = "velocity_net_tcp_init")]
+    public static partial int NetTcpInit(byte* bindAddrPtr, uint bindAddrLen, ulong clusterId, ulong failoverVersion);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_net_tcp_connections_accepted")]
+    public static partial ulong NetTcpConnectionsAccepted();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_net_tcp_frames_sent")]
+    public static partial ulong NetTcpFramesSent();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_net_tcp_bytes_sent")]
+    public static partial ulong NetTcpBytesSent();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_net_tcp_tasks_sent")]
+    public static partial ulong NetTcpTasksSent();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_net_udp_init")]
+    public static partial int NetUdpInit(byte* bindAddrPtr, uint bindAddrLen, byte* peerAddrPtr, uint peerAddrLen, ulong clusterId);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_net_udp_packets_sent")]
+    public static partial ulong NetUdpPacketsSent();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_net_udp_bytes_sent")]
+    public static partial ulong NetUdpBytesSent();
+
+    // ─── Batch 38: Search Index ─────────────────────────────────────────────
+
+    [LibraryImport(EngineDll, EntryPoint = "velocity_search_index_string")]
+    public static partial void SearchIndexString(ulong workflowKey, byte* attrPtr, uint attrLen, byte* valPtr, uint valLen);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_search_index_integer")]
+    public static partial void SearchIndexInteger(ulong workflowKey, byte* attrPtr, uint attrLen, long value);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_search_query_exact_count")]
+    public static partial ulong SearchQueryExactCount(byte* attrPtr, uint attrLen, byte* valPtr, uint valLen);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_search_query_range_count")]
+    public static partial ulong SearchQueryRangeCount(byte* attrPtr, uint attrLen, long low, long high);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_search_index_entry_count")]
+    public static partial ulong SearchIndexEntryCount();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_search_index_workflow_count")]
+    public static partial ulong SearchIndexWorkflowCount();
+
+    // ─── Batch 38: Chaos Endurance ──────────────────────────────────────────
+
+    [LibraryImport(EngineDll, EntryPoint = "velocity_chaos_soak_test")]
+    public static partial ulong ChaosSoakTest(ulong durationMs, uint threadCount, int injectFailures);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_chaos_crash_recovery_test")]
+    public static partial ulong ChaosCrashRecoveryTest(uint workflowCount);
 }
