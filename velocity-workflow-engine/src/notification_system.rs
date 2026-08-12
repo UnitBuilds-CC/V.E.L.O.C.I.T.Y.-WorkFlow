@@ -210,7 +210,7 @@ impl NotificationFilter {
                 let cat_match = categories.contains(&event.notification_type.category());
                 let ns_match = namespace
                     .as_ref()
-                    .map_or(true, |ns| event.namespace_id == *ns);
+                    .is_none_or(|ns| event.namespace_id == *ns);
                 cat_match && ns_match
             }
         }

@@ -269,7 +269,7 @@ impl NexusOperationManager {
             .write()
             .unwrap()
             .entry(endpoint_id.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(op_id);
 
         Ok(op)

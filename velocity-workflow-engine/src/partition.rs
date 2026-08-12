@@ -453,6 +453,7 @@ pub struct PartitionInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::task_queue::TaskKind;
 
     fn make_task(wk: u64, step: u32) -> TaskItem {
         TaskItem {

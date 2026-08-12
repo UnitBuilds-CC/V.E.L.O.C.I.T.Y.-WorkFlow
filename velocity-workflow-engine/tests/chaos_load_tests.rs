@@ -15,7 +15,6 @@ use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
 use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
 use velocity_workflow_engine::rate_limiter::RateLimiter;
 use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
-use velocity_workflow_engine::timer_engine::TimerEngine;
 use velocity_workflow_engine::wal::{WalEventType, WalManager};
 
 // ═══════════════════════════════════════════════════════════════════════════════

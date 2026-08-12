@@ -68,7 +68,7 @@ impl WireFrame {
         if data.len() < 9 {
             return None;
         }
-        if &data[0..4] != &FRAME_MAGIC {
+        if data[0..4] != FRAME_MAGIC {
             return None;
         }
         let frame_type = FrameType::from_u8(data[4])?;
@@ -223,7 +223,7 @@ impl TcpReplicationServer {
             Ok(_) => {}
             Err(_) => return None,
         }
-        if &header[0..4] != &FRAME_MAGIC {
+        if header[0..4] != FRAME_MAGIC {
             return None;
         }
         let frame_type = FrameType::from_u8(header[4])?;

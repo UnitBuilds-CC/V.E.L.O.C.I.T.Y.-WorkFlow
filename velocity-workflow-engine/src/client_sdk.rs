@@ -911,7 +911,7 @@ mod tests {
     #[test]
     fn test_search_attribute_client() {
         let client = SearchAttributeClient::new(make_config());
-        let attrs = client.get_search_attributes().unwrap();
+        let _attrs = client.get_search_attributes().unwrap();
         assert!(client
             .register_custom_attribute("CustomField", SearchAttributeType::Keyword)
             .is_ok());

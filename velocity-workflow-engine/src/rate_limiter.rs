@@ -864,7 +864,7 @@ impl QuotaTracker {
         }
         {
             let mut total = self.total.lock().unwrap();
-            f(&mut *total);
+            f(&mut total);
         }
     }
 
@@ -1044,7 +1044,7 @@ mod tests {
 
     #[test]
     fn test_priority_default() {
-        let mut rl = PriorityRateLimiter::new(100.0, 100);
+        let rl = PriorityRateLimiter::new(100.0, 100);
         assert!(rl.allow(RequestPriority::Normal));
         assert!(rl.allow(RequestPriority::Operator));
     }

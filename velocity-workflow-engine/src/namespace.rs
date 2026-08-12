@@ -131,7 +131,7 @@ impl NamespaceRegistry {
     /// Check if a namespace exists and is active.
     pub fn is_active(&self, id: u64) -> bool {
         let by_id = self.by_id.read().unwrap();
-        by_id.get(&id).map_or(false, |ns| ns.is_active)
+        by_id.get(&id).is_some_and(|ns| ns.is_active)
     }
 
     /// Increment the workflow count for a namespace (called when a workflow starts).

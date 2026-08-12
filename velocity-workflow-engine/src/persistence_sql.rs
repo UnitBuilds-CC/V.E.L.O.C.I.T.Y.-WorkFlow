@@ -6,7 +6,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::{Duration, Instant, SystemTime};
 
@@ -408,8 +409,7 @@ impl InsertBuilder {
         for row in &self.values {
             let placeholders: Vec<String> = row
                 .iter()
-                .enumerate()
-                .map(|(_i, v)| {
+                .map(|v| {
                     params.push(v.clone());
                     match self.dialect {
                         SqlDialect::Postgres => format!("${}", params.len()),
@@ -711,7 +711,7 @@ impl SchemaManager {
         let migration = migrations
             .iter_mut()
             .find(|m| m.version == version)
-            .ok_or_else(|| SchemaError::MigrationNotFound(version))?;
+            .ok_or(SchemaError::MigrationNotFound(version))?;
 
         if migration.applied_at.is_some() {
             return Err(SchemaError::AlreadyApplied(version));
@@ -734,7 +734,7 @@ impl SchemaManager {
         let migration = migrations
             .iter_mut()
             .find(|m| m.version == version)
-            .ok_or_else(|| SchemaError::MigrationNotFound(version))?;
+            .ok_or(SchemaError::MigrationNotFound(version))?;
 
         if migration.applied_at.is_none() {
             return Err(SchemaError::NotApplied(version));
@@ -1173,7 +1173,7 @@ mod tests {
         assert!(!sql.is_empty());
         assert_eq!(mgr.current_version(), 1);
 
-        let sql = mgr.apply_migration(2).unwrap();
+        let _sql = mgr.apply_migration(2).unwrap();
         assert_eq!(mgr.current_version(), 2);
 
         // Can't apply same migration twice
@@ -1227,7 +1227,7 @@ mod tests {
         let pool = ConnectionPool::new(config);
 
         let c1 = pool.acquire().unwrap();
-        let c2 = pool.acquire().unwrap();
+        let _c2 = pool.acquire().unwrap();
         assert!(pool.acquire().is_err()); // Pool exhausted
 
         pool.release(c1);
@@ -1274,7 +1274,7 @@ mod tests {
             .where_eq("a", SqlValue::Integer(42))
             .where_eq("b", SqlValue::Text("hello".to_string()))
             .where_eq("c", SqlValue::Boolean(true))
-            .where_eq("d", SqlValue::Float(3.14))
+            .where_eq("d", SqlValue::Float(1.5))
             .where_eq("e", SqlValue::Blob(vec![1, 2, 3]))
             .build();
 

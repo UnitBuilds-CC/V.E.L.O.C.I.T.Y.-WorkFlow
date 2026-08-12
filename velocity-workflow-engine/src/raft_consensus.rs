@@ -181,7 +181,7 @@ impl RaftNode {
             self.config.election_timeout_min_ms
                 + (self.config.node_id * 37
                     % (self.config.election_timeout_max_ms - self.config.election_timeout_min_ms
-                        + 1)) as u64,
+                        + 1)),
         );
         self.election_deadline = now + timeout;
 
@@ -315,7 +315,7 @@ impl RaftNode {
             self.config.election_timeout_min_ms
                 + (self.config.node_id * 37
                     % (self.config.election_timeout_max_ms - self.config.election_timeout_min_ms
-                        + 1)) as u64,
+                        + 1)),
         );
         self.election_deadline = Instant::now() + timeout;
     }

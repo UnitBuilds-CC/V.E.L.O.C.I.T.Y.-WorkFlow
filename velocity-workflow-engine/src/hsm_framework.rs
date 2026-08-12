@@ -224,7 +224,7 @@ impl HSMStateMachine {
     /// Check if the state machine is in a final state.
     pub fn is_final(&self) -> bool {
         let current = self.current_state.lock().unwrap().clone();
-        self.states.get(&current).map_or(false, |s| s.is_final)
+        self.states.get(&current).is_some_and(|s| s.is_final)
     }
 
     /// Get all available transitions from the current state.

@@ -6,7 +6,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::SystemTime;
 
@@ -477,7 +478,7 @@ impl HistoryEngine {
             .write()
             .unwrap()
             .entry(key.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(signal);
         self.stats.signals_received.fetch_add(1, Ordering::Relaxed);
 
@@ -518,7 +519,7 @@ impl HistoryEngine {
             .write()
             .unwrap()
             .entry(key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(query);
         self.stats.queries_received.fetch_add(1, Ordering::Relaxed);
 
@@ -639,7 +640,10 @@ impl HistoryEngine {
                         .fetch_add(1, Ordering::Relaxed);
                     result.scheduled_activities.push(activity_id.clone());
                 }
-                WorkflowCommandInfo::StartTimer { timer_id, fire_at: _ } => {
+                WorkflowCommandInfo::StartTimer {
+                    timer_id,
+                    fire_at: _,
+                } => {
                     self.stats.timers_created.fetch_add(1, Ordering::Relaxed);
                     result.started_timers.push(timer_id.clone());
                 }

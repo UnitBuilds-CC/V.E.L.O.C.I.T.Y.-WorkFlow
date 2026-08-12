@@ -133,7 +133,7 @@ impl HashRing {
     /// Get the distribution of virtual nodes across hosts.
     pub fn distribution(&self) -> HashMap<&str, u32> {
         let mut dist = HashMap::new();
-        for (_, host) in &self.ring {
+        for host in self.ring.values() {
             *dist.entry(host.as_str()).or_insert(0) += 1;
         }
         dist
@@ -318,7 +318,7 @@ mod tests {
             *counts.entry(host.to_string()).or_insert(0u32) += 1;
         }
         // Each host should get roughly 33% of keys (within tolerance)
-        for (_, count) in &counts {
+        for count in counts.values() {
             assert!(*count > 500, "Host got too few keys: {}", count);
             assert!(*count < 7000, "Host got too many keys: {}", count);
         }

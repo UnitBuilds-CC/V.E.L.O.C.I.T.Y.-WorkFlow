@@ -5,7 +5,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::SystemTime;
 
@@ -487,7 +488,7 @@ mod tests {
     fn test_determinism_checker_pass() {
         let checker = DeterminismChecker::new();
         let cmds = vec!["schedule_activity".into(), "start_timer".into()];
-        let results = checker.run_all_checks(&cmds, &cmds);
+        let _results = checker.run_all_checks(&cmds, &cmds);
         assert!(checker.is_deterministic());
     }
 
@@ -496,7 +497,7 @@ mod tests {
         let checker = DeterminismChecker::new();
         let original = vec!["schedule_activity".into(), "start_timer".into()];
         let replayed = vec!["schedule_activity".into(), "complete_workflow".into()];
-        let results = checker.run_all_checks(&original, &replayed);
+        let _results = checker.run_all_checks(&original, &replayed);
         assert!(!checker.is_deterministic());
     }
 
@@ -504,14 +505,14 @@ mod tests {
     fn test_side_effect_detection() {
         let checker = DeterminismChecker::new();
         let cmds = vec!["schedule_activity".into(), "uuid()".into()];
-        let results = checker.run_all_checks(&cmds, &cmds);
+        let _results = checker.run_all_checks(&cmds, &cmds);
         assert!(!checker.is_deterministic());
     }
 
     #[test]
     fn test_replay_debugger_breakpoint() {
         let debugger = ReplayDebugger::new();
-        let bp = debugger.set_breakpoint(5);
+        let _bp = debugger.set_breakpoint(5);
         let event = DebugEvent {
             event_id: 5,
             event_type: "TimerFired".into(),

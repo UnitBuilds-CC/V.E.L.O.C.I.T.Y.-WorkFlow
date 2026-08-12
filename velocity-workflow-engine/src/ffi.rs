@@ -1939,7 +1939,7 @@ pub unsafe extern "C" fn velocity_engine_cron_fire_count(
     h.engine
         .cron_scheduler()
         .fire_count(schedule_id)
-        .unwrap_or(0) as u64
+        .unwrap_or(0)
 }
 
 #[no_mangle]
@@ -2335,7 +2335,7 @@ pub unsafe extern "C" fn velocity_engine_archive_retrieve(
             *out.add(1) = rec.namespace_id;
             *out.add(2) = rec.workflow_type_id;
             *out.add(3) = rec.status as u64;
-            *out.add(4) = rec.event_count as u64;
+            *out.add(4) = rec.event_count;
             1
         }
         None => 0,
@@ -2731,7 +2731,7 @@ pub unsafe extern "C" fn velocity_engine_list_workflows(
     let h = &*handle;
     let vis = h.engine.visibility();
 
-    let infos = if status_filter >= 0 && status_filter <= 7 {
+    let infos = if (0..=7).contains(&status_filter) {
         let ws = match status_filter {
             1 => crate::engine::WorkflowStatus::Running,
             2 => crate::engine::WorkflowStatus::Completed,
@@ -3174,9 +3174,7 @@ pub unsafe extern "C" fn velocity_engine_partition_ids(
     let ids = h.engine.partition_manager().partition_ids();
     let out = std::slice::from_raw_parts_mut(out_ids, max_count as usize);
     let count = ids.len().min(max_count as usize);
-    for i in 0..count {
-        out[i] = ids[i];
-    }
+    out[..count].copy_from_slice(&ids[..count]);
     count as u32
 }
 
@@ -4962,7 +4960,8 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
             if result.success {
                 let mut workflows = h.engine.workflows_write();
                 // If context doesn't exist (crash recovery), create one
-                if !workflows.contains_key(&workflow_key) {
+                if let std::collections::hash_map::Entry::Vacant(e) = workflows.entry(workflow_key)
+                {
                     let total_steps = result
                         .step_results
                         .keys()
@@ -4990,7 +4989,7 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
                                 .push(payload.clone());
                         }
                     }
-                    workflows.insert(workflow_key, ctx);
+                    e.insert(ctx);
                 } else if let Some(ctx) = workflows.get_mut(&workflow_key) {
                     // Existing context — apply replay results
                     for (step, data) in &result.step_results {
@@ -6683,7 +6682,9 @@ pub extern "C" fn velocity_engine_repl_daemon_stat_cycles(_engine: *mut std::ffi
 
 /// Get daemon stats: total_outgoing_delivered.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_stat_delivered(_engine: *mut std::ffi::c_void) -> u64 {
+pub extern "C" fn velocity_engine_repl_daemon_stat_delivered(
+    _engine: *mut std::ffi::c_void,
+) -> u64 {
     if let Some(daemon) = REPL_DAEMON.get() {
         daemon.stats().total_outgoing_delivered
     } else {
@@ -6724,7 +6725,9 @@ pub extern "C" fn velocity_engine_repl_daemon_stat_uptime(_engine: *mut std::ffi
 
 /// Get count of recent delivery log entries.
 #[no_mangle]
-pub extern "C" fn velocity_engine_repl_daemon_delivery_count(_engine: *mut std::ffi::c_void) -> u64 {
+pub extern "C" fn velocity_engine_repl_daemon_delivery_count(
+    _engine: *mut std::ffi::c_void,
+) -> u64 {
     if let Some(daemon) = REPL_DAEMON.get() {
         daemon.recent_deliveries(10_000).len() as u64
     } else {
@@ -7162,7 +7165,7 @@ fn get_udp_repl() -> &'static std::sync::Mutex<Option<UdpReplicationTransport>> 
 }
 
 fn get_search_index() -> &'static SearchAttributeIndex {
-    SEARCH_INDEX.get_or_init(|| SearchAttributeIndex::new())
+    SEARCH_INDEX.get_or_init(SearchAttributeIndex::new)
 }
 
 /// Initialize TCP replication server. Returns 0 on success, -1 on error.
@@ -7404,7 +7407,7 @@ use crate::hot_swap::HotSwapRegistry;
 static HOT_SWAP_REGISTRY: OnceLock<HotSwapRegistry> = OnceLock::new();
 
 fn get_hot_swap() -> &'static HotSwapRegistry {
-    HOT_SWAP_REGISTRY.get_or_init(|| HotSwapRegistry::new())
+    HOT_SWAP_REGISTRY.get_or_init(HotSwapRegistry::new)
 }
 
 /// Register a hot-swap patch. Returns the patch_id.

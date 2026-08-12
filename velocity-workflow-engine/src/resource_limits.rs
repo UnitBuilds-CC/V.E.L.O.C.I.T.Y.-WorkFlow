@@ -46,7 +46,7 @@ impl ResourceLimits {
             max_active_workflows: 1_000,
             max_workflows_per_namespace: 100,
             max_signals_per_workflow: 50,
-            max_payload_size_bytes: 1 * 1024 * 1024, // 1 MB
+            max_payload_size_bytes: 1024 * 1024, // 1 MB
             max_steps_per_workflow: 10_000,
             max_child_workflows: 50,
         }

@@ -133,7 +133,8 @@ fn matches_field(expr: &str, value: u32, min: u32, max: u32) -> bool {
             } else {
                 segments[0].parse().unwrap_or(min)
             };
-            if step > 0 && (value >= start) && (value - start) % step == 0 && value <= max {
+            if step > 0 && (value >= start) && (value - start).is_multiple_of(step) && value <= max
+            {
                 return true;
             }
         } else if part.contains('-') {
@@ -484,7 +485,7 @@ impl ScheduleManager {
             .lock()
             .unwrap()
             .values()
-            .filter(|e| e.search_attributes.get(key).map_or(false, |v| v == value))
+            .filter(|e| e.search_attributes.get(key).is_some_and(|v| v == value))
             .cloned()
             .collect()
     }

@@ -5,7 +5,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicU64, Ordering},
+    RwLock,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -50,16 +51,16 @@ impl SearchAttributeType {
     }
 
     pub fn is_valid_value(&self, value: &SearchAttributeValue) -> bool {
-        match (self, value) {
-            (Self::Text, SearchAttributeValue::Text(_)) => true,
-            (Self::Keyword, SearchAttributeValue::Keyword(_)) => true,
-            (Self::Int, SearchAttributeValue::Int(_)) => true,
-            (Self::Double, SearchAttributeValue::Double(_)) => true,
-            (Self::Bool, SearchAttributeValue::Bool(_)) => true,
-            (Self::Datetime, SearchAttributeValue::Datetime(_)) => true,
-            (Self::KeywordList, SearchAttributeValue::KeywordList(_)) => true,
-            _ => false,
-        }
+        matches!(
+            (self, value),
+            (Self::Text, SearchAttributeValue::Text(_))
+                | (Self::Keyword, SearchAttributeValue::Keyword(_))
+                | (Self::Int, SearchAttributeValue::Int(_))
+                | (Self::Double, SearchAttributeValue::Double(_))
+                | (Self::Bool, SearchAttributeValue::Bool(_))
+                | (Self::Datetime, SearchAttributeValue::Datetime(_))
+                | (Self::KeywordList, SearchAttributeValue::KeywordList(_))
+        )
     }
 }
 
@@ -692,7 +693,7 @@ mod tests {
             Some("hello")
         );
         assert_eq!(SearchAttributeValue::Int(42).as_int(), Some(42));
-        assert_eq!(SearchAttributeValue::Double(3.14).as_double(), Some(3.14));
+        assert_eq!(SearchAttributeValue::Double(1.5).as_double(), Some(1.5));
         assert_eq!(SearchAttributeValue::Bool(true).as_bool(), Some(true));
         assert_eq!(
             SearchAttributeValue::Datetime(12345).as_datetime(),

@@ -378,7 +378,7 @@ impl ResilienceVerifier {
         let checks = self.checks.read().unwrap().clone();
         let mut results = Vec::new();
         for check in &checks {
-            let result = self.run_check(&check);
+            let result = self.run_check(check);
             self.results.write().unwrap().push(result.clone());
             self.stats.checks_run.fetch_add(1, Ordering::Relaxed);
             if result.passed {

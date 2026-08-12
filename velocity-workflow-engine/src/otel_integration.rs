@@ -142,7 +142,7 @@ impl Tracer {
     }
 
     pub fn start_span(&self, builder: SpanBuilder) -> TraceContext {
-        let trace_id = builder.trace_id.unwrap_or_else(|| generate_trace_id());
+        let trace_id = builder.trace_id.unwrap_or_else(generate_trace_id);
         let span_id = generate_span_id();
 
         let span = TraceContext {
@@ -350,21 +350,21 @@ impl MetricsRecorder {
 
         // Counters
         for (name, value) in self.counters.read().unwrap().iter() {
-            let prom_name = name.replace('.', "_").replace('-', "_");
+            let prom_name = name.replace(['.', '-'], "_");
             output.push_str(&format!("# TYPE {} counter\n", prom_name));
             output.push_str(&format!("{} {}\n", prom_name, value));
         }
 
         // Gauges
         for (name, value) in self.gauges.read().unwrap().iter() {
-            let prom_name = name.replace('.', "_").replace('-', "_");
+            let prom_name = name.replace(['.', '-'], "_");
             output.push_str(&format!("# TYPE {} gauge\n", prom_name));
             output.push_str(&format!("{} {}\n", prom_name, value));
         }
 
         // Histograms
         for (name, values) in self.histograms.read().unwrap().iter() {
-            let prom_name = name.replace('.', "_").replace('-', "_");
+            let prom_name = name.replace(['.', '-'], "_");
             output.push_str(&format!("# TYPE {} summary\n", prom_name));
             output.push_str(&format!("{}_count {}\n", prom_name, values.len()));
             let sum: f64 = values.iter().sum();
@@ -693,7 +693,7 @@ mod tests {
     fn test_metrics_prometheus_export() {
         let metrics = MetricsRecorder::new();
         metrics.counter_add("test.counter", 42);
-        metrics.gauge_set("test.gauge", 3.14);
+        metrics.gauge_set("test.gauge", 1.5);
         let output = metrics.export_prometheus();
         assert!(output.contains("test_counter"));
         assert!(output.contains("42"));

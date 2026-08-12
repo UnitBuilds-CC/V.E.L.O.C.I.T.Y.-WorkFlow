@@ -910,7 +910,8 @@ mod tests {
         // Dispatch task first (no pollers, so it goes to backlog)
         queue.dispatch_task(make_task("wf1", None));
         // Then register poller (on child partition, not root, so it doesn't sync match)
-        let child_partition = TaskQueuePartition::child("test-queue", TaskType::Workflow, "ns1", 1);
+        let _child_partition =
+            TaskQueuePartition::child("test-queue", TaskType::Workflow, "ns1", 1);
         let children = queue.child_partitions.read().unwrap();
         if let Some(child) = children.get(&1) {
             child.register_poller(make_poller("w1", ""));

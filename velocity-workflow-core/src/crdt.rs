@@ -7,6 +7,12 @@ pub struct PNCounter {
     pub decrements: u64,
 }
 
+impl Default for PNCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PNCounter {
     pub const fn new() -> Self {
         Self {

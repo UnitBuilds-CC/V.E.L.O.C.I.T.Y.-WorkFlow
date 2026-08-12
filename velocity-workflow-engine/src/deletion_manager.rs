@@ -8,7 +8,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::{Duration, SystemTime};
 

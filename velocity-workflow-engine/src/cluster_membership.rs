@@ -503,8 +503,7 @@ mod tests {
     fn test_ring_hash_members_for_role() {
         let ring = RingHash::new(10);
         ring.add_member(make_host("host-1", 8080));
-        let mut frontend_host =
-            HostInfo::new("host-2", "127.0.0.1", 8081, vec![ServiceRole::Frontend]);
+        let frontend_host = HostInfo::new("host-2", "127.0.0.1", 8081, vec![ServiceRole::Frontend]);
         ring.add_member(frontend_host);
         assert_eq!(ring.members_for_role(ServiceRole::History).len(), 1);
         assert_eq!(ring.members_for_role(ServiceRole::Frontend).len(), 1);

@@ -1,7 +1,6 @@
 //! Integration tests for new modules: update, reachability, deployment, codec_server,
 //! worker_sessions, worker_determinism.
 
-use std::time::Duration;
 use velocity_workflow_engine::*;
 
 // === Update API Tests ===

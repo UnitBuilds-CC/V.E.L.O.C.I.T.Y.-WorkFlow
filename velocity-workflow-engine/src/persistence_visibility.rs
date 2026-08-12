@@ -5,7 +5,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicU64, Ordering},
+    RwLock,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -171,9 +172,9 @@ impl QueryParser {
 
     fn parse_not(&self, input: &str) -> Result<VisibilityQuery, QueryParseError> {
         let trimmed = input.trim();
-        if trimmed.starts_with("NOT ") {
-            let inner = self.parse_comparison(&trimmed[4..])?;
-            return Ok(VisibilityQuery::Not(Box::new(inner)));
+        if let Some(inner) = trimmed.strip_prefix("NOT ") {
+            let parsed = self.parse_comparison(inner)?;
+            return Ok(VisibilityQuery::Not(Box::new(parsed)));
         }
         self.parse_comparison(trimmed)
     }
@@ -203,8 +204,8 @@ impl QueryParser {
             let field = trimmed[..pos].trim().to_string();
             let rest = &trimmed[pos + 9..];
             if let Some(and_pos) = self.find_keyword(rest, " AND ") {
-                let low = self.parse_value(&rest[..and_pos].trim())?;
-                let high = self.parse_value(&rest[and_pos + 5..].trim())?;
+                let low = self.parse_value(rest[..and_pos].trim())?;
+                let high = self.parse_value(rest[and_pos + 5..].trim())?;
                 return Ok(VisibilityQuery::Between(field, low, high));
             }
         }
@@ -478,28 +479,28 @@ impl VisibilityIndex {
             .write()
             .unwrap()
             .entry(record.workflow_type_name.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key.clone());
 
         self.by_status
             .write()
             .unwrap()
             .entry(record.status as i32)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key.clone());
 
         self.by_task_queue
             .write()
             .unwrap()
             .entry(record.task_queue.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key.clone());
 
         self.by_namespace
             .write()
             .unwrap()
             .entry(record.namespace_id.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(key);
     }
 
@@ -741,6 +742,7 @@ pub enum VisibilityError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::SystemTime;
 
     fn make_record(
         ns: &str,

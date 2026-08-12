@@ -44,14 +44,14 @@ impl SlabHeader {
 
     pub fn recalculate_merkle_root(&mut self) {
         let mut hasher = Sha256::new();
-        hasher.update(&self.magic.to_le_bytes());
-        hasher.update(&self.schema_version.to_le_bytes());
-        hasher.update(&self.workflow_id.to_le_bytes());
-        hasher.update(&self.run_id.to_le_bytes());
-        hasher.update(&self.current_step.to_le_bytes());
-        hasher.update(&self.total_steps.to_le_bytes());
+        hasher.update(self.magic.to_le_bytes());
+        hasher.update(self.schema_version.to_le_bytes());
+        hasher.update(self.workflow_id.to_le_bytes());
+        hasher.update(self.run_id.to_le_bytes());
+        hasher.update(self.current_step.to_le_bytes());
+        hasher.update(self.total_steps.to_le_bytes());
         for word in &self.step_bitmask.bits {
-            hasher.update(&word.to_le_bytes());
+            hasher.update(word.to_le_bytes());
         }
         let result = hasher.finalize();
         self.merkle_root.copy_from_slice(&result);
@@ -59,14 +59,14 @@ impl SlabHeader {
 
     pub fn verify_merkle_root(&self) -> bool {
         let mut hasher = Sha256::new();
-        hasher.update(&self.magic.to_le_bytes());
-        hasher.update(&self.schema_version.to_le_bytes());
-        hasher.update(&self.workflow_id.to_le_bytes());
-        hasher.update(&self.run_id.to_le_bytes());
-        hasher.update(&self.current_step.to_le_bytes());
-        hasher.update(&self.total_steps.to_le_bytes());
+        hasher.update(self.magic.to_le_bytes());
+        hasher.update(self.schema_version.to_le_bytes());
+        hasher.update(self.workflow_id.to_le_bytes());
+        hasher.update(self.run_id.to_le_bytes());
+        hasher.update(self.current_step.to_le_bytes());
+        hasher.update(self.total_steps.to_le_bytes());
         for word in &self.step_bitmask.bits {
-            hasher.update(&word.to_le_bytes());
+            hasher.update(word.to_le_bytes());
         }
         let result = hasher.finalize();
         self.merkle_root == result.as_slice()

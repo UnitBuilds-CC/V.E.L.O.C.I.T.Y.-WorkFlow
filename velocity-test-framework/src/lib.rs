@@ -759,7 +759,7 @@ impl WorkflowTestEnv {
 impl Drop for WorkflowTestEnv {
     fn drop(&mut self) {
         // Best-effort cleanup
-        let _ = self.server.stop();
+        drop(self.server.stop());
     }
 }
 
@@ -1358,8 +1358,8 @@ mod tests {
         let worker = MockActivityWorker::new();
         worker.register_result("Act", "ok");
 
-        worker.execute("Act", "1");
-        worker.execute("Act", "2");
+        let _ = worker.execute("Act", "1");
+        let _ = worker.execute("Act", "2");
         assert_eq!(worker.count_invocations("Act"), 2);
 
         worker.clear_history();

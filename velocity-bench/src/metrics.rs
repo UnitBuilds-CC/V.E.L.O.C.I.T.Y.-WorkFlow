@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 // ─── Latency Bucket ──────────────────────────────────────────────────────────
 
 /// Latency distribution captured during a benchmark run.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LatencyBucket {
     pub min_us: u64,
     pub max_us: u64,
@@ -21,22 +21,6 @@ pub struct LatencyBucket {
     pub p99_us: u64,
     pub p999_us: u64,
     pub count: u64,
-}
-
-impl Default for LatencyBucket {
-    fn default() -> Self {
-        Self {
-            min_us: 0,
-            max_us: 0,
-            mean_us: 0,
-            p50_us: 0,
-            p90_us: 0,
-            p95_us: 0,
-            p99_us: 0,
-            p999_us: 0,
-            count: 0,
-        }
-    }
 }
 
 // ─── Memory Snapshot ─────────────────────────────────────────────────────────
@@ -135,6 +119,12 @@ pub struct LatencyRecorder {
     samples: Vec<u64>,
 }
 
+impl Default for LatencyRecorder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LatencyRecorder {
     pub fn new() -> Self {
         Self {
@@ -205,6 +195,12 @@ pub struct MetricsCollector {
     pub memory_samples: std::sync::Mutex<Vec<MemorySnapshot>>,
     pub cpu_samples: std::sync::Mutex<Vec<CpuSnapshot>>,
     pub start_time: Instant,
+}
+
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetricsCollector {
@@ -321,7 +317,7 @@ impl MetricsCollector {
             total_duration: duration,
             operations_per_second: ops_per_sec,
             memory_samples: mem_samples,
-            cpu_samples: cpu_samples,
+            cpu_samples,
             peak_memory_mb: peak_mem,
             peak_cpu_percent: peak_cpu,
             errors: self.errors.lock().unwrap().clone(),
@@ -351,6 +347,12 @@ impl MetricsCollector {
 /// Probes system-level metrics (memory, CPU) for the current process.
 pub struct SystemMetricsProbe {
     _pid: u32,
+}
+
+impl Default for SystemMetricsProbe {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SystemMetricsProbe {
@@ -385,7 +387,7 @@ impl SystemMetricsProbe {
         {
             // On Windows, we'd use GetProcessMemoryInfo
             // For now, return 0 as placeholder
-            return 0.0;
+            0.0
         }
 
         #[cfg(not(any(target_os = "linux", target_os = "windows")))]

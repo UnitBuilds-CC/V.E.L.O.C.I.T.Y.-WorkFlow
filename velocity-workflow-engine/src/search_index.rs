@@ -1613,7 +1613,7 @@ mod tests {
             .validate_value("Priority", &SearchAttributeValue::Integer(5))
             .is_ok());
         assert!(schema
-            .validate_value("Priority", &SearchAttributeValue::String("x".into()).into())
+            .validate_value("Priority", &SearchAttributeValue::String("x".into()))
             .is_err());
     }
 

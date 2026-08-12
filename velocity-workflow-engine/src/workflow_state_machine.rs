@@ -5,7 +5,8 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicI64, AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicI64, AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::SystemTime;
 

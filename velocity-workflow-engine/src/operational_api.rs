@@ -811,8 +811,7 @@ impl WorkflowTaskScheduler {
             .lock()
             .unwrap()
             .iter()
-            .filter(|t| t.workflow_key == workflow_key)
-            .last()
+            .rfind(|t| t.workflow_key == workflow_key)
             .cloned()
     }
 
@@ -1351,7 +1350,7 @@ impl DeploymentVersionRamp {
         build_id: &str,
         percentage: f32,
     ) -> Result<DeploymentVersion, String> {
-        if percentage < 0.0 || percentage > 100.0 {
+        if !(0.0..=100.0).contains(&percentage) {
             return Err("Percentage must be between 0 and 100".into());
         }
 
@@ -1446,7 +1445,7 @@ impl DeploymentVersionRamp {
         let mut versions = self.versions.write().unwrap();
         let v = versions
             .get_mut(&key)
-            .ok_or_else(|| format!("Version not found"))?;
+            .ok_or_else(|| "Version not found".to_string())?;
         v.metadata = metadata;
         v.last_updated_ms = now_ms();
         Ok(v.clone())
@@ -1547,7 +1546,7 @@ mod tests {
     fn test_update_validator_accept() {
         let reg = UpdateValidatorRegistry::new();
         reg.register_validator("transfer", |_id, args| {
-            if args.len() > 0 {
+            if !args.is_empty() {
                 UpdateValidationResult::Accepted
             } else {
                 UpdateValidationResult::Rejected("Empty args".into())
@@ -1606,7 +1605,7 @@ mod tests {
     fn test_deletion_pipeline() {
         let pipeline = WorkflowDeletionPipeline::new();
         let id1 = pipeline.submit_deletion(100, true);
-        let id2 = pipeline.submit_deletion(200, false);
+        let _id2 = pipeline.submit_deletion(200, false);
 
         assert_eq!(pipeline.pending_count(), 2);
 

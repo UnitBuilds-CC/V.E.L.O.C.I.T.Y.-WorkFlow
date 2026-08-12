@@ -6,6 +6,12 @@ pub struct Bitmask256 {
     pub bits: [u64; 4],
 }
 
+impl Default for Bitmask256 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Bitmask256 {
     pub const fn new() -> Self {
         Self { bits: [0; 4] }

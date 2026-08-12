@@ -188,9 +188,8 @@ impl HotSwapRegistry {
 
         let mut patched = 0u64;
         for &wk in matching_workflow_keys {
-            match self.apply_patch(patch_id, wk) {
-                HotSwapResult::Applied { .. } => patched += 1,
-                _ => {}
+            if let HotSwapResult::Applied { .. } = self.apply_patch(patch_id, wk) {
+                patched += 1
             }
         }
 

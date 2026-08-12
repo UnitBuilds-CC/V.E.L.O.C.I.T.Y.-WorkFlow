@@ -153,9 +153,7 @@ impl HistoryStore {
         payload: Vec<u8>,
     ) -> u64 {
         let mut histories = self.histories.lock().unwrap();
-        let history = histories
-            .entry(workflow_key)
-            .or_insert_with(WorkflowHistory::new);
+        let history = histories.entry(workflow_key).or_default();
         history.append(event_type, workflow_key, payload)
     }
 
@@ -167,9 +165,7 @@ impl HistoryStore {
         attrs: HashMap<String, String>,
     ) -> u64 {
         let mut histories = self.histories.lock().unwrap();
-        let history = histories
-            .entry(workflow_key)
-            .or_insert_with(WorkflowHistory::new);
+        let history = histories.entry(workflow_key).or_default();
         history.append_with_attrs(event_type, workflow_key, payload, attrs)
     }
 

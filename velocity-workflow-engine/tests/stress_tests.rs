@@ -258,12 +258,9 @@ fn test_task_queue_contention() {
     for _ in 0..10 {
         let tq = Arc::clone(&tq);
         let cons = Arc::clone(&consumed);
-        handles.push(thread::spawn(move || loop {
-            match tq.try_poll(tq_hash) {
-                Some(_) => {
-                    cons.fetch_add(1, Ordering::Relaxed);
-                }
-                None => break,
+        handles.push(thread::spawn(move || {
+            while tq.try_poll(tq_hash).is_some() {
+                cons.fetch_add(1, Ordering::Relaxed);
             }
         }));
     }
@@ -349,11 +346,11 @@ fn test_search_index_scale() {
     // Verify queries work
     let prod_workflows = index.exact_match("env", &SearchAttributeValue::Keyword("prod".into()));
     println!("  prod workflows: {}", prod_workflows.len());
-    assert!(prod_workflows.len() > 0);
+    assert!(!prod_workflows.is_empty());
 
     let high_priority = index.range_integer("priority", 8, 9);
     println!("  high priority workflows: {}", high_priority.len());
-    assert!(high_priority.len() > 0);
+    assert!(!high_priority.is_empty());
     println!("  total time: {:?}", start.elapsed());
 }
 

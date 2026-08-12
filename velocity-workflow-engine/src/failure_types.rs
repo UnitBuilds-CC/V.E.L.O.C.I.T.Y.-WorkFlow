@@ -458,8 +458,10 @@ impl fmt::Display for WorkflowFailure {
 /// Policy for handling workflow ID conflicts when starting a new workflow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
+#[derive(Default)]
 pub enum WorkflowIdReusePolicy {
     /// Allow starting a workflow with the same ID regardless of previous state.
+    #[default]
     AllowDuplicate = 0,
     /// Reject starting if a workflow with the same ID exists (in any state).
     RejectDuplicate = 1,
@@ -467,12 +469,6 @@ pub enum WorkflowIdReusePolicy {
     AllowDuplicateFailedOnly = 2,
     /// If a workflow with the same ID is running, terminate it and start a new one.
     TerminateIfRunning = 3,
-}
-
-impl Default for WorkflowIdReusePolicy {
-    fn default() -> Self {
-        WorkflowIdReusePolicy::AllowDuplicate
-    }
 }
 
 impl fmt::Display for WorkflowIdReusePolicy {

@@ -502,7 +502,7 @@ impl InMemoryHistoryStore {
     pub fn append_event(&self, event: HistoryEventData) -> Result<(), PersistenceError> {
         let key = Self::history_key(&event.namespace_id, &event.workflow_id, &event.run_id);
         let mut events = self.events.write().unwrap();
-        events.entry(key).or_insert_with(Vec::new).push(event);
+        events.entry(key).or_default().push(event);
         self.stats.appends.fetch_add(1, Ordering::Relaxed);
         self.stats
             .total_events_stored
@@ -830,16 +830,13 @@ impl InMemoryQueueStore {
 
     pub fn enqueue(&self, queue_type: QueueType, data: QueueData) {
         let mut queues = self.queues.write().unwrap();
-        queues
-            .entry(queue_type)
-            .or_insert_with(VecDeque::new)
-            .push_back(data);
+        queues.entry(queue_type).or_default().push_back(data);
         self.stats.enqueues.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn dequeue(&self, queue_type: QueueType, max_count: usize) -> Vec<QueueData> {
         let mut queues = self.queues.write().unwrap();
-        let q = queues.entry(queue_type).or_insert_with(VecDeque::new);
+        let q = queues.entry(queue_type).or_default();
         let count = max_count.min(q.len());
         let items: Vec<_> = q.drain(..count).collect();
         self.stats

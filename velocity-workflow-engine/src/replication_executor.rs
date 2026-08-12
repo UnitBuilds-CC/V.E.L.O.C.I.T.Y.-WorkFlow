@@ -5,7 +5,8 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::SystemTime;
 
@@ -516,7 +517,7 @@ mod tests {
     fn test_stream_manager() {
         let mgr = ReplicationStreamManager::new();
         let s1 = mgr.create_stream("cluster-a", "cluster-b");
-        let s2 = mgr.create_stream("cluster-a", "cluster-c");
+        let _s2 = mgr.create_stream("cluster-a", "cluster-c");
         assert_eq!(mgr.active_stream_count(), 2);
 
         mgr.close_stream(&s1).unwrap();

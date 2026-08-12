@@ -315,7 +315,7 @@ impl Eq for TimerTaskEntry {}
 
 impl PartialOrd for TimerTaskEntry {
     fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
-        Some(other.expiry_time_ms.cmp(&self.expiry_time_ms))
+        Some(self.cmp(other))
     }
 }
 impl Ord for TimerTaskEntry {

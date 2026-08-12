@@ -783,8 +783,8 @@ mod tests {
         assert_eq!(lb.healthy_count(), 3);
 
         let b1 = lb.select_backend().unwrap();
-        let b2 = lb.select_backend().unwrap();
-        let b3 = lb.select_backend().unwrap();
+        let _b2 = lb.select_backend().unwrap();
+        let _b3 = lb.select_backend().unwrap();
         let b4 = lb.select_backend().unwrap();
         // Round robin should cycle
         assert_eq!(b1, b4);

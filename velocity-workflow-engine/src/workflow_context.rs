@@ -438,7 +438,7 @@ impl ContextManager {
             .read()
             .unwrap()
             .get(&workflow_key)
-            .map_or(false, |c| c.unlock_context(lock_id))
+            .is_some_and(|c| c.unlock_context(lock_id))
     }
 
     /// Complete a workflow context.
@@ -468,7 +468,7 @@ impl ContextManager {
             .read()
             .unwrap()
             .get(&shard_id)
-            .map_or(false, |s| s.acquire())
+            .is_some_and(|s| s.acquire())
     }
 
     /// Get shard stats.

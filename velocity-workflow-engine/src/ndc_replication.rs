@@ -758,6 +758,7 @@ impl ConsistencyChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cluster::ReplicationTaskType;
 
     fn make_task(workflow_key: u64, source: u64, version: u64, event_id: u64) -> ReplicationTask {
         ReplicationTask {

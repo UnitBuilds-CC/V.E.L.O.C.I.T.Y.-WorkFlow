@@ -400,7 +400,7 @@ impl TaskQueueCounter {
         count: u64,
     ) {
         let key = Self::make_key(task_queue, build_id, partition);
-        let counts = self.counts.write().unwrap();
+        let counts = self.counts.read().unwrap();
         if let Some(entry) = counts.get(&key) {
             let current = entry.value.load(Ordering::Relaxed);
             entry
@@ -1067,7 +1067,6 @@ mod tests {
         protocol.offer_task(task, 0); // 0ms timeout
 
         // Should be expired
-        let cleaned = protocol.cleanup_expired();
-        assert!(cleaned >= 0); // May or may not have expired depending on timing
+        let _cleaned = protocol.cleanup_expired(); // May or may not have expired depending on timing
     }
 }

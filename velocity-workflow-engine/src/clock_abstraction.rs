@@ -145,10 +145,11 @@ impl MockTimeSource {
     fn fire_ready_timers(&self, now: SystemTime) {
         let timers = self.timers.read().unwrap();
         for entry in timers.iter() {
-            if !entry.cancelled.load(Ordering::SeqCst) && !entry.fired.load(Ordering::SeqCst) {
-                if entry.fire_at <= now {
-                    entry.fired.store(true, Ordering::SeqCst);
-                }
+            if !entry.cancelled.load(Ordering::SeqCst)
+                && !entry.fired.load(Ordering::SeqCst)
+                && entry.fire_at <= now
+            {
+                entry.fired.store(true, Ordering::SeqCst);
             }
         }
     }
@@ -305,10 +306,10 @@ impl HybridLogicalClock {
         if other.wall_time_ms > self.wall_time_ms {
             self.wall_time_ms = other.wall_time_ms;
             self.logical_counter = other.logical_counter + 1;
-        } else if other.wall_time_ms == self.wall_time_ms {
-            if other.logical_counter >= self.logical_counter {
-                self.logical_counter = other.logical_counter + 1;
-            }
+        } else if other.wall_time_ms == self.wall_time_ms
+            && other.logical_counter >= self.logical_counter
+        {
+            self.logical_counter = other.logical_counter + 1;
         }
         // Ensure wall time is at least current physical time
         let now_ms = SystemTime::now()

@@ -787,7 +787,7 @@ impl CommandProcessor {
 
                 WorkflowCommand::CancelChildWorkflow(c) => {
                     state.update_child_state(
-                        c.child_workflow_key as u64,
+                        c.child_workflow_key,
                         ChildWorkflowMutableState::Canceled,
                     );
                     self.log_command("CancelChildWorkflow", event_id, true, None);
@@ -1277,11 +1277,10 @@ impl TransactionManager {
 
             // Find and return the snapshot
             let mut snapshots = self.snapshots.lock().unwrap();
-            if let Some(pos) = snapshots.iter().position(|(id, _)| *id == tx_id) {
-                Some(snapshots.remove(pos).1)
-            } else {
-                None
-            }
+            snapshots
+                .iter()
+                .position(|(id, _)| *id == tx_id)
+                .map(|pos| snapshots.remove(pos).1)
         } else {
             None
         }

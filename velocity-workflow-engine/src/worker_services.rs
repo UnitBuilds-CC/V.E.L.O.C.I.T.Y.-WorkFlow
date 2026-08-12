@@ -6,7 +6,8 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{
-    atomic::{AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::SystemTime;
 
@@ -392,7 +393,7 @@ impl SchedulerService {
         let mut schedules = self.schedules.write().unwrap();
         let schedule = schedules
             .get_mut(&key)
-            .ok_or_else(|| SchedulerError::NotFound(key))?;
+            .ok_or(SchedulerError::NotFound(key))?;
         schedule.state.paused = true;
         schedule.state.notes = note.to_string();
         Ok(())
@@ -408,7 +409,7 @@ impl SchedulerService {
         let mut schedules = self.schedules.write().unwrap();
         let schedule = schedules
             .get_mut(&key)
-            .ok_or_else(|| SchedulerError::NotFound(key))?;
+            .ok_or(SchedulerError::NotFound(key))?;
         schedule.state.paused = false;
         schedule.state.notes = note.to_string();
         Ok(())
@@ -732,9 +733,7 @@ impl DlqManagementService {
     ) -> Result<(), DlqError> {
         let key = format!("{}:{}", source, target);
         let mut queues = self.queues.write().unwrap();
-        let queue = queues
-            .get_mut(&key)
-            .ok_or_else(|| DlqError::NotFound(key))?;
+        let queue = queues.get_mut(&key).ok_or(DlqError::NotFound(key))?;
         if queue.messages.len() >= queue.max_size {
             queue.messages.pop_front(); // Drop oldest
         }
@@ -751,9 +750,7 @@ impl DlqManagementService {
     ) -> Result<Vec<DlqMessage>, DlqError> {
         let key = format!("{}:{}", source, target);
         let mut queues = self.queues.write().unwrap();
-        let queue = queues
-            .get_mut(&key)
-            .ok_or_else(|| DlqError::NotFound(key))?;
+        let queue = queues.get_mut(&key).ok_or(DlqError::NotFound(key))?;
         let count = max_count.min(queue.messages.len());
         let messages: Vec<DlqMessage> = queue.messages.drain(..count).collect();
         self.stats
@@ -770,9 +767,7 @@ impl DlqManagementService {
     ) -> Result<i64, DlqError> {
         let key = format!("{}:{}", source, target);
         let mut queues = self.queues.write().unwrap();
-        let queue = queues
-            .get_mut(&key)
-            .ok_or_else(|| DlqError::NotFound(key))?;
+        let queue = queues.get_mut(&key).ok_or(DlqError::NotFound(key))?;
         let before = queue.messages.len() as i64;
         queue.messages.retain(|m| m.message_id >= before_message_id);
         let after = queue.messages.len() as i64;
@@ -791,7 +786,7 @@ impl DlqManagementService {
     ) -> Result<Vec<DlqMessage>, DlqError> {
         let key = format!("{}:{}", source, target);
         let queues = self.queues.read().unwrap();
-        let queue = queues.get(&key).ok_or_else(|| DlqError::NotFound(key))?;
+        let queue = queues.get(&key).ok_or(DlqError::NotFound(key))?;
         Ok(queue.messages.iter().take(max_count).cloned().collect())
     }
 

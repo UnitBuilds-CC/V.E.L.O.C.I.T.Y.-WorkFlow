@@ -69,7 +69,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
                 input,
                 &req.workflow_id,
             )
-            .map_err(|e| Status::internal(e))?;
+            .map_err(Status::internal)?;
 
         tracing::debug!(
             workflow_id = %execution.workflow_id,

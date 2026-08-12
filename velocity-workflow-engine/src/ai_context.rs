@@ -339,8 +339,8 @@ impl AiContextWindow {
                 }
                 tokens_freed += msg.token_count;
                 summary_parts.push(format!(
-                    "[{}: {}]",
-                    format!("{:?}", msg.role),
+                    "[{:?}: {}]",
+                    msg.role,
                     msg.content.chars().take(100).collect::<String>()
                 ));
             }
@@ -441,7 +441,7 @@ impl AiContextWindow {
 
 /// Simple token estimation (1 token ≈ 4 characters for English).
 fn estimate_tokens(text: &str) -> usize {
-    (text.len() + 3) / 4
+    text.len().div_ceil(4)
 }
 
 #[cfg(test)]

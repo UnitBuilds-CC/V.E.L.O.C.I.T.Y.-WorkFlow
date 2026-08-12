@@ -553,6 +553,7 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     fn make_entry(id: &str, name: &str) -> NamespaceEntry {
         NamespaceEntry {

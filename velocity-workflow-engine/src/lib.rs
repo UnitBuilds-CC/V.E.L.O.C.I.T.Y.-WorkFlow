@@ -8,6 +8,25 @@
 //!   [C# Developer Code] ──FFI──► [velocity-workflow-engine] ──► [velocity-workflow-core]
 //!   (thin bridge)                (runtime engine, zero-GC)      (slab, bitmask, Merkle)
 
+// Clippy configuration: suppress lints that don't apply to this FFI-heavy engine codebase.
+// - missing_safety_doc: 300+ FFI functions; safety is documented at the module/FFI boundary level
+// - new_without_default: many types intentionally have no meaningful Default
+// - too_many_arguments: engine APIs naturally require multiple parameters
+// - type_complexity: complex FFI callback types are inherent to the bridge design
+// - needless_range_loop: FFI marshalling often requires index-based access
+// - write_without_read: some locks are write-only during init phases
+// - large_enum_variant: enum variants are sized for worst-case correctness
+#![allow(
+    clippy::missing_safety_doc,
+    clippy::new_without_default,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::needless_range_loop,
+    clippy::large_enum_variant,
+    clippy::unnecessary_cast, // FFI raw pointer casts are intentional
+    clippy::not_unsafe_ptr_arg_deref, // FFI functions intentionally dereference raw pointers
+)]
+
 pub mod activity_worker;
 pub mod advanced_operations;
 pub mod advanced_scheduler;

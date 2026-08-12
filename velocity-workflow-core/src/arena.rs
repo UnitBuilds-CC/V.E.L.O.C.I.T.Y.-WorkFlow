@@ -9,6 +9,12 @@ pub struct BumpArenaPage {
     pub data: [u8; DEFAULT_ARENA_PAGE_SIZE],
 }
 
+impl Default for BumpArenaPage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BumpArenaPage {
     pub fn new() -> Self {
         Self {

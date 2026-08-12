@@ -152,17 +152,17 @@ impl StructuredLogger {
         json.push_str(&self.service_name);
         json.push_str("\",\"event\":\"");
         json.push_str(event_name);
-        json.push_str("\"");
+        json.push('"');
 
         for (k, v) in fields {
             json.push_str(",\"");
             json.push_str(k);
             json.push_str("\":\"");
             json.push_str(v);
-            json.push_str("\"");
+            json.push('"');
         }
 
-        json.push_str("}");
+        json.push('}');
 
         if let Ok(mut buf) = self.log_buffer.lock() {
             buf.push(json);
@@ -492,7 +492,7 @@ impl MetricsExporter {
                 MetricKind::Counter => {
                     out.push_str("# HELP ");
                     out.push_str(name);
-                    out.push_str(" ");
+                    out.push(' ');
                     out.push_str(&inst.help);
                     out.push('\n');
                     out.push_str("# TYPE ");
@@ -506,7 +506,7 @@ impl MetricsExporter {
                 MetricKind::Gauge => {
                     out.push_str("# HELP ");
                     out.push_str(name);
-                    out.push_str(" ");
+                    out.push(' ');
                     out.push_str(&inst.help);
                     out.push('\n');
                     out.push_str("# TYPE ");
@@ -520,7 +520,7 @@ impl MetricsExporter {
                 MetricKind::Histogram => {
                     out.push_str("# HELP ");
                     out.push_str(name);
-                    out.push_str(" ");
+                    out.push(' ');
                     out.push_str(&inst.help);
                     out.push('\n');
                     out.push_str("# TYPE ");
@@ -1327,9 +1327,11 @@ mod tests {
 
     #[test]
     fn test_context_config() {
-        let mut cfg = ObservabilityConfig::default();
-        cfg.service_name = "custom-service".to_string();
-        cfg.log_level = LogLevel::Debug;
+        let cfg = ObservabilityConfig {
+            service_name: "custom-service".to_string(),
+            log_level: LogLevel::Debug,
+            ..Default::default()
+        };
         let ctx = ObservabilityContext::new(cfg);
         assert_eq!(ctx.config().service_name, "custom-service");
         assert_eq!(ctx.logger().level(), LogLevel::Debug);

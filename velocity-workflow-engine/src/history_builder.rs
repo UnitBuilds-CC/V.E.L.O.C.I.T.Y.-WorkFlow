@@ -1159,7 +1159,7 @@ mod tests {
         assert_eq!(e1, 1);
         let e2 = builder.workflow_task_scheduled("task-q", 10000);
         let e3 = builder.workflow_task_started(e2, "worker-1");
-        let e4 = builder.workflow_task_completed(e2, e3);
+        let _e4 = builder.workflow_task_completed(e2, e3);
         let e5 = builder.activity_task_scheduled(
             1,
             "greet",
@@ -1168,8 +1168,8 @@ mod tests {
             Some(30000),
             Some(10000),
         );
-        let e6 = builder.activity_task_completed(e5, e5 + 1, Some(b"result".to_vec()));
-        let e7 = builder.workflow_execution_completed(Some(b"done".to_vec()));
+        let _e6 = builder.activity_task_completed(e5, e5 + 1, Some(b"result".to_vec()));
+        let _e7 = builder.workflow_execution_completed(Some(b"done".to_vec()));
 
         assert_eq!(builder.total_events(), 7);
         assert_eq!(builder.next_event_id(), 8);
@@ -1179,7 +1179,7 @@ mod tests {
     fn test_builder_timer_events() {
         let builder = HistoryBuilder::new(1, vec![]);
         let t1 = builder.timer_started(1, 5000);
-        let t2 = builder.timer_fired(1, t1);
+        let _t2 = builder.timer_fired(1, t1);
         assert_eq!(builder.total_events(), 2);
         let events = builder.events();
         assert_eq!(events[0].event_type, HBEventType::TimerStarted);
@@ -1191,14 +1191,14 @@ mod tests {
         let builder = HistoryBuilder::new(1, vec![]);
         let i1 = builder.child_workflow_initiated(100, "child-wf", "default");
         let s1 = builder.child_workflow_started(i1, 200);
-        let c1 = builder.child_workflow_completed(i1, s1, Some(b"child-result".to_vec()));
+        let _c1 = builder.child_workflow_completed(i1, s1, Some(b"child-result".to_vec()));
         assert_eq!(builder.total_events(), 3);
     }
 
     #[test]
     fn test_builder_signal() {
         let builder = HistoryBuilder::new(1, vec![]);
-        let e1 = builder.workflow_execution_signaled(
+        let _e1 = builder.workflow_execution_signaled(
             "my-signal",
             Some(b"sig-data".to_vec()),
             "external",
@@ -1302,7 +1302,7 @@ mod tests {
         let mut attrs = HashMap::new();
         attrs.insert("env".into(), b"prod".to_vec());
         attrs.insert("team".into(), b"platform".to_vec());
-        let e1 = builder.upsert_search_attributes(&attrs);
+        let _e1 = builder.upsert_search_attributes(&attrs);
         assert_eq!(builder.total_events(), 1);
         let events = builder.events();
         assert_eq!(
@@ -1315,8 +1315,8 @@ mod tests {
     #[test]
     fn test_update_events() {
         let builder = HistoryBuilder::new(1, vec![]);
-        let u1 = builder.update_accepted("update-1", "validate-order");
-        let u2 = builder.update_completed("update-1", true, Some(b"ok".to_vec()));
+        let _u1 = builder.update_accepted("update-1", "validate-order");
+        let _u2 = builder.update_completed("update-1", true, Some(b"ok".to_vec()));
         assert_eq!(builder.total_events(), 2);
     }
 }

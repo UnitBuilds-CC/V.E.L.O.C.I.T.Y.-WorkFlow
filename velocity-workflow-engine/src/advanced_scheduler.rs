@@ -113,7 +113,7 @@ fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
 }
 
 fn is_leap(y: u32) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
 }
 
 /// Days in a given month (1-indexed).
@@ -220,7 +220,7 @@ fn parse_field(
         let d: u32 = t[..t.len() - 1]
             .parse()
             .map_err(|_| CronError::InvalidValue(t.into()))?;
-        if d < 1 || d > 31 {
+        if !(1..=31).contains(&d) {
             return Err(CronError::OutOfRange(t.into(), 1, 31));
         }
         return Ok(CronField::NearestWeekday(d));
@@ -240,7 +240,7 @@ fn parse_field(
         if wd > 6 {
             return Err(CronError::OutOfRange(t.into(), 0, 6));
         }
-        if n < 1 || n > 5 {
+        if !(1..=5).contains(&n) {
             return Err(CronError::OutOfRange(t.into(), 1, 5));
         }
         return Ok(CronField::NthWeekday { weekday: wd, n });
@@ -299,7 +299,7 @@ fn field_matches(field: &CronField, val: u32, year: u32, month: u32, weekday: u3
 impl CronExpression {
     /// Parse a 6-field cron expression: second minute hour day month weekday.
     pub fn parse(expr: &str) -> Result<Self, CronError> {
-        let fields: Vec<&str> = expr.trim().split_whitespace().collect();
+        let fields: Vec<&str> = expr.split_whitespace().collect();
         if fields.len() != 6 {
             return Err(CronError::InvalidFormat(format!(
                 "Expected 6 fields, got {}",
@@ -714,7 +714,7 @@ impl WorkerVersioningV2 {
     /// Register a new build ID for a task queue.
     pub fn register_version(&self, task_queue: &str, build_id: &str) {
         let mut v = self.versions.lock().unwrap();
-        let entry = v.entry(task_queue.to_string()).or_insert_with(Vec::new);
+        let entry = v.entry(task_queue.to_string()).or_default();
         if !entry.iter().any(|b| b == build_id) {
             entry.push(build_id.to_string());
         }
@@ -748,7 +748,7 @@ impl WorkerVersioningV2 {
     pub fn dispatch_to_version(&self, task_queue: &str, build_id: &str) -> bool {
         let v = self.versions.lock().unwrap();
         v.get(task_queue)
-            .map_or(false, |versions| versions.iter().any(|b| b == build_id))
+            .is_some_and(|versions| versions.iter().any(|b| b == build_id))
     }
 
     /// Number of task queues tracked.

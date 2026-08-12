@@ -549,7 +549,7 @@ mod tests {
     fn test_sticky_affinity() {
         let reg = WorkerRegistry::new();
         let w1 = reg.register_worker_with_capacity("addr1", &[100], &[], "1.0", 10);
-        let w2 = reg.register_worker_with_capacity("addr2", &[100], &[], "1.0", 10);
+        let _w2 = reg.register_worker_with_capacity("addr2", &[100], &[], "1.0", 10);
 
         // Set sticky affinity for w1 to queue 100
         reg.set_sticky_queue(w1, 100);

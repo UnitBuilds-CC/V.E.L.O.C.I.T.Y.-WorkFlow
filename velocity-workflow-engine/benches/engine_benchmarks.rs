@@ -56,7 +56,8 @@ fn bench(
 ) -> BenchResult {
     // Warm-up
     for _ in 0..min_iterations.min(100) {
-        black_box(f());
+        f();
+        black_box(());
     }
 
     let mut latencies = Vec::with_capacity(min_iterations.max(10_000));
@@ -64,14 +65,16 @@ fn bench(
 
     for _ in 0..min_iterations {
         let iter_start = Instant::now();
-        black_box(f());
+        f();
+        black_box(());
         latencies.push(iter_start.elapsed());
     }
 
     // Continue until min_duration is reached
     while start.elapsed() < min_duration {
         let iter_start = Instant::now();
-        black_box(f());
+        f();
+        black_box(());
         latencies.push(iter_start.elapsed());
     }
 
@@ -104,7 +107,8 @@ fn bench_indexed(
 ) -> BenchResult {
     // Warm-up
     for i in 0..min_iterations.min(100) {
-        black_box(f(i));
+        f(i);
+        black_box(());
     }
 
     let mut latencies = Vec::with_capacity(min_iterations.max(10_000));
@@ -112,14 +116,16 @@ fn bench_indexed(
 
     for i in 0..min_iterations {
         let iter_start = Instant::now();
-        black_box(f(i));
+        f(i);
+        black_box(());
         latencies.push(iter_start.elapsed());
     }
 
     while start.elapsed() < min_duration {
         let i = latencies.len();
         let iter_start = Instant::now();
-        black_box(f(i));
+        f(i);
+        black_box(());
         latencies.push(iter_start.elapsed());
     }
 
@@ -330,7 +336,7 @@ fn bench_merkle_compute() -> BenchResult {
         let mut slab = SlabHeader::new(1, 1, 256);
         // Complete a varying number of steps to exercise Merkle recomputation
         for step in 0..(i % 64) {
-            slab.mark_step_completed(step as usize);
+            slab.mark_step_completed(step);
         }
         black_box(slab.merkle_root);
     })

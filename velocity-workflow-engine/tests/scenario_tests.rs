@@ -116,7 +116,7 @@ fn test_user_signup_with_verification() {
     engine.complete_step(signup_key, 0, b"account_created:UID-100".to_vec());
     // Step 1: Send verification email (schedule timer for timeout)
     engine.complete_step(signup_key, 1, b"email_sent".to_vec());
-    let timer_id = engine.schedule_timer(signup_key, 3600_000); // 1 hour timeout
+    let timer_id = engine.schedule_timer(signup_key, 3_600_000); // 1 hour timeout
 
     // Simulate verification signal arriving before timeout
     engine.signal_workflow(signup_key, 10, b"verification_token:ABC123".to_vec());
@@ -233,7 +233,7 @@ fn test_approval_workflow() {
     engine.complete_step(approval_key, 1, b"under_review".to_vec());
 
     // Schedule timeout for approval
-    let timeout_timer = engine.schedule_timer(approval_key, 86400_000); // 24h
+    let timeout_timer = engine.schedule_timer(approval_key, 86_400_000); // 24h
 
     // Approver sends approval signal
     engine.signal_workflow(approval_key, 20, b"decision:approved,by:manager-1".to_vec());

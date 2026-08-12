@@ -731,8 +731,8 @@ mod tests {
             .workflow_completed(serde_json::Value::Null)
             .build();
 
-        let (id1, rid1) = (e1.workflow_id.clone(), e1.run_id.clone());
-        let (id2, rid2) = (e2.workflow_id.clone(), e2.run_id.clone());
+        let (_id1, _rid1) = (e1.workflow_id.clone(), e1.run_id.clone());
+        let (_id2, _rid2) = (e2.workflow_id.clone(), e2.run_id.clone());
         engine.store_execution(e1);
         engine.store_execution(e2);
 

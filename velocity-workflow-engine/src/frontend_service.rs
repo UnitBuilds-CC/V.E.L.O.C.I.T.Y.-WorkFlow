@@ -586,6 +586,7 @@ impl FrontendService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::SystemTime;
 
     fn make_request(method: &str, ns: &str) -> ApiRequest {
         ApiRequest {

@@ -89,19 +89,10 @@ pub struct PollerInfo {
     pub rate_per_second: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct VersionedData {
     pub current_version: i64,
     pub version_branches: Vec<VersionBranch>,
-}
-
-impl Default for VersionedData {
-    fn default() -> Self {
-        Self {
-            current_version: 0,
-            version_branches: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -145,8 +136,9 @@ impl TaskQueue {
         Some(task)
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn try_sync_match(&self, task: MatchTask) -> Result<MatchTask, MatchTask> {
-        let pollers = self.pollers.write().unwrap();
+        let pollers = self.pollers.read().unwrap();
         if !pollers.is_empty() {
             self.stats.sync_match_count.fetch_add(1, Ordering::Relaxed);
             Ok(task)
@@ -229,7 +221,7 @@ impl PartitionManager {
             self.root_queue.add_task(task);
             return -1;
         }
-        let hash = fnv1a_hash(&task.workflow_id) as u32;
+        let hash = fnv1a_hash(&task.workflow_id);
         let partition = (hash % self.num_partitions) as i32;
         let partitions = self.partitions.read().unwrap();
         if let Some(pq) = partitions.get(&partition) {
@@ -472,7 +464,7 @@ mod tests {
         let pm = PartitionManager::new(root_id, 4);
         assert_eq!(pm.partition_count(), 4);
         let p = pm.route_task(make_task(1, "wf-1"));
-        assert!(p >= 0 && p < 4);
+        assert!((0..4).contains(&p));
         assert_eq!(pm.total_pending(), 1);
     }
 
@@ -499,7 +491,7 @@ mod tests {
         let root_id = make_task_id("ns", "tq-1");
         let pm = PartitionManager::new(root_id, 2);
         pm.route_task(make_task(1, "wf-1"));
-        let forwarded = pm.forward_to_root(0);
+        let _forwarded = pm.forward_to_root(0);
         // May or may not forward depending on which partition the task went to
     }
 

@@ -29,6 +29,7 @@ use velocity_workflow_engine::visibility::SearchAttributeValue;
 
 /// Configuration for a fuzz run.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct FuzzConfig {
     seed: u64,
     iteration_count: usize,
@@ -117,6 +118,7 @@ impl RandomGenerator {
     fn random_signal_id(&mut self) -> u64 {
         self.range(1, 10_000)
     }
+    #[allow(dead_code)]
     fn random_namespace_id(&mut self) -> u64 {
         self.range(0, 10)
     }
@@ -269,7 +271,7 @@ fn fuzz_step_ordering() {
         let mut order: Vec<u32> = (0..steps).collect();
         for i in (1..order.len()).rev() {
             let j = rng.range(0, i as u64) as usize;
-            order.swap(i as usize, j);
+            order.swap(i, j);
         }
         for step in &order {
             if no_panic(std::panic::AssertUnwindSafe(|| {

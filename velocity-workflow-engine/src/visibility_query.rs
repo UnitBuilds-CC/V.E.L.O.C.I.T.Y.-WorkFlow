@@ -310,6 +310,7 @@ impl std::fmt::Display for QueryParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_parse_empty() {

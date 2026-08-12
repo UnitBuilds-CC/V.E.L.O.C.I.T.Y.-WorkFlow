@@ -363,13 +363,13 @@ impl NexusManager {
         let mut timed_out = Vec::new();
         let mut ops = self.operations.lock().unwrap();
         for op in ops.values_mut() {
-            if op.timeout_ms > 0 && op.started_at_ms > 0 {
-                if op.state == NexusOperationState::Started
-                    && current_time_ms.saturating_sub(op.started_at_ms) > op.timeout_ms
-                {
-                    op.state = NexusOperationState::TimedOut;
-                    timed_out.push(op.operation_id);
-                }
+            if op.timeout_ms > 0
+                && op.started_at_ms > 0
+                && op.state == NexusOperationState::Started
+                && current_time_ms.saturating_sub(op.started_at_ms) > op.timeout_ms
+            {
+                op.state = NexusOperationState::TimedOut;
+                timed_out.push(op.operation_id);
             }
         }
         timed_out

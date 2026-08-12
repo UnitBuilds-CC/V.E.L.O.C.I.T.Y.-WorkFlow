@@ -25,7 +25,7 @@ impl CronExpression {
     /// Parse a standard 5-field cron expression.
     /// Supports: `*`, specific values, ranges (`1-5`), steps (`*/5`), and lists (`1,3,5`).
     pub fn parse(expr: &str) -> Result<Self, CronError> {
-        let fields: Vec<&str> = expr.trim().split_whitespace().collect();
+        let fields: Vec<&str> = expr.split_whitespace().collect();
         if fields.len() != 5 {
             return Err(CronError::InvalidFormat(format!(
                 "Expected 5 fields, got {}",
@@ -58,7 +58,7 @@ impl CronExpression {
             let day_of_week = ((candidate / (60 * 24)) % 7) as u8;
 
             // Clamp day_of_month to valid range for simplified calendar
-            let day_of_month = day_of_month.min(31).max(1);
+            let day_of_month = day_of_month.clamp(1, 31);
 
             if self.minutes.contains(&minute)
                 && self.hours.contains(&hour)
@@ -405,7 +405,7 @@ mod tests {
         // Resume
         scheduler.set_paused(id, false);
         let fires = scheduler.advance_to(15);
-        assert!(fires.len() >= 1);
+        assert!(!fires.is_empty());
     }
 
     #[test]

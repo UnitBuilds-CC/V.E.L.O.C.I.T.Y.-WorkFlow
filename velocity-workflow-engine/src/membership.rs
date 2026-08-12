@@ -525,7 +525,7 @@ mod tests {
         }
 
         let dist = mgr.distribution();
-        assert!(dist.len() >= 1); // At least 1 host has shards
+        assert!(!dist.is_empty()); // At least 1 host has shards
         let total: usize = dist.values().sum();
         assert_eq!(total, 16); // All 16 shards assigned
     }
@@ -551,7 +551,7 @@ mod tests {
         assert!(movements > 0);
 
         let dist2 = mgr2.distribution();
-        assert!(dist2.len() >= 1); // At least 1 host
+        assert!(!dist2.is_empty()); // At least 1 host
         let total: usize = dist2.values().sum();
         assert_eq!(total, 8); // All 8 shards assigned
     }

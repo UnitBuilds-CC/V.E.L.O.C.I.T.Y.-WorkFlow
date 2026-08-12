@@ -621,7 +621,7 @@ impl EngineStatistics {
         let len = sorted.len();
         let p50 = sorted[len * 50 / 100];
         let p95 = sorted[len * 95 / 100];
-        let p99 = sorted[len.saturating_sub(1) * 99 / 100.max(1)];
+        let p99 = sorted[len.saturating_sub(1) * 99 / 100];
         (p50, p95, p99)
     }
 

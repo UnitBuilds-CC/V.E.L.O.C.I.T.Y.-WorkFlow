@@ -83,13 +83,13 @@ impl PayloadMetadata {
     pub fn is_encrypted(&self) -> bool {
         self.encoding
             .as_deref()
-            .map_or(false, |e| e.contains("encrypted"))
+            .is_some_and(|e| e.contains("encrypted"))
     }
 
     pub fn is_compressed(&self) -> bool {
         self.encoding
             .as_deref()
-            .map_or(false, |e| e.contains("gzip") || e.contains("deflate"))
+            .is_some_and(|e| e.contains("gzip") || e.contains("deflate"))
     }
 }
 
@@ -220,7 +220,7 @@ impl CompressionCodec {
     }
 
     fn rle_decode(data: &[u8]) -> Result<Vec<u8>, CodecError> {
-        if data.len() % 2 != 0 {
+        if !data.len().is_multiple_of(2) {
             return Err(CodecError::DecodingFailed(
                 "invalid RLE data (odd length)".into(),
             ));

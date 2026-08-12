@@ -239,7 +239,7 @@ fn run_latency_test(config: &LoadTestConfig) -> LoadTestResult {
     if len > 0 {
         result.p50_ms = starts[len * 50 / 100] as f64 / 1000.0;
         result.p95_ms = starts[len * 95 / 100] as f64 / 1000.0;
-        result.p99_ms = starts[len.saturating_sub(len * 1 / 100)] as f64 / 1000.0;
+        result.p99_ms = starts[len.saturating_sub(len / 100)] as f64 / 1000.0;
     }
 
     result.errors = 0;
@@ -791,7 +791,7 @@ fn test_task_queue_throughput() {
 #[test]
 fn test_timer_engine_throughput() {
     let timer = TimerEngine::new();
-    let fired_count = Arc::new(AtomicU64::new(0));
+    let _fired_count = Arc::new(AtomicU64::new(0));
 
     // Schedule many timers with very short delays
     let iterations = 1000;
@@ -878,8 +878,6 @@ fn test_rate_limiter_throughput() {
 
 #[test]
 fn test_visibility_index_throughput() {
-    use velocity_workflow_engine::visibility::SearchAttributeValue;
-
     let index = VisibilityIndex::new();
     let iterations = 10_000;
 

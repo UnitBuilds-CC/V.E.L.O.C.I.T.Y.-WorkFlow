@@ -249,7 +249,7 @@ impl SearchAttributeManager {
             .write()
             .unwrap()
             .entry(namespace.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(name.to_string(), def);
 
         Ok(())
@@ -923,7 +923,7 @@ mod tests {
             fn task_type(&self) -> &str {
                 "transfer"
             }
-            fn execute(&self, task: &FrameworkTask) -> Result<TaskResult, TaskError> {
+            fn execute(&self, _task: &FrameworkTask) -> Result<TaskResult, TaskError> {
                 Ok(TaskResult {
                     success: true,
                     ack: true,

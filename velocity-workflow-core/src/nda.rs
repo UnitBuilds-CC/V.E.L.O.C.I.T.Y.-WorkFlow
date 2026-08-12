@@ -31,22 +31,22 @@ impl NdaHeader {
 
     pub fn recalculate_merkle(&mut self) {
         let mut hasher = Sha256::new();
-        hasher.update(&self.magic.to_le_bytes());
-        hasher.update(&self.flags.to_le_bytes());
-        hasher.update(&self.triple_count.to_le_bytes());
-        hasher.update(&self.command_count.to_le_bytes());
-        hasher.update(&self.string_pool_offset.to_le_bytes());
+        hasher.update(self.magic.to_le_bytes());
+        hasher.update(self.flags.to_le_bytes());
+        hasher.update(self.triple_count.to_le_bytes());
+        hasher.update(self.command_count.to_le_bytes());
+        hasher.update(self.string_pool_offset.to_le_bytes());
         let res = hasher.finalize();
         self.merkle_root.copy_from_slice(&res);
     }
 
     pub fn verify_merkle(&self) -> bool {
         let mut hasher = Sha256::new();
-        hasher.update(&self.magic.to_le_bytes());
-        hasher.update(&self.flags.to_le_bytes());
-        hasher.update(&self.triple_count.to_le_bytes());
-        hasher.update(&self.command_count.to_le_bytes());
-        hasher.update(&self.string_pool_offset.to_le_bytes());
+        hasher.update(self.magic.to_le_bytes());
+        hasher.update(self.flags.to_le_bytes());
+        hasher.update(self.triple_count.to_le_bytes());
+        hasher.update(self.command_count.to_le_bytes());
+        hasher.update(self.string_pool_offset.to_le_bytes());
         let res = hasher.finalize();
         self.merkle_root == res.as_slice()
     }

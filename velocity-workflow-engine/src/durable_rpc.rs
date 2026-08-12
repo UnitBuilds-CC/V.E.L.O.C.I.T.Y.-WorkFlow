@@ -427,7 +427,7 @@ mod tests {
     #[test]
     fn test_crash_recovery() {
         let mut mesh = test_mesh();
-        let id1 = mesh
+        let _id1 = mesh
             .initiate_rpc("a", "b", "Method1", vec![], None, None)
             .unwrap();
         let _id2 = mesh

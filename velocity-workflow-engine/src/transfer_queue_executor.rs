@@ -3,7 +3,8 @@
 
 use std::collections::VecDeque;
 use std::sync::{
-    atomic::{AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::SystemTime;
 

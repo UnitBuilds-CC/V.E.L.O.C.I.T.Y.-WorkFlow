@@ -210,7 +210,7 @@ impl MatchingService {
         let partition = self.partition_for(queue_name);
         let timeout = Duration::from_millis(self.config.poll_timeout_ms);
 
-        let guard = self.mutex.lock().unwrap();
+        let mut guard = self.mutex.lock().unwrap();
         let deadline = Instant::now() + timeout;
 
         loop {
@@ -239,9 +239,9 @@ impl MatchingService {
             }
 
             let remaining = deadline - Instant::now();
-            let _guard = self.notify.wait_timeout(guard, remaining).unwrap();
-            // Re-check after wakeup
-            return self.poll_task_inner(queue_name, build_id.as_deref(), kind, partition);
+            let (new_guard, _timeout_result) = self.notify.wait_timeout(guard, remaining).unwrap();
+            guard = new_guard;
+            // Re-check after wakeup (loop continues)
         }
     }
 

@@ -4,7 +4,6 @@
 //! verifying that subsystems compose correctly end-to-end.
 
 use velocity_workflow_engine::archival::{ArchivePolicy, ArchiveRecord, ArchiveStore};
-use velocity_workflow_engine::batch::BatchExecutor;
 use velocity_workflow_engine::chaos_endurance::{run_soak_test, SoakTestConfig};
 use velocity_workflow_engine::cron::CronScheduler;
 use velocity_workflow_engine::db_adapter::{DatabaseAdapter, InMemoryAdapter, WorkflowRecord};
@@ -22,7 +21,7 @@ use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
 use velocity_workflow_engine::network_replication::{FrameType, WireFrame};
 use velocity_workflow_engine::nexus::{NexusManager, NexusOperationState};
 use velocity_workflow_engine::partition::PartitionManager;
-use velocity_workflow_engine::payload_codec::{CodecChain, PayloadCodec, XorCodec};
+use velocity_workflow_engine::payload_codec::{CodecChain, XorCodec};
 use velocity_workflow_engine::query_handler::QueryRegistry;
 use velocity_workflow_engine::raft_consensus::{RaftConfig, RaftEventType, RaftNode, RaftState};
 use velocity_workflow_engine::rate_limiter::RateLimiter;
@@ -37,7 +36,6 @@ use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
 use velocity_workflow_engine::timer_engine::TimerEngine;
 use velocity_workflow_engine::visibility::SearchAttributeValue;
 use velocity_workflow_engine::worker_versioning::WorkerVersioning;
-use velocity_workflow_engine::*;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -803,7 +801,7 @@ fn test_shard_consistent_hashing() {
             hosts.insert(h);
         }
     }
-    assert!(hosts.len() >= 1); // At least one host got keys
+    assert!(!hosts.is_empty()); // At least one host got keys
 }
 
 #[test]

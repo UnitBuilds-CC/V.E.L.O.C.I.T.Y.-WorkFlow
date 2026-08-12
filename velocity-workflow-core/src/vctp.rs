@@ -41,6 +41,12 @@ pub struct AimdController {
     pub loss_threshold_percent: u32,
 }
 
+impl Default for AimdController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AimdController {
     pub fn new() -> Self {
         Self {

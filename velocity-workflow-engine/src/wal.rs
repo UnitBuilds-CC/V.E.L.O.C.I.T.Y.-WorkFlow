@@ -188,11 +188,8 @@ pub fn read_wal_records(path: impl AsRef<Path>) -> io::Result<Vec<WalRecord>> {
     let mut reader = BufReader::new(file);
     let mut records = Vec::new();
 
-    loop {
-        match WalRecord::decode(&mut reader)? {
-            Some(record) => records.push(record),
-            None => break,
-        }
+    while let Some(record) = WalRecord::decode(&mut reader)? {
+        records.push(record);
     }
 
     Ok(records)

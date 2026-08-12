@@ -298,7 +298,7 @@ impl ConfigClient for MemoryConfigClient {
     fn set_value(&self, key: &str, cv: ConstrainedValue) -> bool {
         let key_lower = key.to_lowercase();
         let mut values = self.values.write().unwrap();
-        let entry = values.entry(key_lower.clone()).or_insert_with(Vec::new);
+        let entry = values.entry(key_lower.clone()).or_default();
 
         // Replace existing constrained value with same constraints, or add new
         if let Some(existing) = entry
@@ -424,11 +424,11 @@ impl ConfigCollection {
 
     /// Get a bool config value.
     pub fn get_bool(&self, key: &ConfigKey) -> bool {
-        key.default_value()
-            .as_bool()
-            .unwrap_or(false)
-            .then(|| true)
-            .unwrap_or_else(|| self.get(key).as_bool().unwrap_or(false))
+        if key.default_value().as_bool().unwrap_or(false) {
+            true
+        } else {
+            self.get(key).as_bool().unwrap_or(false)
+        }
     }
 
     /// Get a bool with constraints.
@@ -1207,7 +1207,7 @@ mod tests {
     fn test_config_value_conversions() {
         assert_eq!(ConfigValue::Bool(true).as_bool(), Some(true));
         assert_eq!(ConfigValue::Int(42).as_int(), Some(42));
-        assert_eq!(ConfigValue::Float(3.14).as_float(), Some(3.14));
+        assert_eq!(ConfigValue::Float(1.5).as_float(), Some(1.5));
         assert_eq!(ConfigValue::Int(42).as_float(), Some(42.0)); // Int → Float
         assert_eq!(
             ConfigValue::String("hello".into()).as_string(),

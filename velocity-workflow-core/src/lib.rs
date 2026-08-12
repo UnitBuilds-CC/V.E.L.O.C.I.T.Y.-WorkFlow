@@ -1,6 +1,8 @@
 //! velocity-workflow-core
 //! Hardware-native zero-allocation durable execution slab engine and C-ABI FFI core.
 
+#![allow(clippy::missing_safety_doc)]
+
 pub mod arena;
 pub mod bitmask;
 pub mod crdt;

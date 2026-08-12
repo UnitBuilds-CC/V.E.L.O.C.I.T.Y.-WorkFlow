@@ -6,7 +6,8 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::{Duration, SystemTime};
 
@@ -561,7 +562,7 @@ impl BatchOperations {
         keys: &[T],
         read_fn: impl Fn(&T) -> Option<R>,
     ) -> Vec<Option<R>> {
-        keys.iter().map(|k| read_fn(k)).collect()
+        keys.iter().map(read_fn).collect()
     }
 }
 

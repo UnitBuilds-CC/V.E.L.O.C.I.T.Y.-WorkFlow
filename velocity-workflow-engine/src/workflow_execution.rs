@@ -6,7 +6,8 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicI64, AtomicU64, Ordering}, RwLock,
+    atomic::{AtomicI64, AtomicU64, Ordering},
+    RwLock,
 };
 use std::time::{Duration, SystemTime};
 
@@ -429,13 +430,14 @@ impl MutableState {
 
     // Checksum
     pub fn compute_checksum(&self) -> WorkflowChecksum {
-        let mut checksum = WorkflowChecksum::default();
-        checksum.event_count = self.next_event_id.load(Ordering::Relaxed) as u64;
-        checksum.activity_count = self.activities.read().unwrap().len() as u64;
-        checksum.timer_count = self.timers.read().unwrap().len() as u64;
-        checksum.child_count = self.child_workflows.read().unwrap().len() as u64;
-        checksum.signal_count = self.signals.read().unwrap().len() as u64;
-        checksum.compute_hash();
+        let checksum = WorkflowChecksum {
+            event_count: self.next_event_id.load(Ordering::Relaxed) as u64,
+            activity_count: self.activities.read().unwrap().len() as u64,
+            timer_count: self.timers.read().unwrap().len() as u64,
+            child_count: self.child_workflows.read().unwrap().len() as u64,
+            signal_count: self.signals.read().unwrap().len() as u64,
+            ..Default::default()
+        };
         *self.checksum.write().unwrap() = checksum.clone();
         checksum
     }
@@ -849,7 +851,7 @@ impl StateTransitionHistory {
 
     pub fn last_n(&self, n: usize) -> Vec<StateTransition> {
         let len = self.transitions.len();
-        let start = if len > n { len - n } else { 0 };
+        let start = len.saturating_sub(n);
         self.transitions.iter().skip(start).cloned().collect()
     }
 
@@ -1275,9 +1277,11 @@ mod tests {
 
     #[test]
     fn test_checksum_verification() {
-        let mut c1 = WorkflowChecksum::default();
-        c1.event_count = 10;
-        c1.activity_count = 2;
+        let mut c1 = WorkflowChecksum {
+            event_count: 10,
+            activity_count: 2,
+            ..Default::default()
+        };
         c1.compute_hash();
         let mut c2 = c1.clone();
         assert!(c1.verify(&c2));

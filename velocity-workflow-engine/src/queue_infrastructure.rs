@@ -519,10 +519,7 @@ impl QueueGrouper {
     pub fn add_task(&self, task: QueueTaskDescriptor) -> String {
         let key = self.group_key(&task);
         let mut groups = self.groups.write().unwrap();
-        groups
-            .entry(key.clone())
-            .or_insert_with(Vec::new)
-            .push(task);
+        groups.entry(key.clone()).or_default().push(task);
         self.stats.tasks_grouped.fetch_add(1, Ordering::Relaxed);
         if groups.len() as u64 > self.stats.groups_created.load(Ordering::Relaxed) {
             self.stats
@@ -591,7 +588,7 @@ impl QueueIterator {
         self.stats.pages_fetched.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn next(&mut self) -> Option<QueueTaskDescriptor> {
+    pub fn next_task(&mut self) -> Option<QueueTaskDescriptor> {
         if let Some(task) = self.buffer.pop_front() {
             self.current_key = TaskKey::new(task.key.fire_time, task.key.task_id + 1);
             self.stats.tasks_yielded.fetch_add(1, Ordering::Relaxed);
@@ -727,7 +724,7 @@ impl ActiveStandbyExecutor {
         if self.paused.load(Ordering::Relaxed) {
             return None;
         }
-        let role = self.role.read().unwrap().clone();
+        let role = *self.role.read().unwrap();
         match role {
             ClusterRole::Active => {
                 let slices = self.active_slices.read().unwrap();
@@ -1204,11 +1201,11 @@ mod tests {
         let mut iter = QueueIterator::new(range, 10);
         iter.push_page(vec![make_descriptor(1, "ns"), make_descriptor(2, "ns")]);
         assert!(iter.has_next());
-        let t1 = iter.next().unwrap();
+        let t1 = iter.next_task().unwrap();
         assert_eq!(t1.key.task_id, 1);
-        let t2 = iter.next().unwrap();
+        let t2 = iter.next_task().unwrap();
         assert_eq!(t2.key.task_id, 2);
-        assert!(iter.next().is_none());
+        assert!(iter.next_task().is_none());
         iter.mark_exhausted();
         assert!(!iter.has_next());
     }

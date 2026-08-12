@@ -864,9 +864,9 @@ impl DatabaseAdapter for InMemoryAdapter {
                     }
                     true
                 })
-                .cloned()
                 .skip(offset as usize)
                 .take(limit as usize)
+                .cloned()
                 .collect();
             Ok(filtered)
         } else {

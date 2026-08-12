@@ -195,7 +195,7 @@ pub fn run_soak_test(config: &SoakTestConfig) -> Arc<SoakTestMetrics> {
 
                 // Optionally send signals
                 if config.enable_signals && rand_val > 0.5 {
-                    let signal_id = (rng_state >> 16) as u64;
+                    let signal_id = rng_state >> 16;
                     engine.signal_workflow(workflow_key, signal_id, vec![1, 2, 3]);
                     metrics.signals_sent.fetch_add(1, Ordering::Relaxed);
                 }

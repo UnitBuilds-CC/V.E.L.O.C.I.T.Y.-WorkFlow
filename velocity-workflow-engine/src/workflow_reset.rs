@@ -92,11 +92,7 @@ impl HistoryBranch {
 
     /// Depth of this branch (1 for root, 2 for first fork, etc.)
     pub fn depth(&self) -> u32 {
-        if self.parent_branch_id.is_none() {
-            1
-        } else {
-            1
-        } // simplified
+        1 // simplified — always returns 1 until tree-depth tracking is implemented
     }
 }
 
@@ -460,11 +456,11 @@ impl WorkflowResetter {
             let mut count = 0;
             for signal in pending.iter_mut() {
                 // Only reapply signals that were recorded after the reset point
-                if signal.event_id > reset_to_event_id {
-                    if specific_ids.is_empty() || specific_ids.contains(&signal.signal_id) {
-                        signal.reapplied = true;
-                        count += 1;
-                    }
+                if signal.event_id > reset_to_event_id
+                    && (specific_ids.is_empty() || specific_ids.contains(&signal.signal_id))
+                {
+                    signal.reapplied = true;
+                    count += 1;
                 }
             }
             count

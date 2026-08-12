@@ -449,7 +449,7 @@ impl VisibilityIndex {
             }
             VisibilityFilter::CloseTimeRange { start_ms, end_ms } => info
                 .close_time_ms
-                .map_or(false, |ct| ct >= *start_ms && ct <= *end_ms),
+                .is_some_and(|ct| ct >= *start_ms && ct <= *end_ms),
             VisibilityFilter::SearchAttribute { key, value } => {
                 info.search_attributes.get(key) == Some(value)
             }

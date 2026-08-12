@@ -455,10 +455,10 @@ impl HardwareAbstractionLayer {
         self.ecc_verification_enabled
     }
     pub fn is_nic_enabled(&self) -> bool {
-        self.nic_offload_enabled && self.nic.as_ref().map_or(false, |n| n.is_available())
+        self.nic_offload_enabled && self.nic.as_ref().is_some_and(|n| n.is_available())
     }
     pub fn is_tee_enabled(&self) -> bool {
-        self.tee_protection_enabled && self.tee.as_ref().map_or(false, |t| t.is_available())
+        self.tee_protection_enabled && self.tee.as_ref().is_some_and(|t| t.is_available())
     }
 
     /// Enable or disable ECC verification on the read path.

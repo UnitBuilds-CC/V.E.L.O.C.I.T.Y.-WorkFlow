@@ -265,7 +265,7 @@ impl WorkflowValidator {
 
     /// Basic cron validation: must have 5 or 6 space-separated fields.
     fn is_valid_cron_basic(expr: &str) -> bool {
-        let parts: Vec<&str> = expr.trim().split_whitespace().collect();
+        let parts: Vec<&str> = expr.split_whitespace().collect();
         parts.len() == 5 || parts.len() == 6
     }
 }

@@ -77,7 +77,7 @@ impl ActivityTaskToken {
 
     /// Decode from a hex string.
     pub fn from_hex(hex: &str) -> Option<Self> {
-        if hex.len() % 2 != 0 {
+        if !hex.len().is_multiple_of(2) {
             return None;
         }
         let raw: Result<Vec<u8>, _> = (0..hex.len())

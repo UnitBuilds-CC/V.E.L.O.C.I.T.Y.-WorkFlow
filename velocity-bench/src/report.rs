@@ -240,8 +240,8 @@ impl ReportGenerator {
         // Summary box
         let s = &report.summary;
         out.push_str("## Summary\n\n");
-        out.push_str(&format!("| Metric | Value |\n"));
-        out.push_str(&format!("|--------|-------|\n"));
+        out.push_str("| Metric | Value |\n");
+        out.push_str("|--------|-------|\n");
         out.push_str(&format!("| Total workloads | {} |\n", s.total_workloads));
         out.push_str(&format!("| VELOCITY wins | {} |\n", s.velocity_wins));
         out.push_str(&format!("| Temporal wins | {} |\n", s.temporal_wins));
@@ -336,7 +336,7 @@ impl ReportGenerator {
         let mut wtr = csv::Writer::from_writer(Vec::new());
 
         // Header
-        wtr.write_record(&[
+        wtr.write_record([
             "workload",
             "description",
             "velocity_ops_per_sec",
@@ -360,7 +360,7 @@ impl ReportGenerator {
         .map_err(|e| e.to_string())?;
 
         for row in &report.rows {
-            wtr.write_record(&[
+            wtr.write_record([
                 &row.workload_name,
                 &row.workload_description,
                 &format!("{:.2}", row.velocity_ops_per_sec),

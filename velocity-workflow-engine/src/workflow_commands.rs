@@ -485,7 +485,7 @@ impl CommandExecutor {
 
     pub fn execute_commands(&self, commands: &[WorkflowCommand]) -> CommandExecutionResult {
         let mut result = CommandExecutionResult::default();
-        for (_idx, cmd) in commands.iter().enumerate() {
+        for cmd in commands.iter() {
             self.stats.commands_executed.fetch_add(1, Ordering::Relaxed);
             match cmd {
                 WorkflowCommand::ScheduleActivityTask(act) => {

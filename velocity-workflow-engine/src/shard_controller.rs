@@ -563,7 +563,7 @@ impl ShardController {
         ctx.start_handover()?;
         self.handover_tracker
             .start_handover(shard_id, &self.host_address, target_host)
-            .map_err(|e| ShardError::HandoverError(e))?;
+            .map_err(ShardError::HandoverError)?;
         Ok(())
     }
 
@@ -575,7 +575,7 @@ impl ShardController {
         ctx.complete_handover()?;
         self.handover_tracker
             .complete_handover(shard_id)
-            .map_err(|e| ShardError::HandoverError(e))?;
+            .map_err(ShardError::HandoverError)?;
         self.shard_owners.write().unwrap().remove(&shard_id);
         Ok(())
     }

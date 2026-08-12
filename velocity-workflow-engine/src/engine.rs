@@ -274,7 +274,7 @@ impl WorkflowContext {
     pub fn has_update(&self, update_name_id: u64) -> bool {
         self.update_buffer
             .get(&update_name_id)
-            .map_or(false, |v| !v.is_empty())
+            .is_some_and(|v| !v.is_empty())
     }
 
     /// Take the next pending update payload for a given update name.
@@ -291,7 +291,7 @@ impl WorkflowContext {
     pub fn has_signal(&self, signal_name_id: u64) -> bool {
         self.signal_buffer
             .get(&signal_name_id)
-            .map_or(false, |v| !v.is_empty())
+            .is_some_and(|v| !v.is_empty())
     }
 
     /// Take the next pending signal payload for a given signal name.
@@ -828,7 +828,7 @@ impl WorkflowEngine {
         let workflows = self.workflows.read().unwrap();
         workflows
             .get(&workflow_key)
-            .map_or(false, |ctx| ctx.is_step_completed(step))
+            .is_some_and(|ctx| ctx.is_step_completed(step))
     }
 
     /// Get the cached result for a completed step.
@@ -1091,7 +1091,7 @@ impl WorkflowEngine {
         let workflows = self.workflows.read().unwrap();
         workflows
             .get(&workflow_key)
-            .map_or(false, |ctx| ctx.has_signal(signal_name_id))
+            .is_some_and(|ctx| ctx.has_signal(signal_name_id))
     }
 
     /// Take the next pending signal payload.
@@ -1351,7 +1351,7 @@ impl WorkflowEngine {
         let workflows = self.workflows.read().unwrap();
         workflows
             .get(&workflow_key)
-            .map_or(false, |ctx| ctx.has_update(update_name_id))
+            .is_some_and(|ctx| ctx.has_update(update_name_id))
     }
 
     /// Take the next pending update payload.

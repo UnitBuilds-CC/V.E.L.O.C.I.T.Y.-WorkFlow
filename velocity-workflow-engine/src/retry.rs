@@ -186,7 +186,7 @@ impl RetryExecutor {
     where
         F: FnMut() -> Result<T, VelocityError>,
     {
-        Self::execute(policy, operation, |d| std::thread::sleep(d))
+        Self::execute(policy, operation, std::thread::sleep)
     }
 }
 
@@ -531,7 +531,7 @@ mod tests {
         );
         assert!(result.is_ok());
         assert_eq!(call_count, 3);
-        let (_, stats) = result
+        let (_, _stats) = result
             .ok()
             .map(|v| (v, RetryStats::default()))
             .unwrap_or_default();

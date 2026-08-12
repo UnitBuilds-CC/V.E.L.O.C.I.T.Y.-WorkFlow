@@ -61,7 +61,7 @@ impl TimeSeriesBuffer {
 
     pub fn recent(&self, count: usize) -> Vec<&DataPoint> {
         let len = self.data_points.len();
-        let start = if len > count { len - count } else { 0 };
+        let start = len.saturating_sub(count);
         self.data_points.iter().skip(start).collect()
     }
 

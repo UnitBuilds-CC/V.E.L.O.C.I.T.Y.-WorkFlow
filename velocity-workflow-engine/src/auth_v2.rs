@@ -135,7 +135,7 @@ impl ApiKeyManager {
             .lock()
             .unwrap()
             .entry(prefix)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(hash_hex);
 
         raw_key
@@ -314,7 +314,7 @@ impl OAuth2Validator {
 /// Minimal base64url decoder (no padding required).
 fn base64url_decode(input: &str) -> Result<Vec<u8>, String> {
     let mut s = input.replace('-', "+").replace('_', "/");
-    while s.len() % 4 != 0 {
+    while !s.len().is_multiple_of(4) {
         s.push('=');
     }
     base64_decode(&s)
@@ -490,9 +490,7 @@ impl AuditLogger {
             let mut ridx = self.resource_index.lock().unwrap();
             ridx.clear();
             for (i, log) in logs.iter().enumerate() {
-                ridx.entry(log.resource.clone())
-                    .or_insert_with(Vec::new)
-                    .push(i);
+                ridx.entry(log.resource.clone()).or_default().push(i);
             }
         }
 
@@ -503,7 +501,7 @@ impl AuditLogger {
             .lock()
             .unwrap()
             .entry(resource)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(idx);
     }
 
