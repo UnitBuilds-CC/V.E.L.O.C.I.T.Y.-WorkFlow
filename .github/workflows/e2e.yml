@@ -99,14 +99,14 @@ jobs:
           curl -sf http://localhost:5000/metrics 2>/dev/null | head -20 || echo "(not available)"
           echo ""
           echo "=== API: List namespaces ==="
-          curl -sf http://localhost:5000/api/v1/namespaces 2>/dev/null | jq . 2>/dev/null || echo "(not available)"
+          curl -sf http://localhost:5000/api/namespaces 2>/dev/null | jq . 2>/dev/null || echo "(not available)"
           echo ""
           echo "Smoke tests completed"
         continue-on-error: true
 
       - name: Test workflow submission
         run: |
-          RESPONSE=$(curl -sf -X POST http://localhost:5000/api/v1/workflows \
+          RESPONSE=$(curl -sf -X POST http://localhost:5000/api/workflows \
             -H "Content-Type: application/json" \
             -d '{"workflowType":"E2ETestWorkflow","taskQueue":"e2e-queue","input":{"test":true}}' \
             -w "\n%{http_code}" 2>/dev/null || echo "000")

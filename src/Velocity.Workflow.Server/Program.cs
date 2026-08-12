@@ -55,6 +55,19 @@ app.MapGrpcService<WorkflowGrpcService>();
 app.MapGrpcService<AdminGrpcService>();
 app.MapGet("/", () => Results.Redirect("/index.html"));
 
+// Health check endpoint (used by Docker/K8s probes)
+app.MapGet("/health", (WorkflowRuntime runtime) =>
+{
+    return Results.Json(new
+    {
+        status = "healthy",
+        timestamp = DateTimeOffset.UtcNow.ToString("o"),
+        version = "0.1.0",
+        workflow_count = runtime.WorkflowCount,
+        namespace_count = runtime.NamespaceCount
+    });
+});
+
 // Prometheus metrics scraping endpoint
 app.MapGet("/metrics", (WorkflowRuntime runtime) =>
 {

@@ -84,7 +84,9 @@ WORKDIR /app
 # Copy published .NET app
 COPY --from=dotnet-builder /app/publish .
 
-# Copy native Rust libraries to runtime location
+# Copy native Rust libraries to runtime location (both /app/ for .NET probing and /app/lib/ for LD_LIBRARY_PATH)
+COPY --from=rust-builder /build/rust/target/ci/libvelocity_workflow_core.so /app/
+COPY --from=rust-builder /build/rust/target/ci/libvelocity_workflow_engine.so /app/
 COPY --from=rust-builder /build/rust/target/ci/libvelocity_workflow_core.so /app/lib/
 COPY --from=rust-builder /build/rust/target/ci/libvelocity_workflow_engine.so /app/lib/
 
@@ -95,7 +97,7 @@ ENV ASPNETCORE_ENVIRONMENT="Production"
 EXPOSE 5000
 EXPOSE 50051
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=8 \
     CMD curl -f http://localhost:5000/health || exit 1
 
 USER velocity
