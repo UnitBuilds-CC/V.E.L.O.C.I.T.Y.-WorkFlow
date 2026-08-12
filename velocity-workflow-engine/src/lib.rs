@@ -126,6 +126,8 @@ pub mod workflow_execution;
 pub mod shard_controller;
 pub mod deletion_manager;
 pub mod notification_system;
+pub mod namespace_manager;
+pub mod cluster_membership;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
 // Requires protoc to be installed for proto compilation.
@@ -363,12 +365,11 @@ pub use queue_processing::{
 };
 // matching_engine: task queue partitioning, matching algorithm, poller management.
 pub use matching_engine::{
-    FairTaskReader, LogicalTaskQueue, MatchResult, MatchingEngineConfig, MatchingEngineCore,
-    MatchingEngineStats, PartitionConfig, PartitionManager as MatchingPartitionManager,
-    PartitionRedirect, PhysicalQueueStats, PhysicalTask, PhysicalTaskQueue, Poller,
-    PollerInfo as MatchingPollerInfo, PollerRegistry, PriorityMatcher, RedirectRule,
-    TaskQueuePartition, TaskQueueType, TaskQueueUserData, TaskReaderStats, UserDataManager,
-    VersioningData,
+    TaskQueueId, TaskQueue as MeTaskQueue, MatchTask as MeMatchTask, ForwardingInfo,
+    PollerInfo as MatchingPollerInfo2, VersionedData, VersionBranch,
+    TaskQueueKind as MeTaskQueueKind, TaskQueueType as MeTaskQueueType2,
+    PartitionManager as MePartitionManager, MatchingEngine, MatchingEngineConfig as MeConfig,
+    MatchingHealthReport,
 };
 // history_builder: event construction, branch tokens, serialization.
 pub use history_builder::{
@@ -401,27 +402,20 @@ pub use membership::{
 };
 // persistence_layer: deep persistence data models, store interfaces, managers.
 pub use persistence_layer::{
-    AppendHistoryRequest, AppendHistoryResponse, ArchivalState as PersistedArchivalState,
-    ConflictResolveMode, CreateWorkflowMode, CreateWorkflowRequest, CreateWorkflowResponse,
-    DataBlob, DeleteHistoryRequest, DeleteWorkflowRequest, EncodingType, EventBatchRow,
-    ExecutionManager as PersistedExecutionManager, ExecutionManagerStats, ExecutionStatsPersisted,
-    ExecutionStore, FailoverLevel, GetCurrentRequest, GetCurrentResponse, GetWorkflowRequest,
-    GetWorkflowResponse, HistoryBranch as PersistedHistoryBranch, HistoryBranchAncestor,
-    HistoryManager as PersistedHistoryManager, HistoryManagerStats, HistoryPagingToken,
-    HistoryStore as PersistedHistoryStore, HistoryTreeInfo, InMemoryExecutionStore,
-    InMemoryHistoryStore, InMemoryNamespaceStore, InMemoryQueueStore, InMemoryShardStore,
-    InMemoryVisibilityStore, ListClosedRequest, ListOpenRequest, ListVisibilityResponse,
-    ListWorkflowsRequest, ListWorkflowsResponse, NamespaceDetail,
-    NamespaceReplicationConfig as PersistedNsReplicationConfig, NamespaceState, NamespaceStore,
-    OperationModeValidator, PageToken as PersistedPageToken, PersistenceError, PersistenceFactory,
-    PersistenceStack, PersistentTask, PersistentTaskType, QueueMessage, QueueMetadata, QueueStore,
-    QueueType, ReadHistoryRequest, ReadHistoryResponse, SerializedEventBatch,
-    ShardInfo as PersistedShardInfo, ShardStore, StateMachineInfo, TaskKey, TaskRange, TaskStore,
-    UpdateInfo as PersistedUpdateInfo, UpdateStatus as PersistedUpdateStatus, UpdateWorkflowMode,
-    UpdateWorkflowRequest, UpdateWorkflowResponse, VersionHistories, VersionHistory,
-    VersionHistoryItem, VisibilityStore, WorkflowExecutionInfo as PersistedWorkflowInfo,
-    WorkflowExecutionState, WorkflowExecutionStatus as PersistedExecStatus, XDCCache,
-    XDCCacheEntry, XDCCacheStats,
+    WorkflowExecutionData, ExecutionStatus as PersistExecutionStatus,
+    HistoryEventData, NamespaceData as PersistNamespaceData,
+    NamespaceState as PersistNsState, ArchivalState as PersistedArchivalState,
+    NamespaceConfig as PersistNsConfig, ReplicationConfig as PersistReplicationConfig,
+    ClusterReplicationConfig as PersistClusterReplicationConfig,
+    TaskQueueData, TaskQueueType as PlTaskQueueType, TaskQueueKind as PlTaskQueueKind,
+    QueueData, QueueType as PersistQueueType,
+    PageToken as PersistedPageToken, PaginatedResult as PersistPaginatedResult,
+    Transaction as PersistTransaction, TransactionOp, TransactionManager as PersistTransactionManager,
+    TransactionState as PersistTransactionState,
+    InMemoryExecutionStore, InMemoryHistoryStore, InMemoryMetadataStore,
+    InMemoryVisibilityStore, InMemoryQueueStore,
+    DataStoreManager, DataStoreHealth,
+    PersistenceError,
 };
 // ndc_replication_deep: deep NDC replication subsystem.
 pub use ndc_replication_deep::{
@@ -746,4 +740,22 @@ pub use notification_system::{
     NotificationType, NotificationCategory, NotificationEvent, NotificationPriority,
     NotificationHub, NotificationHubStats,
     Subscription, NotificationFilter, SubscriberId,
+};
+
+// namespace_manager: namespace lifecycle, registry, failover
+pub use namespace_manager::{
+    NamespaceRegistry as NsRegistry, NamespaceEntry as NsEntry, NamespaceLifecycleState as NsLifecycleState,
+    NamespaceChangeEvent as NsChangeEvent, NamespaceEntryConfig as NsEntryConfig,
+    ReplicationNsConfig, ReplicationState as NsReplicationState,
+    BadBinary, SearchAttrType,
+    FailoverManager as NsFailoverManager, FailoverState as NsFailoverState, FailoverPhase,
+    NamespaceError as NsError,
+};
+
+// cluster_membership: ring hash, host info, health, topology
+pub use cluster_membership::{
+    HostAddress, HostInfo as ClusterHostInfo, HostState, ServiceRole,
+    RingHash as ClusterRingHash,
+    HealthChecker as ClusterHealthChecker2, HealthResult as ClusterHealthResult,
+    ClusterTopology, ClusterReport,
 };
