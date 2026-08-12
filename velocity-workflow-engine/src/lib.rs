@@ -58,6 +58,10 @@ pub mod search_index;
 pub mod sharding;
 pub mod task_queue;
 pub mod timer_engine;
+pub mod codec_server;
+pub mod deployment_api;
+pub mod reachability;
+pub mod update;
 pub mod validation;
 pub mod visibility;
 pub mod visibility_query;
@@ -127,3 +131,7 @@ pub use health_check::{HealthChecker, HealthStatus as ComponentHealthStatus, Agg
 pub use metrics_export::MetricsSnapshot;
 pub use validation::{WorkflowValidator, ValidationError, StartWorkflowRequest, SignalRequest, QueryRequest};
 pub use resource_limits::{ResourceLimits, ResourceTracker, ResourceExceeded, ResourceUsage};
+pub use update::{UpdateController, UpdateHandler, UpdateStore, UpdateRequest, UpdateResult, UpdateStatus, UpdateWaitPolicy};
+pub use reachability::{ReachabilityTracker, ReachabilityQuery, ReachabilityResult, ReachabilityType};
+pub use deployment_api::{DeploymentManager, Deployment, DeploymentStatus, DrainageStatus};
+pub use codec_server::{CodecServer, CodecRequest, CodecResponse, PayloadCodec as ServerPayloadCodec, IdentityCodec, Base64Codec, JsonPrettyCodec};
