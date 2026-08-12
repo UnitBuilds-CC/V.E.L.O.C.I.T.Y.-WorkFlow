@@ -347,6 +347,10 @@ impl MetricsCollector {
 /// Probes system-level metrics (memory, CPU) for the current process.
 pub struct SystemMetricsProbe {
     _pid: u32,
+    #[cfg(target_os = "windows")]
+    process: Option<sysinfo::Pid>,
+    #[cfg(target_os = "windows")]
+    system: std::sync::Mutex<Option<sysinfo::System>>,
 }
 
 impl Default for SystemMetricsProbe {
@@ -357,8 +361,17 @@ impl Default for SystemMetricsProbe {
 
 impl SystemMetricsProbe {
     pub fn new() -> Self {
+        let pid = std::process::id();
         Self {
-            _pid: std::process::id(),
+            _pid: pid,
+            #[cfg(target_os = "windows")]
+            process: Some(sysinfo::Pid::from_u32(pid)),
+            #[cfg(target_os = "windows")]
+            system: std::sync::Mutex::new({
+                let mut sys = sysinfo::System::new();
+                sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]));
+                Some(sys)
+            }),
         }
     }
 
@@ -382,11 +395,19 @@ impl SystemMetricsProbe {
             return 0.0;
         }
 
-        // Fallback: estimate from working set
+        // Windows: use sysinfo to get process memory
         #[cfg(target_os = "windows")]
         {
-            // On Windows, we'd use GetProcessMemoryInfo
-            // For now, return 0 as placeholder
+            if let Ok(mut sys_guard) = self.system.lock() {
+                if let Some(ref mut sys) = *sys_guard {
+                    if let Some(ref pid) = self.process {
+                        sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[*pid]));
+                        if let Some(process) = sys.process(*pid) {
+                            return process.memory() as f64 / 1_048_576.0;
+                        }
+                    }
+                }
+            }
             0.0
         }
 

@@ -9,6 +9,10 @@ description = "Side-by-side benchmark harness: VELOCITY-WorkFlow vs Temporal"
 name = "velocity-bench"
 path = "src/main.rs"
 
+[[bin]]
+name = "temporal-bridge"
+path = "src/temporal_bridge.rs"
+
 [dependencies]
 # Both engines connect via identical gRPC paths (BenchmarkService proto).
 # No direct engine dependencies — fairness requires the same code path.
@@ -21,6 +25,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tonic = "0.12"
 prost = "0.13"
 prost-types = "0.13"
+
+# Temporal SDK (for temporal-bridge binary)
+temporalio-client = "0.6"
+temporalio-sdk = "0.6"
 
 # Metrics & timing
 hdrhistogram = "7"

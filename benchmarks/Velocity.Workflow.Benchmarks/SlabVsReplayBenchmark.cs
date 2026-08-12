@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Engines;
@@ -6,10 +7,11 @@ using Velocity.Workflow.Core;
 namespace Velocity.Workflow.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(RunStrategy.Throughput, launchCount: 1, warmupCount: 3, iterationCount: 10)]
+[SimpleJob(RunStrategy.Throughput, launchCount: 1, warmupCount: 5, iterationCount: 20)]
 public unsafe class SlabVsReplayBenchmark
 {
     private DurableSlabHeader _slabHeader;
+    private readonly Consumer _consumer = new();
     private string _jsonEventHistory10 = string.Empty;
     private string _jsonEventHistory100 = string.Empty;
     private string _jsonEventHistory1000 = string.Empty;
@@ -70,16 +72,26 @@ public unsafe class SlabVsReplayBenchmark
         {
             currentStep = ev.GetProperty("EventId").GetInt32();
         }
+        _consumer.Consume(currentStep);
         return currentStep;
     }
 
     [Benchmark]
-    public int Velocity_O1_Slab_Pointer_Cast_Resumption()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public ulong Velocity_O1_Slab_Pointer_Cast_Resumption()
     {
         fixed (DurableSlabHeader* ptr = &_slabHeader)
         {
-            // O(1) instantaneous memory pointer cast - 0 bytes allocation regardless of N steps
-            return (int)ptr->CurrentStep;
+            // Read multiple fields to prevent register caching.
+            // Forces real L1 cache access (~1-3 ns).
+            ulong stateHash = ptr->Magic;
+            stateHash ^= ptr->WorkflowId;
+            stateHash ^= ptr->RunId;
+            stateHash ^= (ulong)ptr->CurrentStep << 16;
+            stateHash ^= ptr->TotalSteps;
+
+            _consumer.Consume(stateHash);
+            return stateHash;
         }
     }
 }

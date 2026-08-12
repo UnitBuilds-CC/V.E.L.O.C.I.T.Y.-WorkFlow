@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Engines;
@@ -7,7 +8,7 @@ using Velocity.Workflow.Core;
 namespace Velocity.Workflow.Benchmarks;
 
 [MemoryDiagnoser]
-[InProcess]
+[SimpleJob(RunStrategy.Throughput, launchCount: 1, warmupCount: 5, iterationCount: 20)]
 public unsafe class StepBreakdownBenchmarks
 {
     private DurableSlabHeader _slabHeader;
@@ -15,6 +16,7 @@ public unsafe class StepBreakdownBenchmarks
     private VctpPacketHeader _vctpHeader;
     private void* _arenaPtr;
     private byte[]? _payload;
+    private readonly Consumer _consumer = new();
 
     [GlobalSetup]
     public void Setup()
@@ -63,7 +65,9 @@ public unsafe class StepBreakdownBenchmarks
     {
         fixed (DurableSlabHeader* ptr = &_slabHeader)
         {
-            return NativeBridge.VelocitySlabCreate(999, 888, 100, ptr);
+            int result = NativeBridge.VelocitySlabCreate(999, 888, 100, ptr);
+            _consumer.Consume(result);
+            return result;
         }
     }
 
@@ -72,7 +76,9 @@ public unsafe class StepBreakdownBenchmarks
     {
         fixed (DurableSlabHeader* ptr = &_slabHeader)
         {
-            return NativeBridge.VelocitySlabMarkStep(ptr, 51);
+            int result = NativeBridge.VelocitySlabMarkStep(ptr, 51);
+            _consumer.Consume(result);
+            return result;
         }
     }
 
@@ -81,7 +87,9 @@ public unsafe class StepBreakdownBenchmarks
     {
         fixed (DurableSlabHeader* ptr = &_slabHeader)
         {
-            return NativeBridge.VelocitySlabVerify(ptr);
+            int result = NativeBridge.VelocitySlabVerify(ptr);
+            _consumer.Consume(result);
+            return result;
         }
     }
 
@@ -90,7 +98,9 @@ public unsafe class StepBreakdownBenchmarks
     {
         fixed (NdaHeader* ptr = &_ndaHeader)
         {
-            return NativeBridge.VelocityNdaVerify(ptr);
+            int result = NativeBridge.VelocityNdaVerify(ptr);
+            _consumer.Consume(result);
+            return result;
         }
     }
 
@@ -99,7 +109,9 @@ public unsafe class StepBreakdownBenchmarks
     {
         fixed (VctpPacketHeader* ptr = &_vctpHeader)
         {
-            return NativeBridge.VelocityVctpPacketCreate(101, 1001, 128, 64, ptr);
+            int result = NativeBridge.VelocityVctpPacketCreate(101, 1001, 128, 64, ptr);
+            _consumer.Consume(result);
+            return result;
         }
     }
 
@@ -109,16 +121,28 @@ public unsafe class StepBreakdownBenchmarks
         nuint outOffset = 0;
         fixed (byte* pPtr = _payload!)
         {
-            return NativeBridge.VelocityArenaAlloc(_arenaPtr, pPtr, (nuint)_payload!.Length, &outOffset);
+            int result = NativeBridge.VelocityArenaAlloc(_arenaPtr, pPtr, (nuint)_payload!.Length, &outOffset);
+            _consumer.Consume(result);
+            _consumer.Consume(outOffset);
+            return result;
         }
     }
 
     [Benchmark(Description = "Step 7: O(1) Direct Memory Pointer Resumption")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public ulong Step7_O1_Direct_Memory_Pointer_Resumption()
     {
         fixed (DurableSlabHeader* ptr = &_slabHeader)
         {
-            return ptr->WorkflowId + ptr->CurrentStep;
+            // Read multiple fields to force real L1 cache access
+            ulong stateHash = ptr->Magic;
+            stateHash ^= (ulong)ptr->WorkflowId << 32;
+            stateHash ^= (ulong)ptr->RunId;
+            stateHash ^= (ulong)ptr->CurrentStep << 16;
+            stateHash ^= ptr->TotalSteps;
+
+            _consumer.Consume(stateHash);
+            return stateHash;
         }
     }
 }

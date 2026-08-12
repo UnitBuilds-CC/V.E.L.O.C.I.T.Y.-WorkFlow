@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Engines;
@@ -9,10 +10,11 @@ using Velocity.Workflow.Core;
 namespace Velocity.Workflow.Benchmarks;
 
 [MemoryDiagnoser]
-[InProcess]
+[SimpleJob(RunStrategy.Throughput, launchCount: 1, warmupCount: 5, iterationCount: 20)]
 public unsafe class TemporalVsVelocityBenchmark
 {
     private DurableSlabHeader _velocitySlabHeader;
+    private readonly Consumer _consumer = new();
 
     // Temporal Event History JSON Payloads
     private string _temporalJson10 = string.Empty;
@@ -96,7 +98,7 @@ public unsafe class TemporalVsVelocityBenchmark
     // =========================================================================
     // TRADITIONAL TEMPORAL REPLAY BENCHMARK
     // =========================================================================
-    [Benchmark(Baseline = true, Description = "Traditional Temporal: Full Event History Deserialization & Replay Loop")]
+    [Benchmark(Baseline = true, Description = "Temporal: Full Event History Deserialization & Replay")]
     public int Temporal_Traditional_Event_Replay()
     {
         string jsonPayload = StepCount switch
@@ -108,7 +110,7 @@ public unsafe class TemporalVsVelocityBenchmark
             _ => _temporalJson10000
         };
 
-        // Standard Temporal Replay behavior: Parse JSON/Protobuf history tree, iterate events, rebuild state
+        // Standard Temporal Replay: Parse JSON/Protobuf history, iterate events, rebuild state
         using var doc = JsonDocument.Parse(jsonPayload);
         var events = doc.RootElement.GetProperty("Events");
 
@@ -122,19 +124,33 @@ public unsafe class TemporalVsVelocityBenchmark
             }
         }
 
+        // Force the result to be observed — prevents dead-code elimination
+        _consumer.Consume(currentStep);
         return currentStep;
     }
 
     // =========================================================================
     // V.E.L.O.C.I.T.Y.-WORKFLOW O(1) BENCHMARK
     // =========================================================================
-    [Benchmark(Description = "V.E.L.O.C.I.T.Y.-WorkFlow: O(1) Memory Pointer Cast State Resumption")]
+    [Benchmark(Description = "VELOCITY: O(1) Memory Pointer Cast State Resumption")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public ulong Velocity_O1_Pointer_Cast_Resumption()
     {
         fixed (DurableSlabHeader* ptr = &_velocitySlabHeader)
         {
-            // Zero-allocation instantaneous pointer cast - constant 0.15ns regardless of N steps
-            return ptr->CurrentStep;
+            // Read multiple fields to prevent the JIT from caching a single field
+            // in a register. This forces a real L1 cache read (~1-3 ns).
+            ulong stateHash = ptr->Magic;
+            stateHash ^= (ulong)ptr->WorkflowId << 32;
+            stateHash ^= (ulong)ptr->RunId;
+            stateHash ^= (ulong)ptr->CurrentStep << 16;
+            stateHash ^= ptr->TotalSteps;
+            stateHash ^= ptr->BitmaskWord0;
+            stateHash ^= ptr->BitmaskWord1;
+
+            // Force the result to be observed — prevents dead-code elimination
+            _consumer.Consume(stateHash);
+            return stateHash;
         }
     }
 }

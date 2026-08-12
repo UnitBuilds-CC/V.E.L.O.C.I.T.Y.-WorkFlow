@@ -151,49 +151,67 @@ Example verdict logic:
 
 ## Benchmark Results
 
-**Environment**: VELOCITY-WorkFlow v0.1.0, Windows 25H2, Release build  
+**Environment**: VELOCITY-WorkFlow v0.1.0 vs Temporal Bridge v0.1.0, Windows 25H2, Release build  
 **Date**: 2026-08-09  
 **Mode**: gRPC only (BenchmarkService proto, no in-process API)  
 **Profile**: Standard (100 workflows per workload, 10 concurrent)
 
-### VELOCITY-WorkFlow Performance (via gRPC)
+### Summary
 
-| Workload | ops/sec | p99 Latency | Notes |
-|----------|---------|-------------|-------|
-| `simple_workflow` | 1,383 | 938 µs | End-to-end lifecycle |
-| `signal_storm` | 1,560 | <1 µs | 100 signals per workflow |
-| `query_burst` | 1,604 | <1 µs | 100 queries per workflow |
-| `high_step` | 686 | 709 µs | 10K steps single workflow |
-| `concurrent_1k` | 676 | 815 µs | 1000 parallel workflows |
-| `child_workflows` | 677 | 797 µs | Parent + 10 children |
-| `saga_pattern` | 662 | 1,025 µs | 5-step saga w/ compensation |
-| `timer_workflow` | 660 | 847 µs | Timer scheduling |
-| `search_attributes` | 695 | 687 µs | Attribute indexing |
-| `signal_query_mix` | 637 | 745 µs | Mixed signal + query |
-| `batch_operations` | 588 | 1,430 µs | Bulk start/terminate/query |
-| `payload_1kb` | 643 | 735 µs | 1KB payload throughput |
-| `payload_1mb` | 694 | 883 µs | 1MB payload throughput |
-| `namespace_isolation` | 525 | 1,038 µs | 5 namespaces |
-| `throughput_ceiling` | 578 | 750 µs | Max sustainable throughput |
-| `memory_scaling` | 643 | 897 µs | 1K-100K workflows |
-| `cold_start` | 85 | 522 µs | First workflow latency |
-| `crash_recovery` | 631 | 797 µs | Durability under failure |
+| Metric | Value |
+|--------|-------|
+| Total workloads | 18 |
+| VELOCITY wins | 1 |
+| Temporal wins | 2 |
+| Comparable | 15 |
+| Avg throughput delta | -4.0% |
+| Avg p99 latency delta | +21.3% |
+
+**Overall verdict:** Results are largely comparable. VELOCITY shows stronger concurrency handling (+38.5% on concurrent_1k), while Temporal leads in signal throughput and cold start.
+
+### Detailed Comparison
+
+| Workload | VELOCITY ops/s | Temporal ops/s | Δ Throughput | VELOCITY p99 | Temporal p99 | Verdict |
+|----------|---------------|----------------|-------------|-------------|-------------|----------|
+| `simple_workflow` | 2,379 | 2,922 | -18.6% | 395µs | 361µs | Comparable |
+| `signal_storm` | 2,088 | 3,099 | -32.6% | <1µs | <1µs | See details |
+| `query_burst` | 3,048 | 2,716 | +12.2% | <1µs | <1µs | Comparable |
+| `high_step` | 1,413 | 1,391 | +1.6% | 350µs | 324µs | Comparable |
+| `concurrent_1k` | 1,334 | 963 | **+38.5%** | 362µs | 488µs | **VELOCITY faster** |
+| `child_workflows` | 942 | 897 | +5.0% | 620µs | 647µs | Comparable |
+| `saga_pattern` | 984 | 1,131 | -13.0% | 760µs | 471µs | Comparable |
+| `timer_workflow` | 1,198 | 1,190 | +0.7% | 811µs | 352µs | Comparable |
+| `search_attributes` | 1,216 | 1,279 | -5.0% | 432µs | 379µs | Comparable |
+| `signal_query_mix` | 1,276 | 1,171 | +9.0% | 360µs | 573µs | Comparable |
+| `batch_operations` | 1,248 | 1,247 | +0.1% | 549µs | 459µs | Comparable |
+| `payload_1kb` | 1,123 | 958 | +17.2% | 484µs | 775µs | Comparable |
+| `payload_1mb` | 871 | 887 | -1.8% | 598µs | 489µs | Comparable |
+| `namespace_isolation` | 904 | 937 | -3.5% | 507µs | 447µs | Comparable |
+| `throughput_ceiling` | 1,047 | 1,075 | -2.6% | 507µs | 419µs | Comparable |
+| `memory_scaling` | 920 | 1,023 | -10.1% | 1,688µs | 573µs | Comparable |
+| `cold_start` | 159 | 409 | -61.2% | 344µs | 545µs | Temporal faster |
+| `crash_recovery` | 1,300 | 1,426 | -8.8% | 405µs | 310µs | Comparable |
 
 ### Key Observations
 
-- **Peak throughput**: 1,604 ops/sec (query_burst) — queries are read-only, no state mutation
-- **Sustained throughput**: ~600-700 ops/sec across most write-heavy workloads
-- **p99 latency**: Consistently sub-millisecond for most workloads (<1ms)
-- **Payload handling**: No significant degradation from 1KB to 1MB payloads
-- **Cold start**: 85 ops/sec for first workflow (expected — JIT compilation, cache warmup)
-- **Signal/Query throughput**: 1,560-1,604 ops/sec — excellent for event-driven patterns
+- **Concurrency**: VELOCITY dominates at +38.5% throughput on 1000 concurrent workflows, with 25.8% lower p99 latency
+- **Query throughput**: VELOCITY leads at 3,048 ops/sec (+12.2%) on read-heavy workloads
+- **Payload handling**: VELOCITY shows +17.2% throughput on 1KB payloads with 37.5% lower p99 latency
+- **Signal throughput**: Temporal leads at 3,099 ops/sec (-32.6% delta) on signal-heavy workloads
+- **Cold start**: Temporal bridge starts faster (409 vs 159 ops/sec) — VELOCITY has room to optimize here
+- **Overall**: 15/18 workloads are comparable (within ±20%), confirming the engines are in the same performance tier via identical gRPC paths
 
-### Temporal Comparison
-
-*Pending — Temporal bridge implementation in progress. Once complete, run:*
+### Running the Benchmark
 
 ```bash
-cargo run --release -p velocity-bench -- --workloads all --engine both
-```
+# Start both engines
+velocity-dev --grpc-port 7234 &
+temporal-bridge --grpc-port 7235 &
 
-*This will generate a side-by-side comparison with Temporal via the same gRPC BenchmarkService.*
+# Run full comparison
+cargo run --release -p velocity-bench --bin velocity-bench -- \
+  --engine both \
+  --velocity-address http://localhost:7234 \
+  --temporal-address http://localhost:7235 \
+  --workloads all
+```

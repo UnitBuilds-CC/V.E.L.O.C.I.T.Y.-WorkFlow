@@ -23,6 +23,14 @@ use velocity_bench::metrics::*;
 use velocity_bench::report::*;
 use velocity_bench::*;
 
+/// Prevent the compiler from optimizing away a value.
+/// This is critical for benchmark rigor — without it, the JIT/Rust compiler
+/// may eliminate operations whose results are unused (dead-code elimination).
+#[inline(never)]
+fn black_box<T>(x: T) -> T {
+    std::hint::black_box(x)
+}
+
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
@@ -205,10 +213,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Run on VELOCITY
         if let Some(ref mut vel) = velocity_engine {
             let metrics = run_workload(vel, workload).await;
+
+            // Report the PRIMARY latency metric for this workload type.
+            // signal_storm reports signal latency, query_burst reports query latency, etc.
+            let primary_p99 = workload_primary_p99(&metrics, &workload.kind);
+
             tracing::info!(
                 "  VELOCITY: {:.0} ops/sec, p99={}µs, mem={:.1}MB",
                 metrics.operations_per_second,
-                metrics.start_latency.p99_us,
+                primary_p99,
                 metrics.peak_memory_mb,
             );
             velocity_results.push((workload.name.clone(), workload.description.clone(), metrics));
@@ -217,10 +230,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Run on Temporal
         if let Some(ref mut tmp) = temporal_engine {
             let metrics = run_workload(tmp, workload).await;
+
+            let primary_p99 = workload_primary_p99(&metrics, &workload.kind);
+
             tracing::info!(
                 "  Temporal: {:.0} ops/sec, p99={}µs, mem={:.1}MB",
                 metrics.operations_per_second,
-                metrics.start_latency.p99_us,
+                primary_p99,
                 metrics.peak_memory_mb,
             );
             temporal_results.push((workload.name.clone(), workload.description.clone(), metrics));
@@ -361,31 +377,37 @@ async fn run_simple_workflow(
 
         match engine.start_workflow("simple", &wf_id, b"input").await {
             Ok(handle) => {
-                collector.record_start(start.elapsed());
+                let elapsed = start.elapsed();
+                // Force the elapsed time to be observed — prevent DCE
+                black_box(elapsed);
+                collector.record_start(elapsed);
 
                 // Drive the workflow to completion via gRPC (same path for both engines).
                 let complete_start = Instant::now();
                 match engine.complete_step(&handle, 0, b"done").await {
-                    Ok(result) if result.success => {
-                        // Now wait for the server to confirm completion.
-                        match engine
-                            .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
-                            .await
-                        {
-                            Ok(completion) => {
-                                if completion.success {
-                                    collector.record_completion(complete_start.elapsed());
-                                } else {
-                                    collector.record_error("completion_failed");
+                    Ok(result) => {
+                        black_box(&result);
+                        if result.success {
+                            // Now wait for the server to confirm completion.
+                            match engine
+                                .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+                                .await
+                            {
+                                Ok(completion) => {
+                                    black_box(&completion);
+                                    if completion.success {
+                                        collector.record_completion(complete_start.elapsed());
+                                    } else {
+                                        collector.record_error("completion_failed");
+                                    }
+                                }
+                                Err(e) => {
+                                    collector.record_error(&format!("completion_error: {}", e));
                                 }
                             }
-                            Err(e) => {
-                                collector.record_error(&format!("completion_error: {}", e));
-                            }
+                        } else {
+                            collector.record_error("complete_step_failed");
                         }
-                    }
-                    Ok(_) => {
-                        collector.record_error("complete_step_failed");
                     }
                     Err(e) => {
                         collector.record_error(&format!("complete_step_error: {}", e));
@@ -411,6 +433,7 @@ async fn run_signal_storm(
         .start_workflow("signal_target", "signal-target-0", b"input")
         .await
         .expect("Failed to start signal target workflow");
+    black_box(&handle);
 
     // Send signals via gRPC
     for i in 0..config.signals_per_workflow {
@@ -421,6 +444,7 @@ async fn run_signal_storm(
             .await
         {
             Ok(result) => {
+                black_box(&result);
                 collector.record_signal(start.elapsed());
                 if !result.success {
                     collector.record_error("signal_failed");
@@ -433,10 +457,12 @@ async fn run_signal_storm(
     }
 
     // Complete via gRPC
-    let _ = engine.complete_step(&handle, 0, b"done").await;
-    let _ = engine
-        .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
-        .await;
+    let _ = black_box(engine.complete_step(&handle, 0, b"done").await);
+    let _ = black_box(
+        engine
+            .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+            .await,
+    );
 }
 
 async fn run_query_burst(
@@ -450,11 +476,13 @@ async fn run_query_burst(
         .start_workflow("query_target", "query-target-0", b"input")
         .await
         .expect("Failed to start query target workflow");
+    black_box(&handle);
 
     for _i in 0..config.queries_per_workflow {
         let start = Instant::now();
         match engine.query_workflow(&handle, "get_status", b"").await {
             Ok(result) => {
+                black_box(&result);
                 collector.record_query(start.elapsed());
                 if !result.success {
                     collector.record_error("query_failed");
@@ -466,10 +494,12 @@ async fn run_query_burst(
         }
     }
 
-    let _ = engine.complete_step(&handle, 0, b"done").await;
-    let _ = engine
-        .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
-        .await;
+    let _ = black_box(engine.complete_step(&handle, 0, b"done").await);
+    let _ = black_box(
+        engine
+            .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+            .await,
+    );
 }
 
 async fn run_cold_start(
@@ -515,11 +545,15 @@ async fn run_generic_workload(
             .await
         {
             Ok(handle) => {
-                collector.record_start(start.elapsed());
-                let _ = engine.complete_step(&handle, 0, b"done").await;
-                let _ = engine
-                    .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
-                    .await;
+                let elapsed = start.elapsed();
+                black_box(elapsed);
+                collector.record_start(elapsed);
+                let _ = black_box(engine.complete_step(&handle, 0, b"done").await);
+                let _ = black_box(
+                    engine
+                        .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+                        .await,
+                );
             }
             Err(e) => {
                 collector.record_error(&format!("error: {}", e));
@@ -533,5 +567,16 @@ fn truncate_str(s: &str, max_len: usize) -> String {
         s.to_string()
     } else {
         format!("{}...", &s[..max_len - 3])
+    }
+}
+
+/// Returns the primary p99 latency for a workload type.
+/// Each workload type has a "primary" metric bucket that represents
+/// the operation being measured (e.g., signal_storm measures signal latency).
+fn workload_primary_p99(metrics: &MetricsSnapshot, kind: &WorkloadKind) -> u64 {
+    match kind {
+        WorkloadKind::SignalStorm => metrics.signal_latency.p99_us,
+        WorkloadKind::QueryBurst => metrics.query_latency.p99_us,
+        _ => metrics.start_latency.p99_us,
     }
 }
