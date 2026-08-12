@@ -203,21 +203,21 @@ func (c *Client) ListWorkflows(ctx context.Context) ([]map[string]interface{}, e
 }
 
 // ResetWorkflow resets a workflow to a previous event for replay.
-func (c *Client) ResetWorkflow(ctx context.Context, workflowID string, eventID int64) error {
+func (c *Client) ResetWorkflow(ctx context.Context, workflowID string, eventID int64) (string, error) {
 	return c.conn.ResetWorkflow(ctx, &ResetWorkflowRequest{
-		Namespace:  c.namespace,
-		WorkflowID: workflowID,
-		EventID:    eventID,
+		Namespace:    c.namespace,
+		WorkflowID:   workflowID,
+		ResetEventID: eventID,
 	})
 }
 
 // UpdateWorkflow sends a synchronous update to a running workflow and returns the result.
-func (c *Client) UpdateWorkflow(ctx context.Context, workflowID string, updateName string, input interface{}) (interface{}, error) {
+func (c *Client) UpdateWorkflow(ctx context.Context, workflowID string, updateName string, input interface{}) (*UpdateResult, error) {
 	return c.conn.UpdateWorkflow(ctx, &UpdateWorkflowRequest{
 		Namespace:  c.namespace,
 		WorkflowID: workflowID,
 		UpdateName: updateName,
-		Input:      input,
+		Args:       input,
 	})
 }
 
@@ -258,60 +258,67 @@ func (c *Client) SetSearchAttributes(ctx context.Context, workflowID string, att
 }
 
 // CreateSchedule creates a recurring workflow schedule.
-func (c *Client) CreateSchedule(ctx context.Context, scheduleID string, cronExpression string, workflowType string, options WorkflowOptions) error {
+func (c *Client) CreateSchedule(ctx context.Context, scheduleID string, cronExpression string, workflowType string, options WorkflowOptions) (string, error) {
 	return c.conn.CreateSchedule(ctx, &CreateScheduleRequest{
-		Namespace:      c.namespace,
-		ScheduleID:     scheduleID,
-		CronExpression: cronExpression,
-		WorkflowType:   workflowType,
-		TaskQueue:      options.TaskQueue,
-		Input:          options.Input,
+		Namespace:    c.namespace,
+		ScheduleID:   scheduleID,
+		CronSchedule: cronExpression,
+		WorkflowType: workflowType,
+		TaskQueue:    options.TaskQueue,
+		Input:        options.Input,
 	})
 }
 
 // DeleteSchedule deletes a workflow schedule.
 func (c *Client) DeleteSchedule(ctx context.Context, scheduleID string) error {
-	return c.conn.DeleteSchedule(ctx, c.namespace, scheduleID)
+	return c.conn.DeleteSchedule(ctx, &DeleteScheduleRequest{
+		Namespace:  c.namespace,
+		ScheduleID: scheduleID,
+	})
 }
 
 // ListSchedules lists all schedules in the namespace.
-func (c *Client) ListSchedules(ctx context.Context) ([]map[string]interface{}, error) {
-	return c.conn.ListSchedules(ctx, c.namespace)
+func (c *Client) ListSchedules(ctx context.Context) ([]*Schedule, error) {
+	return c.conn.ListSchedules(ctx, &ListSchedulesRequest{
+		Namespace: c.namespace,
+	})
 }
 
 // BatchTerminate terminates multiple workflows in a single batch operation.
 func (c *Client) BatchTerminate(ctx context.Context, workflowIDs []string, reason string) (string, error) {
-	return c.conn.StartBatchOperation(ctx, &BatchOperationRequest{
-		Namespace:   c.namespace,
-		Operation:   "terminate",
-		WorkflowIDs: workflowIDs,
-		Reason:      reason,
+	return c.conn.StartBatchOperation(ctx, &StartBatchOperationRequest{
+		Namespace: c.namespace,
+		Operation: "terminate",
+		Query:     "",
+		Reason:    reason,
 	})
 }
 
 // BatchCancel cancels multiple workflows in a single batch operation.
 func (c *Client) BatchCancel(ctx context.Context, workflowIDs []string) (string, error) {
-	return c.conn.StartBatchOperation(ctx, &BatchOperationRequest{
-		Namespace:   c.namespace,
-		Operation:   "cancel",
-		WorkflowIDs: workflowIDs,
+	return c.conn.StartBatchOperation(ctx, &StartBatchOperationRequest{
+		Namespace: c.namespace,
+		Operation: "cancel",
+		Query:     "",
 	})
 }
 
 // BatchSignal signals multiple workflows in a single batch operation.
 func (c *Client) BatchSignal(ctx context.Context, workflowIDs []string, signalName string, args interface{}) (string, error) {
-	return c.conn.StartBatchOperation(ctx, &BatchOperationRequest{
-		Namespace:   c.namespace,
-		Operation:   "signal",
-		WorkflowIDs: workflowIDs,
-		SignalName:  signalName,
-		SignalArgs:  args,
+	return c.conn.StartBatchOperation(ctx, &StartBatchOperationRequest{
+		Namespace:  c.namespace,
+		Operation:  "signal",
+		SignalName: signalName,
+		Reason:     "",
 	})
 }
 
 // DescribeBatchOperation returns the status of a batch operation.
-func (c *Client) DescribeBatchOperation(ctx context.Context, jobID string) (map[string]interface{}, error) {
-	return c.conn.DescribeBatchOperation(ctx, c.namespace, jobID)
+func (c *Client) DescribeBatchOperation(ctx context.Context, jobID string) (*BatchOperation, error) {
+	return c.conn.DescribeBatchOperation(ctx, &DescribeBatchOperationRequest{
+		Namespace: c.namespace,
+		JobID:     jobID,
+	})
 }
 
 // Close closes the client connection.

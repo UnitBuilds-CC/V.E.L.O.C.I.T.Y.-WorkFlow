@@ -25,6 +25,8 @@ COPY velocity-workflow-daemon/Cargo.toml velocity-workflow-daemon/Cargo.toml
 COPY velocity-bench/Cargo.toml velocity-bench/Cargo.toml
 COPY velocity-dev-server/Cargo.toml velocity-dev-server/Cargo.toml
 COPY velocity-test-framework/Cargo.toml velocity-test-framework/Cargo.toml
+COPY velocity-embedded/Cargo.toml velocity-embedded/Cargo.toml
+COPY velocity-classic/Cargo.toml velocity-classic/Cargo.toml
 
 # Create dummy source files to cache dependency builds
 RUN mkdir -p velocity-workflow-core/src && echo "pub fn dummy(){}" > velocity-workflow-core/src/lib.rs && \
@@ -33,7 +35,9 @@ RUN mkdir -p velocity-workflow-core/src && echo "pub fn dummy(){}" > velocity-wo
     mkdir -p velocity-workflow-daemon/src && echo "fn main(){}" > velocity-workflow-daemon/src/main.rs && \
     mkdir -p velocity-bench/src && echo "pub fn dummy(){}" > velocity-bench/src/lib.rs && \
     mkdir -p velocity-dev-server/src && echo "fn main(){}" > velocity-dev-server/src/main.rs && \
-    mkdir -p velocity-test-framework/src && echo "pub fn dummy(){}" > velocity-test-framework/src/lib.rs
+    mkdir -p velocity-test-framework/src && echo "pub fn dummy(){}" > velocity-test-framework/src/lib.rs && \
+    mkdir -p velocity-embedded/src && echo "fn main(){}" > velocity-embedded/src/main.rs && \
+    mkdir -p velocity-classic/src && echo "fn main(){}" > velocity-classic/src/main.rs
 
 # Pre-build dependencies (ignore errors from dummy sources)
 RUN cargo build --profile ci --workspace || true
@@ -46,6 +50,8 @@ COPY velocity-workflow-daemon/ velocity-workflow-daemon/
 COPY velocity-bench/ velocity-bench/
 COPY velocity-dev-server/ velocity-dev-server/
 COPY velocity-test-framework/ velocity-test-framework/
+COPY velocity-embedded/ velocity-embedded/
+COPY velocity-classic/ velocity-classic/
 COPY proto/ proto/
 COPY migrations/ migrations/
 

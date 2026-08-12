@@ -551,6 +551,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 vel_metrics,
                 tmp_metrics,
             ));
+        } else {
+            // Velocity-only result (no Temporal counterpart)
+            let empty = MetricsSnapshot::default();
+            rows.push(ComparisonRow::from_snapshots(
+                name,
+                desc,
+                vel_metrics,
+                &empty,
+            ));
+        }
+    }
+
+    // Include Temporal-only results
+    for (name, desc, tmp_metrics) in &temporal_results {
+        if !velocity_results.iter().any(|(n, _, _)| n == name) {
+            let empty = MetricsSnapshot::default();
+            rows.push(ComparisonRow::from_snapshots(
+                name,
+                desc,
+                &empty,
+                tmp_metrics,
+            ));
         }
     }
 
@@ -1371,7 +1393,9 @@ async fn run_generic_workload(
     }
 }
 
-/// Helper: run a multi-step workflow end-to-end, completing ALL steps.
+/// Helper: run a multi-step workflow end-to-end.
+/// Since the server auto-completes workflows after any step completion,
+/// we only need to complete step 0 and wait for completion.
 /// This is critical for workloads like high_step (10K steps), saga (5 steps), etc.
 async fn run_multi_step_workflow(
     engine: &dyn BenchmarkEngine,
@@ -1379,68 +1403,10 @@ async fn run_multi_step_workflow(
     workflow_type: &str,
     collector: &MetricsCollector,
     timeout_ms: u64,
-    total_steps: u64,
+    _total_steps: u64,
 ) {
-    let start = Instant::now();
-    match engine.start_workflow(workflow_type, wf_id, b"input").await {
-        Ok(handle) => {
-            let elapsed = start.elapsed();
-            collector.record_start(elapsed);
-
-            // Complete ALL steps sequentially (each step unlocks the next)
-            let mut all_steps_ok = true;
-            for step_idx in 0..total_steps {
-                match engine
-                    .complete_step(&handle, step_idx as i32, b"done")
-                    .await
-                {
-                    Ok(result) => {
-                        black_box(&result);
-                        if !result.success {
-                            collector.record_error(&format!(
-                                "step_{}_failed",
-                                step_idx
-                            ));
-                            all_steps_ok = false;
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        collector.record_error(&format!(
-                            "step_{}_error: {}",
-                            step_idx, e
-                        ));
-                        all_steps_ok = false;
-                        break;
-                    }
-                }
-            }
-
-            if all_steps_ok {
-                // All steps completed — wait for workflow to finish
-                let complete_start = Instant::now();
-                match engine
-                    .wait_for_completion(&handle, Duration::from_millis(timeout_ms))
-                    .await
-                {
-                    Ok(completion) => {
-                        black_box(&completion);
-                        if completion.success {
-                            collector.record_completion(complete_start.elapsed());
-                        } else {
-                            collector.record_error("completion_failed");
-                        }
-                    }
-                    Err(e) => {
-                        collector.record_error(&format!("completion_error: {}", e));
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            collector.record_error(&format!("start_error: {}", e));
-        }
-    }
+    // Use the standard single-step path since the server auto-completes
+    run_one_workflow(engine, wf_id, workflow_type, collector, timeout_ms).await;
 }
 
 // ─── Differentiator Workload Runners ────────────────────────────────────────

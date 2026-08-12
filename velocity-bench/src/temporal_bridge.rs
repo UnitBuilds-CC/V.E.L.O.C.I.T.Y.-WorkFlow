@@ -4,9 +4,9 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use tracing::{debug, info};
 
@@ -18,18 +18,11 @@ pub mod velocity_bench_proto {
 use velocity_bench_proto::benchmark_service_server::{BenchmarkService, BenchmarkServiceServer};
 use velocity_bench_proto::*;
 
-// ─── Simulated Temporal Engine (Event-Sourcing) ─────────────────────────────
+// ─── Simulated Temporal Engine (Direct-State Mock) ──────────────────────────
 //
-// Faithfully simulates Temporal's event-sourcing architecture:
-//   - Every mutation appends an event to an append-only history log
-//   - Every read (signal/query/status) CLONES the event log then REPLAYS
-//     it outside the lock — O(N) in the number of events
-//   - The clone simulates reading events from persistence (disk/DB)
-//   - The replay simulates Temporal's event-by-event state reconstruction
-//
-// This models the fundamental architectural difference:
-//   Temporal: O(N) event replay to reconstruct state on every operation
-//   VELOCITY: O(1) pointer-cast state resumption from durable slab
+// Fair-comparison mock: uses the SAME minimal HashMap pattern as Velocity's
+// BenchmarkService.  Both sides do O(1) direct-state lookups per operation
+// so the benchmark measures framework overhead, not mock asymmetry.
 
 #[derive(Clone, Debug, PartialEq)]
 enum WorkflowStatus {
@@ -41,29 +34,13 @@ enum WorkflowStatus {
     ContinuedAsNew,
 }
 
-/// A single event in the append-only history log (like Temporal's HistoryEvent).
-#[derive(Clone, Debug)]
+/// Per-workflow state — stored directly (no event replay).
 #[allow(dead_code)]
-struct HistoryEvent {
-    event_id: u64,
-    event_type: String,
-    timestamp_us: i64,
-    /// Event attributes (like Temporal's decoded protobuf payloads).
-    attributes: serde_json::Value,
-}
-
-/// Reconstructed workflow state — derived by replaying the event log.
-/// NOT stored directly; computed on every operation (O(N) replay).
-struct ReplayedState {
-    workflow_id: String,
-    run_id: String,
-    workflow_type: String,
+struct WorkflowLog {
     namespace: String,
+    workflow_type: String,
     status: WorkflowStatus,
     signals_received: u64,
-    #[allow(dead_code)]
-    result: Option<Vec<u8>>,
-    cancel_requested: bool,
     search_attributes: std::collections::HashMap<String, String>,
     memo: std::collections::HashMap<String, String>,
     updates_received: u64,
@@ -74,12 +51,8 @@ struct ReplayedState {
     timers_scheduled: u64,
     timers_cancelled: u64,
     child_workflows_started: u64,
-}
-
-/// Per-workflow storage: append-only event log (the only persisted state).
-struct WorkflowLog {
-    events: Vec<HistoryEvent>,
-    namespace: String,
+    event_count: u64,
+    cancel_requested: bool,
 }
 
 /// Namespace metadata (mirrors Temporal's namespace registration).
@@ -95,11 +68,10 @@ struct NamespaceInfo {
 }
 
 struct TemporalEngine {
-    /// Append-only event logs per workflow (keyed by workflow_id).
-    logs: Mutex<HashMap<String, WorkflowLog>>,
-    /// Registered namespaces.
-    namespaces: Mutex<HashMap<String, NamespaceInfo>>,
+    logs: std::sync::RwLock<HashMap<String, WorkflowLog>>,
+    namespaces: std::sync::RwLock<HashMap<String, NamespaceInfo>>,
     start_time: Instant,
+    next_id: AtomicU64,
 }
 
 impl TemporalEngine {
@@ -121,9 +93,10 @@ impl TemporalEngine {
             },
         );
         Self {
-            logs: Mutex::new(HashMap::new()),
-            namespaces: Mutex::new(default_ns),
+            logs: std::sync::RwLock::new(HashMap::new()),
+            namespaces: std::sync::RwLock::new(default_ns),
             start_time: Instant::now(),
+            next_id: AtomicU64::new(1),
         }
     }
 
@@ -134,21 +107,14 @@ impl TemporalEngine {
             .as_micros() as i64
     }
 
-    /// Replay the full event history to reconstruct workflow state.
-    /// This is the O(N) operation that defines Temporal's architecture.
-    /// Real Temporal does this on EVERY signal/query/workflow-task.
-    fn replay_events(events: &[HistoryEvent]) -> ReplayedState {
-        let mut state = ReplayedState {
-            workflow_id: String::new(),
-            run_id: String::new(),
-            workflow_type: String::new(),
-            namespace: String::new(),
+    fn new_log(namespace: &str, workflow_type: &str) -> WorkflowLog {
+        WorkflowLog {
+            namespace: namespace.to_string(),
+            workflow_type: workflow_type.to_string(),
             status: WorkflowStatus::Running,
             signals_received: 0,
-            result: None,
-            cancel_requested: false,
-            search_attributes: std::collections::HashMap::new(),
-            memo: std::collections::HashMap::new(),
+            search_attributes: HashMap::new(),
+            memo: HashMap::new(),
             updates_received: 0,
             activities_scheduled: 0,
             activities_completed: 0,
@@ -157,116 +123,9 @@ impl TemporalEngine {
             timers_scheduled: 0,
             timers_cancelled: 0,
             child_workflows_started: 0,
-        };
-
-        // Replay every event in order — O(N) state transitions
-        for event in events {
-            match event.event_type.as_str() {
-                "WorkflowExecutionStarted" => {
-                    if let Some(wid) = event.attributes.get("workflow_id").and_then(|v| v.as_str())
-                    {
-                        state.workflow_id = wid.to_string();
-                    }
-                    if let Some(rid) = event.attributes.get("run_id").and_then(|v| v.as_str()) {
-                        state.run_id = rid.to_string();
-                    }
-                    if let Some(wt) = event
-                        .attributes
-                        .get("workflow_type")
-                        .and_then(|v| v.as_str())
-                    {
-                        state.workflow_type = wt.to_string();
-                    }
-                    if let Some(ns) = event.attributes.get("namespace").and_then(|v| v.as_str()) {
-                        state.namespace = ns.to_string();
-                    }
-                    state.status = WorkflowStatus::Running;
-                }
-                "WorkflowExecutionSignalReceived" => {
-                    state.signals_received += 1;
-                }
-                "WorkflowExecutionCompleted" => {
-                    state.status = WorkflowStatus::Completed;
-                    if let Some(r) = event.attributes.get("result").and_then(|v| v.as_str()) {
-                        state.result = Some(r.as_bytes().to_vec());
-                    }
-                }
-                "WorkflowExecutionFailed" => {
-                    state.status = WorkflowStatus::Failed;
-                }
-                "WorkflowExecutionTerminated" => {
-                    state.status = WorkflowStatus::Terminated;
-                }
-                "WorkflowExecutionCancelled" => {
-                    state.status = WorkflowStatus::Cancelled;
-                    state.cancel_requested = true;
-                }
-                "WorkflowExecutionContinuedAsNew" => {
-                    state.status = WorkflowStatus::ContinuedAsNew;
-                }
-                "WorkflowExecutionUpdated" => {
-                    state.updates_received += 1;
-                }
-                "SearchAttributesUpserted" => {
-                    if let Some(attrs) = event
-                        .attributes
-                        .get("attributes")
-                        .and_then(|v| v.as_object())
-                    {
-                        for (k, v) in attrs {
-                            if let Some(s) = v.as_str() {
-                                state.search_attributes.insert(k.clone(), s.to_string());
-                            }
-                        }
-                    }
-                }
-                "MemoSet" => {
-                    if let Some(m) = event.attributes.get("memo").and_then(|v| v.as_object()) {
-                        for (k, v) in m {
-                            if let Some(s) = v.as_str() {
-                                state.memo.insert(k.clone(), s.to_string());
-                            }
-                        }
-                    }
-                }
-                "ActivityTaskScheduled" => {
-                    state.activities_scheduled += 1;
-                }
-                "ActivityTaskCompleted" => {
-                    state.activities_completed += 1;
-                }
-                "ActivityTaskFailed" => {
-                    state.activities_failed += 1;
-                }
-                "ActivityHeartbeatRecorded" => {
-                    state.heartbeats_recorded += 1;
-                }
-                "TimerStarted" => {
-                    state.timers_scheduled += 1;
-                }
-                "TimerCancelled" => {
-                    state.timers_cancelled += 1;
-                }
-                "StartChildWorkflowExecutionInitiated" => {
-                    state.child_workflows_started += 1;
-                }
-                _ => {}
-            }
+            event_count: 1,
+            cancel_requested: false,
         }
-
-        state
-    }
-
-    /// Clone events under lock (simulates reading from persistence),
-    /// then replay outside lock (O(N) state reconstruction).
-    async fn clone_and_replay(&self, workflow_id: &str) -> Option<ReplayedState> {
-        let events = {
-            let logs = self.logs.lock().await;
-            let log = logs.get(workflow_id)?;
-            log.events.clone()
-        };
-        // Replay outside the lock — O(N) without blocking other operations
-        Some(Self::replay_events(&events))
     }
 
     async fn start_workflow(
@@ -276,228 +135,104 @@ impl TemporalEngine {
         workflow_type: &str,
     ) -> Result<(String, String), String> {
         let wf_id = if workflow_id.is_empty() {
-            format!("temporal-wf-{}", uuid::Uuid::new_v4())
+            format!("temporal-wf-{}", self.next_id.fetch_add(1, Ordering::Relaxed))
         } else {
             workflow_id.to_string()
         };
-        let run_id = format!("temporal-run-{}", uuid::Uuid::new_v4());
-
-        let attrs = serde_json::json!({
-            "workflow_id": wf_id,
-            "run_id": run_id,
-            "workflow_type": workflow_type,
-            "namespace": namespace,
-        });
-
-        let event = HistoryEvent {
-            event_id: 1,
-            event_type: "WorkflowExecutionStarted".to_string(),
-            timestamp_us: Self::now_us(),
-            attributes: attrs,
-        };
-
-        let mut logs = self.logs.lock().await;
-        logs.insert(
-            wf_id.clone(),
-            WorkflowLog {
-                events: vec![event],
-                namespace: namespace.to_string(),
-            },
-        );
-
+        let run_id = wf_id.clone();
+        let log = Self::new_log(namespace, workflow_type);
+        self.logs.write().unwrap().insert(wf_id.clone(), log);
         debug!(workflow_id = %wf_id, run_id = %run_id, "Started workflow");
         Ok((wf_id, run_id))
     }
 
-    /// Signal: clone+replay to verify, append signal event, clone+replay to confirm.
     async fn signal_workflow(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        signal_name: &str,
-        payload: Vec<u8>,
+        _signal_name: &str,
+        _payload: Vec<u8>,
     ) -> Result<(), String> {
-        // REPLAY to verify state before signal — O(N)
-        let pre = self
-            .clone_and_replay(workflow_id)
-            .await
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-        if pre.namespace != namespace {
-            return Err(format!(
-                "Workflow {} not found in namespace {}",
-                workflow_id, namespace
-            ));
-        }
-
-        // Append signal event
-        let attrs = serde_json::json!({
-            "signal_name": signal_name,
-            "payload_len": payload.len(),
-        });
-        {
-            let mut logs = self.logs.lock().await;
-            let log = logs.get_mut(workflow_id).unwrap();
-            let event_id = log.events.len() as u64 + 1;
-            log.events.push(HistoryEvent {
-                event_id,
-                event_type: "WorkflowExecutionSignalReceived".to_string(),
-                timestamp_us: Self::now_us(),
-                attributes: attrs,
-            });
-        }
-
-        // REPLAY to confirm state after signal — O(N)
-        let _post = self.clone_and_replay(workflow_id).await.unwrap();
+        log.signals_received += 1;
+        log.event_count += 1;
         Ok(())
     }
 
-    /// Query: clone+replay to reconstruct state — O(N).
     async fn query_workflow(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
         _query_type: &str,
     ) -> Result<serde_json::Value, String> {
-        let replayed = self
-            .clone_and_replay(workflow_id)
-            .await
+        let logs = self.logs.read().unwrap();
+        let log = logs.get(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-        if replayed.namespace != namespace {
-            return Err(format!(
-                "Workflow {} not found in namespace {}",
-                workflow_id, namespace
-            ));
-        }
-
         Ok(serde_json::json!({
-            "workflow_id": replayed.workflow_id,
-            "workflow_type": replayed.workflow_type,
-            "status": format!("{:?}", replayed.status),
-            "signals_received": replayed.signals_received,
+            "workflow_id": workflow_id,
+            "workflow_type": log.workflow_type,
+            "status": format!("{:?}", log.status),
+            "signals_received": log.signals_received,
         }))
     }
 
-    /// Complete: replay to verify running, append completion, replay to confirm.
     async fn complete_workflow(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        result: Option<Vec<u8>>,
+        _result: Option<Vec<u8>>,
     ) -> Result<(), String> {
-        // REPLAY to verify running state — O(N)
-        let replayed = self
-            .clone_and_replay(workflow_id)
-            .await
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-        if replayed.namespace != namespace {
-            return Err(format!(
-                "Workflow {} not found in namespace {}",
-                workflow_id, namespace
-            ));
-        }
-        if replayed.status != WorkflowStatus::Running {
-            return Err(format!("Workflow {} is not running", workflow_id));
-        }
-
-        // Append completion event
-        let result_str = result
-            .map(|r| String::from_utf8_lossy(&r).to_string())
-            .unwrap_or_default();
-        let attrs = serde_json::json!({ "result": result_str });
-        {
-            let mut logs = self.logs.lock().await;
-            let log = logs.get_mut(workflow_id).unwrap();
-            let event_id = log.events.len() as u64 + 1;
-            log.events.push(HistoryEvent {
-                event_id,
-                event_type: "WorkflowExecutionCompleted".to_string(),
-                timestamp_us: Self::now_us(),
-                attributes: attrs,
-            });
-        }
-
-        // REPLAY to confirm terminal state — O(N)
-        let _confirmed = self.clone_and_replay(workflow_id).await.unwrap();
+        log.status = WorkflowStatus::Completed;
+        log.event_count += 1;
         Ok(())
     }
 
     async fn terminate_workflow(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
         _reason: &str,
     ) -> Result<(), String> {
-        // REPLAY to verify running state — O(N)
-        let replayed = self
-            .clone_and_replay(workflow_id)
-            .await
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-        if replayed.namespace != namespace {
-            return Err(format!(
-                "Workflow {} not found in namespace {}",
-                workflow_id, namespace
-            ));
-        }
-
-        // Append termination event
-        {
-            let mut logs = self.logs.lock().await;
-            let log = logs.get_mut(workflow_id).unwrap();
-            let event_id = log.events.len() as u64 + 1;
-            log.events.push(HistoryEvent {
-                event_id,
-                event_type: "WorkflowExecutionTerminated".to_string(),
-                timestamp_us: Self::now_us(),
-                attributes: serde_json::json!({}),
-            });
-        }
+        log.status = WorkflowStatus::Terminated;
+        log.event_count += 1;
         Ok(())
     }
 
-    /// Get status via clone+replay — O(N).
     async fn get_workflow_status(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
     ) -> Option<WorkflowStatus> {
-        let replayed = self.clone_and_replay(workflow_id).await?;
-        if replayed.namespace != namespace {
-            return None;
-        }
-        Some(replayed.status)
+        let logs = self.logs.read().unwrap();
+        logs.get(workflow_id).map(|l| l.status.clone())
     }
 
     async fn count_workflows(&self, namespace: &str, filter: &str) -> u64 {
-        // Clone all event logs under lock, then replay each outside lock
-        let all_events: Vec<(String, Vec<HistoryEvent>)> = {
-            let logs = self.logs.lock().await;
-            logs.iter()
-                .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
-                .map(|(wf_id, log)| (wf_id.clone(), log.events.clone()))
-                .collect()
-        };
-
-        let mut count = 0u64;
-        for (_wf_id, events) in &all_events {
-            let replayed = Self::replay_events(events);
-            let matches = match filter {
-                "running" => replayed.status == WorkflowStatus::Running,
-                "completed" => replayed.status == WorkflowStatus::Completed,
-                "failed" => replayed.status == WorkflowStatus::Failed,
-                "terminated" => replayed.status == WorkflowStatus::Terminated,
-                "cancelled" => replayed.status == WorkflowStatus::Cancelled,
-                "continued_as_new" => replayed.status == WorkflowStatus::ContinuedAsNew,
+        let logs = self.logs.read().unwrap();
+        logs.iter()
+            .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
+            .filter(|(_, log)| match filter {
+                "running" => log.status == WorkflowStatus::Running,
+                "completed" => log.status == WorkflowStatus::Completed,
+                "failed" => log.status == WorkflowStatus::Failed,
+                "terminated" => log.status == WorkflowStatus::Terminated,
+                "cancelled" => log.status == WorkflowStatus::Cancelled,
+                "continued_as_new" => log.status == WorkflowStatus::ContinuedAsNew,
                 _ => true,
-            };
-            if matches {
-                count += 1;
-            }
-        }
-        count
+            })
+            .count() as u64
     }
 
     async fn reset(&self, namespace: &str) -> u64 {
-        let mut logs = self.logs.lock().await;
+        let mut logs = self.logs.write().unwrap();
         if namespace.is_empty() || namespace == "default" {
             let count = logs.len() as u64;
             logs.clear();
@@ -509,87 +244,36 @@ impl TemporalEngine {
         }
     }
 
-    // ── Helper: append event to workflow log ────────────────────────────────
-    async fn append_event(
-        &self,
-        workflow_id: &str,
-        event_type: &str,
-        attrs: serde_json::Value,
-    ) -> Result<u64, String> {
-        let mut logs = self.logs.lock().await;
-        let log = logs
-            .get_mut(workflow_id)
-            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-        let event_id = log.events.len() as u64 + 1;
-        log.events.push(HistoryEvent {
-            event_id,
-            event_type: event_type.to_string(),
-            timestamp_us: Self::now_us(),
-            attributes: attrs,
-        });
-        Ok(event_id)
-    }
-
-    // ── Helper: replay + verify running ─────────────────────────────────────
-    async fn verify_running(
-        &self,
-        namespace: &str,
-        workflow_id: &str,
-    ) -> Result<ReplayedState, String> {
-        let replayed = self
-            .clone_and_replay(workflow_id)
-            .await
-            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-        if replayed.namespace != namespace {
-            return Err(format!(
-                "Workflow {} not found in namespace {}",
-                workflow_id, namespace
-            ));
-        }
-        if replayed.status != WorkflowStatus::Running {
-            return Err(format!(
-                "Workflow {} is not running (status: {:?})",
-                workflow_id, replayed.status
-            ));
-        }
-        Ok(replayed)
-    }
-
     // ── Tier 1: Core features ───────────────────────────────────────────────
 
     async fn cancel_workflow(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        reason: &str,
+        _reason: &str,
     ) -> Result<(), String> {
-        self.verify_running(namespace, workflow_id).await?;
-        self.append_event(
-            workflow_id,
-            "WorkflowExecutionCancelled",
-            serde_json::json!({"reason": reason}),
-        )
-        .await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.status = WorkflowStatus::Cancelled;
+        log.cancel_requested = true;
+        log.event_count += 1;
         Ok(())
     }
 
     async fn update_workflow(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        update_name: &str,
+        _update_name: &str,
         update_id: &str,
-        payload: Vec<u8>,
+        _payload: Vec<u8>,
     ) -> Result<Vec<u8>, String> {
-        self.verify_running(namespace, workflow_id).await?;
-        self.append_event(
-            workflow_id,
-            "WorkflowExecutionUpdated",
-            serde_json::json!({
-                "update_name": update_name, "update_id": update_id, "payload_len": payload.len(),
-            }),
-        )
-        .await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.updates_received += 1;
+        log.event_count += 1;
         Ok(format!(r#"{{"update_id":"{}","status":"COMPLETED"}}"#, update_id).into_bytes())
     }
 
@@ -600,105 +284,97 @@ impl TemporalEngine {
         wf_type: &str,
         child_wf_id: &str,
     ) -> Result<(String, String), String> {
-        self.verify_running(namespace, parent_wf_id).await?;
+        {
+            let mut logs = self.logs.write().unwrap();
+            let parent = logs.get_mut(parent_wf_id)
+                .ok_or_else(|| format!("Parent workflow {} not found", parent_wf_id))?;
+            parent.child_workflows_started += 1;
+            parent.event_count += 1;
+        }
         let child_id = if child_wf_id.is_empty() {
-            format!("child-{}", uuid::Uuid::new_v4())
+            format!("child-{}", self.next_id.fetch_add(1, Ordering::Relaxed))
         } else {
             child_wf_id.to_string()
         };
-        let child_run_id = format!("run-{}", uuid::Uuid::new_v4());
-        self.append_event(parent_wf_id, "StartChildWorkflowExecutionInitiated", serde_json::json!({
-            "child_workflow_id": child_id, "workflow_type": wf_type, "child_run_id": child_run_id,
-        })).await?;
-        // Also start the child workflow as its own log
+        let child_run_id = format!("run-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
         self.start_workflow(namespace, &child_id, wf_type).await?;
         Ok((child_id, child_run_id))
     }
 
     async fn schedule_timer(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
         timer_id: &str,
-        duration_ms: i64,
+        _duration_ms: i64,
     ) -> Result<String, String> {
-        self.verify_running(namespace, workflow_id).await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.timers_scheduled += 1;
+        log.event_count += 1;
         let tid = if timer_id.is_empty() {
-            format!("timer-{}", uuid::Uuid::new_v4())
+            format!("timer-{}", self.next_id.fetch_add(1, Ordering::Relaxed))
         } else {
             timer_id.to_string()
         };
-        self.append_event(
-            workflow_id,
-            "TimerStarted",
-            serde_json::json!({
-                "timer_id": tid, "duration_ms": duration_ms,
-            }),
-        )
-        .await?;
         Ok(tid)
     }
 
     async fn cancel_timer(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        timer_id: &str,
+        _timer_id: &str,
     ) -> Result<(), String> {
-        self.verify_running(namespace, workflow_id).await?;
-        self.append_event(
-            workflow_id,
-            "TimerCancelled",
-            serde_json::json!({"timer_id": timer_id}),
-        )
-        .await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.timers_cancelled += 1;
+        log.event_count += 1;
         Ok(())
     }
 
     async fn continue_as_new(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        wf_type: &str,
+        _wf_type: &str,
     ) -> Result<String, String> {
-        self.verify_running(namespace, workflow_id).await?;
-        let new_run_id = format!("run-{}", uuid::Uuid::new_v4());
-        self.append_event(
-            workflow_id,
-            "WorkflowExecutionContinuedAsNew",
-            serde_json::json!({
-                "new_run_id": new_run_id, "new_workflow_type": wf_type,
-            }),
-        )
-        .await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.status = WorkflowStatus::ContinuedAsNew;
+        log.event_count += 1;
+        let new_run_id = format!("run-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
         Ok(new_run_id)
     }
 
     async fn upsert_search_attributes(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
         attrs: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
-        self.verify_running(namespace, workflow_id).await?;
-        self.append_event(
-            workflow_id,
-            "SearchAttributesUpserted",
-            serde_json::json!({"attributes": attrs}),
-        )
-        .await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.search_attributes.extend(attrs);
+        log.event_count += 1;
         Ok(())
     }
 
     async fn set_memo(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
         memo: std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
-        self.verify_running(namespace, workflow_id).await?;
-        self.append_event(workflow_id, "MemoSet", serde_json::json!({"memo": memo}))
-            .await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.memo.extend(memo);
+        log.event_count += 1;
         Ok(())
     }
 
@@ -711,185 +387,129 @@ impl TemporalEngine {
         payload: Vec<u8>,
     ) -> Result<(String, String, bool, bool), String> {
         // Check if workflow exists and is running
-        if let Ok(replayed) = self.verify_running(namespace, workflow_id).await {
-            // Signal existing workflow
-            self.signal_workflow(namespace, workflow_id, signal_name, payload)
-                .await?;
-            Ok((replayed.workflow_id, replayed.run_id, false, true))
-        } else {
-            // Start new workflow and signal it
-            let (wf_id, run_id) = self.start_workflow(namespace, workflow_id, wf_type).await?;
-            self.signal_workflow(namespace, &wf_id, signal_name, payload)
-                .await?;
-            Ok((wf_id, run_id, true, true))
+        let exists_and_running = {
+            let logs = self.logs.read().unwrap();
+            logs.get(workflow_id)
+                .map(|log| log.status == WorkflowStatus::Running)
+                .unwrap_or(false)
+        };
+        if exists_and_running {
+            self.signal_workflow(namespace, workflow_id, signal_name, payload).await?;
+            return Ok((workflow_id.to_string(), workflow_id.to_string(), false, true));
         }
+        // Start new workflow and signal it
+        let (wf_id, run_id) = self.start_workflow(namespace, workflow_id, wf_type).await?;
+        self.signal_workflow(namespace, &wf_id, signal_name, payload).await?;
+        Ok((wf_id, run_id, true, true))
     }
 
     // ── Tier 2: Activity & operational ──────────────────────────────────────
 
     async fn record_heartbeat(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        activity_id: &str,
+        _activity_id: &str,
     ) -> Result<bool, String> {
-        self.verify_running(namespace, workflow_id).await?;
-        self.append_event(
-            workflow_id,
-            "ActivityHeartbeatRecorded",
-            serde_json::json!({"activity_id": activity_id}),
-        )
-        .await?;
-        let replayed = self.clone_and_replay(workflow_id).await.unwrap();
-        Ok(replayed.cancel_requested)
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.heartbeats_recorded += 1;
+        log.event_count += 1;
+        Ok(log.cancel_requested)
     }
 
     async fn schedule_activity(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
         activity_id: &str,
-        activity_type: &str,
+        _activity_type: &str,
     ) -> Result<String, String> {
-        self.verify_running(namespace, workflow_id).await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.activities_scheduled += 1;
+        log.event_count += 1;
         let aid = if activity_id.is_empty() {
-            format!("act-{}", uuid::Uuid::new_v4())
+            format!("act-{}", self.next_id.fetch_add(1, Ordering::Relaxed))
         } else {
             activity_id.to_string()
         };
-        self.append_event(
-            workflow_id,
-            "ActivityTaskScheduled",
-            serde_json::json!({
-                "activity_id": aid, "activity_type": activity_type,
-            }),
-        )
-        .await?;
         Ok(aid)
     }
 
     async fn complete_activity(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        activity_id: &str,
+        _activity_id: &str,
     ) -> Result<(), String> {
-        self.verify_running(namespace, workflow_id).await?;
-        self.append_event(
-            workflow_id,
-            "ActivityTaskCompleted",
-            serde_json::json!({"activity_id": activity_id}),
-        )
-        .await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.activities_completed += 1;
+        log.event_count += 1;
         Ok(())
     }
 
     async fn fail_activity(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        activity_id: &str,
-        reason: &str,
+        _activity_id: &str,
+        _reason: &str,
         _non_retryable: bool,
     ) -> Result<(bool, u32), String> {
-        let replayed = self.verify_running(namespace, workflow_id).await?;
-        self.append_event(workflow_id, "ActivityTaskFailed", serde_json::json!({
-            "activity_id": activity_id, "reason": reason, "attempt": replayed.activities_failed + 1,
-        })).await?;
-        // Simple retry: always retry up to 3 attempts
-        let will_retry = (replayed.activities_failed + 1) < 3;
-        Ok((will_retry, (replayed.activities_failed + 1) as u32 + 1))
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.activities_failed += 1;
+        log.event_count += 1;
+        let will_retry = log.activities_failed < 3;
+        Ok((will_retry, log.activities_failed as u32 + 1))
     }
 
     async fn replay_workflow(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
     ) -> Result<(u64, String), String> {
-        let events = {
-            let logs = self.logs.lock().await;
-            let log = logs
-                .get(workflow_id)
-                .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-            if log.namespace != namespace {
-                return Err(format!(
-                    "Workflow {} not found in namespace {}",
-                    workflow_id, namespace
-                ));
-            }
-            log.events.clone()
-        };
-        let replayed = Self::replay_events(&events);
-        let status_str = format!("{:?}", replayed.status);
-        Ok((events.len() as u64, status_str))
+        let logs = self.logs.read().unwrap();
+        let log = logs.get(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        Ok((log.event_count, format!("{:?}", log.status)))
     }
 
     async fn reset_workflow(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-        reset_to_event_id: i64,
-        reason: &str,
+        _reset_to_event_id: i64,
+        _reason: &str,
     ) -> Result<String, String> {
-        let events = {
-            let logs = self.logs.lock().await;
-            let log = logs
-                .get(workflow_id)
-                .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-            if log.namespace != namespace {
-                return Err("Namespace mismatch".into());
-            }
-            log.events.len() as i64
-        };
-        if reset_to_event_id <= 0 || reset_to_event_id > events {
-            return Err(format!(
-                "Event ID {} out of range (1..{})",
-                reset_to_event_id, events
-            ));
-        }
-        let new_run_id = format!("run-{}", uuid::Uuid::new_v4());
-        self.append_event(
-            workflow_id,
-            "WorkflowExecutionReset",
-            serde_json::json!({
-                "reset_to_event_id": reset_to_event_id, "reason": reason, "new_run_id": new_run_id,
-            }),
-        )
-        .await?;
+        let mut logs = self.logs.write().unwrap();
+        let log = logs.get_mut(workflow_id)
+            .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
+        log.status = WorkflowStatus::Running;
+        log.event_count += 1;
+        let new_run_id = format!("run-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
         Ok(new_run_id)
     }
 
-    async fn batch_terminate(&self, namespace: &str, reason: &str, max_count: i64) -> u64 {
-        // Only terminate RUNNING workflows (replay to check status)
-        let targets: Vec<String> = {
-            let all_events: Vec<(String, Vec<HistoryEvent>)> = {
-                let logs = self.logs.lock().await;
-                logs.iter()
-                    .filter(|(_, log)| log.namespace == namespace)
-                    .map(|(id, log)| (id.clone(), log.events.clone()))
-                    .collect()
-            };
-            all_events
-                .iter()
-                .filter(|(_, events)| {
-                    let s = Self::replay_events(events);
-                    s.status == WorkflowStatus::Running
-                })
-                .map(|(id, _)| id.clone())
-                .take(if max_count > 0 {
-                    max_count as usize
-                } else {
-                    usize::MAX
-                })
-                .collect()
-        };
+    async fn batch_terminate(&self, namespace: &str, _reason: &str, max_count: i64) -> u64 {
+        let mut logs = self.logs.write().unwrap();
+        let targets: Vec<String> = logs.iter()
+            .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
+            .filter(|(_, log)| log.status == WorkflowStatus::Running)
+            .map(|(id, _)| id.clone())
+            .take(if max_count > 0 { max_count as usize } else { usize::MAX })
+            .collect();
         let mut count = 0u64;
         for wf_id in &targets {
-            if self
-                .terminate_workflow(namespace, wf_id, reason)
-                .await
-                .is_ok()
-            {
+            if let Some(log) = logs.get_mut(wf_id) {
+                log.status = WorkflowStatus::Terminated;
+                log.event_count += 1;
                 count += 1;
             }
         }
@@ -899,39 +519,22 @@ impl TemporalEngine {
     async fn batch_signal(
         &self,
         namespace: &str,
-        signal_name: &str,
-        payload: Vec<u8>,
+        _signal_name: &str,
+        _payload: Vec<u8>,
         max_count: i64,
     ) -> u64 {
-        let targets: Vec<String> = {
-            let all_events: Vec<(String, Vec<HistoryEvent>)> = {
-                let logs = self.logs.lock().await;
-                logs.iter()
-                    .filter(|(_, log)| log.namespace == namespace)
-                    .map(|(id, log)| (id.clone(), log.events.clone()))
-                    .collect()
-            };
-            all_events
-                .iter()
-                .filter(|(_, events)| {
-                    let s = Self::replay_events(events);
-                    s.status == WorkflowStatus::Running
-                })
-                .map(|(id, _)| id.clone())
-                .take(if max_count > 0 {
-                    max_count as usize
-                } else {
-                    usize::MAX
-                })
-                .collect()
-        };
+        let mut logs = self.logs.write().unwrap();
+        let targets: Vec<String> = logs.iter()
+            .filter(|(_, log)| namespace.is_empty() || log.namespace == namespace)
+            .filter(|(_, log)| log.status == WorkflowStatus::Running)
+            .map(|(id, _)| id.clone())
+            .take(if max_count > 0 { max_count as usize } else { usize::MAX })
+            .collect();
         let mut count = 0u64;
         for wf_id in &targets {
-            if self
-                .signal_workflow(namespace, wf_id, signal_name, payload.clone())
-                .await
-                .is_ok()
-            {
+            if let Some(log) = logs.get_mut(wf_id) {
+                log.signals_received += 1;
+                log.event_count += 1;
                 count += 1;
             }
         }
@@ -942,17 +545,13 @@ impl TemporalEngine {
 
     async fn get_workflow_history(
         &self,
-        namespace: &str,
+        _namespace: &str,
         workflow_id: &str,
-    ) -> Result<Vec<HistoryEvent>, String> {
-        let logs = self.logs.lock().await;
-        let log = logs
-            .get(workflow_id)
+    ) -> Result<u64, String> {
+        let logs = self.logs.read().unwrap();
+        let log = logs.get(workflow_id)
             .ok_or_else(|| format!("Workflow {} not found", workflow_id))?;
-        if log.namespace != namespace {
-            return Err("Namespace mismatch".into());
-        }
-        Ok(log.events.clone())
+        Ok(log.event_count)
     }
 }
 
@@ -1211,7 +810,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
         request: Request<RegisterNamespaceRequest>,
     ) -> Result<Response<RegisterNamespaceResponse>, Status> {
         let req = request.into_inner();
-        let mut namespaces = self.engine.namespaces.lock().await;
+        let mut namespaces = self.engine.namespaces.write().unwrap();
         let already_exists = namespaces.contains_key(&req.name);
         if !already_exists {
             namespaces.insert(
@@ -1259,22 +858,14 @@ impl BenchmarkService for BenchmarkServiceImpl {
         &self,
         _request: Request<HealthCheckRequest>,
     ) -> Result<Response<HealthCheckResponse>, Status> {
-        // Clone all events under lock, replay outside — same pattern as count_workflows
-        let all_events: Vec<Vec<HistoryEvent>> = {
-            let logs = self.engine.logs.lock().await;
-            logs.values().map(|l| l.events.clone()).collect()
-        };
-        let active = all_events
-            .iter()
-            .filter(|events| {
-                let replayed = TemporalEngine::replay_events(events);
-                replayed.status == WorkflowStatus::Running
-            })
+        let logs = self.engine.logs.read().unwrap();
+        let active = logs.values()
+            .filter(|l| l.status == WorkflowStatus::Running)
             .count() as i64;
 
         Ok(Response::new(HealthCheckResponse {
             healthy: true,
-            engine_version: "temporal-bridge-0.1.0".into(),
+            engine_version: "temporal-bridge-0.2.0".into(),
             engine_name: "Temporal-Bridge".into(),
             uptime_secs: self.engine.start_time.elapsed().as_secs() as i64,
             active_workflows: active,
@@ -1775,7 +1366,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
         req: Request<DescribeNamespaceRequest>,
     ) -> Result<Response<DescribeNamespaceResponse>, Status> {
         let r = req.into_inner();
-        let namespaces = self.engine.namespaces.lock().await;
+        let namespaces = self.engine.namespaces.read().unwrap();
         match namespaces.get(&r.name) {
             Some(ns) => Ok(Response::new(DescribeNamespaceResponse {
                 name: ns.name.clone(),
@@ -1795,7 +1386,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
         req: Request<UpdateNamespaceRequest>,
     ) -> Result<Response<UpdateNamespaceResponse>, Status> {
         let r = req.into_inner();
-        let mut namespaces = self.engine.namespaces.lock().await;
+        let mut namespaces = self.engine.namespaces.write().unwrap();
         match namespaces.get_mut(&r.name) {
             Some(ns) => {
                 if !r.description.is_empty() {
@@ -1825,7 +1416,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
         let r = req.into_inner();
         // Remove namespace registration
         {
-            let mut namespaces = self.engine.namespaces.lock().await;
+            let mut namespaces = self.engine.namespaces.write().unwrap();
             namespaces.remove(&r.name);
         }
         // Clear all workflows in this namespace
@@ -1846,26 +1437,17 @@ impl BenchmarkService for BenchmarkServiceImpl {
         } else {
             &r.namespace
         };
-        // Find a running workflow in this namespace/task queue
-        let all_events: Vec<(String, Vec<HistoryEvent>)> = {
-            let logs = self.engine.logs.lock().await;
-            logs.iter()
-                .filter(|(_, log)| log.namespace == ns)
-                .map(|(id, log)| (id.clone(), log.events.clone()))
-                .collect()
-        };
-        for (wf_id, events) in &all_events {
-            let replayed = TemporalEngine::replay_events(events);
-            if replayed.status == WorkflowStatus::Running {
-                if let Some(last) = events.last() {
-                    return Ok(Response::new(PollWorkflowTaskResponse {
-                        task_token: format!("wt-{}-{}", wf_id, uuid::Uuid::new_v4()),
-                        event_id: last.event_id as i64,
-                        event_type: last.event_type.clone(),
-                        workflow_execution: Vec::new(),
-                        has_task: true,
-                    }));
-                }
+        // Find a running workflow in this namespace
+        let logs = self.engine.logs.read().unwrap();
+        for (wf_id, log) in logs.iter() {
+            if log.namespace == ns && log.status == WorkflowStatus::Running {
+                return Ok(Response::new(PollWorkflowTaskResponse {
+                    task_token: format!("wt-{}-{}", wf_id, self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
+                    event_id: log.event_count as i64,
+                    event_type: "WorkflowTask".to_string(),
+                    workflow_execution: Vec::new(),
+                    has_task: true,
+                }));
             }
         }
         Ok(Response::new(PollWorkflowTaskResponse {
@@ -1886,52 +1468,15 @@ impl BenchmarkService for BenchmarkServiceImpl {
         } else {
             &r.namespace
         };
-        // Scan event logs for workflows with scheduled-but-not-completed activities
-        let all_events: Vec<(String, Vec<HistoryEvent>)> = {
-            let logs = self.engine.logs.lock().await;
-            logs.iter()
-                .filter(|(_, log)| log.namespace == ns)
-                .map(|(id, log)| (id.clone(), log.events.clone()))
-                .collect()
-        };
-        for (wf_id, events) in &all_events {
-            let replayed = TemporalEngine::replay_events(events);
-            if replayed.status != WorkflowStatus::Running {
-                continue;
-            }
-            // Find scheduled activities that haven't been completed/failed yet
-            let mut scheduled: Vec<(String, String)> = Vec::new(); // (activity_id, activity_type)
-            let mut completed: std::collections::HashSet<String> = std::collections::HashSet::new();
-            for event in events {
-                match event.event_type.as_str() {
-                    "ActivityTaskScheduled" => {
-                        if let (Some(aid), Some(atype)) = (
-                            event.attributes.get("activity_id").and_then(|v| v.as_str()),
-                            event
-                                .attributes
-                                .get("activity_type")
-                                .and_then(|v| v.as_str()),
-                        ) {
-                            scheduled.push((aid.to_string(), atype.to_string()));
-                        }
-                    }
-                    "ActivityTaskCompleted" | "ActivityTaskFailed" => {
-                        if let Some(aid) =
-                            event.attributes.get("activity_id").and_then(|v| v.as_str())
-                        {
-                            completed.insert(aid.to_string());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            // Return the first uncompleted activity
-            for (aid, atype) in &scheduled {
-                if !completed.contains(aid.as_str()) {
+        // Find workflows with pending activities
+        let logs = self.engine.logs.read().unwrap();
+        for (wf_id, log) in logs.iter() {
+            if log.namespace == ns && log.status == WorkflowStatus::Running {
+                if log.activities_scheduled > log.activities_completed + log.activities_failed {
                     return Ok(Response::new(PollActivityTaskResponse {
-                        task_token: format!("at-{}-{}", wf_id, uuid::Uuid::new_v4()),
-                        activity_id: aid.clone(),
-                        activity_type: atype.clone(),
+                        task_token: format!("at-{}-{}", wf_id, self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
+                        activity_id: format!("act-{}", self.engine.next_id.fetch_add(1, Ordering::Relaxed)),
+                        activity_type: "activity".to_string(),
                         input: Vec::new(),
                         workflow_id: wf_id.clone(),
                         has_task: true,
@@ -1961,28 +1506,11 @@ impl BenchmarkService for BenchmarkServiceImpl {
             &r.namespace
         };
         match self.engine.get_workflow_history(ns, &r.workflow_id).await {
-            Ok(events) => {
-                let total = events.len() as i64;
-                let page_size = if r.max_page_size > 0 {
-                    r.max_page_size as usize
-                } else {
-                    1000
-                };
-                let serialized: Vec<Vec<u8>> = events
-                    .iter()
-                    .take(page_size)
-                    .map(|e| {
-                        serde_json::to_vec(&serde_json::json!({
-                            "event_id": e.event_id, "event_type": e.event_type,
-                            "timestamp_us": e.timestamp_us, "attributes": e.attributes,
-                        }))
-                        .unwrap_or_default()
-                    })
-                    .collect();
+            Ok(event_count) => {
                 Ok(Response::new(GetWorkflowHistoryResponse {
-                    events: serialized,
+                    events: Vec::new(),
                     next_page_token: Vec::new(),
-                    total_event_count: total,
+                    total_event_count: event_count as i64,
                 }))
             }
             Err(e) => Err(Status::not_found(e)),
@@ -1997,33 +1525,28 @@ impl BenchmarkService for BenchmarkServiceImpl {
         let req = request.into_inner();
         let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
 
-        // Clone event logs under lock, then replay each outside lock
-        let all_logs: Vec<(String, Vec<HistoryEvent>)> = {
-            let logs = self.engine.logs.lock().await;
-            logs.iter()
-                .filter(|(_, log)| log.namespace == ns)
-                .map(|(wf_id, log)| (wf_id.clone(), log.events.clone()))
-                .collect()
-        };
+        let logs = self.engine.logs.read().unwrap();
 
         let mut executions = Vec::new();
-        for (_wf_id, events) in &all_logs {
-            let state = TemporalEngine::replay_events(events);
-            let status_str = format!("{:?}", state.status);
+        for (wf_id, log) in logs.iter() {
+            if log.namespace != ns {
+                continue;
+            }
+            let status_str = format!("{:?}", log.status);
             if !req.status_filter.is_empty() && req.status_filter.to_lowercase() != status_str.to_lowercase() && req.status_filter != "all" {
                 continue;
             }
             executions.push(WorkflowExecutionInfo {
-                workflow_id: state.workflow_id,
-                run_id: state.run_id,
-                workflow_type: state.workflow_type,
-                namespace: state.namespace,
+                workflow_id: wf_id.clone(),
+                run_id: wf_id.clone(),
+                workflow_type: log.workflow_type.clone(),
+                namespace: log.namespace.clone(),
                 status: status_str,
                 start_time_ms: 0,
                 close_time_ms: 0,
                 task_queue: String::new(),
-                search_attributes: state.search_attributes,
-                history_length: events.len() as i32,
+                search_attributes: log.search_attributes.clone(),
+                history_length: log.event_count as i32,
             });
         }
 
@@ -2043,37 +1566,33 @@ impl BenchmarkService for BenchmarkServiceImpl {
         let req = request.into_inner();
         let ns = if req.namespace.is_empty() { "default" } else { &req.namespace };
 
-        let events = {
-            let logs = self.engine.logs.lock().await;
-            let log = logs.get(&req.workflow_id)
-                .ok_or_else(|| Status::not_found(format!("workflow {} not found", req.workflow_id)))?;
-            if log.namespace != ns {
-                return Err(Status::not_found("namespace mismatch"));
-            }
-            log.events.clone()
-        };
+        let logs = self.engine.logs.read().unwrap();
+        let log = logs.get(&req.workflow_id)
+            .ok_or_else(|| Status::not_found(format!("workflow {} not found", req.workflow_id)))?;
+        if log.namespace != ns {
+            return Err(Status::not_found("namespace mismatch"));
+        }
 
-        let state = TemporalEngine::replay_events(&events);
-        let status_str = format!("{:?}", state.status);
+        let status_str = format!("{:?}", log.status);
 
         let execution = WorkflowExecutionInfo {
-            workflow_id: state.workflow_id,
-            run_id: state.run_id,
-            workflow_type: state.workflow_type,
-            namespace: state.namespace,
+            workflow_id: req.workflow_id.clone(),
+            run_id: req.workflow_id.clone(),
+            workflow_type: log.workflow_type.clone(),
+            namespace: log.namespace.clone(),
             status: status_str,
             start_time_ms: 0,
             close_time_ms: 0,
             task_queue: String::new(),
-            search_attributes: state.search_attributes,
-            history_length: events.len() as i32,
+            search_attributes: log.search_attributes.clone(),
+            history_length: log.event_count as i32,
         };
 
         Ok(Response::new(DescribeWorkflowExecutionResponse {
             execution: Some(execution),
             pending_activities: Vec::new(),
             pending_children: Vec::new(),
-            history_length: events.len() as i64,
+            history_length: log.event_count as i64,
             execution_duration_ms: 0,
         }))
     }
@@ -2123,15 +1642,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grpc_addr: SocketAddr = format!("{}:{}", bind_ip, grpc_port).parse()?;
 
     info!("╦  ╦ ╔╗╔ ╦╔═ Temporal Bridge");
-    info!("╚╗╔╝ ║║║ ╠╩╗ v0.2.0 — Event-sourcing mode");
+    info!("╚╗╔╝ ║║║ ╠╩╗ v0.2.0 — Fair-comparison mock mode");
     info!("  ╚╝  ╝╚╝ ╩ ╩");
     info!("gRPC:  http://{}", grpc_addr);
-    info!("Mode:  Event-sourcing simulation (O(N) replay)");
-    info!("");
-    info!("Simulates Temporal's event-sourcing architecture:");
-    info!("  - Append-only event history per workflow");
-    info!("  - O(N) event replay on every signal/query/complete");
-    info!("  - JSON serialization/deserialization per event");
+    info!("Mode:  Direct-state HashMap mock (fair comparison with Velocity)");
 
     let engine = TemporalEngine::new();
     let service = BenchmarkServiceImpl { engine };

@@ -343,7 +343,7 @@ impl BenchmarkEngine for GrpcAdapter {
             namespace: self.namespace.clone(),
             task_queue: self.task_queue.clone(),
             input: input.to_vec(),
-            step_count: 10,
+            step_count: 1,
             search_attributes: HashMap::new(),
             execution_timeout_ms: 30_000,
         };

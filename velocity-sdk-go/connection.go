@@ -232,19 +232,6 @@ type SearchWorkflowsRequest struct {
 	Query     string `json:"query"`
 }
 
-type ResetWorkflowRequest struct {
-	Namespace  string `json:"namespace"`
-	WorkflowID string `json:"workflowId"`
-	EventID    int64  `json:"eventId"`
-}
-
-type UpdateWorkflowRequest struct {
-	Namespace   string      `json:"namespace"`
-	WorkflowID  string      `json:"workflowId"`
-	UpdateName  string      `json:"updateName"`
-	Input       interface{} `json:"input,omitempty"`
-}
-
 type ContinueAsNewRequest struct {
 	Namespace       string      `json:"namespace"`
 	WorkflowID      string      `json:"workflowId"`
@@ -263,24 +250,6 @@ type SetSearchAttributesRequest struct {
 	Namespace  string            `json:"namespace"`
 	WorkflowID string            `json:"workflowId"`
 	Attributes map[string]interface{} `json:"attributes"`
-}
-
-type CreateScheduleRequest struct {
-	Namespace      string      `json:"namespace"`
-	ScheduleID     string      `json:"scheduleId"`
-	CronExpression string      `json:"cronExpression"`
-	WorkflowType   string      `json:"workflowType"`
-	TaskQueue      string      `json:"taskQueue"`
-	Input          interface{} `json:"input,omitempty"`
-}
-
-type BatchOperationRequest struct {
-	Namespace   string   `json:"namespace"`
-	Operation   string   `json:"operation"`
-	WorkflowIDs []string `json:"workflowIds"`
-	Reason      string   `json:"reason,omitempty"`
-	SignalName  string   `json:"signalName,omitempty"`
-	SignalArgs  interface{} `json:"signalArgs,omitempty"`
 }
 
 // ─── Response types ───────────────────────────────────────────────────────────
@@ -428,21 +397,6 @@ func (c *Connection) SearchWorkflows(ctx context.Context, req *SearchWorkflowsRe
 	return resp.Workflows, nil
 }
 
-// ResetWorkflow resets a workflow to a previous event.
-func (c *Connection) ResetWorkflow(ctx context.Context, req *ResetWorkflowRequest) error {
-	return c.doJSON(ctx, "POST", "/api/workflows/reset", req, nil)
-}
-
-// UpdateWorkflow sends a synchronous update to a running workflow.
-func (c *Connection) UpdateWorkflow(ctx context.Context, req *UpdateWorkflowRequest) (interface{}, error) {
-	var result interface{}
-	err := c.doJSON(ctx, "POST", "/api/workflows/update", req, &result)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
 // ContinueAsNew continues a workflow as a new execution.
 func (c *Connection) ContinueAsNew(ctx context.Context, req *ContinueAsNewRequest) (*StartWorkflowResponse, error) {
 	var resp StartWorkflowResponse
@@ -461,50 +415,6 @@ func (c *Connection) SetMemo(ctx context.Context, req *SetMemoRequest) error {
 // SetSearchAttributes sets search attributes on a workflow.
 func (c *Connection) SetSearchAttributes(ctx context.Context, req *SetSearchAttributesRequest) error {
 	return c.doJSON(ctx, "POST", "/api/workflows/search-attributes", req, nil)
-}
-
-// CreateSchedule creates a recurring workflow schedule.
-func (c *Connection) CreateSchedule(ctx context.Context, req *CreateScheduleRequest) error {
-	return c.doJSON(ctx, "POST", "/api/schedules", req, nil)
-}
-
-// DeleteSchedule deletes a workflow schedule.
-func (c *Connection) DeleteSchedule(ctx context.Context, namespace, scheduleID string) error {
-	return c.doJSON(ctx, "DELETE", fmt.Sprintf("/api/schedules/%s", scheduleID), nil, nil)
-}
-
-// ListSchedules lists all schedules in a namespace.
-func (c *Connection) ListSchedules(ctx context.Context, namespace string) ([]map[string]interface{}, error) {
-	var resp struct {
-		Schedules []map[string]interface{} `json:"schedules"`
-	}
-	err := c.doJSON(ctx, "GET", "/api/schedules", nil, &resp)
-	if err != nil {
-		return []map[string]interface{}{}, nil
-	}
-	return resp.Schedules, nil
-}
-
-// StartBatchOperation starts a batch operation on multiple workflows.
-func (c *Connection) StartBatchOperation(ctx context.Context, req *BatchOperationRequest) (string, error) {
-	var resp struct {
-		JobID string `json:"jobId"`
-	}
-	err := c.doJSON(ctx, "POST", "/api/batch", req, &resp)
-	if err != nil {
-		return "", err
-	}
-	return resp.JobID, nil
-}
-
-// DescribeBatchOperation returns the status of a batch operation.
-func (c *Connection) DescribeBatchOperation(ctx context.Context, namespace, jobID string) (map[string]interface{}, error) {
-	var resp map[string]interface{}
-	err := c.doJSON(ctx, "GET", fmt.Sprintf("/api/batch/%s", jobID), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
 }
 
 // ─── Helper functions ─────────────────────────────────────────────────────────

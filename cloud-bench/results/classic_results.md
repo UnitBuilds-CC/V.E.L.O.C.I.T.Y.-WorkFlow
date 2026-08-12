@@ -1,4 +1,4 @@
-# VELOCITY-WorkFlow vs Temporal — Final Symmetric Benchmark Report
+# VELOCITY-WorkFlow Classic vs Temporal — Final Symmetric Benchmark Report
 
 **Generated:** 2026-08-12T11:53:47.490517009+00:00  
 **VELOCITY version:** 0.1.0  

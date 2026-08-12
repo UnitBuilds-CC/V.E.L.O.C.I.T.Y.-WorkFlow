@@ -187,6 +187,9 @@ impl HttpAdapter {
     ///
     /// For Velocity Runtime: POST /{service}/{handler}
     /// For Restate: POST /{service}/{handler}
+    ///
+    /// Restate requires valid JSON bodies, so when the engine is Restate we wrap
+    /// the raw payload bytes into `{"data":"<hex>"}` to satisfy its JSON parser.
     pub async fn invoke_handler(
         &self,
         service: &str,
@@ -194,13 +197,14 @@ impl HttpAdapter {
         payload: &[u8],
     ) -> HttpOperationResult {
         let url = format!("{}/{}/{}", self.base_url, service, handler);
+        let body = self.maybe_wrap_json(payload);
         let start = Instant::now();
 
         match self
             .client
             .post(&url)
             .header("content-type", "application/json")
-            .body(payload.to_vec())
+            .body(body)
             .send()
             .await
         {
@@ -226,13 +230,14 @@ impl HttpAdapter {
         payload: &[u8],
     ) -> HttpOperationResult {
         let url = format!("{}/{}/{}/{}", self.base_url, service, key, handler);
+        let body = self.maybe_wrap_json(payload);
         let start = Instant::now();
 
         match self
             .client
             .post(&url)
             .header("content-type", "application/json")
-            .body(payload.to_vec())
+            .body(body)
             .send()
             .await
         {
@@ -259,6 +264,29 @@ impl HttpAdapter {
                 HttpOperationResult::ok(latency, status, bytes)
             }
             Err(e) => HttpOperationResult::err(start.elapsed(), e.to_string()),
+        }
+    }
+
+    /// For Restate, wrap raw bytes into a valid JSON body so the SDK's
+    /// deserializer does not reject the request.  Velocity Runtime accepts
+    /// either form, so we always send valid JSON for a fair comparison.
+    ///
+    /// If the payload is already valid JSON it is returned unchanged.
+    fn maybe_wrap_json(&self, payload: &[u8]) -> Vec<u8> {
+        // Fast path: already valid JSON (Restate and Velocity both accept it)
+        if serde_json::from_slice::<serde_json::Value>(payload).is_ok() {
+            return payload.to_vec();
+        }
+        match self.engine_kind {
+            HttpEngineKind::Restate => {
+                // Wrap as a JSON object — use lossy UTF-8 so the bench payload
+                // (repeated 'x' bytes) becomes a plain JSON string value.
+                let text = String::from_utf8_lossy(payload);
+                serde_json::to_vec(&serde_json::json!({ "data": text }))
+                    .unwrap_or_else(|_| payload.to_vec())
+            }
+            // Velocity Runtime accepts raw bytes — no wrapping needed
+            HttpEngineKind::VelocityRuntime => payload.to_vec(),
         }
     }
 
