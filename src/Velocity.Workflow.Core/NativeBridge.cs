@@ -22,4 +22,10 @@ public static unsafe partial class NativeBridge
 
     [LibraryImport(DllName, EntryPoint = "velocity_slab_merge_crdt")]
     public static partial int VelocitySlabMergeCrdt(void* targetCounter, void* sourceCounter);
+
+    [LibraryImport(DllName, EntryPoint = "velocity_nda_verify")]
+    public static partial int VelocityNdaVerify(NdaHeader* header);
+
+    [LibraryImport(DllName, EntryPoint = "velocity_arena_alloc")]
+    public static partial int VelocityArenaAlloc(void* arenaPage, byte* payloadPtr, nuint payloadLen, nuint* outOffset);
 }

@@ -1,6 +1,8 @@
 //! C-ABI Foreign Function Interface (FFI) bindings for zero-allocation C#/Rust interop.
 
+use crate::arena::BumpArenaPage;
 use crate::crdt::PNCounter;
+use crate::nda::NdaHeader;
 use crate::slab::SlabHeader;
 
 #[no_mangle]
@@ -56,6 +58,37 @@ pub unsafe extern "C" fn velocity_slab_merge_crdt(
     0
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn velocity_nda_verify(header: *const NdaHeader) -> i32 {
+    if header.is_null() {
+        return -1;
+    }
+    if (*header).verify_merkle() {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn velocity_arena_alloc(
+    arena: *mut BumpArenaPage,
+    payload_ptr: *const u8,
+    payload_len: usize,
+    out_offset: *mut usize,
+) -> i32 {
+    if arena.is_null() || payload_ptr.is_null() || out_offset.is_null() {
+        return -1;
+    }
+    let slice = std::slice::from_raw_parts(payload_ptr, payload_len);
+    if let Some(offset) = (*arena).alloc_slice(slice) {
+        *out_offset = offset;
+        0
+    } else {
+        -2 // Page full
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,6 +107,14 @@ mod tests {
             let step_res = velocity_slab_mark_step(&mut header, 2);
             assert_eq!(step_res, 0);
             assert_eq!(velocity_slab_verify(&header), 1);
+        }
+    }
+
+    #[test]
+    fn test_ffi_nda_verify() {
+        let header = NdaHeader::new(5, 2, 128);
+        unsafe {
+            assert_eq!(velocity_nda_verify(&header), 1);
         }
     }
 }
