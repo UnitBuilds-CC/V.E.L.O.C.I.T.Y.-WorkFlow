@@ -90,7 +90,7 @@ jobs:
           cp target/release/libvelocity_workflow_engine.so src/Velocity.Workflow.Core/runtimes/linux-x64/native/
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
 

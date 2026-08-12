@@ -109,7 +109,7 @@ public unsafe class StepBreakdownBenchmarks
         nuint outOffset = 0;
         fixed (byte* pPtr = _payload)
         {
-            return NativeBridge.VelocityArenaAlloc(_arenaPtr, pPtr, (nuint)_payload.Length, &outOffset);
+            return NativeBridge.VelocityArenaAlloc(_arenaPtr, pPtr, (nuint)_payload!.Length, &outOffset);
         }
     }
 
