@@ -75,14 +75,18 @@ else
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
 
-# ── 3. Clone repository ────────────────────────────────────────────────────
+# ── 3. Extract repository ─────────────────────────────────────────────────
 REPO_DIR="$HOME/VELOCITY-WorkFlow"
-if [ -d "$REPO_DIR" ]; then
-    log "[3/6] Repository exists — pulling latest..."
+if [ -f "$HOME/velocity-repo.tar.gz" ]; then
+    log "[3/6] Extracting uploaded repository..."
+    mkdir -p "$REPO_DIR"
     cd "$REPO_DIR"
-    git pull --ff-only 2>/dev/null || warn "Using existing checkout"
+    tar xzf "$HOME/velocity-repo.tar.gz"
+    rm -f "$HOME/velocity-repo.tar.gz"
+    log "  Repository extracted."
 else
-    log "[3/6] Cloning repository..."
+    log "[3/6] No tarball found — attempting git clone..."
+    git clone --depth 1 git@github.com:UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow.git "$REPO_DIR" 2>/dev/null || \
     git clone --depth 1 https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow.git "$REPO_DIR"
     cd "$REPO_DIR"
 fi

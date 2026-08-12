@@ -149,31 +149,29 @@ done
 echo ""
 log "  SSH is ready."
 
-# ── 6. Upload remote benchmark script ──────────────────────────────────────
-log "[6/8] Uploading benchmark script to instance..."
+# ── 6. Upload repo + benchmark script to instance ─────────────────────────
+log "[6/8] Packaging and uploading repository to instance..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Try to find cloud_ec2_bench.sh next to this script
-REMOTE_SCRIPT=""
-for candidate in \
-    "$SCRIPT_DIR/cloud_ec2_bench.sh" \
-    "$HOME/VELOCITY-WorkFlow/cloud-bench/cloud_ec2_bench.sh" \
-    "$HOME/cloud_ec2_bench.sh"; do
-    if [ -f "$candidate" ]; then
-        REMOTE_SCRIPT="$candidate"
-        break
-    fi
-done
+# Tar the repo (exclude .git to save space) and upload
+log "  Creating tarball (this may take a moment)..."
+cd "$REPO_ROOT"
+tar czf /tmp/velocity-repo.tar.gz \
+    --exclude='.git' \
+    --exclude='target' \
+    --exclude='node_modules' \
+    --exclude='*.log' \
+    .
 
-if [ -z "$REMOTE_SCRIPT" ]; then
-    log "  Script not found locally — downloading from GitHub..."
-    curl -sSfL "https://raw.githubusercontent.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/main/cloud-bench/cloud_ec2_bench.sh" \
-        -o /tmp/cloud_ec2_bench.sh
-    REMOTE_SCRIPT=/tmp/cloud_ec2_bench.sh
-fi
+scp $SSH_OPTS /tmp/velocity-repo.tar.gz "ubuntu@$PUBLIC_IP:~/velocity-repo.tar.gz"
+rm -f /tmp/velocity-repo.tar.gz
+log "  Repo uploaded ($(du -h /tmp/velocity-repo.tar.gz 2>/dev/null | cut -f1 || echo 'done'))."
 
+# Also upload the benchmark script
+REMOTE_SCRIPT="$SCRIPT_DIR/cloud_ec2_bench.sh"
 scp $SSH_OPTS "$REMOTE_SCRIPT" "ubuntu@$PUBLIC_IP:~/cloud_ec2_bench.sh"
-log "  Uploaded."
+log "  All files uploaded."
 
 # ── 7. Run benchmark on instance ───────────────────────────────────────────
 log "[7/8] Running benchmark on EC2 instance..."
