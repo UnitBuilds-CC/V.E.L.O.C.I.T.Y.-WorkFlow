@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Converter — VELOCITY-WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .converter-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .converter-panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+        .converter-panel h3 { margin: 0 0 1rem 0; font-size: 1rem; color: var(--text-primary); }
+        .codec-selector { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .codec-btn { padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text-secondary); cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+        .codec-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .codec-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+        .payload-input { width: 100%; min-height: 200px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.85rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text-primary); resize: vertical; tab-size: 2; }
+        .payload-output { width: 100%; min-height: 200px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.85rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text-primary); overflow: auto; white-space: pre-wrap; word-break: break-all; }
+        .action-bar { display: flex; gap: 0.75rem; margin-bottom: 1rem; align-items: center; }
+        .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.2s; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-secondary { background: var(--bg); color: var(--text-primary); border: 1px solid var(--border); }
+        .btn-secondary:hover { border-color: var(--accent); }
+        .format-badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+        .format-json { background: #1a472a; color: #4ade80; }
+        .format-binary { background: #4a1a1a; color: #f87171; }
+        .format-text { background: #1a2a4a; color: #60a5fa; }
+        .history-panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-top: 1.5rem; }
+        .history-panel h3 { margin: 0 0 1rem 0; font-size: 1rem; }
+        .history-item { padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.8rem; cursor: pointer; transition: border-color 0.2s; }
+        .history-item:hover { border-color: var(--accent); }
+        .history-item .timestamp { color: var(--text-muted); font-size: 0.75rem; }
+        .history-item .codec { color: var(--accent); font-weight: 500; }
+        .compare-toggle { display: flex; align-items: center; gap: 0.5rem; }
+        .compare-toggle input { accent-color: var(--accent); }
+        .status-bar { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; font-size: 0.8rem; color: var(--text-muted); }
+        .line-numbers { counter-reset: line; }
+        .line-numbers span { display: block; counter-increment: line; }
+        .line-numbers span::before { content: counter(line); display: inline-block; width: 2.5rem; text-align: right; margin-right: 1rem; color: var(--text-muted); font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h2>VELOCITY</h2>
+            <span class="version">Data Converter</span>
+        </div>
+        <a href="index.html">Dashboard</a>
+        <a href="workflow-detail.html">Workflow Detail</a>
+        <a href="monitoring.html">Monitoring</a>
+        <a href="search.html">Search</a>
+        <a href="schedules.html">Schedules</a>
+        <a href="namespaces.html">Namespaces</a>
+        <a href="workers.html">Workers</a>
+        <a href="realtime.html">Real-Time</a>
+        <a href="designer.html">Designer</a>
+        <a href="events.html">Event History</a>
+        <a href="slab-explorer.html">Slab Explorer</a>
+        <a href="data-converter.html" class="active">Data Converter</a>
+        <a href="admin.html">Admin</a>
+        <a href="audit.html">Audit Log</a>
+        <a href="settings.html">Settings</a>
+    </nav>
+
+    <main class="content">
+        <div class="page-header">
+            <h1>Data Converter</h1>
+            <p>Encode and decode workflow payloads for inspection</p>
+        </div>
+
+        <div class="action-bar">
+            <div class="codec-selector" id="codecSelector">
+                <button class="codec-btn active" data-codec="identity">Identity</button>
+                <button class="codec-btn" data-codec="base64">Base64</button>
+                <button class="codec-btn" data-codec="json-pretty">JSON Pretty</button>
+                <button class="codec-btn" data-codec="gzip">Gzip</button>
+            </div>
+            <div style="flex: 1;"></div>
+            <div class="compare-toggle">
+                <input type="checkbox" id="compareMode"> <label for="compareMode">Compare Mode</label>
+            </div>
+        </div>
+
+        <div class="converter-layout" id="singleMode">
+            <div class="converter-panel">
+                <h3>Input <span class="format-badge" id="inputFormat"></span></h3>
+                <textarea class="payload-input" id="inputPayload" placeholder="Paste payload here..."></textarea>
+                <div class="status-bar">
+                    <span id="inputSize">0 bytes</span>
+                    <span id="inputLines">0 lines</span>
+                </div>
+            </div>
+            <div class="converter-panel">
+                <h3>Output <span class="format-badge" id="outputFormat"></span></h3>
+                <div class="payload-output" id="outputPayload">Output will appear here...</div>
+                <div class="status-bar">
+                    <span id="outputSize">0 bytes</span>
+                    <span id="outputLines">0 lines</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="converter-layout" id="compareModePanel" style="display: none;">
+            <div class="converter-panel">
+                <h3>Payload A</h3>
+                <textarea class="payload-input" id="compareA" placeholder="First payload..."></textarea>
+            </div>
+            <div class="converter-panel">
+                <h3>Payload B</h3>
+                <textarea class="payload-input" id="compareB" placeholder="Second payload..."></textarea>
+            </div>
+        </div>
+
+        <div class="action-bar">
+            <button class="btn btn-primary" id="encodeBtn">Encode</button>
+            <button class="btn btn-primary" id="decodeBtn">Decode</button>
+            <button class="btn btn-secondary" id="copyBtn">Copy Output</button>
+            <button class="btn btn-secondary" id="downloadBtn">Download</button>
+            <button class="btn btn-secondary" id="clearBtn">Clear</button>
+        </div>
+
+        <div class="history-panel">
+            <h3>Conversion History</h3>
+            <div id="historyList">
+                <p style="color: var(--text-muted); font-size: 0.85rem;">No conversions yet.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        let selectedCodec = 'identity';
+        let history = JSON.parse(localStorage.getItem('converterHistory') || '[]');
+
+        // Codec selection
+        document.querySelectorAll('.codec-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.codec-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedCodec = btn.dataset.codec;
+            });
+        });
+
+        // Compare mode toggle
+        document.getElementById('compareMode').addEventListener('change', (e) => {
+            document.getElementById('singleMode').style.display = e.target.checked ? 'none' : 'grid';
+            document.getElementById('compareModePanel').style.display = e.target.checked ? 'grid' : 'none';
+        });
+
+        // Input stats
+        const input = document.getElementById('inputPayload');
+        input.addEventListener('input', () => {
+            const data = input.value;
+            document.getElementById('inputSize').textContent = `${new Blob([data]).size} bytes`;
+            document.getElementById('inputLines').textContent = `${data.split('\n').length} lines`;
+            detectFormat(data, 'inputFormat');
+        });
+
+        function detectFormat(data, elementId) {
+            const el = document.getElementById(elementId);
+            try {
+                JSON.parse(data);
+                el.textContent = 'JSON';
+                el.className = 'format-badge format-json';
+            } catch {
+                if (/^[\x00-\x1F\x7F-\xFF]/.test(data)) {
+                    el.textContent = 'Binary';
+                    el.className = 'format-badge format-binary';
+                } else {
+                    el.textContent = 'Text';
+                    el.className = 'format-badge format-text';
+                }
+            }
+        }
+
+        // Encode
+        document.getElementById('encodeBtn').addEventListener('click', () => {
+            const data = input.value;
+            let result = '';
+            try {
+                switch (selectedCodec) {
+                    case 'base64':
+                        result = btoa(unescape(encodeURIComponent(data)));
+                        break;
+                    case 'json-pretty':
+                        result = JSON.stringify(JSON.parse(data), null, 2);
+                        break;
+                    case 'identity':
+                        result = data;
+                        break;
+                    default:
+                        result = `[${selectedCodec} encoding not available in browser]`;
+                }
+                document.getElementById('outputPayload').textContent = result;
+                document.getElementById('outputSize').textContent = `${new Blob([result]).size} bytes`;
+                document.getElementById('outputLines').textContent = `${result.split('\n').length} lines`;
+                detectFormat(result, 'outputFormat');
+                addToHistory('encode', selectedCodec, data.substring(0, 100));
+            } catch (e) {
+                document.getElementById('outputPayload').textContent = `Error: ${e.message}`;
+            }
+        });
+
+        // Decode
+        document.getElementById('decodeBtn').addEventListener('click', () => {
+            const data = input.value;
+            let result = '';
+            try {
+                switch (selectedCodec) {
+                    case 'base64':
+                        result = decodeURIComponent(escape(atob(data.trim())));
+                        break;
+                    case 'json-pretty':
+                        result = JSON.stringify(JSON.parse(data), null, 2);
+                        break;
+                    case 'identity':
+                        result = data;
+                        break;
+                    default:
+                        result = `[${selectedCodec} decoding not available in browser]`;
+                }
+                document.getElementById('outputPayload').textContent = result;
+                document.getElementById('outputSize').textContent = `${new Blob([result]).size} bytes`;
+                document.getElementById('outputLines').textContent = `${result.split('\n').length} lines`;
+                detectFormat(result, 'outputFormat');
+                addToHistory('decode', selectedCodec, data.substring(0, 100));
+            } catch (e) {
+                document.getElementById('outputPayload').textContent = `Error: ${e.message}`;
+            }
+        });
+
+        // Copy
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const output = document.getElementById('outputPayload').textContent;
+            navigator.clipboard.writeText(output).then(() => {
+                const btn = document.getElementById('copyBtn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy Output', 1500);
+            });
+        });
+
+        // Download
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const output = document.getElementById('outputPayload').textContent;
+            const blob = new Blob([output], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `payload-${Date.now()}.bin`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Clear
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            input.value = '';
+            document.getElementById('outputPayload').textContent = 'Output will appear here...';
+            document.getElementById('inputSize').textContent = '0 bytes';
+            document.getElementById('inputLines').textContent = '0 lines';
+            document.getElementById('outputSize').textContent = '0 bytes';
+            document.getElementById('outputLines').textContent = '0 lines';
+        });
+
+        // History
+        function addToHistory(operation, codec, preview) {
+            history.unshift({
+                operation,
+                codec,
+                preview,
+                timestamp: new Date().toISOString()
+            });
+            if (history.length > 10) history.pop();
+            localStorage.setItem('converterHistory', JSON.stringify(history));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('historyList');
+            if (history.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">No conversions yet.</p>';
+                return;
+            }
+            container.innerHTML = history.map(h => `
+                <div class="history-item" title="${h.preview.replace(/"/g, '&quot;')}">
+                    <span class="codec">${h.codec}</span>
+                    <span>${h.operation}</span>
+                    <span class="timestamp">${new Date(h.timestamp).toLocaleString()}</span>
+                </div>
+            `).join('');
+        }
+
+        renderHistory();
+    </script>
+</body>
+</html>
