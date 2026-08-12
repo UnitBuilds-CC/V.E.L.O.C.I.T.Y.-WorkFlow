@@ -146,15 +146,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli.profile
     );
 
-    // Apply profile
+    // Apply profile as a multiplier — don't override per-workload configs.
+    // Quick = 0.1x counts, Standard = 1x, Stress = 10x.
+    // This preserves each workload's tuned parameters while scaling the load.
+    let (count_mult, duration_mult) = match cli.profile {
+        WorkloadProfile::Quick => (0.1_f64, 0.25),
+        WorkloadProfile::Standard => (1.0, 1.0),
+        WorkloadProfile::Stress => (10.0, 2.0),
+    };
     let workload_defs: Vec<WorkloadDefinition> = workload_defs
         .into_iter()
         .map(|mut w| {
-            w.config = match cli.profile {
-                WorkloadProfile::Quick => WorkloadConfig::quick(),
-                WorkloadProfile::Standard => WorkloadConfig::standard(),
-                WorkloadProfile::Stress => WorkloadConfig::stress(),
-            };
+            w.config.workflow_count = (w.config.workflow_count as f64 * count_mult).max(1.0) as u64;
+            w.config.duration_secs = (w.config.duration_secs as f64 * duration_mult).max(1.0) as u64;
             w
         })
         .collect();
@@ -441,54 +445,73 @@ async fn run_simple_workflow(
     collector: &MetricsCollector,
 ) {
     let config = &workload.config;
+    let concurrency = config.concurrency.max(1) as usize;
 
-    for i in 0..config.workflow_count {
-        let start = Instant::now();
-        let wf_id = format!("{}-{}", workload.name, i);
+    // Process workflows in concurrent batches
+    for batch_start in (0..config.workflow_count).step_by(concurrency) {
+        let batch_end = (batch_start + concurrency).min(config.workflow_count);
+        let mut futures = Vec::new();
 
-        match engine.start_workflow("simple", &wf_id, b"input").await {
-            Ok(handle) => {
-                let elapsed = start.elapsed();
-                black_box(elapsed);
-                collector.record_start(elapsed);
+        for i in batch_start..batch_end {
+            let wf_id = format!("{}-{}", workload.name, i);
+            futures.push(run_one_workflow(engine, &wf_id, "simple", collector, config.timeout_ms));
+        }
 
-                // Drive the workflow to completion via gRPC
-                let complete_start = Instant::now();
-                match engine.complete_step(&handle, 0, b"done").await {
-                    Ok(result) => {
-                        black_box(&result);
-                        if result.success {
-                            match engine
-                                .wait_for_completion(
-                                    &handle,
-                                    Duration::from_millis(config.timeout_ms),
-                                )
-                                .await
-                            {
-                                Ok(completion) => {
-                                    black_box(&completion);
-                                    if completion.success {
-                                        collector.record_completion(complete_start.elapsed());
-                                    } else {
-                                        collector.record_error("completion_failed");
-                                    }
-                                }
-                                Err(e) => {
-                                    collector.record_error(&format!("completion_error: {}", e));
+        // Run the entire batch concurrently
+        let results = futures::future::join_all(futures).await;
+        for _result in results {
+            // Results are already recorded inside run_one_workflow
+        }
+    }
+}
+
+/// Helper: run a single workflow end-to-end, recording metrics.
+async fn run_one_workflow(
+    engine: &dyn BenchmarkEngine,
+    wf_id: &str,
+    workflow_type: &str,
+    collector: &MetricsCollector,
+    timeout_ms: u64,
+) {
+    let start = Instant::now();
+    match engine.start_workflow(workflow_type, wf_id, b"input").await {
+        Ok(handle) => {
+            let elapsed = start.elapsed();
+            black_box(elapsed);
+            collector.record_start(elapsed);
+
+            let complete_start = Instant::now();
+            match engine.complete_step(&handle, 0, b"done").await {
+                Ok(result) => {
+                    black_box(&result);
+                    if result.success {
+                        match engine
+                            .wait_for_completion(&handle, Duration::from_millis(timeout_ms))
+                            .await
+                        {
+                            Ok(completion) => {
+                                black_box(&completion);
+                                if completion.success {
+                                    collector.record_completion(complete_start.elapsed());
+                                } else {
+                                    collector.record_error("completion_failed");
                                 }
                             }
-                        } else {
-                            collector.record_error("complete_step_failed");
+                            Err(e) => {
+                                collector.record_error(&format!("completion_error: {}", e));
+                            }
                         }
-                    }
-                    Err(e) => {
-                        collector.record_error(&format!("complete_step_error: {}", e));
+                    } else {
+                        collector.record_error("complete_step_failed");
                     }
                 }
+                Err(e) => {
+                    collector.record_error(&format!("complete_step_error: {}", e));
+                }
             }
-            Err(e) => {
-                collector.record_error(&format!("start_error: {}", e));
-            }
+        }
+        Err(e) => {
+            collector.record_error(&format!("start_error: {}", e));
         }
     }
 }
@@ -607,30 +630,25 @@ async fn run_generic_workload(
     collector: &MetricsCollector,
 ) {
     let config = &workload.config;
+    let concurrency = config.concurrency.max(1) as usize;
 
-    for i in 0..config.workflow_count {
-        let start = Instant::now();
-        let wf_id = format!("{}-{}", workload.name, i);
+    // Process workflows in concurrent batches
+    for batch_start in (0..config.workflow_count).step_by(concurrency) {
+        let batch_end = (batch_start + concurrency).min(config.workflow_count);
+        let mut futures = Vec::new();
 
-        match engine
-            .start_workflow(&workload.name, &wf_id, b"input")
-            .await
-        {
-            Ok(handle) => {
-                let elapsed = start.elapsed();
-                black_box(elapsed);
-                collector.record_start(elapsed);
-                let _ = black_box(engine.complete_step(&handle, 0, b"done").await);
-                let _ = black_box(
-                    engine
-                        .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
-                        .await,
-                );
-            }
-            Err(e) => {
-                collector.record_error(&format!("error: {}", e));
-            }
+        for i in batch_start..batch_end {
+            let wf_id = format!("{}-{}", workload.name, i);
+            futures.push(run_one_workflow(
+                engine,
+                &wf_id,
+                &workload.name,
+                collector,
+                config.timeout_ms,
+            ));
         }
+
+        let _results = futures::future::join_all(futures).await;
     }
 }
 
