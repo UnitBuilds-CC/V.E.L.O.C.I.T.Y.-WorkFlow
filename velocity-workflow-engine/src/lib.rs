@@ -16,9 +16,11 @@ pub mod chaos_endurance;
 pub mod cluster;
 pub mod cold_storage;
 pub mod cron;
+pub mod db_adapter;
 pub mod durable_rpc;
 pub mod dynamic_config;
 pub mod engine;
+pub mod errors;
 pub mod event_history;
 pub mod ffi;
 pub mod hardware_traits;
@@ -40,6 +42,7 @@ pub mod rate_limiter;
 pub mod replication_daemon;
 pub mod replication_transport;
 pub mod replay;
+pub mod retry;
 pub mod saga;
 pub mod schedules;
 pub mod search_index;
@@ -53,6 +56,13 @@ pub mod worker_versioning;
 pub mod worker_registry;
 pub mod workflow_reset;
 
+// gRPC server module — only compiled when the `grpc` feature is enabled.
+// Requires protoc to be installed for proto compilation.
+#[cfg(feature = "grpc")]
+pub mod grpc_server;
+
+pub use errors::{VelocityError, VelocityResult, ErrorCategory, ErrorCode, FfiErrorCode};
+pub use retry::{RetryPolicy, RetryExecutor, RetryStats, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerMetrics, CircuitState};
 pub use ai_context::{AiContextWindow, AiContextConfig, AiContextStats, MessageRole, ContextMessage, AgentToolCall, ToolCallStatus};
 pub use archival::{ArchiveStore, ArchiveRecord, ArchivePolicy};
 pub use auth::{AuthManager, Permission, Role, Claims};
@@ -61,6 +71,7 @@ pub use chaos_endurance::{SoakTestConfig, SoakTestMetrics, run_soak_test, run_cr
 pub use cluster::{ClusterManager, ClusterInfo, ReplicationTask};
 pub use cold_storage::{FileColdStorage, ColdStorageRecord};
 pub use cron::{CronScheduler, CronExpression, CronError, CronFireEvent};
+pub use db_adapter::{DatabaseAdapter, DatabaseConfig, DatabaseError, DatabaseResult, PostgresAdapter, InMemoryAdapter, WorkflowRecord, WorkflowEventRecord, SearchAttributeValue as DbSearchAttributeValue, SearchAttributes, StatusFilter, SslMode};
 pub use durable_rpc::{DurableServiceMesh, DurableRpcConfig, DurableRpcStats, DurableRpcState, DurableRpcCall};
 pub use dynamic_config::DynamicConfig;
 pub use engine::{WorkflowEngine, WorkflowContext, WorkflowStatus};

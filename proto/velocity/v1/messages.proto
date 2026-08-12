@@ -1,0 +1,252 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "velocity/v1/common.proto";
+
+// ─── Workflow Execution ────────────────────────────────────────────────────────
+// Unique identifier for a workflow execution.
+
+message WorkflowExecution {
+  // User-supplied workflow ID (logical identifier).
+  string workflow_id = 1;
+
+  // System-generated run ID (unique per execution attempt).
+  string run_id = 2;
+}
+
+// ─── Workflow Type ─────────────────────────────────────────────────────────────
+// Identifies the workflow definition/type.
+
+message WorkflowType {
+  // Workflow type name (e.g., "OrderProcessingWorkflow").
+  string name = 1;
+
+  // Internal numeric ID (engine uses u64 workflow_type_id).
+  uint64 type_id = 2;
+}
+
+// ─── Activity Type ─────────────────────────────────────────────────────────────
+
+message ActivityType {
+  string name = 1;
+  uint64 type_id = 2;
+}
+
+// ─── Task Queue ────────────────────────────────────────────────────────────────
+// Named queue that workers poll for tasks. Engine hashes the name to a u64.
+
+message TaskQueue {
+  // Human-readable task queue name.
+  string name = 1;
+
+  // Computed hash (engine uses u64 task_queue_hash).
+  uint64 hash = 2;
+
+  // Task queue kind (workflow vs activity).
+  TaskKind kind = 3;
+}
+
+// ─── Workflow Execution Info ───────────────────────────────────────────────────
+// Summary of a workflow execution for listing/visibility (mirrors WorkflowExecutionInfo).
+
+message WorkflowExecutionInfo {
+  WorkflowExecution execution = 1;
+  WorkflowType type = 2;
+
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp close_time = 4;
+
+  WorkflowExecutionStatus status = 5;
+
+  // History length (event sequence number).
+  int64 history_length = 6;
+
+  // Namespace this workflow belongs to.
+  string namespace = 7;
+  uint64 namespace_id = 8;
+
+  // Task queue this workflow dispatches to.
+  TaskQueue task_queue = 9;
+
+  // Search attributes for visibility queries.
+  SearchAttributes search_attributes = 10;
+
+  // User-defined memo fields.
+  Memo memo = 11;
+
+  // Parent workflow (if child workflow).
+  WorkflowExecution parent_execution = 12;
+
+  // Total steps in the workflow slab.
+  uint32 total_steps = 13;
+}
+
+// ─── Workflow Execution Config ─────────────────────────────────────────────────
+// Configuration for starting a workflow execution.
+
+message WorkflowExecutionConfig {
+  WorkflowType workflow_type = 1;
+  TaskQueue task_queue = 2;
+
+  // Workflow execution timeout (total wall-clock time).
+  google.protobuf.Duration workflow_execution_timeout = 3;
+
+  // Workflow run timeout (single run time limit).
+  google.protobuf.Duration workflow_run_timeout = 4;
+
+  // Workflow task timeout (single workflow task processing limit).
+  google.protobuf.Duration workflow_task_timeout = 5;
+
+  // Retry policy for the workflow.
+  RetryPolicy retry_policy = 6;
+
+  // Memo fields.
+  Memo memo = 7;
+
+  // Search attributes.
+  SearchAttributes search_attributes = 8;
+
+  // Header for propagation.
+  Header header = 9;
+
+  // Cron schedule expression (e.g., "0 * * * *").
+  string cron_schedule = 10;
+
+  // Parent close policy (for child workflows).
+  ParentClosePolicy parent_close_policy = 11;
+}
+
+// ─── Pending Activity Info ─────────────────────────────────────────────────────
+
+message PendingActivityInfo {
+  ActivityType activity_type = 1;
+  string activity_id = 2;
+  string state = 3;
+
+  Payload heartbeat_details = 4;
+  google.protobuf.Timestamp last_heartbeat_time = 5;
+
+  int32 attempt = 6;
+  int32 maximum_attempts = 7;
+
+  google.protobuf.Timestamp scheduled_time = 8;
+  google.protobuf.Timestamp last_started_time = 9;
+
+  google.protobuf.Timestamp expiration_time = 10;
+  RetryPolicy retry_policy = 11;
+}
+
+// ─── Pending Workflow Task Info ────────────────────────────────────────────────
+
+message PendingWorkflowTaskInfo {
+  google.protobuf.Timestamp scheduled_time = 1;
+  google.protobuf.Timestamp started_time = 2;
+  int32 attempt = 3;
+}
+
+// ─── Workflow Execution Query Result ───────────────────────────────────────────
+
+message WorkflowExecutionQueryResult {
+  WorkflowExecutionInfo execution_info = 1;
+  repeated PendingActivityInfo pending_activities = 2;
+  PendingWorkflowTaskInfo pending_workflow_task = 3;
+}
+
+// ─── History Event ─────────────────────────────────────────────────────────────
+// A single event in a workflow's event history (mirrors HistoryEvent).
+
+message HistoryEvent {
+  uint64 event_id = 1;
+  google.protobuf.Timestamp event_time = 2;
+  string event_type = 3;
+  uint64 task_id = 4;
+  Payload details = 5;
+}
+
+// ─── History ───────────────────────────────────────────────────────────────────
+
+message History {
+  repeated HistoryEvent events = 1;
+}
+
+// ─── Namespace Info ────────────────────────────────────────────────────────────
+// Mirrors NamespaceConfig (namespace.rs:12-28).
+
+message NamespaceInfo {
+  string name = 1;
+  uint64 namespace_id = 2;
+  string description = 3;
+  bool is_active = 4;
+  google.protobuf.Duration retention_period = 5;
+  uint64 max_concurrent_workflows = 6;
+  map<string, string> metadata = 7;
+}
+
+// ─── Namespace Config ──────────────────────────────────────────────────────────
+
+message NamespaceConfig {
+  google.protobuf.Duration workflow_execution_retention_period = 1;
+  repeated string bad_binaries = 2;
+  bool history_archival_enabled = 3;
+  string history_archival_uri = 4;
+  bool visibility_archival_enabled = 5;
+  string visibility_archival_uri = 6;
+}
+
+// ─── Workflow Task / Activity Task ─────────────────────────────────────────────
+// Dispatched to workers via PollWorkflowTask / PollActivityTask.
+
+message WorkflowTask {
+  uint64 task_id = 1;
+  uint64 workflow_key = 2;
+  uint32 step_index = 3;
+  TaskQueue task_queue = 4;
+  WorkflowExecution workflow_execution = 5;
+  WorkflowType workflow_type = 6;
+  History history = 7;
+}
+
+message ActivityTask {
+  uint64 task_id = 1;
+  uint64 workflow_key = 2;
+  uint32 step_index = 3;
+  ActivityType activity_type = 4;
+  TaskQueue task_queue = 5;
+  WorkflowExecution workflow_execution = 6;
+  Payload input = 7;
+  int32 attempt = 8;
+  google.protobuf.Timestamp scheduled_time = 9;
+  google.protobuf.Timestamp started_time = 10;
+  RetryPolicy retry_policy = 11;
+}
+
+// ─── System Info ───────────────────────────────────────────────────────────────
+
+message SystemInfo {
+  ServerInfo server = 1;
+  Capabilities capabilities = 2;
+}
+
+message ServerInfo {
+  string server_version = 1;
+  repeated string supported_features = 2;
+}
+
+message Capabilities {
+  bool signal_and_query_header = 1;
+  bool internal_error_differentiation = 2;
+  bool signal_with_start_as_new = 3;
+  bool upsert_memo = 4;
+  bool eager_workflow_start = 5;
+  bool nexus = 6;
+}

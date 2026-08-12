@@ -1,0 +1,533 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "velocity/v1/common.proto";
+import "velocity/v1/messages.proto";
+
+// ─── WorkflowService ───────────────────────────────────────────────────────────
+// The primary external API surface for the VELOCITY-WorkFlow engine.
+// All SDKs (C#, Go, TypeScript, etc.) connect to this service via gRPC.
+//
+// Modeled after Temporal's api.workflowservice.v1 for familiarity.
+
+service WorkflowService {
+
+  // ─── Workflow Lifecycle ────────────────────────────────────────────────────
+
+  // StartWorkflowExecution starts a new workflow execution.
+  // Returns the workflow execution (workflow_id + run_id) and the workflow key.
+  rpc StartWorkflowExecution(StartWorkflowExecutionRequest)
+      returns (StartWorkflowExecutionResponse);
+
+  // SignalWorkflowExecution delivers a signal to a running workflow.
+  rpc SignalWorkflowExecution(SignalWorkflowExecutionRequest)
+      returns (SignalWorkflowExecutionResponse);
+
+  // SignalWithStartWorkflowExecution atomically signals a workflow or starts
+  // it if not already running.
+  rpc SignalWithStartWorkflowExecution(SignalWithStartWorkflowExecutionRequest)
+      returns (SignalWithStartWorkflowExecutionResponse);
+
+  // QueryWorkflow queries a running workflow's state.
+  rpc QueryWorkflow(QueryWorkflowRequest)
+      returns (QueryWorkflowResponse);
+
+  // CancelWorkflowExecution requests cancellation of a workflow.
+  rpc CancelWorkflowExecution(CancelWorkflowExecutionRequest)
+      returns (CancelWorkflowExecutionResponse);
+
+  // TerminateWorkflowExecution forcefully terminates a workflow.
+  rpc TerminateWorkflowExecution(TerminateWorkflowExecutionRequest)
+      returns (TerminateWorkflowExecutionResponse);
+
+  // ─── Workflow Visibility ───────────────────────────────────────────────────
+
+  // DescribeWorkflowExecution returns detailed info about a workflow execution.
+  rpc DescribeWorkflowExecution(DescribeWorkflowExecutionRequest)
+      returns (DescribeWorkflowExecutionResponse);
+
+  // ListWorkflowExecutions lists workflow executions matching a query.
+  rpc ListWorkflowExecutions(ListWorkflowExecutionsRequest)
+      returns (ListWorkflowExecutionsResponse);
+
+  // GetWorkflowExecutionHistory returns the event history for a workflow.
+  rpc GetWorkflowExecutionHistory(GetWorkflowExecutionHistoryRequest)
+      returns (GetWorkflowExecutionHistoryResponse);
+
+  // ─── Task Dispatch (Worker Polling) ────────────────────────────────────────
+
+  // PollWorkflowTaskQueue is called by workflow workers to get workflow tasks.
+  rpc PollWorkflowTaskQueue(PollWorkflowTaskQueueRequest)
+      returns (PollWorkflowTaskQueueResponse);
+
+  // PollActivityTaskQueue is called by activity workers to get activity tasks.
+  rpc PollActivityTaskQueue(PollActivityTaskQueueRequest)
+      returns (PollActivityTaskQueueResponse);
+
+  // RespondWorkflowTaskCompleted marks a workflow task as completed.
+  rpc RespondWorkflowTaskCompleted(RespondWorkflowTaskCompletedRequest)
+      returns (RespondWorkflowTaskCompletedResponse);
+
+  // RespondActivityTaskCompleted marks an activity task as completed with a result.
+  rpc RespondActivityTaskCompleted(RespondActivityTaskCompletedRequest)
+      returns (RespondActivityTaskCompletedResponse);
+
+  // RespondActivityTaskFailed marks an activity task as failed.
+  rpc RespondActivityTaskFailed(RespondActivityTaskFailedRequest)
+      returns (RespondActivityTaskFailedResponse);
+
+  // RespondQueryTaskCompleted returns the result of a query.
+  rpc RespondQueryTaskCompleted(RespondQueryTaskCompletedRequest)
+      returns (RespondQueryTaskCompletedResponse);
+
+  // ─── Namespace Management ──────────────────────────────────────────────────
+
+  // RegisterNamespace creates a new namespace.
+  rpc RegisterNamespace(RegisterNamespaceRequest)
+      returns (RegisterNamespaceResponse);
+
+  // DescribeNamespace returns info about a namespace.
+  rpc DescribeNamespace(DescribeNamespaceRequest)
+      returns (DescribeNamespaceResponse);
+
+  // ListNamespaces lists all registered namespaces.
+  rpc ListNamespaces(ListNamespacesRequest)
+      returns (ListNamespacesResponse);
+
+  // UpdateNamespace updates namespace configuration.
+  rpc UpdateNamespace(UpdateNamespaceRequest)
+      returns (UpdateNamespaceResponse);
+
+  // ─── System ────────────────────────────────────────────────────────────────
+
+  // GetSystemInfo returns server capabilities and version info.
+  rpc GetSystemInfo(GetSystemInfoRequest)
+      returns (GetSystemInfoResponse);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REQUEST / RESPONSE MESSAGES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── StartWorkflowExecution ────────────────────────────────────────────────────
+
+message StartWorkflowExecutionRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  WorkflowType workflow_type = 3;
+  TaskQueue task_queue = 4;
+  Payload input = 5;
+
+  google.protobuf.Duration workflow_execution_timeout = 6;
+  google.protobuf.Duration workflow_run_timeout = 7;
+  google.protobuf.Duration workflow_task_timeout = 8;
+
+  string identity = 9;
+  string request_id = 10;
+
+  RetryPolicy retry_policy = 11;
+  string cron_schedule = 12;
+  Memo memo = 13;
+  SearchAttributes search_attributes = 14;
+  Header header = 15;
+  ParentClosePolicy parent_close_policy = 16;
+
+  // Total steps for the workflow slab (engine-specific).
+  uint32 total_steps = 17;
+}
+
+message StartWorkflowExecutionResponse {
+  WorkflowExecution workflow_execution = 1;
+  uint64 workflow_key = 2;
+  bool started = 3;
+}
+
+// ─── SignalWorkflowExecution ───────────────────────────────────────────────────
+
+message SignalWorkflowExecutionRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  string signal_name = 3;
+  uint64 signal_name_id = 4;
+  Payload input = 5;
+  string identity = 6;
+  string request_id = 7;
+  Header header = 8;
+}
+
+message SignalWorkflowExecutionResponse {
+}
+
+// ─── SignalWithStartWorkflowExecution ──────────────────────────────────────────
+
+message SignalWithStartWorkflowExecutionRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  WorkflowType workflow_type = 3;
+  TaskQueue task_queue = 4;
+  Payload input = 5;
+
+  string signal_name = 6;
+  uint64 signal_name_id = 7;
+  Payload signal_input = 8;
+
+  string identity = 9;
+  string request_id = 10;
+
+  google.protobuf.Duration workflow_execution_timeout = 11;
+  google.protobuf.Duration workflow_run_timeout = 12;
+  google.protobuf.Duration workflow_task_timeout = 13;
+
+  RetryPolicy retry_policy = 14;
+  string cron_schedule = 15;
+  Memo memo = 16;
+  SearchAttributes search_attributes = 17;
+  Header header = 18;
+
+  uint32 total_steps = 19;
+}
+
+message SignalWithStartWorkflowExecutionResponse {
+  WorkflowExecution workflow_execution = 1;
+  uint64 workflow_key = 2;
+  bool started = 3;
+}
+
+// ─── QueryWorkflow ─────────────────────────────────────────────────────────────
+
+message QueryWorkflowRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  Query query = 3;
+}
+
+message Query {
+  string query_type = 1;
+  uint64 query_name_id = 2;
+  Payload query_args = 3;
+  Header header = 4;
+}
+
+message QueryWorkflowResponse {
+  Payload query_result = 1;
+}
+
+// ─── CancelWorkflowExecution ───────────────────────────────────────────────────
+
+message CancelWorkflowExecutionRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  string identity = 3;
+  string request_id = 4;
+  Payload details = 5;
+}
+
+message CancelWorkflowExecutionResponse {
+}
+
+// ─── TerminateWorkflowExecution ────────────────────────────────────────────────
+
+message TerminateWorkflowExecutionRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  string reason = 3;
+  string identity = 4;
+  Payload details = 5;
+}
+
+message TerminateWorkflowExecutionResponse {
+}
+
+// ─── DescribeWorkflowExecution ─────────────────────────────────────────────────
+
+message DescribeWorkflowExecutionRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+}
+
+message DescribeWorkflowExecutionResponse {
+  WorkflowExecutionInfo execution_info = 1;
+  repeated PendingActivityInfo pending_activities = 2;
+  PendingWorkflowTaskInfo pending_workflow_task = 3;
+}
+
+// ─── ListWorkflowExecutions ────────────────────────────────────────────────────
+
+message ListWorkflowExecutionsRequest {
+  string namespace = 1;
+  int32 page_size = 2;
+  bytes next_page_token = 3;
+
+  // Optional filter by status.
+  WorkflowExecutionStatus status_filter = 4;
+
+  // Optional filter by namespace_id.
+  uint64 namespace_id_filter = 5;
+
+  // Optional filter by workflow type.
+  WorkflowType type_filter = 6;
+
+  // Optional time range filter.
+  google.protobuf.Timestamp start_time_min = 7;
+  google.protobuf.Timestamp start_time_max = 8;
+}
+
+message ListWorkflowExecutionsResponse {
+  repeated WorkflowExecutionInfo executions = 1;
+  bytes next_page_token = 2;
+}
+
+// ─── GetWorkflowExecutionHistory ───────────────────────────────────────────────
+
+message GetWorkflowExecutionHistoryRequest {
+  string namespace = 1;
+  WorkflowExecution workflow_execution = 2;
+  int32 maximum_page_size = 3;
+  bytes next_page_token = 4;
+  bool wait_new_event = 5;
+  HistoryEventFilterType history_event_filter_type = 6;
+}
+
+enum HistoryEventFilterType {
+  HISTORY_EVENT_FILTER_TYPE_UNSPECIFIED = 0;
+  HISTORY_EVENT_FILTER_TYPE_ALL_EVENT = 1;
+  HISTORY_EVENT_FILTER_TYPE_CLOSE_EVENT = 2;
+}
+
+message GetWorkflowExecutionHistoryResponse {
+  History history = 1;
+  bytes next_page_token = 2;
+  bool archived = 3;
+}
+
+// ─── PollWorkflowTaskQueue ─────────────────────────────────────────────────────
+
+message PollWorkflowTaskQueueRequest {
+  string namespace = 1;
+  TaskQueue task_queue = 2;
+  string identity = 3;
+  string build_id = 4;
+}
+
+message PollWorkflowTaskQueueResponse {
+  uint64 task_token = 1;
+  WorkflowExecution workflow_execution = 2;
+  WorkflowType workflow_type = 3;
+  History history = 4;
+  uint64 workflow_key = 5;
+  uint32 step_index = 6;
+  int32 attempt = 7;
+}
+
+// ─── PollActivityTaskQueue ─────────────────────────────────────────────────────
+
+message PollActivityTaskQueueRequest {
+  string namespace = 1;
+  TaskQueue task_queue = 2;
+  string identity = 3;
+  string build_id = 4;
+}
+
+message PollActivityTaskQueueResponse {
+  uint64 task_token = 1;
+  WorkflowExecution workflow_execution = 2;
+  ActivityType activity_type = 3;
+  Payload input = 4;
+  uint64 workflow_key = 5;
+  uint32 step_index = 6;
+  int32 attempt = 7;
+  google.protobuf.Timestamp scheduled_time = 8;
+  google.protobuf.Timestamp started_time = 9;
+  RetryPolicy retry_policy = 10;
+}
+
+// ─── RespondWorkflowTaskCompleted ──────────────────────────────────────────────
+
+message RespondWorkflowTaskCompletedRequest {
+  uint64 task_token = 1;
+  string identity = 2;
+  repeated Command commands = 3;
+  map<string, Payload> query_results = 4;
+  string namespace = 5;
+}
+
+message Command {
+  oneof attributes {
+    CompleteWorkflowCommandAttributes complete_workflow = 1;
+    FailWorkflowCommandAttributes fail_workflow = 2;
+    ScheduleActivityCommandAttributes schedule_activity = 3;
+    StartTimerCommandAttributes start_timer = 4;
+    SignalExternalCommandAttributes signal_external = 5;
+    StartChildWorkflowCommandAttributes start_child_workflow = 6;
+    CancelWorkflowCommandAttributes cancel_workflow = 7;
+    ContinueAsNewCommandAttributes continue_as_new = 8;
+  }
+}
+
+message CompleteWorkflowCommandAttributes {
+  Payload result = 1;
+}
+
+message FailWorkflowCommandAttributes {
+  Payload failure = 1;
+}
+
+message ScheduleActivityCommandAttributes {
+  ActivityType activity_type = 1;
+  string activity_id = 2;
+  TaskQueue task_queue = 3;
+  Payload input = 4;
+  google.protobuf.Duration schedule_to_close_timeout = 5;
+  google.protobuf.Duration schedule_to_start_timeout = 6;
+  google.protobuf.Duration start_to_close_timeout = 7;
+  google.protobuf.Duration heartbeat_timeout = 8;
+  RetryPolicy retry_policy = 9;
+}
+
+message StartTimerCommandAttributes {
+  string timer_id = 1;
+  google.protobuf.Duration start_to_fire_timeout = 2;
+}
+
+message SignalExternalCommandAttributes {
+  WorkflowExecution execution = 1;
+  string signal_name = 2;
+  Payload input = 3;
+}
+
+message StartChildWorkflowCommandAttributes {
+  string namespace = 1;
+  WorkflowExecution workflow_id = 2;
+  WorkflowType workflow_type = 3;
+  TaskQueue task_queue = 4;
+  Payload input = 5;
+  google.protobuf.Duration workflow_execution_timeout = 6;
+  google.protobuf.Duration workflow_run_timeout = 7;
+  google.protobuf.Duration workflow_task_timeout = 8;
+  ParentClosePolicy parent_close_policy = 9;
+  uint32 total_steps = 10;
+}
+
+message CancelWorkflowCommandAttributes {
+  Payload details = 1;
+}
+
+message ContinueAsNewCommandAttributes {
+  WorkflowType workflow_type = 1;
+  TaskQueue task_queue = 2;
+  Payload input = 3;
+  google.protobuf.Duration workflow_run_timeout = 4;
+  google.protobuf.Duration workflow_task_timeout = 5;
+}
+
+message RespondWorkflowTaskCompletedResponse {
+}
+
+// ─── RespondActivityTaskCompleted ──────────────────────────────────────────────
+
+message RespondActivityTaskCompletedRequest {
+  uint64 task_token = 1;
+  Payload result = 2;
+  string identity = 3;
+  string namespace = 4;
+  uint64 workflow_key = 5;
+  uint32 step_index = 6;
+}
+
+message RespondActivityTaskCompletedResponse {
+}
+
+// ─── RespondActivityTaskFailed ─────────────────────────────────────────────────
+
+message RespondActivityTaskFailedRequest {
+  uint64 task_token = 1;
+  Payload failure = 2;
+  string identity = 3;
+  string namespace = 4;
+  uint64 workflow_key = 5;
+  uint32 step_index = 6;
+}
+
+message RespondActivityTaskFailedResponse {
+}
+
+// ─── RespondQueryTaskCompleted ─────────────────────────────────────────────────
+
+message RespondQueryTaskCompletedRequest {
+  uint64 task_token = 1;
+  Payload result = 2;
+  string identity = 3;
+  string namespace = 4;
+}
+
+message RespondQueryTaskCompletedResponse {
+}
+
+// ─── RegisterNamespace ─────────────────────────────────────────────────────────
+
+message RegisterNamespaceRequest {
+  string namespace = 1;
+  string description = 2;
+  google.protobuf.Duration workflow_execution_retention_period = 3;
+  bool is_global_namespace = 4;
+  map<string, string> metadata = 5;
+  uint64 max_concurrent_workflows = 6;
+}
+
+message RegisterNamespaceResponse {
+  uint64 namespace_id = 1;
+}
+
+// ─── DescribeNamespace ─────────────────────────────────────────────────────────
+
+message DescribeNamespaceRequest {
+  string namespace = 1;
+  uint64 namespace_id = 2;
+}
+
+message DescribeNamespaceResponse {
+  NamespaceInfo namespace_info = 1;
+  NamespaceConfig config = 2;
+}
+
+// ─── ListNamespaces ────────────────────────────────────────────────────────────
+
+message ListNamespacesRequest {
+  int32 page_size = 1;
+  bytes next_page_token = 2;
+}
+
+message ListNamespacesResponse {
+  repeated NamespaceInfo namespaces = 1;
+  bytes next_page_token = 2;
+}
+
+// ─── UpdateNamespace ───────────────────────────────────────────────────────────
+
+message UpdateNamespaceRequest {
+  string namespace = 1;
+  NamespaceConfig update = 2;
+}
+
+message UpdateNamespaceResponse {
+  NamespaceInfo namespace_info = 1;
+}
+
+// ─── GetSystemInfo ─────────────────────────────────────────────────────────────
+
+message GetSystemInfoRequest {
+}
+
+message GetSystemInfoResponse {
+  SystemInfo system_info = 1;
+}

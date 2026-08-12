@@ -16,10 +16,20 @@ hmac = { version = "0.12", default-features = false, optional = true }
 hex = { version = "0.4", default-features = false, features = ["alloc"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 
+# gRPC dependencies (only when grpc feature is enabled)
+tonic = { version = "0.12", optional = true }
+prost = { version = "0.13", optional = true }
+prost-types = { version = "0.13", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"], optional = true }
+
+[build-dependencies]
+tonic-build = { version = "0.12", optional = true }
+
 [features]
 default = []
 cloud-s3 = ["dep:hmac", "dep:hex", "dep:reqwest"]
 cloud-gcs = ["dep:reqwest"]
+grpc = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio", "dep:tonic-build"]
 
 [profile.release]
 opt-level = 3

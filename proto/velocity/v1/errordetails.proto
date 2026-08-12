@@ -1,0 +1,141 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "velocity/v1/messages.proto";
+
+// ─── gRPC Error Details ────────────────────────────────────────────────────────
+// These messages are returned as gRPC status details (google.rpc.Status.details)
+// to provide structured error information to SDKs.
+
+// ─── Workflow Not Found ────────────────────────────────────────────────────────
+// Returned when a workflow execution does not exist (status = Void).
+
+message WorkflowNotFoundFailure {
+  WorkflowExecution workflow_execution = 1;
+  string message = 2;
+}
+
+// ─── Workflow Already Started ──────────────────────────────────────────────────
+// Returned when StartWorkflow is called with a workflow_id that already exists
+// and is in Running state.
+
+message WorkflowExecutionAlreadyStartedFailure {
+  WorkflowExecution workflow_execution = 1;
+  int64 start_request_id = 2;
+}
+
+// ─── Namespace Not Found ───────────────────────────────────────────────────────
+// Returned when a namespace does not exist or is not registered.
+
+message NamespaceNotFoundFailure {
+  string namespace = 1;
+  uint64 namespace_id = 2;
+}
+
+// ─── Namespace Already Exists ──────────────────────────────────────────────────
+// Returned when RegisterNamespace is called with a name that already exists.
+
+message NamespaceAlreadyExistsFailure {
+  string namespace = 1;
+}
+
+// ─── Namespace Invalid State ───────────────────────────────────────────────────
+// Returned when an operation is attempted on an inactive namespace.
+
+message NamespaceInvalidStateFailure {
+  string namespace = 1;
+  string state = 2;
+  string message = 3;
+}
+
+// ─── Workflow Not Ready ────────────────────────────────────────────────────────
+// Returned when an operation requires a running workflow but it's in a
+// terminal state (Completed, Failed, Canceled, Terminated).
+
+message WorkflowNotReadyFailure {
+  WorkflowExecution workflow_execution = 1;
+  string current_status = 2;
+  string message = 3;
+}
+
+// ─── Query Failed ──────────────────────────────────────────────────────────────
+// Returned when a query handler is not registered or the query execution fails.
+
+message QueryFailedFailure {
+  WorkflowExecution workflow_execution = 1;
+  string query_type = 2;
+  string message = 3;
+}
+
+// ─── Client Version Not Supported ──────────────────────────────────────────────
+// Returned when the SDK client version is not compatible with the server.
+
+message ClientVersionNotSupportedFailure {
+  string client_version = 1;
+  string client_name = 2;
+  string supported_versions = 3;
+}
+
+// ─── Feature Version Not Supported ─────────────────────────────────────────────
+
+message FeatureVersionNotSupportedFailure {
+  string feature = 1;
+  string feature_version = 2;
+  string server_version = 3;
+}
+
+// ─── Shard Lost ────────────────────────────────────────────────────────────────
+// Returned when the shard owning the workflow key is unavailable.
+
+message ShardLostFailure {
+  uint32 shard_id = 1;
+  string message = 2;
+}
+
+// ─── Rate Limit Exceeded ───────────────────────────────────────────────────────
+// Returned when the namespace rate limit is exceeded.
+
+message RateLimitExceededFailure {
+  string namespace = 1;
+  uint64 limit = 2;
+  string message = 3;
+}
+
+// ─── Concurrency Limit Exceeded ────────────────────────────────────────────────
+// Returned when namespace max_concurrent_workflows limit is reached.
+
+message ConcurrencyLimitExceededFailure {
+  string namespace = 1;
+  uint64 limit = 2;
+  uint64 current = 3;
+}
+
+// ─── Multi Operation Execution Aborted ─────────────────────────────────────────
+// Returned when a multi-operation (e.g., SignalWithStart) is aborted due to
+// a conflict.
+
+message MultiOperationExecutionAbortedFailure {
+  string message = 1;
+}
+
+// ─── Cancellation Already Requested ────────────────────────────────────────────
+// Returned when CancelWorkflow is called on a workflow that is already being canceled.
+
+message CancellationAlreadyRequestedFailure {
+  WorkflowExecution workflow_execution = 1;
+}
+
+// ─── Task Queue Not Found ──────────────────────────────────────────────────────
+// Returned when polling a task queue that does not exist.
+
+message TaskQueueNotFoundFailure {
+  string task_queue = 1;
+}

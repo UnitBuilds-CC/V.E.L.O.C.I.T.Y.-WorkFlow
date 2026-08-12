@@ -1,0 +1,128 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// ─── Workflow Execution Status ─────────────────────────────────────────────────
+// Mirrors the engine's WorkflowStatus enum (engine.rs:144-155).
+
+enum WorkflowExecutionStatus {
+  WORKFLOW_EXECUTION_STATUS_UNSPECIFIED = 0;
+  WORKFLOW_EXECUTION_STATUS_RUNNING = 1;
+  WORKFLOW_EXECUTION_STATUS_COMPLETED = 2;
+  WORKFLOW_EXECUTION_STATUS_FAILED = 3;
+  WORKFLOW_EXECUTION_STATUS_CANCELED = 4;
+  WORKFLOW_EXECUTION_STATUS_TERMINATED = 5;
+  WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW = 6;
+  WORKFLOW_EXECUTION_STATUS_TIMED_OUT = 7;
+}
+
+// ─── Task Kind ─────────────────────────────────────────────────────────────────
+// Mirrors TaskKind enum (task_queue.rs:21-28).
+
+enum TaskKind {
+  TASK_KIND_UNSPECIFIED = 0;
+  TASK_KIND_WORKFLOW_TASK = 1;
+  TASK_KIND_ACTIVITY_TASK = 2;
+  TASK_KIND_TIMER_TASK = 3;
+  TASK_KIND_SIGNAL_TASK = 4;
+}
+
+// ─── Parent Close Policy ───────────────────────────────────────────────────────
+// Mirrors ParentClosePolicy enum (engine.rs:159-165).
+
+enum ParentClosePolicy {
+  PARENT_CLOSE_POLICY_UNSPECIFIED = 0;
+  PARENT_CLOSE_POLICY_TERMINATE = 1;
+  PARENT_CLOSE_POLICY_CANCEL = 2;
+  PARENT_CLOSE_POLICY_ABANDON = 3;
+}
+
+// ─── Encoding ──────────────────────────────────────────────────────────────────
+
+enum Encoding {
+  ENCODING_UNSPECIFIED = 0;
+  ENCODING_PROTO3 = 1;
+  ENCODING_JSON = 2;
+}
+
+// ─── Payload ───────────────────────────────────────────────────────────────────
+// Opaque byte payload with optional encoding metadata. Mirrors the engine's
+// byte-buffer approach (input: Option<Vec<u8>>, result: Vec<u8>).
+
+message Payload {
+  // Raw bytes — engine stores these as Vec<u8>.
+  bytes data = 1;
+
+  // Optional encoding hint (proto3, json, etc.).
+  Encoding encoding = 2;
+
+  // Optional metadata map (content-type, compression, etc.).
+  map<string, bytes> metadata = 3;
+}
+
+// ─── Search Attributes ─────────────────────────────────────────────────────────
+// Mirrors SearchAttributeValue enum (visibility.rs:27-35).
+
+message SearchAttributes {
+  map<string, SearchAttributeValue> indexed_fields = 1;
+}
+
+message SearchAttributeValue {
+  oneof value {
+    string string_value = 1;
+    int64 integer_value = 2;
+    double double_value = 3;
+    bool bool_value = 4;
+    google.protobuf.Timestamp datetime_value = 5;
+    string keyword_value = 6;
+  }
+}
+
+// ─── Memo ──────────────────────────────────────────────────────────────────────
+// User-defined key-value metadata attached to a workflow execution.
+
+message Memo {
+  map<string, Payload> fields = 1;
+}
+
+// ─── Header ────────────────────────────────────────────────────────────────────
+// Propagated key-value pairs (auth tokens, tracing context, etc.).
+
+message Header {
+  map<string, Payload> fields = 1;
+}
+
+// ─── Retry Policy ──────────────────────────────────────────────────────────────
+// Mirrors ActivityRetryPolicy (engine.rs:46-51).
+
+message RetryPolicy {
+  // Maximum number of attempts (0 = unlimited).
+  int32 maximum_attempts = 1;
+
+  // Initial backoff interval.
+  google.protobuf.Duration initial_interval = 2;
+
+  // Backoff coefficient (e.g., 2.0 means exponential doubling).
+  double backoff_coefficient = 3;
+
+  // Maximum backoff interval (optional cap).
+  google.protobuf.Duration maximum_interval = 4;
+}
+
+// ─── Data Processing Result ────────────────────────────────────────────────────
+// Result of a codec/payload transformation.
+
+message DataBlob {
+  bytes data = 1;
+  Encoding encoding = 2;
+}

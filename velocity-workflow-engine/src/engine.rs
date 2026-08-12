@@ -39,6 +39,7 @@ use crate::replay::ReplayEngine;
 use crate::worker_registry::WorkerRegistry;
 use crate::cold_storage::{CloudStorageAdapter, MockS3Adapter};
 use crate::hardware_integration::HardwareAbstractionLayer;
+use crate::db_adapter::{DatabaseAdapter, WorkflowRecord};
 
 // ─── Activity Timeouts & Retry ─────────────────────────────────────────────
 
@@ -344,6 +345,8 @@ pub struct WorkflowEngine {
     replication_transport: Arc<ReplicationTransport>,
     /// Hardware abstraction layer — integrates ECC, SmartNIC, TEE into slab data paths.
     hal: RwLock<HardwareAbstractionLayer>,
+    /// Optional database adapter for persistent storage (replaces in-memory-only).
+    db_adapter: Option<Arc<dyn DatabaseAdapter>>,
 }
 
 impl WorkflowEngine {
@@ -388,6 +391,7 @@ impl WorkflowEngine {
             version_history_store: Arc::new(VersionHistoryStore::new()),
             replication_transport: Arc::new(ReplicationTransport::new()),
             hal: RwLock::new(HardwareAbstractionLayer::with_simulated_hardware()),
+            db_adapter: None,
         }
     }
 
@@ -434,6 +438,7 @@ impl WorkflowEngine {
             version_history_store: Arc::new(VersionHistoryStore::new()),
             replication_transport: Arc::new(ReplicationTransport::new()),
             hal: RwLock::new(HardwareAbstractionLayer::with_simulated_hardware()),
+            db_adapter: None,
         })
     }
 
@@ -441,6 +446,34 @@ impl WorkflowEngine {
     pub fn enable_wal(&mut self, wal_path: &str, max_file_size: u64) -> std::io::Result<()> {
         self.wal = Some(Arc::new(WalManager::new(wal_path, max_file_size)?));
         Ok(())
+    }
+
+    /// Enable database persistence with the given adapter.
+    /// When set, workflow state changes are persisted to the database in addition to in-memory storage.
+    pub fn enable_db_adapter(&mut self, adapter: Arc<dyn DatabaseAdapter>) {
+        self.db_adapter = Some(adapter);
+    }
+
+    /// Disable the database adapter.
+    pub fn disable_db_adapter(&mut self) {
+        self.db_adapter = None;
+    }
+
+    /// Get a reference to the database adapter (if enabled).
+    pub fn db_adapter(&self) -> Option<&Arc<dyn DatabaseAdapter>> {
+        self.db_adapter.as_ref()
+    }
+
+    /// Persist the current state of a workflow to the database adapter (if enabled).
+    /// Returns Ok(()) if no adapter is configured (no-op).
+    pub fn persist_workflow(&self, ctx: &WorkflowContext, namespace_name: &str) -> Result<(), String> {
+        if let Some(adapter) = &self.db_adapter {
+            let record = WorkflowRecord::from_context(ctx, namespace_name);
+            adapter.save_workflow(ctx.key(), &record)
+                .map_err(|e| format!("failed to persist workflow: {}", e))
+        } else {
+            Ok(())
+        }
     }
 
     /// Get a reference to the WAL manager (if enabled).

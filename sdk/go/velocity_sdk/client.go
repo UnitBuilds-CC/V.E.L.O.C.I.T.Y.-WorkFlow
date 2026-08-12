@@ -25,13 +25,16 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+
+	"velocity_sdk/interceptors"
 )
 
 // Client is a gRPC client for the VELOCITY-WorkFlow server.
 type Client struct {
-	conn   *grpc.ClientConn
-	jwt    string
-	target string
+	conn         *grpc.ClientConn
+	jwt          string
+	target       string
+	interceptors *interceptors.InterceptorChain
 }
 
 // StartWorkflowOptions configures a new workflow execution.
@@ -103,10 +106,21 @@ func NewClient(target string, jwt string) (*Client, error) {
 	}
 
 	return &Client{
-		conn:   conn,
-		jwt:    jwt,
-		target: target,
+		conn:         conn,
+		jwt:          jwt,
+		target:       target,
+		interceptors: interceptors.NewInterceptorChain(),
 	}, nil
+}
+
+// AddInterceptor adds an interceptor to the client's interceptor chain.
+func (c *Client) AddInterceptor(interceptor interface{}) {
+	c.interceptors.Add(interceptor)
+}
+
+// GetInterceptors returns the client's interceptor chain.
+func (c *Client) GetInterceptors() *interceptors.InterceptorChain {
+	return c.interceptors
 }
 
 // Close closes the gRPC connection.
