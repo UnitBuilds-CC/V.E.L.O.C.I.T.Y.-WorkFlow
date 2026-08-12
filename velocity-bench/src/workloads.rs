@@ -182,7 +182,9 @@ impl WorkloadDefinition {
                     steps_per_workflow: 10,
                     ..WorkloadConfig::default()
                 },
-                description: "Start → execute 10 steps → complete. Measures basic throughput and latency.".into(),
+                description:
+                    "Start → execute 10 steps → complete. Measures basic throughput and latency."
+                        .into(),
                 primary_metrics: vec!["ops/sec".into(), "p50_latency".into(), "p99_latency".into()],
             },
             WorkloadDefinition {
@@ -193,7 +195,9 @@ impl WorkloadDefinition {
                     signals_per_workflow: 100,
                     ..WorkloadConfig::default()
                 },
-                description: "Start workflow → send 100 signals → complete. Measures signal throughput.".into(),
+                description:
+                    "Start workflow → send 100 signals → complete. Measures signal throughput."
+                        .into(),
                 primary_metrics: vec!["signals/sec".into(), "p99_signal_latency".into()],
             },
             WorkloadDefinition {
@@ -204,7 +208,9 @@ impl WorkloadDefinition {
                     queries_per_workflow: 100,
                     ..WorkloadConfig::default()
                 },
-                description: "Start workflow → send 100 queries → complete. Measures query throughput.".into(),
+                description:
+                    "Start workflow → send 100 queries → complete. Measures query throughput."
+                        .into(),
                 primary_metrics: vec!["queries/sec".into(), "p99_query_latency".into()],
             },
             WorkloadDefinition {
@@ -215,8 +221,13 @@ impl WorkloadDefinition {
                     steps_per_workflow: 10_000,
                     ..WorkloadConfig::default()
                 },
-                description: "Single workflow with 10K steps. Measures step execution overhead.".into(),
-                primary_metrics: vec!["steps/sec".into(), "total_duration".into(), "memory_mb".into()],
+                description: "Single workflow with 10K steps. Measures step execution overhead."
+                    .into(),
+                primary_metrics: vec![
+                    "steps/sec".into(),
+                    "total_duration".into(),
+                    "memory_mb".into(),
+                ],
             },
             WorkloadDefinition {
                 name: "concurrent_1k".into(),
@@ -226,7 +237,8 @@ impl WorkloadDefinition {
                     concurrency: 100,
                     ..WorkloadConfig::default()
                 },
-                description: "1000 concurrent workflows. Measures concurrent scheduling overhead.".into(),
+                description: "1000 concurrent workflows. Measures concurrent scheduling overhead."
+                    .into(),
                 primary_metrics: vec!["ops/sec".into(), "p99_latency".into(), "memory_mb".into()],
             },
             WorkloadDefinition {
@@ -237,7 +249,8 @@ impl WorkloadDefinition {
                     children_per_parent: 10,
                     ..WorkloadConfig::default()
                 },
-                description: "Parent spawns 10 children, waits for all. Measures hierarchy overhead.".into(),
+                description:
+                    "Parent spawns 10 children, waits for all. Measures hierarchy overhead.".into(),
                 primary_metrics: vec!["ops/sec".into(), "p99_latency".into()],
             },
             WorkloadDefinition {
@@ -258,7 +271,8 @@ impl WorkloadDefinition {
                     workflow_count: 100,
                     ..WorkloadConfig::default()
                 },
-                description: "Workflow with timer (sleep). Measures timer scheduling accuracy.".into(),
+                description: "Workflow with timer (sleep). Measures timer scheduling accuracy."
+                    .into(),
                 primary_metrics: vec!["timer_accuracy_ms".into(), "p99_latency".into()],
             },
             WorkloadDefinition {
@@ -268,7 +282,9 @@ impl WorkloadDefinition {
                     workflow_count: 1000,
                     ..WorkloadConfig::default()
                 },
-                description: "Start with attributes → query by attributes. Measures visibility performance.".into(),
+                description:
+                    "Start with attributes → query by attributes. Measures visibility performance."
+                        .into(),
                 primary_metrics: vec!["query_latency".into(), "index_throughput".into()],
             },
             WorkloadDefinition {
@@ -280,7 +296,8 @@ impl WorkloadDefinition {
                     queries_per_workflow: 50,
                     ..WorkloadConfig::default()
                 },
-                description: "Interleaved signals and queries. Measures mixed workload performance.".into(),
+                description:
+                    "Interleaved signals and queries. Measures mixed workload performance.".into(),
                 primary_metrics: vec!["ops/sec".into(), "p99_latency".into()],
             },
             WorkloadDefinition {
@@ -290,7 +307,8 @@ impl WorkloadDefinition {
                     workflow_count: 5000,
                     ..WorkloadConfig::default()
                 },
-                description: "Batch start/terminate/query 5000 workflows. Measures admin throughput.".into(),
+                description:
+                    "Batch start/terminate/query 5000 workflows. Measures admin throughput.".into(),
                 primary_metrics: vec!["ops/sec".into(), "p99_latency".into()],
             },
             WorkloadDefinition {
@@ -301,7 +319,8 @@ impl WorkloadDefinition {
                     payload_size_bytes: 1024,
                     ..WorkloadConfig::default()
                 },
-                description: "1KB payloads. Measures serialization overhead at typical size.".into(),
+                description: "1KB payloads. Measures serialization overhead at typical size."
+                    .into(),
                 primary_metrics: vec!["ops/sec".into(), "throughput_mb_sec".into()],
             },
             WorkloadDefinition {
@@ -313,7 +332,11 @@ impl WorkloadDefinition {
                     ..WorkloadConfig::default()
                 },
                 description: "1MB payloads. Measures large payload handling.".into(),
-                primary_metrics: vec!["ops/sec".into(), "throughput_mb_sec".into(), "memory_mb".into()],
+                primary_metrics: vec![
+                    "ops/sec".into(),
+                    "throughput_mb_sec".into(),
+                    "memory_mb".into(),
+                ],
             },
             WorkloadDefinition {
                 name: "namespace_isolation".into(),
@@ -355,7 +378,8 @@ impl WorkloadDefinition {
                     workflow_count: 1,
                     ..WorkloadConfig::default()
                 },
-                description: "First workflow after engine startup. Measures cold start latency.".into(),
+                description: "First workflow after engine startup. Measures cold start latency."
+                    .into(),
                 primary_metrics: vec!["cold_start_ms".into()],
             },
             WorkloadDefinition {
@@ -375,13 +399,18 @@ impl WorkloadDefinition {
     pub fn smoke_test() -> Vec<WorkloadDefinition> {
         let all = Self::all();
         all.into_iter()
-            .filter(|w| matches!(
-                w.kind,
-                WorkloadKind::SimpleWorkflow
-                    | WorkloadKind::SignalStorm
-                    | WorkloadKind::ColdStart
-            ))
-            .map(|mut w| { w.config = WorkloadConfig::quick(); w })
+            .filter(|w| {
+                matches!(
+                    w.kind,
+                    WorkloadKind::SimpleWorkflow
+                        | WorkloadKind::SignalStorm
+                        | WorkloadKind::ColdStart
+                )
+            })
+            .map(|mut w| {
+                w.config = WorkloadConfig::quick();
+                w
+            })
             .collect()
     }
 }

@@ -25,6 +25,9 @@ use tokio::net::TcpListener;
 use tokio::signal;
 use tokio::sync::{broadcast, Notify};
 
+// gRPC BenchmarkService — apples-to-apples comparison with Temporal.
+mod grpc_bench;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLI Configuration
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -41,11 +44,21 @@ struct DevServerConfig {
     port: u16,
 
     /// gRPC port.
-    #[arg(short = 'g', long, default_value_t = 7234, env = "VELOCITY_DEV_GRPC_PORT")]
+    #[arg(
+        short = 'g',
+        long,
+        default_value_t = 7234,
+        env = "VELOCITY_DEV_GRPC_PORT"
+    )]
     grpc_port: u16,
 
     /// Web UI port (0 to disable).
-    #[arg(short = 'u', long, default_value_t = 8233, env = "VELOCITY_DEV_UI_PORT")]
+    #[arg(
+        short = 'u',
+        long,
+        default_value_t = 8233,
+        env = "VELOCITY_DEV_UI_PORT"
+    )]
     ui_port: u16,
 
     /// Default namespace to create on startup.
@@ -316,7 +329,13 @@ impl DevEngine {
         engine
     }
 
-    fn start_workflow(&self, namespace: &str, wf_type: &str, task_queue: &str, input: serde_json::Value) -> Result<WorkflowExecution, String> {
+    fn start_workflow(
+        &self,
+        namespace: &str,
+        wf_type: &str,
+        task_queue: &str,
+        input: serde_json::Value,
+    ) -> Result<WorkflowExecution, String> {
         let wf_id = format!("wf-{}", generate_id());
         let run_id = generate_id();
         let now = now_millis();
@@ -340,7 +359,10 @@ impl DevEngine {
         };
 
         let key = format!("{}/{}", namespace, wf_id);
-        self.workflows.write().unwrap().insert(key.clone(), execution.clone());
+        self.workflows
+            .write()
+            .unwrap()
+            .insert(key.clone(), execution.clone());
 
         // Add history events
         let events = vec![
@@ -386,12 +408,20 @@ impl DevEngine {
 
         self.stats.workflow_count.fetch_add(1, Ordering::Relaxed);
         self.stats.running_count.fetch_add(1, Ordering::Relaxed);
-        self.stats.history_event_count.fetch_add(2, Ordering::Relaxed);
+        self.stats
+            .history_event_count
+            .fetch_add(2, Ordering::Relaxed);
 
         Ok(execution)
     }
 
-    fn signal_workflow(&self, namespace: &str, wf_id: &str, signal_name: &str, input: serde_json::Value) -> Result<(), String> {
+    fn signal_workflow(
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        signal_name: &str,
+        input: serde_json::Value,
+    ) -> Result<(), String> {
         let key = format!("{}/{}", namespace, wf_id);
         let workflows = self.workflows.read().unwrap();
         if !workflows.contains_key(&key) {
@@ -415,7 +445,12 @@ impl DevEngine {
         Ok(())
     }
 
-    fn complete_workflow(&self, namespace: &str, wf_id: &str, result: serde_json::Value) -> Result<(), String> {
+    fn complete_workflow(
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        result: serde_json::Value,
+    ) -> Result<(), String> {
         let key = format!("{}/{}", namespace, wf_id);
         let mut workflows = self.workflows.write().unwrap();
         let wf = workflows.get_mut(&key).ok_or("Workflow not found")?;
@@ -431,11 +466,18 @@ impl DevEngine {
             attributes: serde_json::json!({ "result": result }),
         };
         wf.history_length += 1;
-        self.history.write().unwrap().entry(key).or_default().push(event);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
 
         self.stats.running_count.fetch_sub(1, Ordering::Relaxed);
         self.stats.completed_count.fetch_add(1, Ordering::Relaxed);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -455,11 +497,18 @@ impl DevEngine {
             attributes: serde_json::json!({ "reason": reason }),
         };
         wf.history_length += 1;
-        self.history.write().unwrap().entry(key).or_default().push(event);
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
 
         self.stats.running_count.fetch_sub(1, Ordering::Relaxed);
         self.stats.failed_count.fetch_add(1, Ordering::Relaxed);
-        self.stats.history_event_count.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .history_event_count
+            .fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -468,16 +517,17 @@ impl DevEngine {
         self.workflows.read().unwrap().get(&key).cloned()
     }
 
-    fn list_workflows(&self, namespace: &str, status_filter: Option<&str>, page_size: usize) -> SearchResult {
+    fn list_workflows(
+        &self,
+        namespace: &str,
+        status_filter: Option<&str>,
+        page_size: usize,
+    ) -> SearchResult {
         let workflows = self.workflows.read().unwrap();
         let mut results: Vec<WorkflowExecution> = workflows
             .values()
             .filter(|w| w.namespace == namespace)
-            .filter(|w| {
-                status_filter
-                    .map(|s| w.status == s)
-                    .unwrap_or(true)
-            })
+            .filter(|w| status_filter.map(|s| w.status == s).unwrap_or(true))
             .take(page_size)
             .cloned()
             .collect();
@@ -492,7 +542,12 @@ impl DevEngine {
 
     fn get_history(&self, namespace: &str, wf_id: &str) -> Vec<HistoryEvent> {
         let key = format!("{}/{}", namespace, wf_id);
-        self.history.read().unwrap().get(&key).cloned().unwrap_or_default()
+        self.history
+            .read()
+            .unwrap()
+            .get(&key)
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn list_namespaces(&self) -> Vec<Namespace> {
@@ -549,7 +604,12 @@ impl DevEngine {
         }
     }
 
-    fn query_workflow(&self, namespace: &str, wf_id: &str, query_type: &str) -> Result<serde_json::Value, String> {
+    fn query_workflow(
+        &self,
+        namespace: &str,
+        wf_id: &str,
+        query_type: &str,
+    ) -> Result<serde_json::Value, String> {
         let key = format!("{}/{}", namespace, wf_id);
         let workflows = self.workflows.read().unwrap();
         let wf = workflows.get(&key).ok_or("Workflow not found")?;
@@ -570,13 +630,90 @@ impl DevEngine {
             })),
         }
     }
+
+    fn terminate_workflow(&self, namespace: &str, wf_id: &str, reason: &str) -> Result<(), String> {
+        let key = format!("{}/{}", namespace, wf_id);
+        let mut workflows = self.workflows.write().unwrap();
+        let wf = workflows.get_mut(&key).ok_or("Workflow not found")?;
+        wf.status = "TERMINATED".to_string();
+        wf.closed_at = Some(now_millis());
+
+        let now = now_millis();
+        let event = HistoryEvent {
+            event_id: wf.history_length + 1,
+            event_type: "WorkflowExecutionTerminated".to_string(),
+            event_time: now,
+            task_id: wf.history_length + 2,
+            attributes: serde_json::json!({ "reason": reason }),
+        };
+        wf.history_length += 1;
+        self.history
+            .write()
+            .unwrap()
+            .entry(key)
+            .or_default()
+            .push(event);
+
+        self.stats.running_count.fetch_sub(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    fn reset_all(&self, namespace: &str) -> u64 {
+        let mut workflows = self.workflows.write().unwrap();
+        let keys: Vec<String> = workflows
+            .keys()
+            .filter(|k| k.starts_with(&format!("{}/", namespace)))
+            .cloned()
+            .collect();
+        let count = keys.len() as u64;
+        for key in &keys {
+            workflows.remove(key);
+        }
+        // Also clear history and signals for those workflows
+        let mut history = self.history.write().unwrap();
+        for key in &keys {
+            history.remove(key);
+        }
+        let mut signals = self.signals.write().unwrap();
+        for key in &keys {
+            signals.remove(key);
+        }
+        // Reset stats
+        self.stats.workflow_count.store(0, Ordering::Relaxed);
+        self.stats.running_count.store(0, Ordering::Relaxed);
+        self.stats.completed_count.store(0, Ordering::Relaxed);
+        self.stats.failed_count.store(0, Ordering::Relaxed);
+        self.stats.signal_count.store(0, Ordering::Relaxed);
+        self.stats.query_count.store(0, Ordering::Relaxed);
+        self.stats.history_event_count.store(0, Ordering::Relaxed);
+        count
+    }
+
+    fn count_workflows(&self, namespace: &str, status_filter: &str) -> u64 {
+        let workflows = self.workflows.read().unwrap();
+        workflows
+            .values()
+            .filter(|w| w.namespace == namespace)
+            .filter(|w| match status_filter {
+                "running" => w.status == "RUNNING",
+                "completed" => w.status == "COMPLETED",
+                "failed" => w.status == "FAILED",
+                "terminated" => w.status == "TERMINATED",
+                _ => true, // "all" or anything else
+            })
+            .count() as u64
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HTTP API Server
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async fn run_http_server(engine: Arc<DevEngine>, addr: SocketAddr, mut shutdown_rx: broadcast::Receiver<()>) {
+async fn run_http_server(
+    engine: Arc<DevEngine>,
+    addr: SocketAddr,
+    mut shutdown_rx: broadcast::Receiver<()>,
+) {
     let listener = match TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(e) => {
@@ -611,7 +748,10 @@ async fn run_http_server(engine: Arc<DevEngine>, addr: SocketAddr, mut shutdown_
     }
 }
 
-async fn handle_http_connection(engine: Arc<DevEngine>, stream: tokio::net::TcpStream) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn handle_http_connection(
+    engine: Arc<DevEngine>,
+    stream: tokio::net::TcpStream,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (reader, mut writer) = stream.into_split();
     let mut buf_reader = BufReader::new(reader);
     let mut request_line = String::new();
@@ -662,7 +802,12 @@ async fn handle_http_connection(engine: Arc<DevEngine>, stream: tokio::net::TcpS
     Ok(())
 }
 
-async fn route_request(engine: &Arc<DevEngine>, method: &str, path: &str, body: &[u8]) -> (String, String, String) {
+async fn route_request(
+    engine: &Arc<DevEngine>,
+    method: &str,
+    path: &str,
+    body: &[u8],
+) -> (String, String, String) {
     let json = "application/json";
     let ok = "200 OK";
     let created = "201 Created";
@@ -864,7 +1009,11 @@ async fn route_request(engine: &Arc<DevEngine>, method: &str, path: &str, body: 
 // Web UI Server
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async fn run_ui_server(engine: Arc<DevEngine>, addr: SocketAddr, mut shutdown_rx: broadcast::Receiver<()>) {
+async fn run_ui_server(
+    engine: Arc<DevEngine>,
+    addr: SocketAddr,
+    mut shutdown_rx: broadcast::Receiver<()>,
+) {
     let listener = match TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(e) => {
@@ -899,7 +1048,10 @@ async fn run_ui_server(engine: Arc<DevEngine>, addr: SocketAddr, mut shutdown_rx
     }
 }
 
-async fn handle_ui_connection(engine: Arc<DevEngine>, stream: tokio::net::TcpStream) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn handle_ui_connection(
+    engine: Arc<DevEngine>,
+    stream: tokio::net::TcpStream,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (reader, mut writer) = stream.into_split();
     let mut buf_reader = BufReader::new(reader);
     let mut request_line = String::new();
@@ -1114,22 +1266,40 @@ fn print_banner(config: &DevServerConfig) {
     println!("  \x1b[36m╚╗╔╝ ║║║ ╠╩╗ \x1b[0mv0.1.0 — In-memory mode");
     println!("  \x1b[36m  ╚╝  ╝╚╝ ╩ ╩ \x1b[0m");
     println!();
-    println!("  \x1b[33mHTTP API:\x1b[0m  http://{}:{}", config.ip, config.port);
-    println!("  \x1b[33mgRPC:    \x1b[0m  http://{}:{}", config.ip, config.grpc_port);
+    println!(
+        "  \x1b[33mHTTP API:\x1b[0m  http://{}:{}",
+        config.ip, config.port
+    );
+    println!(
+        "  \x1b[33mgRPC:    \x1b[0m  http://{}:{}",
+        config.ip, config.grpc_port
+    );
     if config.ui_port > 0 {
-        println!("  \x1b[33mWeb UI:  \x1b[0m  http://{}:{}", config.ip, config.ui_port);
+        println!(
+            "  \x1b[33mWeb UI:  \x1b[0m  http://{}:{}",
+            config.ip, config.ui_port
+        );
     }
-    println!("  \x1b[33mMetrics: \x1b[0m  http://{}:{}/metrics", config.ip, config.port);
+    println!(
+        "  \x1b[33mMetrics: \x1b[0m  http://{}:{}/metrics",
+        config.ip, config.port
+    );
     println!();
     println!("  \x1b[32mNamespace:\x1b[0m  {}", config.namespace);
     println!("  \x1b[32mShards:   \x1b[0m  {}", config.shards);
-    println!("  \x1b[32mRetention:\x1b[0m  {} days", config.retention_days);
+    println!(
+        "  \x1b[32mRetention:\x1b[0m  {} days",
+        config.retention_days
+    );
     println!("  \x1b[32mLog Level:\x1b[0m  {}", config.log_level);
     if config.chaos {
         println!("  \x1b[31mChaos:    \x1b[0m  ENABLED");
     }
     if config.cluster_mode {
-        println!("  \x1b[35mCluster:  \x1b[0m  {} nodes (simulated)", config.cluster_nodes);
+        println!(
+            "  \x1b[35mCluster:  \x1b[0m  {} nodes (simulated)",
+            config.cluster_nodes
+        );
     }
     println!();
     println!("  \x1b[90mPress Ctrl+C to stop\x1b[0m");
@@ -1179,12 +1349,30 @@ async fn main() {
         None
     };
 
-    // gRPC placeholder (just log that it would start)
-    tracing::info!(
-        "gRPC server configured on {}:{} (use full server for gRPC)",
-        config.ip,
-        config.grpc_port
-    );
+    // ─── gRPC BenchmarkService ──────────────────────────────────────────
+    let grpc_addr: SocketAddr = format!("{}:{}", config.ip, config.grpc_port)
+        .parse()
+        .expect("Invalid gRPC address");
+    let grpc_engine = engine.clone();
+    let grpc_shutdown = shutdown_tx.subscribe();
+    let grpc_handle = tokio::spawn(async move {
+        use grpc_bench::velocity_bench_proto::benchmark_service_server::BenchmarkServiceServer;
+        use grpc_bench::BenchmarkServiceImpl;
+
+        let service = BenchmarkServiceImpl {
+            engine: grpc_engine,
+        };
+        tracing::info!("gRPC BenchmarkService listening on {}", grpc_addr);
+
+        tonic::transport::Server::builder()
+            .add_service(BenchmarkServiceServer::new(service))
+            .serve_with_shutdown(grpc_addr, async move {
+                let mut rx = grpc_shutdown;
+                let _ = rx.recv().await;
+            })
+            .await
+            .unwrap_or_else(|e| tracing::error!("gRPC server error: {}", e));
+    });
 
     // Wait for shutdown signal
     tokio::select! {
@@ -1200,6 +1388,7 @@ async fn main() {
 
     // Wait for servers to stop
     let _ = tokio::time::timeout(Duration::from_secs(5), http_handle).await;
+    let _ = tokio::time::timeout(Duration::from_secs(5), grpc_handle).await;
     if let Some(handle) = ui_handle {
         let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
     }
@@ -1263,7 +1452,12 @@ mod tests {
     #[test]
     fn test_start_workflow() {
         let engine = DevEngine::new(test_config());
-        let result = engine.start_workflow("test", "TestWorkflow", "test-queue", serde_json::json!({"key": "value"}));
+        let result = engine.start_workflow(
+            "test",
+            "TestWorkflow",
+            "test-queue",
+            serde_json::json!({"key": "value"}),
+        );
         assert!(result.is_ok());
         let wf = result.unwrap();
         assert_eq!(wf.workflow_type, "TestWorkflow");
@@ -1276,8 +1470,19 @@ mod tests {
     #[test]
     fn test_complete_workflow() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "TestWorkflow", "test-queue", serde_json::Value::Null).unwrap();
-        let result = engine.complete_workflow("test", &wf.workflow_id, serde_json::json!({"result": "done"}));
+        let wf = engine
+            .start_workflow(
+                "test",
+                "TestWorkflow",
+                "test-queue",
+                serde_json::Value::Null,
+            )
+            .unwrap();
+        let result = engine.complete_workflow(
+            "test",
+            &wf.workflow_id,
+            serde_json::json!({"result": "done"}),
+        );
         assert!(result.is_ok());
         let updated = engine.get_workflow("test", &wf.workflow_id).unwrap();
         assert_eq!(updated.status, "COMPLETED");
@@ -1287,7 +1492,14 @@ mod tests {
     #[test]
     fn test_fail_workflow() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "TestWorkflow", "test-queue", serde_json::Value::Null).unwrap();
+        let wf = engine
+            .start_workflow(
+                "test",
+                "TestWorkflow",
+                "test-queue",
+                serde_json::Value::Null,
+            )
+            .unwrap();
         let result = engine.fail_workflow("test", &wf.workflow_id, "something went wrong");
         assert!(result.is_ok());
         let updated = engine.get_workflow("test", &wf.workflow_id).unwrap();
@@ -1297,8 +1509,20 @@ mod tests {
     #[test]
     fn test_signal_workflow() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "TestWorkflow", "test-queue", serde_json::Value::Null).unwrap();
-        let result = engine.signal_workflow("test", &wf.workflow_id, "my-signal", serde_json::json!({"data": 42}));
+        let wf = engine
+            .start_workflow(
+                "test",
+                "TestWorkflow",
+                "test-queue",
+                serde_json::Value::Null,
+            )
+            .unwrap();
+        let result = engine.signal_workflow(
+            "test",
+            &wf.workflow_id,
+            "my-signal",
+            serde_json::json!({"data": 42}),
+        );
         assert!(result.is_ok());
         let key = format!("test/{}", wf.workflow_id);
         let signals = engine.signals.read().unwrap();
@@ -1316,9 +1540,15 @@ mod tests {
     #[test]
     fn test_list_workflows() {
         let engine = DevEngine::new(test_config());
-        engine.start_workflow("test", "WF1", "q1", serde_json::Value::Null).unwrap();
-        engine.start_workflow("test", "WF2", "q2", serde_json::Value::Null).unwrap();
-        engine.start_workflow("test", "WF3", "q1", serde_json::Value::Null).unwrap();
+        engine
+            .start_workflow("test", "WF1", "q1", serde_json::Value::Null)
+            .unwrap();
+        engine
+            .start_workflow("test", "WF2", "q2", serde_json::Value::Null)
+            .unwrap();
+        engine
+            .start_workflow("test", "WF3", "q1", serde_json::Value::Null)
+            .unwrap();
         let result = engine.list_workflows("test", None, 100);
         assert_eq!(result.executions.len(), 3);
         assert_eq!(result.total_count, 3);
@@ -1327,9 +1557,15 @@ mod tests {
     #[test]
     fn test_list_workflows_with_status_filter() {
         let engine = DevEngine::new(test_config());
-        let wf1 = engine.start_workflow("test", "WF1", "q1", serde_json::Value::Null).unwrap();
-        engine.start_workflow("test", "WF2", "q2", serde_json::Value::Null).unwrap();
-        engine.complete_workflow("test", &wf1.workflow_id, serde_json::Value::Null).unwrap();
+        let wf1 = engine
+            .start_workflow("test", "WF1", "q1", serde_json::Value::Null)
+            .unwrap();
+        engine
+            .start_workflow("test", "WF2", "q2", serde_json::Value::Null)
+            .unwrap();
+        engine
+            .complete_workflow("test", &wf1.workflow_id, serde_json::Value::Null)
+            .unwrap();
         let running = engine.list_workflows("test", Some("RUNNING"), 100);
         assert_eq!(running.executions.len(), 1);
         let completed = engine.list_workflows("test", Some("COMPLETED"), 100);
@@ -1339,7 +1575,14 @@ mod tests {
     #[test]
     fn test_get_history() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "TestWorkflow", "test-queue", serde_json::Value::Null).unwrap();
+        let wf = engine
+            .start_workflow(
+                "test",
+                "TestWorkflow",
+                "test-queue",
+                serde_json::Value::Null,
+            )
+            .unwrap();
         let history = engine.get_history("test", &wf.workflow_id);
         assert!(history.len() >= 2); // Started + TaskScheduled
         assert_eq!(history[0].event_type, "WorkflowExecutionStarted");
@@ -1362,9 +1605,15 @@ mod tests {
     #[test]
     fn test_task_queues() {
         let engine = DevEngine::new(test_config());
-        engine.start_workflow("test", "WF1", "queue-a", serde_json::Value::Null).unwrap();
-        engine.start_workflow("test", "WF2", "queue-b", serde_json::Value::Null).unwrap();
-        engine.start_workflow("test", "WF3", "queue-a", serde_json::Value::Null).unwrap();
+        engine
+            .start_workflow("test", "WF1", "queue-a", serde_json::Value::Null)
+            .unwrap();
+        engine
+            .start_workflow("test", "WF2", "queue-b", serde_json::Value::Null)
+            .unwrap();
+        engine
+            .start_workflow("test", "WF3", "queue-a", serde_json::Value::Null)
+            .unwrap();
         let tqs = engine.list_task_queues("test");
         assert_eq!(tqs.len(), 2);
     }
@@ -1372,8 +1621,17 @@ mod tests {
     #[test]
     fn test_stats() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "TestWorkflow", "test-queue", serde_json::Value::Null).unwrap();
-        engine.complete_workflow("test", &wf.workflow_id, serde_json::Value::Null).unwrap();
+        let wf = engine
+            .start_workflow(
+                "test",
+                "TestWorkflow",
+                "test-queue",
+                serde_json::Value::Null,
+            )
+            .unwrap();
+        engine
+            .complete_workflow("test", &wf.workflow_id, serde_json::Value::Null)
+            .unwrap();
         let stats = engine.get_stats();
         assert_eq!(stats.workflow_count, 1);
         assert_eq!(stats.completed_workflows, 1);
@@ -1384,7 +1642,14 @@ mod tests {
     #[test]
     fn test_query_workflow() {
         let engine = DevEngine::new(test_config());
-        let wf = engine.start_workflow("test", "TestWorkflow", "test-queue", serde_json::Value::Null).unwrap();
+        let wf = engine
+            .start_workflow(
+                "test",
+                "TestWorkflow",
+                "test-queue",
+                serde_json::Value::Null,
+            )
+            .unwrap();
         let result = engine.query_workflow("test", &wf.workflow_id, "__stack_trace");
         assert!(result.is_ok());
         let val = result.unwrap();

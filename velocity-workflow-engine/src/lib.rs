@@ -8,6 +8,7 @@
 //!   [C# Developer Code] ──FFI──► [velocity-workflow-engine] ──► [velocity-workflow-core]
 //!   (thin bridge)                (runtime engine, zero-GC)      (slab, bitmask, Merkle)
 
+pub mod activity_worker;
 pub mod advanced_operations;
 pub mod advanced_scheduler;
 pub mod ai_context;
@@ -81,6 +82,7 @@ pub mod nexus_deep;
 pub mod notification_system;
 pub mod observability;
 pub mod operational_api;
+pub mod otel_integration;
 pub mod partition;
 pub mod patch;
 pub mod payload_codec;
@@ -97,6 +99,7 @@ pub mod raft_consensus;
 pub mod rate_limiter;
 pub mod reachability;
 pub mod replay;
+pub mod replay_testing;
 pub mod replication_daemon;
 pub mod replication_executor;
 pub mod replication_manager;
@@ -856,4 +859,26 @@ pub use workflow_replay::{
     ReplayDebugger, ReplayDebuggerStats, ReplayEngine as WfReplayEngine,
     ReplayEngineStats as WfReplayEngineStats, ReplayError, ReplayErrorType, ReplaySession,
     ReplayStatus, StepResult as WfStepResult, ViolationSeverity as WfViolationSeverity,
+};
+
+// activity_worker: separate process activity execution, worker pool, heartbeats.
+pub use activity_worker::{
+    ActivityError as AwActivityError, ActivityErrorType as AwActivityErrorType, ActivityExecutor,
+    ActivityInput as AwActivityInput, ActivityOutput as AwActivityOutput,
+    ActivityTask as AwActivityTask, ActivityTaskResult, ActivityWorker, EchoActivity, HttpActivity,
+    PoolStats as AwPoolStats, SleepActivity, WorkerConfig as AwWorkerConfig, WorkerPool,
+    WorkerStatsSnapshot,
+};
+// replay_testing: deterministic replay, captured executions, test builder.
+pub use replay_testing::{
+    CapturedChildWorkflow, CapturedEvent, CapturedExecution, CapturedQuery, CapturedSideEffect,
+    CapturedSignal, DeterminismViolation as RtDeterminismViolation, EventType as RtEventType,
+    ReplayEngine as RtReplayEngine, ReplayResult as RtReplayResult, ReplayStatsSnapshot,
+    ReplayStatus as RtReplayStatus, ReplayTestBuilder, ViolationType as RtViolationType,
+};
+// otel_integration: OpenTelemetry tracing, metrics, context propagation.
+pub use otel_integration::{
+    AttributeValue, ContextPropagator as OtContextPropagator, HistogramStats, MetricsRecorder,
+    SpanBuilder as OtSpanBuilder, SpanEvent as OtSpanEvent, SpanLink as OtSpanLink,
+    SpanStatus as OtSpanStatus, TraceContext, Tracer, TracerStatsSnapshot, WorkflowTelemetry,
 };

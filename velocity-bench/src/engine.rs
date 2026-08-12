@@ -1,12 +1,24 @@
-//! Benchmark engine abstraction — adapters for VELOCITY and Temporal.
+//! Benchmark engine abstraction — gRPC client adapters for VELOCITY and Temporal.
 //!
-//! The [`BenchmarkEngine`] trait defines a common interface that both engines
-//! implement. This allows workloads to run identically on both, producing
-//! comparable metrics.
+//! Both adapters connect to their respective engines via **identical gRPC paths**,
+//! ensuring an apples-to-apples comparison. Neither adapter uses a direct/in-process
+//! API — both pay the same serialization, network, and protocol overhead.
+//!
+//! Architecture:
+//!   [velocity-bench] ──gRPC──► [velocity-dev-server] ──► [DevEngine]  (VELOCITY)
+//!   [velocity-bench] ──gRPC──► [temporal-server]       ──► [Matching/History] (Temporal)
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
+
+// Include the generated gRPC client code from build.rs.
+pub mod velocity_bench_proto {
+    tonic::include_proto!("velocity.bench.v1");
+}
+
+use velocity_bench_proto::benchmark_service_client::BenchmarkServiceClient;
+use velocity_bench_proto::*;
 
 // ─── Engine Configuration ────────────────────────────────────────────────────
 
@@ -30,8 +42,7 @@ impl std::fmt::Display for EngineKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineConfig {
     pub kind: EngineKind,
-    /// For VELOCITY: unused (direct Rust API).
-    /// For Temporal: gRPC address (e.g., "http://localhost:7233").
+    /// gRPC address (e.g., "http://localhost:7234").
     pub address: String,
     /// Namespace to use.
     pub namespace: String,
@@ -44,10 +55,10 @@ pub struct EngineConfig {
 }
 
 impl EngineConfig {
-    pub fn velocity() -> Self {
+    pub fn velocity(addr: &str) -> Self {
         Self {
             kind: EngineKind::Velocity,
-            address: "direct://".into(),
+            address: addr.into(),
             namespace: "benchmark".into(),
             task_queue: "bench-queue".into(),
             connect_timeout_ms: 5_000,
@@ -142,8 +153,8 @@ impl BenchmarkResult {
 
 /// Common interface for benchmarking workflow engines.
 ///
-/// Both VELOCITY (direct Rust API) and Temporal (gRPC) implement this trait,
-/// allowing identical workloads to run on both engines.
+/// Both VELOCITY and Temporal connect via identical gRPC paths,
+/// ensuring a fair apples-to-apples comparison.
 #[async_trait::async_trait]
 pub trait BenchmarkEngine: Send + Sync {
     /// Returns the engine kind.
@@ -201,190 +212,53 @@ pub trait BenchmarkEngine: Send + Sync {
 
     /// Get engine health status.
     async fn health_check(&self) -> Result<bool, String>;
-}
 
-// ─── VELOCITY Adapter ────────────────────────────────────────────────────────
-
-/// Adapter for the VELOCITY workflow engine (direct Rust API).
-pub struct VelocityAdapter {
-    engine: velocity_workflow_engine::engine::WorkflowEngine,
-    namespace_id: u64,
-    workflow_counter: std::sync::atomic::AtomicU64,
-}
-
-impl VelocityAdapter {
-    pub fn new() -> Self {
-        Self {
-            engine: velocity_workflow_engine::engine::WorkflowEngine::new(),
-            namespace_id: 1,
-            workflow_counter: std::sync::atomic::AtomicU64::new(0),
-        }
-    }
-
-    fn next_workflow_key(&self) -> u64 {
-        self.workflow_counter
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-            + 1
-    }
-}
-
-#[async_trait::async_trait]
-impl BenchmarkEngine for VelocityAdapter {
-    fn kind(&self) -> EngineKind {
-        EngineKind::Velocity
-    }
-
-    async fn connect(&mut self, _config: &EngineConfig) -> Result<(), String> {
-        // VELOCITY uses direct Rust API — no connection needed.
-        // Register a default namespace.
-        self.engine.register_namespace("benchmark");
-        Ok(())
-    }
-
-    async fn disconnect(&mut self) -> Result<(), String> {
-        Ok(())
-    }
-
-    async fn start_workflow(
-        &self,
-        workflow_type: &str,
-        workflow_id: &str,
-        input: &[u8],
-    ) -> Result<WorkflowHandle, String> {
-        let start = Instant::now();
-        let key = self.next_workflow_key();
-        let step_count = 10; // Default workload steps
-
-        self.engine.start_workflow(
-            self.namespace_id,
-            key,
-            0,
-            step_count,
-            step_count,
-            Some(input.to_vec()),
-        );
-
-        Ok(WorkflowHandle {
-            workflow_id: workflow_id.to_string(),
-            run_id: format!("vel-{}", key),
-            engine: EngineKind::Velocity,
-            started_at: start,
-        })
-    }
-
-    async fn signal_workflow(
+    /// Complete a workflow step (for driving workflows forward).
+    async fn complete_step(
         &self,
         handle: &WorkflowHandle,
-        signal_name: &str,
-        payload: &[u8],
-    ) -> Result<OperationResult, String> {
-        let start = Instant::now();
-        let key: u64 = handle.run_id.strip_prefix("vel-").unwrap_or("0").parse().unwrap_or(0);
-
-        self.engine.signal_workflow(key, signal_name, payload.to_vec());
-
-        Ok(OperationResult::ok(start.elapsed()))
-    }
-
-    async fn query_workflow(
-        &self,
-        handle: &WorkflowHandle,
-        query_type: &str,
-        _payload: &[u8],
-    ) -> Result<OperationResult, String> {
-        let start = Instant::now();
-        let key: u64 = handle.run_id.strip_prefix("vel-").unwrap_or("0").parse().unwrap_or(0);
-
-        let _status = self.engine.get_status(key);
-
-        Ok(OperationResult::ok(start.elapsed()))
-    }
-
-    async fn wait_for_completion(
-        &self,
-        handle: &WorkflowHandle,
-        timeout: Duration,
-    ) -> Result<OperationResult, String> {
-        let start = Instant::now();
-        let key: u64 = handle.run_id.strip_prefix("vel-").unwrap_or("0").parse().unwrap_or(0);
-
-        // Simulate completing all steps
-        let total_steps = self.engine.get_total_steps(key);
-        for i in 0..total_steps {
-            self.engine.complete_step(key, i, format!("step-{i}").into_bytes());
-        }
-        self.engine.complete_workflow(key, Some(b"done".to_vec()));
-
-        let elapsed = start.elapsed();
-        if elapsed > timeout {
-            Ok(OperationResult::err(elapsed, "timeout".into()))
-        } else {
-            Ok(OperationResult::ok(elapsed))
-        }
-    }
-
-    async fn terminate_workflow(
-        &self,
-        handle: &WorkflowHandle,
-        _reason: &str,
-    ) -> Result<OperationResult, String> {
-        let start = Instant::now();
-        let key: u64 = handle.run_id.strip_prefix("vel-").unwrap_or("0").parse().unwrap_or(0);
-
-        self.engine.terminate_workflow(key);
-
-        Ok(OperationResult::ok(start.elapsed()))
-    }
-
-    async fn get_workflow_count(&self) -> Result<u64, String> {
-        Ok(self.engine.active_workflow_count())
-    }
-
-    async fn reset(&self) -> Result<(), String> {
-        self.engine.reset();
-        Ok(())
-    }
-
-    async fn health_check(&self) -> Result<bool, String> {
-        Ok(true)
-    }
+        step_index: i32,
+        result: &[u8],
+    ) -> Result<OperationResult, String>;
 }
 
-// ─── Temporal Adapter ────────────────────────────────────────────────────────
+// ─── gRPC Client Adapter (shared by both engines) ───────────────────────────
 
-/// Adapter for Temporal workflow engine (gRPC client).
+/// Generic gRPC client adapter. Both VELOCITY and Temporal connect through
+/// the same `BenchmarkServiceClient`, ensuring identical protocol overhead.
 ///
-/// Connects to a running Temporal server via gRPC and executes
-/// identical workloads for comparison.
-pub struct TemporalAdapter {
+/// The only difference is the server address — VELOCITY connects to
+/// `velocity-dev-server` and Temporal connects to its own server.
+pub struct GrpcAdapter {
+    engine_kind: EngineKind,
+    client: Option<BenchmarkServiceClient<tonic::transport::Channel>>,
     address: String,
     namespace: String,
     task_queue: String,
-    connected: bool,
-    workflow_counter: std::sync::atomic::AtomicU64,
 }
 
-impl TemporalAdapter {
-    pub fn new() -> Self {
+impl GrpcAdapter {
+    pub fn new(kind: EngineKind) -> Self {
         Self {
+            engine_kind: kind,
+            client: None,
             address: String::new(),
             namespace: String::new(),
             task_queue: String::new(),
-            connected: false,
-            workflow_counter: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
-    fn next_workflow_id(&self) -> String {
-        let count = self.workflow_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        format!("bench-{}", count)
+    fn require_client(&self) -> Result<&BenchmarkServiceClient<tonic::transport::Channel>, String> {
+        self.client
+            .as_ref()
+            .ok_or_else(|| "Not connected — call connect() first".into())
     }
 }
 
 #[async_trait::async_trait]
-impl BenchmarkEngine for TemporalAdapter {
+impl BenchmarkEngine for GrpcAdapter {
     fn kind(&self) -> EngineKind {
-        EngineKind::Temporal
+        self.engine_kind
     }
 
     async fn connect(&mut self, config: &EngineConfig) -> Result<(), String> {
@@ -392,20 +266,39 @@ impl BenchmarkEngine for TemporalAdapter {
         self.namespace = config.namespace.clone();
         self.task_queue = config.task_queue.clone();
 
-        // In a full implementation, this would establish a gRPC connection
-        // to the Temporal frontend service. For now, we validate the address
-        // format and mark as connected.
-        if self.address.is_empty() {
-            return Err("Temporal address is required".into());
-        }
+        let timeout = Duration::from_millis(config.connect_timeout_ms);
+        let endpoint = tonic::transport::Channel::from_shared(self.address.clone())
+            .map_err(|e| format!("Invalid gRPC address: {}", e))?
+            .connect_timeout(timeout)
+            .timeout(Duration::from_millis(config.operation_timeout_ms));
 
-        self.connected = true;
-        tracing::info!(address = %self.address, "Connected to Temporal");
+        let channel = endpoint
+            .connect()
+            .await
+            .map_err(|e| format!("gRPC connect to {} failed: {}", self.address, e))?;
+
+        self.client = Some(BenchmarkServiceClient::new(channel));
+
+        // Register the benchmark namespace via gRPC (same call for both engines).
+        let client = self.require_client()?;
+        let mut client = client.clone();
+        let _ = client
+            .register_namespace(RegisterNamespaceRequest {
+                name: self.namespace.clone(),
+                description: format!("Benchmark namespace for {}", self.engine_kind),
+            })
+            .await;
+
+        tracing::info!(
+            engine = %self.engine_kind,
+            address = %self.address,
+            "Connected via gRPC (BenchmarkService)"
+        );
         Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<(), String> {
-        self.connected = false;
+        self.client = None;
         Ok(())
     }
 
@@ -415,26 +308,32 @@ impl BenchmarkEngine for TemporalAdapter {
         workflow_id: &str,
         input: &[u8],
     ) -> Result<WorkflowHandle, String> {
-        let start = Instant::now();
-        let wf_id = if workflow_id.is_empty() {
-            self.next_workflow_id()
-        } else {
-            workflow_id.to_string()
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
+        let req = StartWorkflowRequest {
+            workflow_type: workflow_type.to_string(),
+            workflow_id: workflow_id.to_string(),
+            namespace: self.namespace.clone(),
+            task_queue: self.task_queue.clone(),
+            input: input.to_vec(),
+            step_count: 10,
+            search_attributes: HashMap::new(),
+            execution_timeout_ms: 30_000,
         };
 
-        // In a full implementation, this would call:
-        //   WorkflowService::StartWorkflowExecution via gRPC
-        // For now, we simulate the call latency.
-        tracing::debug!(
-            workflow_type = workflow_type,
-            workflow_id = %wf_id,
-            "Starting Temporal workflow"
-        );
+        let start = Instant::now();
+        let resp = client
+            .start_workflow(req)
+            .await
+            .map_err(|e| format!("StartWorkflow gRPC error: {}", e))?;
+        let _rtt = start.elapsed();
 
+        let inner = resp.into_inner();
         Ok(WorkflowHandle {
-            workflow_id: wf_id,
-            run_id: format!("temporal-{}", uuid::Uuid::new_v4()),
-            engine: EngineKind::Temporal,
+            workflow_id: inner.workflow_id,
+            run_id: inner.run_id,
+            engine: self.engine_kind,
             started_at: start,
         })
     }
@@ -445,34 +344,56 @@ impl BenchmarkEngine for TemporalAdapter {
         signal_name: &str,
         payload: &[u8],
     ) -> Result<OperationResult, String> {
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
         let start = Instant::now();
+        let resp = client
+            .signal_workflow(SignalWorkflowRequest {
+                workflow_id: handle.workflow_id.clone(),
+                run_id: handle.run_id.clone(),
+                signal_name: signal_name.to_string(),
+                payload: payload.to_vec(),
+                namespace: self.namespace.clone(),
+            })
+            .await
+            .map_err(|e| format!("SignalWorkflow gRPC error: {}", e))?;
 
-        // In a full implementation: WorkflowService::SignalWorkflowExecution
-        tracing::debug!(
-            workflow_id = %handle.workflow_id,
-            signal = signal_name,
-            "Signaling Temporal workflow"
-        );
-
-        Ok(OperationResult::ok(start.elapsed()))
+        let inner = resp.into_inner();
+        if inner.success {
+            Ok(OperationResult::ok(start.elapsed()))
+        } else {
+            Ok(OperationResult::err(start.elapsed(), inner.error))
+        }
     }
 
     async fn query_workflow(
         &self,
         handle: &WorkflowHandle,
         query_type: &str,
-        _payload: &[u8],
+        payload: &[u8],
     ) -> Result<OperationResult, String> {
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
         let start = Instant::now();
+        let resp = client
+            .query_workflow(QueryWorkflowRequest {
+                workflow_id: handle.workflow_id.clone(),
+                run_id: handle.run_id.clone(),
+                query_type: query_type.to_string(),
+                payload: payload.to_vec(),
+                namespace: self.namespace.clone(),
+            })
+            .await
+            .map_err(|e| format!("QueryWorkflow gRPC error: {}", e))?;
 
-        // In a full implementation: WorkflowService::QueryWorkflow
-        tracing::debug!(
-            workflow_id = %handle.workflow_id,
-            query = query_type,
-            "Querying Temporal workflow"
-        );
-
-        Ok(OperationResult::ok(start.elapsed()))
+        let inner = resp.into_inner();
+        if inner.success {
+            Ok(OperationResult::ok(start.elapsed()))
+        } else {
+            Ok(OperationResult::err(start.elapsed(), inner.error))
+        }
     }
 
     async fn wait_for_completion(
@@ -480,17 +401,26 @@ impl BenchmarkEngine for TemporalAdapter {
         handle: &WorkflowHandle,
         timeout: Duration,
     ) -> Result<OperationResult, String> {
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
         let start = Instant::now();
+        let resp = client
+            .wait_for_completion(WaitForCompletionRequest {
+                workflow_id: handle.workflow_id.clone(),
+                run_id: handle.run_id.clone(),
+                namespace: self.namespace.clone(),
+                timeout_ms: timeout.as_millis() as i64,
+            })
+            .await
+            .map_err(|e| format!("WaitForCompletion gRPC error: {}", e))?;
 
-        // In a full implementation: poll WorkflowService::DescribeWorkflowExecution
-        // until status is Completed/Failed/Terminated
-        tracing::debug!(
-            workflow_id = %handle.workflow_id,
-            timeout_ms = timeout.as_millis() as u64,
-            "Waiting for Temporal workflow completion"
-        );
-
-        Ok(OperationResult::ok(start.elapsed()))
+        let inner = resp.into_inner();
+        if inner.success {
+            Ok(OperationResult::ok(start.elapsed()))
+        } else {
+            Ok(OperationResult::err(start.elapsed(), inner.error))
+        }
     }
 
     async fn terminate_workflow(
@@ -498,34 +428,103 @@ impl BenchmarkEngine for TemporalAdapter {
         handle: &WorkflowHandle,
         reason: &str,
     ) -> Result<OperationResult, String> {
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
         let start = Instant::now();
+        let resp = client
+            .terminate_workflow(TerminateWorkflowRequest {
+                workflow_id: handle.workflow_id.clone(),
+                run_id: handle.run_id.clone(),
+                namespace: self.namespace.clone(),
+                reason: reason.to_string(),
+            })
+            .await
+            .map_err(|e| format!("TerminateWorkflow gRPC error: {}", e))?;
 
-        // In a full implementation: WorkflowService::TerminateWorkflowExecution
-        tracing::debug!(
-            workflow_id = %handle.workflow_id,
-            reason = reason,
-            "Terminating Temporal workflow"
-        );
-
-        Ok(OperationResult::ok(start.elapsed()))
+        let inner = resp.into_inner();
+        if inner.success {
+            Ok(OperationResult::ok(start.elapsed()))
+        } else {
+            Ok(OperationResult::err(start.elapsed(), inner.error))
+        }
     }
 
     async fn get_workflow_count(&self) -> Result<u64, String> {
-        // In a full implementation: WorkflowService::ListWorkflowExecutions
-        Ok(0)
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
+        let resp = client
+            .count_workflows(CountWorkflowsRequest {
+                namespace: self.namespace.clone(),
+                status_filter: "all".to_string(),
+            })
+            .await
+            .map_err(|e| format!("CountWorkflows gRPC error: {}", e))?;
+
+        Ok(resp.into_inner().count as u64)
     }
 
     async fn reset(&self) -> Result<(), String> {
-        // In a full implementation: reset namespace or delete test workflows
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
+        client
+            .reset(ResetRequest {
+                namespace: self.namespace.clone(),
+            })
+            .await
+            .map_err(|e| format!("Reset gRPC error: {}", e))?;
+
         Ok(())
     }
 
     async fn health_check(&self) -> Result<bool, String> {
-        // In a full implementation: WorkflowService::GetSystemInfo or health check
-        Ok(self.connected)
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
+        let resp = client
+            .health_check(HealthCheckRequest {})
+            .await
+            .map_err(|e| format!("HealthCheck gRPC error: {}", e))?;
+
+        Ok(resp.into_inner().healthy)
+    }
+
+    async fn complete_step(
+        &self,
+        handle: &WorkflowHandle,
+        step_index: i32,
+        result: &[u8],
+    ) -> Result<OperationResult, String> {
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
+        let start = Instant::now();
+        let resp = client
+            .complete_step(CompleteStepRequest {
+                workflow_id: handle.workflow_id.clone(),
+                run_id: handle.run_id.clone(),
+                step_index,
+                result: result.to_vec(),
+                namespace: self.namespace.clone(),
+            })
+            .await
+            .map_err(|e| format!("CompleteStep gRPC error: {}", e))?;
+
+        let inner = resp.into_inner();
+        if inner.success {
+            Ok(OperationResult::ok(start.elapsed()))
+        } else {
+            Ok(OperationResult::err(start.elapsed(), inner.error))
+        }
     }
 }
 
-// We need async_trait for the trait definition
-// Adding it as a dependency would be ideal, but for now we use a manual approach.
-// The actual async_trait crate is used via the macro.
+// ─── Convenience Type Aliases ────────────────────────────────────────────────
+
+/// Adapter for VELOCITY-DevServer via gRPC.
+pub type VelocityAdapter = GrpcAdapter;
+
+/// Adapter for Temporal via gRPC.
+pub type TemporalAdapter = GrpcAdapter;

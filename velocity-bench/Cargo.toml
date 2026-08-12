@@ -10,14 +10,14 @@ name = "velocity-bench"
 path = "src/main.rs"
 
 [dependencies]
-velocity-workflow-engine = { path = "../velocity-workflow-engine" }
-velocity-workflow-core = { path = "../velocity-workflow-core" }
+# Both engines connect via identical gRPC paths (BenchmarkService proto).
+# No direct engine dependencies — fairness requires the same code path.
 
 # Async
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
 
-# gRPC client for Temporal
+# gRPC client (BenchmarkService — shared proto for both engines)
 tonic = "0.12"
 prost = "0.13"
 prost-types = "0.13"
@@ -46,6 +46,7 @@ comfy-table = "7"
 
 [build-dependencies]
 tonic-build = "0.12"
+protox = "0.7"
 
 [profile.release]
 opt-level = 3

@@ -3,11 +3,8 @@
 //! Produces Markdown, CSV, and JSON reports comparing VELOCITY vs Temporal
 //! metrics for each workload. Includes delta percentages and verdicts.
 
-use std::collections::HashMap;
-use std::io::Write;
+use crate::metrics::MetricsSnapshot;
 use serde::{Deserialize, Serialize};
-use crate::metrics::{MetricsSnapshot, LatencyBucket};
-use crate::engine::EngineKind;
 
 // ─── Comparison Row ──────────────────────────────────────────────────────────
 
@@ -85,8 +82,7 @@ impl ComparisonRow {
         };
 
         let mem_delta = if temporal.peak_memory_mb > 0.0 {
-            ((velocity.peak_memory_mb - temporal.peak_memory_mb) / temporal.peak_memory_mb)
-                * 100.0
+            ((velocity.peak_memory_mb - temporal.peak_memory_mb) / temporal.peak_memory_mb) * 100.0
         } else {
             0.0
         };
@@ -168,8 +164,14 @@ pub struct ReportSummary {
 impl ReportSummary {
     pub fn from_rows(rows: &[ComparisonRow]) -> Self {
         let total = rows.len();
-        let vel_wins = rows.iter().filter(|r| r.throughput_delta_pct > 20.0).count();
-        let tmp_wins = rows.iter().filter(|r| r.throughput_delta_pct < -20.0).count();
+        let vel_wins = rows
+            .iter()
+            .filter(|r| r.throughput_delta_pct > 20.0)
+            .count();
+        let tmp_wins = rows
+            .iter()
+            .filter(|r| r.throughput_delta_pct < -20.0)
+            .count();
         let comparable = total - vel_wins - tmp_wins;
 
         let avg_throughput = if total > 0 {
@@ -226,8 +228,14 @@ impl ReportGenerator {
         // Header
         out.push_str("# VELOCITY-WorkFlow vs Temporal — Benchmark Report\n\n");
         out.push_str(&format!("**Generated:** {}  \n", report.generated_at));
-        out.push_str(&format!("**VELOCITY version:** {}  \n", report.velocity_version));
-        out.push_str(&format!("**Temporal version:** {}  \n\n", report.temporal_version));
+        out.push_str(&format!(
+            "**VELOCITY version:** {}  \n",
+            report.velocity_version
+        ));
+        out.push_str(&format!(
+            "**Temporal version:** {}  \n\n",
+            report.temporal_version
+        ));
 
         // Summary box
         let s = &report.summary;
@@ -238,9 +246,18 @@ impl ReportGenerator {
         out.push_str(&format!("| VELOCITY wins | {} |\n", s.velocity_wins));
         out.push_str(&format!("| Temporal wins | {} |\n", s.temporal_wins));
         out.push_str(&format!("| Comparable | {} |\n", s.comparable));
-        out.push_str(&format!("| Avg throughput delta | {:+.1}% |\n", s.avg_throughput_delta_pct));
-        out.push_str(&format!("| Avg p99 latency delta | {:+.1}% |\n", s.avg_p99_latency_delta_pct));
-        out.push_str(&format!("| Avg memory delta | {:+.1}% |\n", s.avg_memory_delta_pct));
+        out.push_str(&format!(
+            "| Avg throughput delta | {:+.1}% |\n",
+            s.avg_throughput_delta_pct
+        ));
+        out.push_str(&format!(
+            "| Avg p99 latency delta | {:+.1}% |\n",
+            s.avg_p99_latency_delta_pct
+        ));
+        out.push_str(&format!(
+            "| Avg memory delta | {:+.1}% |\n",
+            s.avg_memory_delta_pct
+        ));
         out.push_str(&format!("\n**Overall verdict:** {}\n\n", s.overall_verdict));
 
         // Detailed table
@@ -272,24 +289,42 @@ impl ReportGenerator {
             out.push_str(&format!("*{}*\n\n", row.workload_description));
             out.push_str("| Metric | VELOCITY | Temporal | Delta |\n");
             out.push_str("|--------|----------|----------|-------|\n");
-            out.push_str(&format!("| Ops/sec | {:.0} | {:.0} | {:+.1}% |\n",
-                row.velocity_ops_per_sec, row.temporal_ops_per_sec, row.throughput_delta_pct));
-            out.push_str(&format!("| p50 latency | {}µs | {}µs | {:+.1}% |\n",
-                row.velocity_p50_us, row.temporal_p50_us, row.p50_latency_delta_pct));
-            out.push_str(&format!("| p95 latency | {}µs | {}µs | — |\n",
-                row.velocity_p95_us, row.temporal_p95_us));
-            out.push_str(&format!("| p99 latency | {}µs | {}µs | {:+.1}% |\n",
-                row.velocity_p99_us, row.temporal_p99_us, row.p99_latency_delta_pct));
-            out.push_str(&format!("| p999 latency | {}µs | {}µs | — |\n",
-                row.velocity_p999_us, row.temporal_p999_us));
-            out.push_str(&format!("| Peak memory | {:.1}MB | {:.1}MB | {:+.1}% |\n",
-                row.velocity_peak_memory_mb, row.temporal_peak_memory_mb, row.memory_delta_pct));
-            out.push_str(&format!("| Peak CPU | {:.1}% | {:.1}% | — |\n",
-                row.velocity_peak_cpu, row.temporal_peak_cpu));
-            out.push_str(&format!("| Error rate | {:.2}% | {:.2}% | {:+.2}% |\n",
-                row.velocity_error_rate, row.temporal_error_rate, row.error_rate_delta_pct));
-            out.push_str(&format!("| Total ops | {} | {} | — |\n",
-                row.velocity_total_ops, row.temporal_total_ops));
+            out.push_str(&format!(
+                "| Ops/sec | {:.0} | {:.0} | {:+.1}% |\n",
+                row.velocity_ops_per_sec, row.temporal_ops_per_sec, row.throughput_delta_pct
+            ));
+            out.push_str(&format!(
+                "| p50 latency | {}µs | {}µs | {:+.1}% |\n",
+                row.velocity_p50_us, row.temporal_p50_us, row.p50_latency_delta_pct
+            ));
+            out.push_str(&format!(
+                "| p95 latency | {}µs | {}µs | — |\n",
+                row.velocity_p95_us, row.temporal_p95_us
+            ));
+            out.push_str(&format!(
+                "| p99 latency | {}µs | {}µs | {:+.1}% |\n",
+                row.velocity_p99_us, row.temporal_p99_us, row.p99_latency_delta_pct
+            ));
+            out.push_str(&format!(
+                "| p999 latency | {}µs | {}µs | — |\n",
+                row.velocity_p999_us, row.temporal_p999_us
+            ));
+            out.push_str(&format!(
+                "| Peak memory | {:.1}MB | {:.1}MB | {:+.1}% |\n",
+                row.velocity_peak_memory_mb, row.temporal_peak_memory_mb, row.memory_delta_pct
+            ));
+            out.push_str(&format!(
+                "| Peak CPU | {:.1}% | {:.1}% | — |\n",
+                row.velocity_peak_cpu, row.temporal_peak_cpu
+            ));
+            out.push_str(&format!(
+                "| Error rate | {:.2}% | {:.2}% | {:+.2}% |\n",
+                row.velocity_error_rate, row.temporal_error_rate, row.error_rate_delta_pct
+            ));
+            out.push_str(&format!(
+                "| Total ops | {} | {} | — |\n",
+                row.velocity_total_ops, row.temporal_total_ops
+            ));
             out.push_str(&format!("\n**Verdict:** {}\n\n", row.verdict));
         }
 
@@ -302,15 +337,27 @@ impl ReportGenerator {
 
         // Header
         wtr.write_record(&[
-            "workload", "description",
-            "velocity_ops_per_sec", "temporal_ops_per_sec", "throughput_delta_pct",
-            "velocity_p50_us", "temporal_p50_us", "p50_delta_pct",
-            "velocity_p99_us", "temporal_p99_us", "p99_delta_pct",
-            "velocity_p999_us", "temporal_p999_us",
-            "velocity_memory_mb", "temporal_memory_mb", "memory_delta_pct",
-            "velocity_error_rate", "temporal_error_rate",
+            "workload",
+            "description",
+            "velocity_ops_per_sec",
+            "temporal_ops_per_sec",
+            "throughput_delta_pct",
+            "velocity_p50_us",
+            "temporal_p50_us",
+            "p50_delta_pct",
+            "velocity_p99_us",
+            "temporal_p99_us",
+            "p99_delta_pct",
+            "velocity_p999_us",
+            "temporal_p999_us",
+            "velocity_memory_mb",
+            "temporal_memory_mb",
+            "memory_delta_pct",
+            "velocity_error_rate",
+            "temporal_error_rate",
             "verdict",
-        ]).map_err(|e| e.to_string())?;
+        ])
+        .map_err(|e| e.to_string())?;
 
         for row in &report.rows {
             wtr.write_record(&[
@@ -333,7 +380,8 @@ impl ReportGenerator {
                 &format!("{:.4}", row.velocity_error_rate),
                 &format!("{:.4}", row.temporal_error_rate),
                 &row.verdict,
-            ]).map_err(|e| e.to_string())?;
+            ])
+            .map_err(|e| e.to_string())?;
         }
 
         wtr.into_inner().map_err(|e| e.to_string())

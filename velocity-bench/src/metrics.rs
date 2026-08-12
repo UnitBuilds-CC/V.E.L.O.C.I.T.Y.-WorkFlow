@@ -3,9 +3,9 @@
 //! Collects latency histograms (via HdrHistogram), memory snapshots (via sysinfo),
 //! CPU usage, throughput counters, and error categorization.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 
 // ─── Latency Bucket ──────────────────────────────────────────────────────────
 
@@ -96,6 +96,16 @@ pub struct MetricsSnapshot {
     pub errors: HashMap<String, u64>,
 }
 
+impl MetricsSnapshot {
+    /// Error rate as a percentage (0-100).
+    pub fn error_rate(&self) -> f64 {
+        if self.total_operations == 0 {
+            return 0.0;
+        }
+        self.failed_operations as f64 / self.total_operations as f64 * 100.0
+    }
+}
+
 impl Default for MetricsSnapshot {
     fn default() -> Self {
         Self {
@@ -127,7 +137,9 @@ pub struct LatencyRecorder {
 
 impl LatencyRecorder {
     pub fn new() -> Self {
-        Self { samples: Vec::with_capacity(10_000) }
+        Self {
+            samples: Vec::with_capacity(10_000),
+        }
     }
 
     pub fn record(&mut self, latency_us: u64) {
@@ -215,36 +227,48 @@ impl MetricsCollector {
     /// Record a start-workflow latency.
     pub fn record_start(&self, latency: Duration) {
         self.start_latency.lock().unwrap().record_duration(latency);
-        self.total_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.success_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.success_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Record a signal latency.
     pub fn record_signal(&self, latency: Duration) {
         self.signal_latency.lock().unwrap().record_duration(latency);
-        self.total_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.success_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.success_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Record a query latency.
     pub fn record_query(&self, latency: Duration) {
         self.query_latency.lock().unwrap().record_duration(latency);
-        self.total_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.success_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.success_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Record a completion latency.
     pub fn record_completion(&self, latency: Duration) {
-        self.completion_latency.lock().unwrap().record_duration(latency);
-        self.total_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.success_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.completion_latency
+            .lock()
+            .unwrap()
+            .record_duration(latency);
+        self.total_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.success_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Record an error.
     pub fn record_error(&self, category: &str) {
         let mut errors = self.errors.lock().unwrap();
         *errors.entry(category.to_string()).or_insert(0) += 1;
-        self.failed_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.failed_ops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Record a memory sample.
@@ -281,7 +305,10 @@ impl MetricsCollector {
         let mem_samples = self.memory_samples.lock().unwrap().clone();
         let cpu_samples = self.cpu_samples.lock().unwrap().clone();
         let peak_mem = mem_samples.iter().map(|s| s.rss_mb).fold(0.0_f64, f64::max);
-        let peak_cpu = cpu_samples.iter().map(|s| s.cpu_percent).fold(0.0_f64, f64::max);
+        let peak_cpu = cpu_samples
+            .iter()
+            .map(|s| s.cpu_percent)
+            .fold(0.0_f64, f64::max);
 
         MetricsSnapshot {
             start_latency: self.start_latency.lock().unwrap().snapshot(),
@@ -307,9 +334,12 @@ impl MetricsCollector {
         *self.signal_latency.lock().unwrap() = LatencyRecorder::new();
         *self.query_latency.lock().unwrap() = LatencyRecorder::new();
         *self.completion_latency.lock().unwrap() = LatencyRecorder::new();
-        self.total_ops.store(0, std::sync::atomic::Ordering::Relaxed);
-        self.success_ops.store(0, std::sync::atomic::Ordering::Relaxed);
-        self.failed_ops.store(0, std::sync::atomic::Ordering::Relaxed);
+        self.total_ops
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        self.success_ops
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        self.failed_ops
+            .store(0, std::sync::atomic::Ordering::Relaxed);
         self.errors.lock().unwrap().clear();
         self.memory_samples.lock().unwrap().clear();
         self.cpu_samples.lock().unwrap().clear();

@@ -1,20 +1,27 @@
 //! velocity-bench — Side-by-side benchmark harness: VELOCITY-WorkFlow vs Temporal.
 //!
-//! Usage:
-//!   cargo run --release -- --workloads all --format markdown --output report.md
-//!   cargo run --release -- --workloads smoke --format json --output report.json
-//!   cargo run --release -- --workload simple_workflow --engine velocity
+//! Both engines are accessed via **identical gRPC paths** (BenchmarkService proto).
+//! Neither engine uses a direct/in-process API — both pay the same serialization,
+//! network, and protocol overhead. This ensures a truly fair apples-to-apples
+//! comparison.
 //!
-//! The harness runs identical workloads on both engines and produces a
-//! side-by-side comparison report with granular metrics.
+//! Usage:
+//!   # Start VELOCITY dev server first:
+//!   velocity-dev --grpc-port 7234
+//!
+//!   # Start Temporal server (docker):
+//!   docker-compose -f docker-compose.temporal.yml up -d
+//!
+//!   # Run benchmark:
+//!   cargo run --release -- --workloads smoke --format markdown --output report.md
+//!   cargo run --release -- --workloads all --engine both --profile standard
+//!   cargo run --release -- --workload simple_workflow --engine velocity
 
 use clap::{Parser, ValueEnum};
 use std::time::{Duration, Instant};
-use velocity_bench::*;
-use velocity_bench::engine::*;
 use velocity_bench::metrics::*;
 use velocity_bench::report::*;
-use velocity_bench::workloads::*;
+use velocity_bench::*;
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
@@ -34,6 +41,10 @@ struct Cli {
     /// Which engine(s) to benchmark.
     #[arg(long, default_value = "both")]
     engine: EngineSelection,
+
+    /// VELOCITY gRPC address (velocity-dev-server).
+    #[arg(long, default_value = "http://localhost:7234")]
+    velocity_address: String,
 
     /// Temporal gRPC address.
     #[arg(long, default_value = "http://localhost:7233")]
@@ -103,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("╔══════════════════════════════════════════════════════════╗");
     tracing::info!("║  velocity-bench — VELOCITY-WorkFlow vs Temporal         ║");
-    tracing::info!("║  Side-by-side benchmark harness                         ║");
+    tracing::info!("║  Apples-to-apples via identical gRPC paths              ║");
     tracing::info!("╚══════════════════════════════════════════════════════════╝");
 
     // Select workloads
@@ -113,33 +124,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let workload_defs = if let Some(ref name) = cli.workload {
-        workload_defs.into_iter().filter(|w| w.name == *name).collect()
+        workload_defs
+            .into_iter()
+            .filter(|w| w.name == *name)
+            .collect()
     } else {
         workload_defs
     };
 
-    tracing::info!("Running {} workloads with {:?} profile", workload_defs.len(), cli.profile);
+    tracing::info!(
+        "Running {} workloads with {:?} profile",
+        workload_defs.len(),
+        cli.profile
+    );
 
     // Apply profile
-    let workload_defs: Vec<WorkloadDefinition> = workload_defs.into_iter().map(|mut w| {
-        w.config = match cli.profile {
-            WorkloadProfile::Quick => WorkloadConfig::quick(),
-            WorkloadProfile::Standard => WorkloadConfig::standard(),
-            WorkloadProfile::Stress => WorkloadConfig::stress(),
-        };
-        w
-    }).collect();
+    let workload_defs: Vec<WorkloadDefinition> = workload_defs
+        .into_iter()
+        .map(|mut w| {
+            w.config = match cli.profile {
+                WorkloadProfile::Quick => WorkloadConfig::quick(),
+                WorkloadProfile::Standard => WorkloadConfig::standard(),
+                WorkloadProfile::Stress => WorkloadConfig::stress(),
+            };
+            w
+        })
+        .collect();
 
-    // Initialize engines
-    let mut velocity_engine: Option<VelocityAdapter> = None;
-    let mut temporal_engine: Option<TemporalAdapter> = None;
+    // Initialize engines — both via gRPC
+    let mut velocity_engine: Option<GrpcAdapter> = None;
+    let mut temporal_engine: Option<GrpcAdapter> = None;
 
     match cli.engine {
         EngineSelection::Both | EngineSelection::Velocity => {
-            let mut vel = VelocityAdapter::new();
-            let config = EngineConfig::velocity();
-            vel.connect(&config).await.map_err(|e| format!("VELOCITY connect failed: {}", e))?;
-            tracing::info!("✓ VELOCITY engine connected (direct Rust API)");
+            let mut vel = GrpcAdapter::new(EngineKind::Velocity);
+            let config = EngineConfig::velocity(&cli.velocity_address);
+            vel.connect(&config)
+                .await
+                .map_err(|e| format!("VELOCITY gRPC connect failed: {}", e))?;
+            tracing::info!(
+                "✓ VELOCITY engine connected via gRPC ({})",
+                cli.velocity_address
+            );
             velocity_engine = Some(vel);
         }
         _ => {}
@@ -147,15 +173,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.engine {
         EngineSelection::Both | EngineSelection::Temporal => {
-            let mut tmp = TemporalAdapter::new();
+            let mut tmp = GrpcAdapter::new(EngineKind::Temporal);
             let config = EngineConfig::temporal(&cli.temporal_address);
             match tmp.connect(&config).await {
                 Ok(()) => {
-                    tracing::info!("✓ Temporal engine connected ({})", cli.temporal_address);
+                    tracing::info!(
+                        "✓ Temporal engine connected via gRPC ({})",
+                        cli.temporal_address
+                    );
                     temporal_engine = Some(tmp);
                 }
                 Err(e) => {
-                    tracing::warn!("✗ Temporal connection failed: {} — running VELOCITY only", e);
+                    tracing::warn!(
+                        "✗ Temporal gRPC connect failed: {} — running VELOCITY only",
+                        e
+                    );
                 }
             }
         }
@@ -200,7 +232,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (name, desc, vel_metrics) in &velocity_results {
         if let Some((_, _, tmp_metrics)) = temporal_results.iter().find(|(n, _, _)| n == name) {
-            rows.push(ComparisonRow::from_snapshots(name, desc, vel_metrics, tmp_metrics));
+            rows.push(ComparisonRow::from_snapshots(
+                name,
+                desc,
+                vel_metrics,
+                tmp_metrics,
+            ));
         }
     }
 
@@ -231,7 +268,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::fs::write(format!("{}.md", base), &md)?;
                 std::fs::write(format!("{}.csv", base), &csv)?;
                 std::fs::write(format!("{}.json", base), &json)?;
-                tracing::info!("Reports written to {}.md, {}.csv, {}.json", base, base, base);
+                tracing::info!(
+                    "Reports written to {}.md, {}.csv, {}.json",
+                    base,
+                    base,
+                    base
+                );
             }
             md // Print markdown to stdout
         }
@@ -251,12 +293,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("╔══════════════════════════════════════════════════════════╗");
     tracing::info!("║  SUMMARY                                                ║");
     tracing::info!("╠══════════════════════════════════════════════════════════╣");
-    tracing::info!("║  VELOCITY wins: {:>3}  |  Temporal wins: {:>3}           ║",
-        report.summary.velocity_wins, report.summary.temporal_wins);
-    tracing::info!("║  Comparable:    {:>3}  |  Total:         {:>3}           ║",
-        report.summary.comparable, report.summary.total_workloads);
-    tracing::info!("║  Avg throughput delta: {:+.1}%                           ║",
-        report.summary.avg_throughput_delta_pct);
+    tracing::info!(
+        "║  VELOCITY wins: {:>3}  |  Temporal wins: {:>3}           ║",
+        report.summary.velocity_wins,
+        report.summary.temporal_wins
+    );
+    tracing::info!(
+        "║  Comparable:    {:>3}  |  Total:         {:>3}           ║",
+        report.summary.comparable,
+        report.summary.total_workloads
+    );
+    tracing::info!(
+        "║  Avg throughput delta: {:+.1}%                           ║",
+        report.summary.avg_throughput_delta_pct
+    );
     tracing::info!("╠══════════════════════════════════════════════════════════╣");
     tracing::info!("║  {}", truncate_str(&report.summary.overall_verdict, 56));
     tracing::info!("╚══════════════════════════════════════════════════════════╝");
@@ -313,18 +363,32 @@ async fn run_simple_workflow(
             Ok(handle) => {
                 collector.record_start(start.elapsed());
 
-                // Complete the workflow
+                // Drive the workflow to completion via gRPC (same path for both engines).
                 let complete_start = Instant::now();
-                match engine.wait_for_completion(&handle, Duration::from_millis(config.timeout_ms)).await {
-                    Ok(result) => {
-                        if result.success {
-                            collector.record_completion(complete_start.elapsed());
-                        } else {
-                            collector.record_error("completion_failed");
+                match engine.complete_step(&handle, 0, b"done").await {
+                    Ok(result) if result.success => {
+                        // Now wait for the server to confirm completion.
+                        match engine
+                            .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+                            .await
+                        {
+                            Ok(completion) => {
+                                if completion.success {
+                                    collector.record_completion(complete_start.elapsed());
+                                } else {
+                                    collector.record_error("completion_failed");
+                                }
+                            }
+                            Err(e) => {
+                                collector.record_error(&format!("completion_error: {}", e));
+                            }
                         }
                     }
+                    Ok(_) => {
+                        collector.record_error("complete_step_failed");
+                    }
                     Err(e) => {
-                        collector.record_error(&format!("completion_error: {}", e));
+                        collector.record_error(&format!("complete_step_error: {}", e));
                     }
                 }
             }
@@ -342,16 +406,20 @@ async fn run_signal_storm(
 ) {
     let config = &workload.config;
 
-    // Start workflow
-    let handle = engine.start_workflow("signal_target", "signal-target-0", b"input")
+    // Start workflow via gRPC
+    let handle = engine
+        .start_workflow("signal_target", "signal-target-0", b"input")
         .await
         .expect("Failed to start signal target workflow");
 
-    // Send signals
+    // Send signals via gRPC
     for i in 0..config.signals_per_workflow {
         let start = Instant::now();
         let payload = format!("signal-{}", i);
-        match engine.signal_workflow(&handle, "test_signal", payload.as_bytes()).await {
+        match engine
+            .signal_workflow(&handle, "test_signal", payload.as_bytes())
+            .await
+        {
             Ok(result) => {
                 collector.record_signal(start.elapsed());
                 if !result.success {
@@ -364,8 +432,11 @@ async fn run_signal_storm(
         }
     }
 
-    // Complete
-    let _ = engine.wait_for_completion(&handle, Duration::from_millis(config.timeout_ms)).await;
+    // Complete via gRPC
+    let _ = engine.complete_step(&handle, 0, b"done").await;
+    let _ = engine
+        .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+        .await;
 }
 
 async fn run_query_burst(
@@ -375,11 +446,12 @@ async fn run_query_burst(
 ) {
     let config = &workload.config;
 
-    let handle = engine.start_workflow("query_target", "query-target-0", b"input")
+    let handle = engine
+        .start_workflow("query_target", "query-target-0", b"input")
         .await
         .expect("Failed to start query target workflow");
 
-    for i in 0..config.queries_per_workflow {
+    for _i in 0..config.queries_per_workflow {
         let start = Instant::now();
         match engine.query_workflow(&handle, "get_status", b"").await {
             Ok(result) => {
@@ -394,23 +466,32 @@ async fn run_query_burst(
         }
     }
 
-    let _ = engine.wait_for_completion(&handle, Duration::from_millis(config.timeout_ms)).await;
+    let _ = engine.complete_step(&handle, 0, b"done").await;
+    let _ = engine
+        .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+        .await;
 }
 
 async fn run_cold_start(
     engine: &dyn BenchmarkEngine,
-    workload: &WorkloadDefinition,
+    _workload: &WorkloadDefinition,
     collector: &MetricsCollector,
 ) {
-    // Reset engine state first
+    // Reset engine state via gRPC
     let _ = engine.reset().await;
 
-    // Measure first workflow execution
+    // Measure first workflow execution via gRPC
     let start = Instant::now();
-    match engine.start_workflow("cold_start", "cold-0", b"input").await {
+    match engine
+        .start_workflow("cold_start", "cold-0", b"input")
+        .await
+    {
         Ok(handle) => {
             collector.record_start(start.elapsed());
-            let _ = engine.wait_for_completion(&handle, Duration::from_secs(30)).await;
+            let _ = engine.complete_step(&handle, 0, b"done").await;
+            let _ = engine
+                .wait_for_completion(&handle, Duration::from_secs(30))
+                .await;
         }
         Err(e) => {
             collector.record_error(&format!("cold_start_error: {}", e));
@@ -429,10 +510,16 @@ async fn run_generic_workload(
         let start = Instant::now();
         let wf_id = format!("{}-{}", workload.name, i);
 
-        match engine.start_workflow(&workload.name, &wf_id, b"input").await {
+        match engine
+            .start_workflow(&workload.name, &wf_id, b"input")
+            .await
+        {
             Ok(handle) => {
                 collector.record_start(start.elapsed());
-                let _ = engine.wait_for_completion(&handle, Duration::from_millis(config.timeout_ms)).await;
+                let _ = engine.complete_step(&handle, 0, b"done").await;
+                let _ = engine
+                    .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+                    .await;
             }
             Err(e) => {
                 collector.record_error(&format!("error: {}", e));

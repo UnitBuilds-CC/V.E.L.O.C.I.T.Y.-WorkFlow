@@ -1,184 +1,150 @@
 # velocity-bench
 
-Side-by-side benchmark harness: **VELOCITY-WorkFlow vs Temporal**.
+**Apples-to-apples benchmark harness: VELOCITY-WorkFlow vs Temporal.**
 
-Runs identical workloads on both engines and produces granular comparison reports with latency percentiles, throughput, memory, CPU, and error rates.
-
-## Quick Start
-
-```bash
-# 1. Start Temporal (requires Docker)
-docker-compose -f docker-compose.temporal.yml up -d
-
-# 2. Run smoke test (3 quick workloads, VELOCITY only)
-cargo run --release -- --workloads smoke --engine velocity
-
-# 3. Run full comparison
-cargo run --release -- --workloads all --format all --output bench_report
-
-# 4. Run specific workload
-cargo run --release -- --workload signal_storm --profile stress
-```
+Both engines are accessed via **identical gRPC paths** using a shared `BenchmarkService` proto definition. Neither engine uses a direct/in-process API — both pay the same serialization, network, and protocol overhead. This ensures a truly fair comparison.
 
 ## Architecture
 
 ```
-┌─────────────────────┐
-│  Workload Definitions │  18 canonical workloads
-│  (workloads.rs)       │  Identical on both engines
-└──────────┬──────────┘
-           │
-    ┌──────▼──────┐
-    │ BenchmarkEngine │  Common trait interface
-    │ (engine.rs)     │  start/signal/query/complete/terminate
-    └──┬─────────┬──┘
-       │         │
-┌──────▼──┐  ┌──▼────────┐
-│ VELOCITY │  │ Temporal   │
-│ Adapter  │  │ Adapter    │
-│ (direct) │  │ (gRPC)     │
-└────┬─────┘  └─────┬─────┘
-     │              │
-     └──────┬───────┘
-            │
-   ┌────────▼────────┐
-   │ MetricsCollector  │  Latency histograms, memory, CPU
-   │ (metrics.rs)      │  HdrHistogram, sysinfo
-   └────────┬────────┘
-            │
-   ┌────────▼────────┐
-   │ ReportGenerator   │  Side-by-side comparison
-   │ (report.rs)       │  Markdown, CSV, JSON
-   └──────────────────┘
+┌─────────────────┐     gRPC      ┌──────────────────────┐     ┌────────────┐
+│  velocity-bench │──────────────►│  velocity-dev-server │────►│  DevEngine │
+│  (client)       │  Benchmark    │  (tonic server)      │     │ (in-memory)│
+│                 │  Service      │  port 7234           │     └────────────┘
+│                 │               └──────────────────────┘
+│                 │
+│                 │     gRPC      ┌──────────────────────┐     ┌────────────┐
+│                 │──────────────►│  Temporal Server     │────►│  Matching/ │
+│                 │  Benchmark    │  (or bridge)         │     │  History   │
+│                 │  Service      │  port 7233           │     └────────────┘
+└─────────────────┘
 ```
 
-## Workloads (18 Canonical)
+**Key insight**: The comparison is fair because:
+- Both engines receive identical gRPC requests with the same protobuf serialization
+- Both return identical gRPC responses
+- Both measure the same round-trip latency (network + serialization + processing)
+- The benchmark client code is **literally the same** for both engines (`GrpcAdapter`)
 
-| # | Workload | What It Measures |
-|---|----------|-----------------|
-| 1 | `simple_workflow` | Basic throughput: start → 10 steps → complete × 1000 |
-| 2 | `signal_storm` | Signal throughput: 100 signals per workflow × 100 workflows |
-| 3 | `query_burst` | Query throughput: 100 queries per workflow × 100 workflows |
-| 4 | `high_step` | Step overhead: single workflow with 10K steps |
-| 5 | `concurrent_1k` | Scheduling: 1000 concurrent workflows at 100 concurrency |
-| 6 | `child_workflows` | Hierarchy: parent spawns 10 children |
-| 7 | `saga_pattern` | Transactions: 5-step saga with compensation |
-| 8 | `timer_workflow` | Timer accuracy: workflow with sleep |
-| 9 | `search_attributes` | Visibility: start with attrs → query by attrs × 1000 |
-| 10 | `signal_query_mix` | Mixed: interleaved signals + queries |
-| 11 | `batch_operations` | Admin: batch start/terminate/query 5000 |
-| 12 | `payload_1kb` | Serialization: 1KB payloads × 1000 |
-| 13 | `payload_1mb` | Large payloads: 1MB payloads × 100 |
-| 14 | `namespace_isolation` | Isolation: workflows across 5 namespaces |
-| 15 | `throughput_ceiling` | Max throughput: 100K workflows, 1000 concurrency |
-| 16 | `memory_scaling` | Memory: measure at 1K/10K/100K workflows |
-| 17 | `cold_start` | First execution after engine startup |
-| 18 | `crash_recovery` | Recovery: start → crash → restart → verify |
+## Proto Contract
 
-## Metrics Collected
+Both engines implement `benchmark.proto`:
 
-| Metric | Granularity | Unit |
-|--------|------------|------|
-| Start latency | p50/p90/p95/p99/p999/min/max/mean | µs |
-| Signal latency | p50/p90/p95/p99/p999/min/max/mean | µs |
-| Query latency | p50/p90/p95/p99/p999/min/max/mean | µs |
-| Completion latency | p50/p90/p95/p99/p999/min/max/mean | µs |
-| Throughput | operations/second | ops/sec |
-| Peak memory | RSS | MB |
-| Peak CPU | utilization | % |
-| Error rate | by category | % |
-| Total operations | count | — |
+| RPC | Purpose |
+|-----|---------|
+| `StartWorkflow` | Start a new workflow execution |
+| `SignalWorkflow` | Deliver a signal to a running workflow |
+| `QueryWorkflow` | Query a running workflow's state |
+| `WaitForCompletion` | Block until workflow reaches terminal state |
+| `TerminateWorkflow` | Force-terminate a running workflow |
+| `CompleteStep` | Complete a workflow step (drive workflow forward) |
+| `RegisterNamespace` | Register a namespace |
+| `CountWorkflows` | Count workflows by status |
+| `HealthCheck` | Engine health + resource usage |
+| `GetSystemInfo` | Engine capabilities |
+| `Reset` | Clear all state (for benchmark isolation) |
 
-## Report Format
+## Quick Start
 
-### Markdown (default)
-```
-# VELOCITY-WorkFlow vs Temporal — Benchmark Report
+### 1. Start VELOCITY dev server
 
-## Summary
-| Metric | Value |
-|--------|-------|
-| VELOCITY wins | 14 |
-| Temporal wins | 2 |
-| Comparable | 2 |
-| Avg throughput delta | +245.3% |
-
-## Detailed Comparison
-| Workload | VELOCITY ops/s | Temporal ops/s | Δ | VELOCITY p99 | Temporal p99 | Verdict |
-|----------|---------------|----------------|---|-------------|-------------|---------|
-| simple   | 125,000       | 8,500          | +1370% | 45µs | 1,200µs | VELOCITY dominates |
+```bash
+cargo run --release -p velocity-dev-server -- --grpc-port 7234
 ```
 
-### CSV
-Machine-parseable for graphing and further analysis.
+This starts:
+- HTTP API on `:7233`
+- **gRPC BenchmarkService on `:7234`** ← benchmark connects here
+- Web UI on `:8233`
 
-### JSON
-Full structured data including all latency percentiles and memory samples.
+### 2. Start Temporal server
 
-## CLI Options
-
-```
-Usage: velocity-bench [OPTIONS]
-
-Options:
-      --workloads <WORKLOADS>    Which workloads: all, smoke [default: smoke]
-      --workload <NAME>          Run a single specific workload
-      --engine <ENGINE>          Which engine(s): both, velocity, temporal [default: both]
-      --temporal-address <ADDR>  Temporal gRPC address [default: http://localhost:7233]
-      --format <FORMAT>          Output: markdown, csv, json, all [default: markdown]
-  -o, --output <PATH>            Output file (stdout if not specified)
-      --profile <PROFILE>        Workload profile: quick, standard, stress [default: standard]
-  -v, --verbose                  Enable verbose logging
-  -h, --help                     Print help
-  -V, --version                  Print version
+```bash
+docker-compose -f docker-compose.temporal.yml up -d
 ```
 
-## Profiles
+### 3. Run benchmarks
 
-| Profile | Workflows | Concurrency | Duration | Use Case |
-|---------|-----------|-------------|----------|----------|
-| `quick` | 10 | 4 | 5s | Smoke testing |
-| `standard` | 100-1000 | 10 | 30s | Regular benchmarks |
-| `stress` | 10K-100K | 100-1000 | 60-120s | Push to limits |
+```bash
+# Smoke test (quick validation)
+cargo run --release -p velocity-bench -- --workloads smoke --engine both
 
-## Interpreting Results
+# Full benchmark suite
+cargo run --release -p velocity-bench -- --workloads all --profile standard
 
-### Verdicts
+# Single workload, VELOCITY only
+cargo run --release -p velocity-bench -- --workload simple_workflow --engine velocity
 
-| Verdict | Criteria |
-|---------|----------|
-| **VELOCITY dominates** | >50% faster AND lower p99 latency |
-| **VELOCITY faster** | >20% faster throughput |
-| **Comparable** | Within ±20% throughput |
-| **Temporal faster** | >20% faster throughput |
+# Stress test with all output formats
+cargo run --release -p velocity-bench -- --workloads all --profile stress --format all --output report
 
-### Viability Assessment
-
-The overall verdict answers the question: *"Is VELOCITY a viable Temporal replacement?"*
-
-- **"VELOCITY is a viable Temporal replacement"** — wins in >2/3 of workloads
-- **"VELOCITY is competitive"** — wins in some, loses in some
-- **"More optimization needed"** — Temporal wins in most workloads
-
-## Prerequisites
-
-- **Rust** (stable, 1.75+)
-- **Docker** (for Temporal server)
-- **protoc** (optional, for full Temporal gRPC integration)
-
-## Project Structure
-
+# Custom addresses
+cargo run --release -p velocity-bench -- \
+  --velocity-address http://localhost:7234 \
+  --temporal-address http://localhost:7233
 ```
-velocity-bench/
-├── Cargo.toml
-├── build.rs
-├── docker-compose.temporal.yml
-├── README.md
-└── src/
-    ├── lib.rs          # Library root
-    ├── main.rs         # CLI orchestrator
-    ├── engine.rs       # BenchmarkEngine trait + adapters
-    ├── workloads.rs    # 18 canonical workload definitions
-    ├── metrics.rs      # Metrics collection (latency, memory, CPU)
-    └── report.rs       # Side-by-side comparison report generator
-```
+
+## Workload Profiles
+
+| Profile | Workflows | Concurrency | Use Case |
+|---------|-----------|-------------|----------|
+| `quick` | 10 | 4 | CI/CD validation |
+| `standard` | 100-1000 | 10 | Development comparison |
+| `stress` | 10K-100K | 100-1000 | Production capacity planning |
+
+## Canonical Workloads
+
+| Workload | What It Measures |
+|----------|-----------------|
+| `simple_workflow` | End-to-end lifecycle (start → complete) |
+| `signal_storm` | Signal delivery throughput |
+| `query_burst` | Query read throughput |
+| `high_step` | Many-step workflow processing |
+| `concurrent_1k` | 1000 parallel workflows |
+| `child_workflows` | Nested workflow overhead |
+| `saga_pattern` | Multi-step compensating transactions |
+| `timer` | Timer/delay precision |
+| `search_attributes` | Visibility/search indexing |
+| `signal_query_mix` | Mixed signal + query load |
+| `batch_operations` | Bulk start/terminate |
+| `payload_small` | 1KB payload throughput |
+| `payload_large` | 1MB payload throughput |
+| `namespace_isolation` | Multi-namespace overhead |
+| `throughput_ceiling` | Maximum ops/sec |
+| `memory_scaling` | Memory per workflow |
+| `cold_start` | First-workflow latency |
+| `crash_recovery` | Durability under failure |
+
+## Metrics
+
+Every workload captures:
+
+- **Latency percentiles**: p50, p90, p95, p99, p99.9 (µs)
+- **Throughput**: operations/second
+- **Memory**: RSS sampling (MB)
+- **CPU**: utilization sampling (%)
+- **Error rate**: by category (start, signal, query, completion)
+
+## Report Output
+
+Reports are generated in three formats:
+
+- **Markdown**: Side-by-side comparison tables with verdicts
+- **CSV**: Machine-parseable for graphing
+- **JSON**: Full structured data
+
+Example verdict logic:
+- VELOCITY >20% faster → "VELOCITY dominates"
+- VELOCITY 5-20% faster → "VELOCITY faster"
+- Within ±5% → "Comparable"
+- Temporal 5-20% faster → "Temporal faster"
+- Temporal >20% faster → "Temporal dominates"
+
+## Fairness Guarantees
+
+1. **Same protocol**: Both engines receive identical gRPC requests
+2. **Same serialization**: Both use Protocol Buffers (protobuf)
+3. **Same client code**: `GrpcAdapter` is used for both — no special-casing
+4. **Same measurements**: Latency is measured client-side (gRPC round-trip)
+5. **Same isolation**: `Reset` RPC clears state between workloads
+6. **No in-process advantage**: Neither engine runs inside the benchmark process
