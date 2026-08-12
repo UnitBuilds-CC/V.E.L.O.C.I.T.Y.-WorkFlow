@@ -1,0 +1,55 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namePrefix: prod-
+namespace: velocity-production
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: velocity-server
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 500m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 512Mi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 2Gi
+      # Enable TLS volume mount
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: tls-certs
+            secret:
+              secretName: velocity-tls
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: tls-certs
+            mountPath: /etc/velocity/tls
+            readOnly: true
+
+configMapGenerator:
+  - name: velocity-config
+    literals:
+      - ENVIRONMENT=Production
+      - LOG_LEVEL=Warning
+      - TLS_ENABLED=true
+      - BACKUP_ENABLED=true
+      - MONITORING_DASHBOARDS_ENABLED=true
+
+replicas:
+  - name: velocity-operator
+    count: 2

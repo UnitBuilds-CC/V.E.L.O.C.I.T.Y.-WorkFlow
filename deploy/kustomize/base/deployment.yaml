@@ -1,0 +1,36 @@
+# Base deployment reference for Kustomize.
+# This file provides a strategic merge patch that overlays can customise.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-server
+  labels:
+    app.kubernetes.io/name: velocity-server
+    app.kubernetes.io/part-of: velocity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: velocity-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: velocity-server
+    spec:
+      containers:
+        - name: velocity-server
+          image: velocity-workflow-server:latest
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

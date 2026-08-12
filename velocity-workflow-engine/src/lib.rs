@@ -32,6 +32,7 @@ pub mod history_compaction;
 pub mod hot_swap;
 pub mod memo;
 pub mod metrics;
+pub mod migration_runner;
 pub mod multi_region;
 pub mod namespace;
 pub mod network_replication;
@@ -90,6 +91,7 @@ pub use history_compaction::{HistoryCompactor, CompactionConfig, CompactionStats
 pub use hot_swap::{HotSwapRegistry, HotSwapPatch, HotSwapResult, HotSwapStats};
 pub use memo::MemoStore;
 pub use metrics::MetricsRegistry;
+pub use migration_runner::{Migration, MigrationRunner, MigrationResult, MigrationStatus, MigrationError, MigrationAdapter};
 pub use namespace::{NamespaceRegistry, NamespaceConfig, NamespaceError};
 pub use network_replication::{TcpReplicationServer, TcpReplicationConfig, TcpReplicationStats, UdpReplicationTransport, UdpReplicationConfig, UdpReplicationStats, WireFrame, FrameType, encode_tasks, decode_tasks};
 pub use nexus::{NexusManager, NexusOperation, NexusOperationState};

@@ -1,0 +1,76 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "velocity.fullname" . }}-backup
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.backup.retention | default 7 }}
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            {{- include "velocity.labels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            fsGroup: 70
+          containers:
+            - name: backup
+              image: "{{ .Values.backup.image.repository }}:{{ .Values.backup.image.tag }}"
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  pg_dump -h "${PGHOST}" -U "${PGUSER}" -d "${PGDATABASE}" \
+                    --format=custom --compress=6 \
+                    -f "/backups/velocity-${TIMESTAMP}.dump"
+                  echo "Backup completed: velocity-${TIMESTAMP}.dump"
+                  # Remove old backups beyond retention period.
+                  find /backups -name "velocity-*.dump" -mtime +{{ .Values.backup.retention | default 7 }} -delete
+              env:
+                - name: PGHOST
+                  value: {{ .Values.postgresql.host | default (printf "%s-postgresql" (include "velocity.fullname" .)) | quote }}
+                - name: PGPORT
+                  value: {{ .Values.postgresql.port | default 5432 | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.postgresql.database | quote }}
+                - name: PGUSER
+                  value: {{ .Values.postgresql.username | quote }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      {{- if .Values.postgresql.existingSecret }}
+                      name: {{ .Values.postgresql.existingSecret }}
+                      key: {{ .Values.postgresql.existingSecretKey }}
+                      {{- else }}
+                      name: {{ include "velocity.fullname" . }}-secret
+                      key: postgresql-password
+                      {{- end }}
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backups
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+          volumes:
+            - name: backup-data
+              {{- if .Values.backup.storage.enabled }}
+              persistentVolumeClaim:
+                claimName: {{ include "velocity.fullname" . }}-backup-pvc
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+{{- end }}

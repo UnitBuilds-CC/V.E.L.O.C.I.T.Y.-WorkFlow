@@ -677,6 +677,7 @@ struct InMemoryState {
     search_attrs: HashMap<u64, SearchAttributes>,
     next_event_id: i64,
     schema_initialized: bool,
+    migration_version: u32,
 }
 
 /// Fully functional in-memory implementation of [`DatabaseAdapter`] for testing.
@@ -699,6 +700,7 @@ impl InMemoryAdapter {
                 search_attrs: HashMap::new(),
                 next_event_id: 1,
                 schema_initialized: false,
+                migration_version: 0,
             })),
             simulate_failures: Arc::new(RwLock::new(false)),
         }
@@ -730,6 +732,18 @@ impl InMemoryAdapter {
             state.events.clear();
             state.search_attrs.clear();
             state.next_event_id = 1;
+        }
+    }
+
+    /// Get the current migration version tracked by this adapter.
+    pub fn migration_version(&self) -> u32 {
+        self.state.read().map(|s| s.migration_version).unwrap_or(0)
+    }
+
+    /// Set the migration version (used by MigrationAdapter impl).
+    pub fn set_migration_version(&self, version: u32) {
+        if let Ok(mut state) = self.state.write() {
+            state.migration_version = version;
         }
     }
 

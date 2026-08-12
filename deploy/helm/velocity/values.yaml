@@ -150,3 +150,62 @@ topologySpreadConstraints:
   maxSkew: 1
   topologyKey: topology.kubernetes.io/zone
   whenUnsatisfiable: DoNotSchedule
+
+# ── Operator ──────────────────────────────────────────────────────────────────
+operator:
+  enabled: false
+  image:
+    repository: velocity-operator
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+  leaderElect: true
+  velocityServerUrl: "http://velocity-server.velocity-system.svc.cluster.local:5000"
+
+# ── Automated Backups ────────────────────────────────────────────────────────
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  retention: 7
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  storage:
+    enabled: false
+    storageClass: ""
+    size: 20Gi
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+# ── TLS ──────────────────────────────────────────────────────────────────────
+tls:
+  enabled: false
+  certManager: true
+  issuerRef:
+    name: ""
+    kind: ClusterIssuer
+  secretName: velocity-tls
+  commonName: velocity.local
+  duration: 2160h   # 90 days
+  renewBefore: 360h # 15 days
+
+# ── Monitoring ───────────────────────────────────────────────────────────────
+monitoring:
+  dashboards:
+    enabled: false
+    # Namespace where Grafana is deployed (for dashboard ConfigMap label selector)
+    namespace: monitoring
+    labels:
+      grafana_dashboard: "1"
