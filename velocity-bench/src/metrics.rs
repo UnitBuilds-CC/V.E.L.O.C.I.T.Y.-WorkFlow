@@ -362,7 +362,7 @@ impl SystemMetricsProbe {
 
     /// Get current process RSS memory in MB.
     pub fn current_rss_mb(&self) -> f64 {
-        // Read from /proc/self/status on Linux, or use sysinfo
+        // Read from /proc/self/status on Linux
         #[cfg(target_os = "linux")]
         {
             if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
@@ -377,6 +377,7 @@ impl SystemMetricsProbe {
                     }
                 }
             }
+            return 0.0;
         }
 
         // Fallback: estimate from working set
@@ -384,7 +385,7 @@ impl SystemMetricsProbe {
         {
             // On Windows, we'd use GetProcessMemoryInfo
             // For now, return 0 as placeholder
-            0.0
+            return 0.0;
         }
 
         #[cfg(not(any(target_os = "linux", target_os = "windows")))]

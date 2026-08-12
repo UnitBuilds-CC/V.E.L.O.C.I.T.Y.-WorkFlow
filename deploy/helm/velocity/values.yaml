@@ -585,3 +585,26 @@ extraVolumeMounts: []
 #  - name: custom-config
 #    mountPath: /etc/velocity/custom
 #    readOnly: true
+
+# ── Redis (optional embedded cache) ─────────────────────────────────────────
+redis:
+  enabled: false
+  replicas: 1
+  image:
+    repository: redis
+    tag: "7.2-alpine"
+    pullPolicy: IfNotPresent
+  maxMemory: "256mb"
+  maxMemoryPolicy: "allkeys-lru"
+  password: ""
+  persistence:
+    enabled: false
+    storageClass: ""
+    size: "1Gi"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
