@@ -82,16 +82,47 @@ struct WorkflowLog {
     namespace: String,
 }
 
+/// Namespace metadata (mirrors Temporal's namespace registration).
+#[derive(Clone, Debug)]
+struct NamespaceInfo {
+    name: String,
+    description: String,
+    state: String,
+    retention_days: u32,
+    owner_email: String,
+    is_global: bool,
+    created_at: i64,
+}
+
 struct TemporalEngine {
     /// Append-only event logs per workflow (keyed by workflow_id).
     logs: Mutex<HashMap<String, WorkflowLog>>,
+    /// Registered namespaces.
+    namespaces: Mutex<HashMap<String, NamespaceInfo>>,
     start_time: Instant,
 }
 
 impl TemporalEngine {
     fn new() -> Self {
+        let mut default_ns = HashMap::new();
+        default_ns.insert(
+            "default".to_string(),
+            NamespaceInfo {
+                name: "default".to_string(),
+                description: "Default namespace".to_string(),
+                state: "REGISTERED".to_string(),
+                retention_days: 7,
+                owner_email: String::new(),
+                is_global: false,
+                created_at: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64,
+            },
+        );
         Self {
             logs: Mutex::new(HashMap::new()),
+            namespaces: Mutex::new(default_ns),
             start_time: Instant::now(),
         }
     }
@@ -454,6 +485,8 @@ impl TemporalEngine {
                 "completed" => replayed.status == WorkflowStatus::Completed,
                 "failed" => replayed.status == WorkflowStatus::Failed,
                 "terminated" => replayed.status == WorkflowStatus::Terminated,
+                "cancelled" => replayed.status == WorkflowStatus::Cancelled,
+                "continued_as_new" => replayed.status == WorkflowStatus::ContinuedAsNew,
                 _ => true,
             };
             if matches {
@@ -827,10 +860,21 @@ impl TemporalEngine {
     }
 
     async fn batch_terminate(&self, namespace: &str, reason: &str, max_count: i64) -> u64 {
+        // Only terminate RUNNING workflows (replay to check status)
         let targets: Vec<String> = {
-            let logs = self.logs.lock().await;
-            logs.iter()
-                .filter(|(_, log)| log.namespace == namespace)
+            let all_events: Vec<(String, Vec<HistoryEvent>)> = {
+                let logs = self.logs.lock().await;
+                logs.iter()
+                    .filter(|(_, log)| log.namespace == namespace)
+                    .map(|(id, log)| (id.clone(), log.events.clone()))
+                    .collect()
+            };
+            all_events
+                .iter()
+                .filter(|(_, events)| {
+                    let s = Self::replay_events(events);
+                    s.status == WorkflowStatus::Running
+                })
                 .map(|(id, _)| id.clone())
                 .take(if max_count > 0 {
                     max_count as usize
@@ -895,14 +939,6 @@ impl TemporalEngine {
     }
 
     // ── Tier 3: Namespace & production ──────────────────────────────────────
-
-    async fn describe_namespace(&self, name: &str) -> Result<serde_json::Value, String> {
-        let logs = self.logs.lock().await;
-        let wf_count = logs.values().filter(|l| l.namespace == name).count();
-        Ok(serde_json::json!({
-            "name": name, "state": "REGISTERED", "workflow_count": wf_count,
-        }))
-    }
 
     async fn get_workflow_history(
         &self,
@@ -1175,10 +1211,26 @@ impl BenchmarkService for BenchmarkServiceImpl {
         request: Request<RegisterNamespaceRequest>,
     ) -> Result<Response<RegisterNamespaceResponse>, Status> {
         let req = request.into_inner();
-        info!(name = %req.name, "Register namespace (simulated)");
+        let mut namespaces = self.engine.namespaces.lock().await;
+        let already_exists = namespaces.contains_key(&req.name);
+        if !already_exists {
+            namespaces.insert(
+                req.name.clone(),
+                NamespaceInfo {
+                    name: req.name.clone(),
+                    description: req.description.clone(),
+                    state: "REGISTERED".to_string(),
+                    retention_days: 7,
+                    owner_email: String::new(),
+                    is_global: false,
+                    created_at: TemporalEngine::now_us() / 1_000_000,
+                },
+            );
+        }
+        info!(name = %req.name, already_exists = already_exists, "Register namespace");
         Ok(Response::new(RegisterNamespaceResponse {
             success: true,
-            already_exists: false,
+            already_exists,
         }))
     }
 
@@ -1723,35 +1775,60 @@ impl BenchmarkService for BenchmarkServiceImpl {
         req: Request<DescribeNamespaceRequest>,
     ) -> Result<Response<DescribeNamespaceResponse>, Status> {
         let r = req.into_inner();
-        match self.engine.describe_namespace(&r.name).await {
-            Ok(info) => Ok(Response::new(DescribeNamespaceResponse {
-                name: info["name"].as_str().unwrap_or(&r.name).to_string(),
-                id: format!("ns-{}", &r.name),
-                description: String::new(),
-                state: info["state"].as_str().unwrap_or("UNKNOWN").to_string(),
-                retention_days: 7,
-                owner_email: String::new(),
-                is_global: false,
-                created_at: 0,
+        let namespaces = self.engine.namespaces.lock().await;
+        match namespaces.get(&r.name) {
+            Some(ns) => Ok(Response::new(DescribeNamespaceResponse {
+                name: ns.name.clone(),
+                id: format!("ns-{}", ns.name),
+                description: ns.description.clone(),
+                state: ns.state.clone(),
+                retention_days: ns.retention_days,
+                owner_email: ns.owner_email.clone(),
+                is_global: ns.is_global,
+                created_at: ns.created_at,
             })),
-            Err(e) => Err(Status::not_found(e)),
+            None => Err(Status::not_found(format!("Namespace {} not found", r.name))),
         }
     }
     async fn update_namespace(
         &self,
-        _req: Request<UpdateNamespaceRequest>,
+        req: Request<UpdateNamespaceRequest>,
     ) -> Result<Response<UpdateNamespaceResponse>, Status> {
-        // Namespaces are implicit in the bridge — always succeed
-        Ok(Response::new(UpdateNamespaceResponse {
-            success: true,
-            error: String::new(),
-        }))
+        let r = req.into_inner();
+        let mut namespaces = self.engine.namespaces.lock().await;
+        match namespaces.get_mut(&r.name) {
+            Some(ns) => {
+                if !r.description.is_empty() {
+                    ns.description = r.description;
+                }
+                if r.retention_days > 0 {
+                    ns.retention_days = r.retention_days;
+                }
+                if !r.owner_email.is_empty() {
+                    ns.owner_email = r.owner_email;
+                }
+                Ok(Response::new(UpdateNamespaceResponse {
+                    success: true,
+                    error: String::new(),
+                }))
+            }
+            None => Ok(Response::new(UpdateNamespaceResponse {
+                success: false,
+                error: format!("Namespace {} not found", r.name),
+            })),
+        }
     }
     async fn delete_namespace(
         &self,
         req: Request<DeleteNamespaceRequest>,
     ) -> Result<Response<DeleteNamespaceResponse>, Status> {
         let r = req.into_inner();
+        // Remove namespace registration
+        {
+            let mut namespaces = self.engine.namespaces.lock().await;
+            namespaces.remove(&r.name);
+        }
+        // Clear all workflows in this namespace
         let cleared = self.engine.reset(&r.name).await;
         debug!(namespace = %r.name, cleared = cleared, "Deleted namespace");
         Ok(Response::new(DeleteNamespaceResponse {
@@ -1801,9 +1878,68 @@ impl BenchmarkService for BenchmarkServiceImpl {
     }
     async fn poll_activity_task(
         &self,
-        _req: Request<PollActivityTaskRequest>,
+        req: Request<PollActivityTaskRequest>,
     ) -> Result<Response<PollActivityTaskResponse>, Status> {
-        // Activities are tracked as events — no separate dispatch queue in the bridge
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        // Scan event logs for workflows with scheduled-but-not-completed activities
+        let all_events: Vec<(String, Vec<HistoryEvent>)> = {
+            let logs = self.engine.logs.lock().await;
+            logs.iter()
+                .filter(|(_, log)| log.namespace == ns)
+                .map(|(id, log)| (id.clone(), log.events.clone()))
+                .collect()
+        };
+        for (wf_id, events) in &all_events {
+            let replayed = TemporalEngine::replay_events(events);
+            if replayed.status != WorkflowStatus::Running {
+                continue;
+            }
+            // Find scheduled activities that haven't been completed/failed yet
+            let mut scheduled: Vec<(String, String)> = Vec::new(); // (activity_id, activity_type)
+            let mut completed: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for event in events {
+                match event.event_type.as_str() {
+                    "ActivityTaskScheduled" => {
+                        if let (Some(aid), Some(atype)) = (
+                            event.attributes.get("activity_id").and_then(|v| v.as_str()),
+                            event
+                                .attributes
+                                .get("activity_type")
+                                .and_then(|v| v.as_str()),
+                        ) {
+                            scheduled.push((aid.to_string(), atype.to_string()));
+                        }
+                    }
+                    "ActivityTaskCompleted" | "ActivityTaskFailed" => {
+                        if let Some(aid) =
+                            event.attributes.get("activity_id").and_then(|v| v.as_str())
+                        {
+                            completed.insert(aid.to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            // Return the first uncompleted activity
+            for (aid, atype) in &scheduled {
+                if !completed.contains(aid.as_str()) {
+                    return Ok(Response::new(PollActivityTaskResponse {
+                        task_token: format!("at-{}-{}", wf_id, uuid::Uuid::new_v4()),
+                        activity_id: aid.clone(),
+                        activity_type: atype.clone(),
+                        input: Vec::new(),
+                        workflow_id: wf_id.clone(),
+                        has_task: true,
+                        scheduled_time: TemporalEngine::now_us(),
+                    }));
+                }
+            }
+        }
         Ok(Response::new(PollActivityTaskResponse {
             task_token: String::new(),
             activity_id: String::new(),
