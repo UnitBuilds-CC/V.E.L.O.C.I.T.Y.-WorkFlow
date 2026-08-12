@@ -28,4 +28,7 @@ public static unsafe partial class NativeBridge
 
     [LibraryImport(DllName, EntryPoint = "velocity_arena_alloc")]
     public static partial int VelocityArenaAlloc(void* arenaPage, byte* payloadPtr, nuint payloadLen, nuint* outOffset);
+
+    [LibraryImport(DllName, EntryPoint = "velocity_vctp_packet_create")]
+    public static partial int VelocityVctpPacketCreate(ulong sequenceNumber, ulong workflowId, uint slabOffset, uint payloadLength, VctpPacketHeader* outHeader);
 }

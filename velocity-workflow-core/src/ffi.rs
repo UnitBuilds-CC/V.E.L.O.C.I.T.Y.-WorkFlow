@@ -4,6 +4,7 @@ use crate::arena::BumpArenaPage;
 use crate::crdt::PNCounter;
 use crate::nda::NdaHeader;
 use crate::slab::SlabHeader;
+use crate::vctp::{AimdController, VctpPacketHeader};
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_slab_create(
@@ -89,6 +90,33 @@ pub unsafe extern "C" fn velocity_arena_alloc(
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn velocity_vctp_packet_create(
+    sequence_number: u64,
+    workflow_id: u64,
+    slab_offset: u32,
+    payload_length: u32,
+    out_header: *mut VctpPacketHeader,
+) -> i32 {
+    if out_header.is_null() {
+        return -1;
+    }
+    *out_header = VctpPacketHeader::new(sequence_number, workflow_id, slab_offset, payload_length);
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn velocity_vctp_aimd_update(
+    controller: *mut AimdController,
+    loss_percent: u32,
+) -> i32 {
+    if controller.is_null() {
+        return -1;
+    }
+    (*controller).update(loss_percent);
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +143,16 @@ mod tests {
         let header = NdaHeader::new(5, 2, 128);
         unsafe {
             assert_eq!(velocity_nda_verify(&header), 1);
+        }
+    }
+
+    #[test]
+    fn test_ffi_vctp() {
+        let mut packet = VctpPacketHeader::new(0, 0, 0, 0);
+        unsafe {
+            let res = velocity_vctp_packet_create(1, 100, 32, 16, &mut packet);
+            assert_eq!(res, 0);
+            assert_eq!(packet.sequence_number, 1);
         }
     }
 }
