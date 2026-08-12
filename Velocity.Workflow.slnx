@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Velocity.Workflow.Benchmarks/Velocity.Workflow.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Velocity.Workflow.Core/Velocity.Workflow.Core.csproj" />
     <Project Path="src/Velocity.Workflow.Generators/Velocity.Workflow.Generators.csproj" />
