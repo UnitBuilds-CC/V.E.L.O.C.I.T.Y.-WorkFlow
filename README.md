@@ -300,47 +300,80 @@ dotnet run --project tools/temporal2velocity -- --hydrate 1001 25
 
 All performance claims in this README are derived from the `velocity-bench` gRPC benchmark suite. Both engines are tested through **identical gRPC paths** — no in-process shortcuts.
 
-### Prerequisites
+### Option A: Cloud Benchmark (Recommended — Fully Reproducible)
 
-- **Rust toolchain** (`cargo`) — for building the benchmark harness and both servers
-- **.NET 10.0 SDK** — for the VELOCITY DevEngine
+Run on a standardized AWS EC2 instance so anyone can reproduce identical results.
 
-### 1. Build the Benchmark Suite
+**1. Launch an EC2 instance:**
+- **AMI:** Ubuntu 22.04 LTS (`ami-0c7217cdde3efc8f2` us-east-1)
+- **Instance type:** `t3.medium` (2 vCPU, 4 GB RAM)
+- **Storage:** 30 GB gp3
+- **Security group:** Allow SSH (22) from your IP
 
-```powershell
+**2. SSH in and run the setup + benchmark:**
+```bash
+# SSH into the instance
+ssh -i <key.pem> ubuntu@<ec2-public-ip>
+
+# Clone the repo
+git clone https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow.git
+cd VELOCITY-WorkFlow
+
+# Provision: install Rust, Docker, build binaries, pull Temporal images
+chmod +x cloud-bench/setup.sh
+./cloud-bench/setup.sh
+
+# Run the full benchmark (starts Temporal + VELOCITY + bridge, runs 18 workloads)
+chmod +x cloud-bench/run.sh
+./cloud-bench/run.sh
+
+# Copy results back to your machine
+scp -i <key.pem> ubuntu@<ec2-public-ip>:~/VELOCITY-WorkFlow/bench_results.md ./
+```
+
+The `cloud-bench/run.sh` script starts:
+- **Real Temporal server** via Docker (PostgreSQL + Temporal + Web UI on ports 7233/8233)
+- **VELOCITY dev-server** (gRPC on port 7234)
+- **temporal-bridge** (gRPC on port 7235, BenchmarkService proto)
+- Runs the benchmark harness against both engines on localhost
+
+### Option B: Local Benchmark
+
+Run on your own machine (results will vary by hardware).
+
+**Prerequisites:** Rust toolchain (`cargo`)
+
+```bash
+# 1. Build all components
 cd VELOCITY-WorkFlow
 cargo build --release
-```
 
-### 2. Start Both Engines
-
-```powershell
-# Terminal 1: Start VELOCITY dev-server (gRPC on port 7234)
+# 2. Start VELOCITY dev-server (Terminal 1)
 cargo run --release -p velocity-dev-server -- --grpc-port 7234
 
-# Terminal 2: Start temporal-bridge (gRPC on port 7233)
-cargo run --release -p velocity-bench -- --temporal-bridge --port 7233
+# 3. Start temporal-bridge (Terminal 2)
+cargo run --release -p velocity-bench --bin temporal-bridge -- --grpc-port 7235
+
+# 4. Run the benchmark (Terminal 3)
+cargo run --release -p velocity-bench -- \
+    --workloads all --engine both --format all --profile standard \
+    --velocity-address http://localhost:7234 \
+    --temporal-address http://localhost:7235 \
+    --output bench_results.md
 ```
 
-### 3. Run the Full Benchmark Suite
+### Benchmark Profiles
 
-```powershell
-# All 18 workloads, both engines, all output formats
-cargo run --release -p velocity-bench -- --workloads all --engine both --format all --profile standard --output bench_results.md
+| Profile | Workloads | Use Case |
+|---------|-----------|----------|
+| `--workloads smoke` | 3 workloads | Quick sanity check (~2 min) |
+| `--workloads all --profile quick` | 18 workloads, low iterations | Fast comparison (~5 min) |
+| `--workloads all --profile standard` | 18 workloads, normal iterations | Full report (~15 min) |
+| `--workloads all --profile stress` | 18 workloads, high iterations | Stress test (~45 min) |
 
-# Quick smoke test (3 workloads)
-cargo run --release -p velocity-bench -- --workloads smoke --engine both
+### Output
 
-# Single workload
-cargo run --release -p velocity-bench -- --workload simple_workflow --engine both
-
-# Stress profile (higher iteration counts)
-cargo run --release -p velocity-bench -- --workloads all --engine both --profile stress
-```
-
-### 4. Verify Results
-
-The benchmark outputs `bench_results.md`, `bench_results.csv`, and `bench_results.json` with full per-workload breakdowns including ops/sec, p50/p95/p99/p999 latencies, peak memory, CPU, and error rates.
+The benchmark produces `bench_results.md`, `bench_results.csv`, and `bench_results.json` with per-workload breakdowns: ops/sec, p50/p95/p99/p999 latencies, peak memory, CPU, and error rates.
 
 > **Fairness guarantee:** Both engines implement the identical `BenchmarkService` gRPC proto (33 RPCs). The benchmark harness uses the same `GrpcAdapter` client for both — the only difference is the server address. Warm-up runs eliminate cold-start artifacts, and a reset RPC clears state between workloads.
 
