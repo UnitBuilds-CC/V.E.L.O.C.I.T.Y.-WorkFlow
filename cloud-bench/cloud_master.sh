@@ -145,8 +145,11 @@ REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Tar repo (exclude heavy dirs) and upload
 cd "$REPO_ROOT"
+log "  Tarring from: $(pwd)"
 tar czf /tmp/velocity-repo.tar.gz \
     --exclude='.git' --exclude='target' --exclude='node_modules' --exclude='*.log' .
+log "  Tarball: $(ls -lh /tmp/velocity-repo.tar.gz | awk '{print $5}')"
+log "  Contains Cargo.toml: $(tar tzf /tmp/velocity-repo.tar.gz | grep -c 'Cargo.toml') files"
 scp $SSH_OPTS /tmp/velocity-repo.tar.gz "ubuntu@$PUBLIC_IP:~/velocity-repo.tar.gz"
 rm -f /tmp/velocity-repo.tar.gz
 

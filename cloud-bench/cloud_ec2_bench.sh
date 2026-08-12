@@ -22,6 +22,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC
 log()  { echo -e "${GREEN}[ec2]${NC} $*"; }
 warn() { echo -e "${YELLOW}[ec2]${NC} $*"; }
 info() { echo -e "${CYAN}[ec2]${NC} $*"; }
+err()  { echo -e "${RED}[ec2]${NC} $*"; }
 
 # ── Cleanup trap ────────────────────────────────────────────────────────────
 cleanup() {
@@ -79,13 +80,28 @@ export PATH="$HOME/.cargo/bin:$PATH"
 REPO_DIR="$HOME/VELOCITY-WorkFlow"
 if [ -f "$HOME/velocity-repo.tar.gz" ]; then
     log "[3/6] Extracting uploaded repository..."
+    log "  Tarball size: $(ls -lh "$HOME/velocity-repo.tar.gz" | awk '{print $5}')"
+    log "  Tarball contents (first 10):"
+    tar tzf "$HOME/velocity-repo.tar.gz" | head -10
+
+    rm -rf "$REPO_DIR"
     mkdir -p "$REPO_DIR"
-    cd "$REPO_DIR"
-    tar xzf "$HOME/velocity-repo.tar.gz"
+    tar xzf "$HOME/velocity-repo.tar.gz" -C "$REPO_DIR"
     rm -f "$HOME/velocity-repo.tar.gz"
-    log "  Repository extracted."
+
+    cd "$REPO_DIR"
+    log "  Files in $REPO_DIR:"
+    ls -la
+    if [ ! -f Cargo.toml ]; then
+        err "ERROR: Cargo.toml not found after extraction!"
+        err "  Current dir: $(pwd)"
+        err "  Contents: $(ls)"
+        exit 1
+    fi
+    log "  Repository extracted OK."
 else
     log "[3/6] No tarball found — attempting git clone..."
+    rm -rf "$REPO_DIR"
     git clone --depth 1 git@github.com:UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow.git "$REPO_DIR" 2>/dev/null || \
     git clone --depth 1 https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow.git "$REPO_DIR"
     cd "$REPO_DIR"
