@@ -178,25 +178,25 @@ case '{flavor}' in
         ./target/release/velocity-server --ip 0.0.0.0 --grpc-port 7234 > /tmp/velocity.log 2>&1 &
         SERVER_PID=$!
         sleep 10
-        cargo run --release -p velocity-bench -- --workloads all --engine velocity --velocity-address http://localhost:7234 --profile standard --output ~/velocity-bench/results/classic_results.json 2>&1
+        cargo run --release -p velocity-bench --bin velocity-bench -- --workloads all --engine velocity --velocity-address http://localhost:7234 --profile standard --output ~/velocity-bench/results/classic_results.json 2>&1
         kill $SERVER_PID 2>/dev/null
         ;;
     temporal)
         docker run -d --name temporal -p 7233:7233 temporalio/auto-setup:latest 2>/dev/null || true
         sleep 15
-        cargo run --release -p velocity-bench -- --workloads all --engine temporal --temporal-address http://localhost:7233 --profile standard --output ~/velocity-bench/results/temporal_results.json 2>&1
+        cargo run --release -p velocity-bench --bin velocity-bench -- --workloads all --engine temporal --temporal-address http://localhost:7233 --profile standard --output ~/velocity-bench/results/temporal_results.json 2>&1
         ;;
     velocity-runtime)
         ./target/release/velocity-server --ip 0.0.0.0 --grpc-port 7233 > /tmp/velocity.log 2>&1 &
         SERVER_PID=$!
         sleep 10
-        cargo run --release -p velocity-bench -- --workloads all --engine velocity --velocity-address http://localhost:7233 --profile standard --output ~/velocity-bench/results/runtime_results.json 2>&1
+        cargo run --release -p velocity-bench --bin velocity-bench -- --workloads all --engine velocity --velocity-address http://localhost:7233 --profile standard --output ~/velocity-bench/results/runtime_results.json 2>&1
         kill $SERVER_PID 2>/dev/null
         ;;
     restate)
         docker run -d --name restate -p 8080:8080 restatelabs/restate-server:latest 2>/dev/null || true
         sleep 15
-        cargo run --release -p velocity-bench -- --workloads all --engine restate --restate-address http://localhost:8080 --profile standard --output ~/velocity-bench/results/restate_results.json 2>&1
+        cargo run --release -p velocity-bench --bin velocity-bench -- --workloads all --engine restate --restate-address http://localhost:8080 --profile standard --output ~/velocity-bench/results/restate_results.json 2>&1
         ;;
     velocity-embedded)
         ./target/release/velocity-server --ip 0.0.0.0 --grpc-port 7233 > /tmp/velocity.log 2>&1 &
