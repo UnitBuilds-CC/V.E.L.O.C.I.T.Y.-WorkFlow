@@ -17,7 +17,14 @@ internal class Program
             return;
         }
 
-        // Run BenchmarkDotNet suite
+        if (args.Length > 0 && args[0] == "--step-bench")
+        {
+            Console.WriteLine("Running Step-by-Step Micro-Benchmark Breakdown...");
+            BenchmarkRunner.Run<StepBreakdownBenchmarks>();
+            return;
+        }
+
+        // Default run BenchmarkDotNet suite
         Console.WriteLine("Running BenchmarkDotNet suite...");
         BenchmarkRunner.Run<SlabVsReplayBenchmark>();
     }
