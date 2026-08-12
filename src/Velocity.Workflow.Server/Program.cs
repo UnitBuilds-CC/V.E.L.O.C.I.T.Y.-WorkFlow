@@ -58,10 +58,12 @@ app.MapGet("/", () => Results.Redirect("/index.html"));
 // Health check endpoint (used by Docker/K8s probes)
 app.MapGet("/health", (WorkflowRuntime runtime) =>
 {
+    var uptimeSecs = (long)(DateTime.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime()).TotalSeconds;
     return Results.Json(new
     {
         status = "healthy",
         timestamp = DateTimeOffset.UtcNow.ToString("o"),
+        uptime = uptimeSecs,
         version = "0.1.0",
         workflow_count = runtime.WorkflowCount,
         namespace_count = runtime.NamespaceCount
