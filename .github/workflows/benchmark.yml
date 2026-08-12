@@ -1,0 +1,183 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Benchmark profile'
+        required: true
+        default: 'standard'
+        type: choice
+        options:
+          - smoke
+          - quick
+          - standard
+          - stress
+      workloads:
+        description: 'Workloads to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - smoke
+          - all
+      runner:
+        description: 'Runner type'
+        required: true
+        default: 'github'
+        type: choice
+        options:
+          - github
+          - large
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    name: Run Benchmark
+    runs-on: ${{ inputs.runner == 'large' && 'ubuntu-latest-8-cores' || 'ubuntu-latest' }}
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Start Real Temporal (Docker)
+        run: |
+          docker compose -f velocity-bench/docker-compose.temporal.yml up -d
+          echo "Waiting for Temporal to be healthy..."
+          for i in $(seq 1 60); do
+            if nc -z localhost 7233 2>/dev/null; then
+              echo "Temporal ready!"
+              break
+            fi
+            sleep 2
+          done
+          docker compose -f velocity-bench/docker-compose.temporal.yml ps
+
+      - name: Build VELOCITY servers
+        run: |
+          cargo build --release -p velocity-dev-server -p velocity-bench
+          cargo build --release --bin temporal-bridge
+          ls -lh target/release/velocity-dev target/release/temporal-bridge target/release/velocity-bench
+
+      - name: Start VELOCITY servers
+        run: |
+          # Start VELOCITY dev-server
+          ./target/release/velocity-dev --grpc-port 7234 --port 7230 > /tmp/velocity.log 2>&1 &
+          echo "VELOCITY PID: $!"
+          
+          # Start temporal-bridge
+          ./target/release/temporal-bridge --grpc-port 7235 > /tmp/bridge.log 2>&1 &
+          echo "Bridge PID: $!"
+          
+          # Wait for both to be ready
+          for i in $(seq 1 15); do
+            nc -z localhost 7234 2>/dev/null && echo "VELOCITY ready on :7234" && break
+            sleep 1
+          done
+          for i in $(seq 1 15); do
+            nc -z localhost 7235 2>/dev/null && echo "Bridge ready on :7235" && break
+            sleep 1
+          done
+
+      - name: Print environment info
+        run: |
+          echo "════════════════════════════════════════════════════════"
+          echo "  Benchmark Environment                                 "
+          echo "════════════════════════════════════════════════════════"
+          echo "  Runner:     ${{ inputs.runner }}"
+          echo "  OS:         $(uname -a)"
+          echo "  CPU:        $(lscpu | grep 'Model name' | sed 's/Model name:\s*//' | xargs)"
+          echo "  vCPUs:      $(nproc)"
+          echo "  RAM:        $(free -h | awk '/^Mem:/{print $2}')"
+          echo "  Rust:       $(rustc --version)"
+          echo "  Profile:    ${{ inputs.profile }}"
+          echo "  Workloads:  ${{ inputs.workloads }}"
+          echo "  Commit:     ${{ github.sha }}"
+          echo "════════════════════════════════════════════════════════"
+
+      - name: Run benchmark
+        run: |
+          ./target/release/velocity-bench \
+            --workloads "${{ inputs.workloads }}" \
+            --engine both \
+            --format all \
+            --profile "${{ inputs.profile }}" \
+            --output bench_results.md
+
+      - name: Upload results (Markdown)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-md
+          path: bench_results.md
+          retention-days: 90
+
+      - name: Upload results (CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-csv
+          path: bench_results.csv
+          retention-days: 90
+
+      - name: Upload results (JSON)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-json
+          path: bench_results.json
+          retention-days: 90
+
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs
+          path: |
+            /tmp/velocity.log
+            /tmp/bridge.log
+          retention-days: 30
+
+      - name: Print summary
+        if: always()
+        run: |
+          echo "════════════════════════════════════════════════════════"
+          echo "  Benchmark Complete                                    "
+          echo "════════════════════════════════════════════════════════"
+          if [ -f bench_results.md ]; then
+            echo ""
+            echo "── Summary ──"
+            sed -n '/^## Summary/,/^## Detailed/p' bench_results.md | head -20
+            echo ""
+            echo "── Detailed Comparison ──"
+            sed -n '/^## Detailed Comparison/,/^## Per/p' bench_results.md | head -25
+          fi
+          echo ""
+          echo "Results uploaded as artifacts. Download from:"
+          echo "  https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
