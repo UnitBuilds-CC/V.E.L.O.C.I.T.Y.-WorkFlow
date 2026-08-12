@@ -62,7 +62,16 @@ sudo apt-get install -y \
     docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
 sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER" 2>/dev/null || true
+sudo usermod -aG docker ubuntu 2>/dev/null || true
+
+# Verify Docker is working
+if ! sudo docker info >/dev/null 2>&1; then
+    warn "  Docker daemon not ready yet, waiting..."
+    sleep 5
+    sudo systemctl restart docker
+    sleep 3
+fi
+log "  Docker: $(sudo docker --version)"
 
 log "  System packages installed."
 
@@ -133,8 +142,9 @@ log "[5/6] Starting services..."
 
 # 5a. Real Temporal server via Docker
 log "  Starting Temporal (Docker: PostgreSQL + Temporal + Web UI)..."
-sudo docker compose -f velocity-bench/docker-compose.temporal.yml up -d 2>/dev/null || \
-    docker compose -f velocity-bench/docker-compose.temporal.yml up -d
+sudo docker compose -f velocity-bench/docker-compose.temporal.yml up -d 2>&1 || {
+    warn "  Docker compose failed (Temporal will use bridge fallback)."
+}
 
 log "  Waiting for Temporal to be healthy (up to 2 minutes)..."
 TEMPORAL_READY=false
