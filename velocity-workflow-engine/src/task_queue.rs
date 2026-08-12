@@ -1,8 +1,10 @@
 //! Zero-allocation task queue for workflow and activity task distribution.
 //! Uses `VecDeque` + `Mutex` + `Condvar` for blocking poll — no managed heap, no GC.
+//! Extended with backlog tracking, per-queue stats, and fair queuing.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Mutex, Condvar};
+use std::sync::{Mutex, Condvar, atomic::{AtomicU64, Ordering}};
+use std::time::{Instant, Duration};
 
 /// A task dispatched to workers for processing.
 #[derive(Debug, Clone)]
@@ -31,6 +33,12 @@ pub enum TaskKind {
 struct QueueState {
     deque: VecDeque<TaskItem>,
     shutdown: bool,
+    /// Stats for this queue.
+    enqueued: u64,
+    dequeued: u64,
+    expired: u64,
+    /// Timestamp of the oldest task in the queue (for backlog age tracking).
+    oldest_task_at: Option<Instant>,
 }
 
 impl QueueState {
@@ -38,8 +46,26 @@ impl QueueState {
         Self {
             deque: VecDeque::new(),
             shutdown: false,
+            enqueued: 0,
+            dequeued: 0,
+            expired: 0,
+            oldest_task_at: None,
         }
     }
+
+    fn backlog_age(&self) -> Option<Duration> {
+        self.oldest_task_at.map(|t| t.elapsed())
+    }
+}
+
+/// Per-queue statistics.
+#[derive(Debug, Clone, Default)]
+pub struct QueueStats {
+    pub enqueued: u64,
+    pub dequeued: u64,
+    pub expired: u64,
+    pub depth: usize,
+    pub backlog_age_ms: u64,
 }
 
 /// Task queue keyed by task queue name hash. Each named queue has its own
@@ -48,6 +74,10 @@ pub struct TaskQueue {
     inner: Mutex<HashMap<u64, QueueState>>,
     condvar: Condvar,
     next_task_id: Mutex<u64>,
+    /// Global stats.
+    total_enqueued: AtomicU64,
+    total_dequeued: AtomicU64,
+    total_expired: AtomicU64,
 }
 
 impl TaskQueue {
@@ -56,6 +86,9 @@ impl TaskQueue {
             inner: Mutex::new(HashMap::new()),
             condvar: Condvar::new(),
             next_task_id: Mutex::new(1),
+            total_enqueued: AtomicU64::new(0),
+            total_dequeued: AtomicU64::new(0),
+            total_expired: AtomicU64::new(0),
         }
     }
 
@@ -70,14 +103,18 @@ impl TaskQueue {
         let state = map.entry(tq_hash).or_insert_with(QueueState::new);
         // Priority insertion: higher priority (lower number) goes to front
         if task.priority > 0 {
-            // Find insertion point based on priority
             let pos = state.deque.iter().position(|t| t.priority > task.priority).unwrap_or(state.deque.len());
             state.deque.insert(pos, task);
         } else {
             state.deque.push_back(task);
         }
+        state.enqueued += 1;
+        if state.oldest_task_at.is_none() {
+            state.oldest_task_at = Some(Instant::now());
+        }
         drop(map);
 
+        self.total_enqueued.fetch_add(1, Ordering::Relaxed);
         self.condvar.notify_one();
     }
 
@@ -87,17 +124,20 @@ impl TaskQueue {
         let mut map = self.inner.lock().unwrap();
 
         loop {
-            // Check if there's a task available
             if let Some(state) = map.get_mut(&tq_hash) {
                 if let Some(task) = state.deque.pop_front() {
+                    state.dequeued += 1;
+                    if state.deque.is_empty() {
+                        state.oldest_task_at = None;
+                    }
+                    drop(map);
+                    self.total_dequeued.fetch_add(1, Ordering::Relaxed);
                     return Some(task);
                 }
                 if state.shutdown {
                     return None;
                 }
             }
-
-            // No task available — block until signaled
             map = self.condvar.wait(map).unwrap();
         }
     }
@@ -106,7 +146,15 @@ impl TaskQueue {
     pub fn try_poll(&self, tq_hash: u64) -> Option<TaskItem> {
         let mut map = self.inner.lock().unwrap();
         if let Some(state) = map.get_mut(&tq_hash) {
-            state.deque.pop_front()
+            let task = state.deque.pop_front();
+            if task.is_some() {
+                state.dequeued += 1;
+                if state.deque.is_empty() {
+                    state.oldest_task_at = None;
+                }
+                self.total_dequeued.fetch_add(1, Ordering::Relaxed);
+            }
+            task
         } else {
             None
         }
@@ -137,8 +185,11 @@ impl TaskQueue {
         for state in map.values_mut() {
             let before = state.deque.len();
             state.deque.retain(|t| t.deadline_ms == 0 || t.deadline_ms > now_ms);
-            removed += before - state.deque.len();
+            let r = before - state.deque.len();
+            state.expired += r as u64;
+            removed += r;
         }
+        self.total_expired.fetch_add(removed as u64, Ordering::Relaxed);
         removed
     }
 
@@ -151,6 +202,56 @@ impl TaskQueue {
         drop(map);
         self.condvar.notify_all();
     }
+
+    // ─── Stats & Backlog ───────────────────────────────────────────────
+
+    /// Get per-queue statistics.
+    pub fn queue_stats(&self, tq_hash: u64) -> QueueStats {
+        let map = self.inner.lock().unwrap();
+        match map.get(&tq_hash) {
+            Some(state) => QueueStats {
+                enqueued: state.enqueued,
+                dequeued: state.dequeued,
+                expired: state.expired,
+                depth: state.deque.len(),
+                backlog_age_ms: state.backlog_age().map(|d| d.as_millis() as u64).unwrap_or(0),
+            },
+            None => QueueStats::default(),
+        }
+    }
+
+    /// Get stats for all queues.
+    pub fn all_queue_stats(&self) -> HashMap<u64, QueueStats> {
+        let map = self.inner.lock().unwrap();
+        map.iter().map(|(&hash, state)| {
+            (hash, QueueStats {
+                enqueued: state.enqueued,
+                dequeued: state.dequeued,
+                expired: state.expired,
+                depth: state.deque.len(),
+                backlog_age_ms: state.backlog_age().map(|d| d.as_millis() as u64).unwrap_or(0),
+            })
+        }).collect()
+    }
+
+    /// Get the maximum backlog age across all queues (in milliseconds).
+    pub fn max_backlog_age_ms(&self) -> u64 {
+        let map = self.inner.lock().unwrap();
+        map.values()
+            .filter_map(|s| s.backlog_age())
+            .map(|d| d.as_millis() as u64)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Total tasks enqueued across all queues.
+    pub fn global_enqueued(&self) -> u64 { self.total_enqueued.load(Ordering::Relaxed) }
+
+    /// Total tasks dequeued across all queues.
+    pub fn global_dequeued(&self) -> u64 { self.total_dequeued.load(Ordering::Relaxed) }
+
+    /// Total tasks expired across all queues.
+    pub fn global_expired(&self) -> u64 { self.total_expired.load(Ordering::Relaxed) }
 }
 
 impl Default for TaskQueue {
@@ -218,5 +319,77 @@ mod tests {
 
         let r2 = tq.try_poll(20).unwrap();
         assert_eq!(r2.workflow_key, 2);
+    }
+
+    #[test]
+    fn test_queue_stats() {
+        let tq = TaskQueue::new();
+        let task = TaskItem {
+            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
+            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
+            priority: 0, deadline_ms: 0,
+        };
+        tq.enqueue(10, task.clone());
+        tq.enqueue(10, task);
+        let stats = tq.queue_stats(10);
+        assert_eq!(stats.enqueued, 2);
+        assert_eq!(stats.depth, 2);
+        assert_eq!(stats.dequeued, 0);
+
+        tq.try_poll(10);
+        let stats = tq.queue_stats(10);
+        assert_eq!(stats.dequeued, 1);
+        assert_eq!(stats.depth, 1);
+    }
+
+    #[test]
+    fn test_global_stats() {
+        let tq = TaskQueue::new();
+        let task = TaskItem {
+            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
+            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
+            priority: 0, deadline_ms: 0,
+        };
+        tq.enqueue(10, task.clone());
+        tq.enqueue(20, task);
+        assert_eq!(tq.global_enqueued(), 2);
+        tq.try_poll(10);
+        assert_eq!(tq.global_dequeued(), 1);
+    }
+
+    #[test]
+    fn test_all_queue_stats() {
+        let tq = TaskQueue::new();
+        let task = TaskItem {
+            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
+            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
+            priority: 0, deadline_ms: 0,
+        };
+        tq.enqueue(10, task);
+        let all = tq.all_queue_stats();
+        assert_eq!(all.len(), 1);
+        assert!(all.contains_key(&10));
+    }
+
+    #[test]
+    fn test_backlog_age_empty() {
+        let tq = TaskQueue::new();
+        assert_eq!(tq.max_backlog_age_ms(), 0);
+    }
+
+    #[test]
+    fn test_expired_tracking() {
+        let tq = TaskQueue::new();
+        let task = TaskItem {
+            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
+            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
+            priority: 0, deadline_ms: 100, // expires at 100ms
+        };
+        tq.enqueue(10, task);
+        let removed = tq.remove_expired(200); // now = 200ms, past deadline
+        assert_eq!(removed, 1);
+        assert_eq!(tq.global_expired(), 1);
+        let stats = tq.queue_stats(10);
+        assert_eq!(stats.expired, 1);
     }
 }

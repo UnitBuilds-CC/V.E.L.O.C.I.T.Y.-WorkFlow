@@ -26,7 +26,7 @@ use crate::dynamic_config::DynamicConfig;
 use crate::query_handler::QueryRegistry;
 use crate::memo::MemoStore;
 use crate::schedules::ScheduleManager;
-use crate::workflow_reset::WorkflowResetter;
+use crate::workflow_reset::{WorkflowResetter, ResetReason};
 use crate::patch::PatchRegistry;
 use crate::cluster::{ClusterManager, VersionHistoryStore};
 use crate::replication_transport::ReplicationTransport;
@@ -667,6 +667,7 @@ impl WorkflowEngine {
             close_time_ms: None,
             task_queue_hash,
             search_attributes: search_attributes.clone(),
+            memo: HashMap::new(),
         });
 
         // Record in event history
@@ -1289,7 +1290,7 @@ impl WorkflowEngine {
             let reset_id = self.workflow_resetter.create_reset_point(
                 workflow_key,
                 reset_to_event_id,
-                "Manual reset"
+                ResetReason::ManualReset
             );
 
             // Clear step results after the reset point
@@ -1386,10 +1387,158 @@ impl WorkflowEngine {
             workflow_type_id, namespace_id, status: WorkflowStatus::Running,
             start_time_ms: 0, close_time_ms: None, task_queue_hash,
             search_attributes: HashMap::new(),
+            memo: HashMap::new(),
         });
         self.history_store.record_event(new_key, crate::event_history::HistoryEventType::WorkflowStarted, vec![]);
         new_key
     }
+
+    // ─── Workflow Execution Description ──────────────────────────────────────
+
+    /// Describe a workflow execution with pending activities, children, timers, and signals.
+    pub fn describe_workflow(&self, workflow_key: u64) -> Option<WorkflowExecutionDescription> {
+        let workflows = self.workflows.read().unwrap();
+        let ctx = workflows.get(&workflow_key)?;
+
+        // Pending activities: steps that are scheduled but not completed
+        let mut pending_activities = Vec::new();
+        for (step, timeouts) in &ctx.activity_timeouts {
+            if !ctx.is_step_completed(*step) {
+                pending_activities.push(PendingActivityInfo {
+                    activity_id: *step as u64,
+                    step: *step,
+                    state: if timeouts.started_at.is_some() {
+                        PendingActivityState::Started
+                    } else {
+                        PendingActivityState::Scheduled
+                    },
+                    attempt: timeouts.attempt,
+                    heartbeat_details: Vec::new(),
+                    scheduled_at_ms: 0,
+                    last_heartbeat_at_ms: 0,
+                });
+            }
+        }
+
+        // Pending children
+        let pending_children: Vec<PendingChildInfo> = ctx.child_keys.iter().map(|&child_key| {
+            let child_status = workflows.get(&child_key).map(|c| c.status).unwrap_or(WorkflowStatus::Void);
+            PendingChildInfo {
+                workflow_key: child_key,
+                status: child_status,
+            }
+        }).collect();
+
+        // Pending signals
+        let pending_signals: Vec<PendingSignalInfo> = ctx.signal_buffer.iter().map(|(&name_id, payloads)| {
+            PendingSignalInfo {
+                signal_name_id: name_id,
+                payload_count: payloads.len() as u32,
+            }
+        }).collect();
+
+        // Pending timers: count of non-fired timers from the timer engine
+        let pending_timers = self.timer_engine.pending_count() as u32;
+
+        let execution_duration = ctx.close_time.unwrap_or_else(Instant::now).duration_since(ctx.start_time);
+
+        Some(WorkflowExecutionDescription {
+            workflow_key,
+            workflow_id: ctx.workflow_id,
+            run_id: ctx.run_id,
+            workflow_type_id: ctx.workflow_type_id,
+            namespace_id: ctx.namespace_id,
+            status: ctx.status,
+            start_time: ctx.start_time,
+            close_time: ctx.close_time,
+            execution_duration,
+            pending_activities,
+            pending_children,
+            pending_signals,
+            pending_timers,
+            total_steps: ctx.slab.total_steps,
+            completed_steps: ctx.slab.step_bitmask.count_completed(),
+            has_parent: ctx.parent_key.is_some(),
+            parent_key: ctx.parent_key,
+        })
+    }
+}
+
+// ─── Workflow Execution Description Types ─────────────────────────────────────
+
+/// Detailed description of a workflow execution.
+#[derive(Debug, Clone)]
+pub struct WorkflowExecutionDescription {
+    pub workflow_key: u64,
+    pub workflow_id: u64,
+    pub run_id: u64,
+    pub workflow_type_id: u64,
+    pub namespace_id: u64,
+    pub status: WorkflowStatus,
+    pub start_time: Instant,
+    pub close_time: Option<Instant>,
+    pub execution_duration: Duration,
+    pub pending_activities: Vec<PendingActivityInfo>,
+    pub pending_children: Vec<PendingChildInfo>,
+    pub pending_signals: Vec<PendingSignalInfo>,
+    pub pending_timers: u32,
+    pub total_steps: u32,
+    pub completed_steps: u32,
+    pub has_parent: bool,
+    pub parent_key: Option<u64>,
+}
+
+impl WorkflowExecutionDescription {
+    /// Whether this workflow is still running.
+    pub fn is_running(&self) -> bool {
+        self.status == WorkflowStatus::Running
+    }
+
+    /// Total number of pending items (activities + children + signals + timers).
+    pub fn total_pending(&self) -> usize {
+        self.pending_activities.len() + self.pending_children.len()
+            + self.pending_signals.len() + self.pending_timers as usize
+    }
+
+    /// Progress as a fraction (0.0 to 1.0).
+    pub fn progress(&self) -> f64 {
+        if self.total_steps == 0 { return 1.0; }
+        self.completed_steps as f64 / self.total_steps as f64
+    }
+}
+
+/// State of a pending activity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingActivityState {
+    Scheduled,
+    Started,
+    RequestCancel,
+}
+
+/// Information about a pending activity.
+#[derive(Debug, Clone)]
+pub struct PendingActivityInfo {
+    pub activity_id: u64,
+    pub step: u32,
+    pub state: PendingActivityState,
+    pub attempt: u32,
+    pub heartbeat_details: Vec<u8>,
+    pub scheduled_at_ms: u64,
+    pub last_heartbeat_at_ms: u64,
+}
+
+/// Information about a pending child workflow.
+#[derive(Debug, Clone)]
+pub struct PendingChildInfo {
+    pub workflow_key: u64,
+    pub status: WorkflowStatus,
+}
+
+/// Information about a pending signal.
+#[derive(Debug, Clone)]
+pub struct PendingSignalInfo {
+    pub signal_name_id: u64,
+    pub payload_count: u32,
 }
 
 impl Default for WorkflowEngine {
@@ -1575,6 +1724,59 @@ mod tests {
 
         engine.terminate_workflow(key);
         assert_eq!(engine.archive_store().count(), 1);
+
+        engine.shutdown();
+    }
+
+    #[test]
+    fn test_describe_workflow() {
+        let engine = WorkflowEngine::new();
+        let key = engine.start_workflow(7001, 1, 0, 42, 3, None);
+
+        let desc = engine.describe_workflow(key).unwrap();
+        assert_eq!(desc.workflow_key, key);
+        assert_eq!(desc.workflow_type_id, 1);
+        assert_eq!(desc.status, WorkflowStatus::Running);
+        assert!(desc.is_running());
+        assert_eq!(desc.total_steps, 3);
+        assert_eq!(desc.completed_steps, 0);
+        assert!(!desc.has_parent);
+
+        // Complete a step and re-check
+        engine.complete_step(key, 0, vec![1]);
+        let desc2 = engine.describe_workflow(key).unwrap();
+        assert_eq!(desc2.completed_steps, 1);
+        assert!(desc2.progress() > 0.0);
+
+        // Describe non-existent workflow
+        assert!(engine.describe_workflow(99999).is_none());
+
+        engine.shutdown();
+    }
+
+    #[test]
+    fn test_describe_workflow_with_children() {
+        let engine = WorkflowEngine::new();
+        let parent = engine.start_workflow(7100, 1, 0, 42, 2, None);
+        let child = engine.start_child_workflow(parent, 7101, 2, 42, 1, None);
+
+        let desc = engine.describe_workflow(parent).unwrap();
+        assert_eq!(desc.pending_children.len(), 1);
+        assert_eq!(desc.pending_children[0].workflow_key, child);
+
+        engine.shutdown();
+    }
+
+    #[test]
+    fn test_describe_workflow_with_signals() {
+        let engine = WorkflowEngine::new();
+        let key = engine.start_workflow(7200, 1, 0, 42, 1, None);
+        engine.signal_workflow(key, 100, vec![1, 2, 3]);
+
+        let desc = engine.describe_workflow(key).unwrap();
+        assert_eq!(desc.pending_signals.len(), 1);
+        assert_eq!(desc.pending_signals[0].signal_name_id, 100);
+        assert_eq!(desc.pending_signals[0].payload_count, 1);
 
         engine.shutdown();
     }

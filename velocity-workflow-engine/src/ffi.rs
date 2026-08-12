@@ -4,6 +4,8 @@
 use std::sync::Arc;
 
 use crate::engine::{WorkflowEngine, WorkflowContext};
+use crate::workflow_reset::ResetReason;
+use crate::schedules::ScheduleState;
 
 // ─── Opaque handle ────────────────────────────────────────────────────────────
 
@@ -1091,7 +1093,7 @@ pub unsafe extern "C" fn velocity_engine_delete_schedule(handle: *mut EngineHand
 pub unsafe extern "C" fn velocity_engine_add_reset_point(handle: *mut EngineHandle, workflow_key: u64, event_id: u64) -> i32 {
     if handle.is_null() { return -1; }
     let h = &*handle;
-    h.engine.workflow_resetter().create_reset_point(workflow_key, event_id, "ffi");
+    h.engine.workflow_resetter().create_reset_point(workflow_key, event_id, ResetReason::Custom("ffi".to_string()));
     0
 }
 
@@ -3322,7 +3324,7 @@ pub unsafe extern "C" fn velocity_engine_latest_reset_event_id(
 pub unsafe extern "C" fn velocity_engine_total_reset_count(handle: *mut EngineHandle) -> u64 {
     if handle.is_null() { return 0; }
     let h = &*handle;
-    h.engine.workflow_resetter().total_resets() as u64
+    h.engine.workflow_resetter().total_reset_count()
 }
 
 // ─── Saga Introspection ──────────────────────────────────────────────────────
@@ -3967,7 +3969,7 @@ pub unsafe extern "C" fn velocity_engine_schedule_is_paused(
     if handle.is_null() { return -1; }
     let h = &*handle;
     match h.engine.schedule_manager().get(schedule_id) {
-        Some(entry) => if entry.paused { 1 } else { 0 },
+        Some(entry) => if entry.state == ScheduleState::Paused { 1 } else { 0 },
         None => -1,
     }
 }

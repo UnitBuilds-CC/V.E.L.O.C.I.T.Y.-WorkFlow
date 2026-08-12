@@ -327,12 +327,12 @@ mod tests {
         index.register(WorkflowExecutionInfo {
             workflow_key: 1, workflow_id: 1, run_id: 100, workflow_type_id: 10,
             namespace_id: 0, status: WorkflowStatus::Running, start_time_ms: 0,
-            close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(),
+            close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(), memo: HashMap::new(),
         });
         index.register(WorkflowExecutionInfo {
             workflow_key: 2, workflow_id: 2, run_id: 200, workflow_type_id: 10,
             namespace_id: 0, status: WorkflowStatus::Completed, start_time_ms: 0,
-            close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(),
+            close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(), memo: HashMap::new(),
         });
 
         let q = VisibilityQuery::parse("Status = 'Running'").unwrap();
@@ -348,7 +348,7 @@ mod tests {
             index.register(WorkflowExecutionInfo {
                 workflow_key: i, workflow_id: i, run_id: i + 100, workflow_type_id: 10,
                 namespace_id: 0, status: WorkflowStatus::Running, start_time_ms: 0,
-                close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(),
+                close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(), memo: HashMap::new(),
             });
         }
 

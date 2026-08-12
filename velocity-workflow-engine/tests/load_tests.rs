@@ -818,6 +818,7 @@ fn test_visibility_index_throughput() {
             close_time_ms: None,
             task_queue_hash: 42,
             search_attributes: std::collections::HashMap::new(),
+            memo: std::collections::HashMap::new(),
         };
         index.register(info);
     }

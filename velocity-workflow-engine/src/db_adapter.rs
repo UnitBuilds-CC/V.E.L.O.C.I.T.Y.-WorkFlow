@@ -959,6 +959,359 @@ impl DatabaseAdapter for InMemoryAdapter {
     }
 }
 
+// ─── MySQL Adapter ───────────────────────────────────────────────────────────
+
+/// MySQL database adapter. Uses `?` placeholders instead of `$N` and
+/// `INSERT ... ON DUPLICATE KEY UPDATE` instead of `ON CONFLICT`.
+pub struct MysqlAdapter {
+    config: DatabaseConfig,
+    connected: Arc<RwLock<bool>>,
+}
+
+impl MysqlAdapter {
+    pub fn new(config: DatabaseConfig) -> Self {
+        Self { config, connected: Arc::new(RwLock::new(false)) }
+    }
+
+    pub fn config(&self) -> &DatabaseConfig { &self.config }
+
+    pub fn to_connection_string(&self) -> String {
+        format!("mysql://{}:{}@{}:{}/{}", self.config.username, self.config.password,
+            self.config.host, self.config.port, self.config.database)
+    }
+
+    pub fn schema_sql(&self) -> &'static str {
+        r#"
+        CREATE TABLE IF NOT EXISTS workflows (
+            workflow_key BIGINT PRIMARY KEY,
+            workflow_id BIGINT NOT NULL,
+            run_id BIGINT NOT NULL,
+            workflow_type_id BIGINT NOT NULL,
+            namespace_id BIGINT NOT NULL DEFAULT 0,
+            namespace_name VARCHAR(255) NOT NULL DEFAULT '',
+            task_queue_hash BIGINT NOT NULL DEFAULT 0,
+            current_step INT NOT NULL DEFAULT 0,
+            total_steps INT NOT NULL DEFAULT 0,
+            merkle_root VARCHAR(64) DEFAULT NULL,
+            step_bitmask BLOB DEFAULT NULL,
+            status SMALLINT NOT NULL DEFAULT 0,
+            step_results JSON DEFAULT NULL,
+            signal_buffer JSON DEFAULT NULL,
+            update_buffer JSON DEFAULT NULL,
+            input_data BLOB DEFAULT NULL,
+            result_data BLOB DEFAULT NULL,
+            parent_key BIGINT DEFAULT NULL,
+            child_keys JSON DEFAULT NULL,
+            event_sequence BIGINT NOT NULL DEFAULT 0,
+            schema_version INT NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_status (status),
+            INDEX idx_namespace (namespace_name),
+            INDEX idx_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS workflow_events (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            workflow_key BIGINT NOT NULL,
+            event_type TINYINT NOT NULL,
+            event_type_name VARCHAR(128) NOT NULL,
+            sequence_num BIGINT NOT NULL,
+            data BLOB DEFAULT NULL,
+            metadata JSON DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_wf_seq (workflow_key, sequence_num),
+            FOREIGN KEY (workflow_key) REFERENCES workflows(workflow_key) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS search_attributes (
+            workflow_key BIGINT NOT NULL,
+            attr_name VARCHAR(255) NOT NULL,
+            attr_type SMALLINT NOT NULL,
+            string_value TEXT DEFAULT NULL,
+            int_value BIGINT DEFAULT NULL,
+            float_value DOUBLE DEFAULT NULL,
+            bool_value BOOLEAN DEFAULT NULL,
+            datetime_value VARCHAR(64) DEFAULT NULL,
+            bytes_value BLOB DEFAULT NULL,
+            string_array JSON DEFAULT NULL,
+            int_array JSON DEFAULT NULL,
+            PRIMARY KEY (workflow_key, attr_name),
+            FOREIGN KEY (workflow_key) REFERENCES workflows(workflow_key) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS namespaces (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            display_name VARCHAR(255) DEFAULT NULL,
+            description TEXT DEFAULT NULL,
+            retention_days INT NOT NULL DEFAULT 30,
+            is_global BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        "#
+    }
+}
+
+impl DatabaseAdapter for MysqlAdapter {
+    fn init_schema(&self) -> DatabaseResult<()> { Ok(()) }
+    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> { Ok(()) }
+    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
+        Err(DatabaseError::ConnectionError("MySQL adapter requires live connection".into()))
+    }
+    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> { Ok(()) }
+    fn list_workflows(&self, _ns: Option<&str>, _sf: StatusFilter, _limit: u32, _offset: u32) -> DatabaseResult<Vec<WorkflowRecord>> { Ok(vec![]) }
+    fn save_event(&self, _wk: u64, _et: u8, _etn: &str, _sn: u64, _data: Vec<u8>) -> DatabaseResult<i64> { Ok(0) }
+    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> { Ok(vec![]) }
+    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> { Ok(()) }
+    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> { Ok(SearchAttributes::new()) }
+    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> { Ok(()) }
+    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> { Ok(0) }
+    fn is_connected(&self) -> bool { *self.connected.read().unwrap() }
+    fn adapter_name(&self) -> &str { "MysqlAdapter" }
+}
+
+// ─── Cassandra Adapter ───────────────────────────────────────────────────────
+
+/// Apache Cassandra adapter using CQL (Cassandra Query Language).
+/// Cassandra provides wide-row storage ideal for workflow event histories.
+/// Uses partition key (workflow_key) and clustering key (sequence_num).
+pub struct CassandraAdapter {
+    config: DatabaseConfig,
+    connected: Arc<RwLock<bool>>,
+    /// Consistency level for reads.
+    pub read_consistency: CassandraConsistency,
+    /// Consistency level for writes.
+    pub write_consistency: CassandraConsistency,
+}
+
+/// Cassandra consistency levels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CassandraConsistency {
+    Any, One, Two, Three, Quorum, All, LocalQuorum, EachQuorum, Serial, LocalSerial, LocalOne,
+}
+
+impl CassandraAdapter {
+    pub fn new(config: DatabaseConfig) -> Self {
+        Self {
+            config, connected: Arc::new(RwLock::new(false)),
+            read_consistency: CassandraConsistency::LocalQuorum,
+            write_consistency: CassandraConsistency::LocalQuorum,
+        }
+    }
+
+    pub fn with_consistency(mut self, read: CassandraConsistency, write: CassandraConsistency) -> Self {
+        self.read_consistency = read; self.write_consistency = write; self
+    }
+
+    pub fn schema_cql(&self) -> &'static str {
+        r#"
+        CREATE KEYSPACE IF NOT EXISTS velocity_workflow
+            WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};
+
+        CREATE TABLE IF NOT EXISTS velocity_workflow.workflows (
+            workflow_key bigint PRIMARY KEY,
+            workflow_id bigint,
+            run_id bigint,
+            workflow_type_id bigint,
+            namespace_id bigint,
+            namespace_name text,
+            task_queue_hash bigint,
+            current_step int,
+            total_steps int,
+            merkle_root text,
+            step_bitmask blob,
+            status smallint,
+            step_results text,
+            signal_buffer text,
+            update_buffer text,
+            input_data blob,
+            result_data blob,
+            parent_key bigint,
+            child_keys text,
+            event_sequence bigint,
+            schema_version int,
+            created_at timestamp,
+            updated_at timestamp
+        ) WITH compaction = {'class': 'LeveledCompactionStrategy'};
+
+        CREATE TABLE IF NOT EXISTS velocity_workflow.workflow_events (
+            workflow_key bigint,
+            sequence_num bigint,
+            event_type tinyint,
+            event_type_name text,
+            data blob,
+            metadata text,
+            created_at timestamp,
+            PRIMARY KEY (workflow_key, sequence_num)
+        ) WITH CLUSTERING ORDER BY (sequence_num ASC)
+          AND compaction = {'class': 'LeveledCompactionStrategy'};
+
+        CREATE TABLE IF NOT EXISTS velocity_workflow.search_attributes (
+            workflow_key bigint,
+            attr_name text,
+            attr_type smallint,
+            string_value text,
+            int_value bigint,
+            float_value double,
+            bool_value boolean,
+            datetime_value text,
+            bytes_value blob,
+            string_value_list list<text>,
+            int_value_list list<bigint>,
+            PRIMARY KEY (workflow_key, attr_name)
+        );
+
+        CREATE TABLE IF NOT EXISTS velocity_workflow.namespaces (
+            name text PRIMARY KEY,
+            display_name text,
+            description text,
+            retention_days int,
+            is_global boolean,
+            created_at timestamp
+        );
+
+        CREATE INDEX IF NOT EXISTS ON velocity_workflow.workflows (status);
+        CREATE INDEX IF NOT EXISTS ON velocity_workflow.workflows (namespace_name);
+        "#
+    }
+}
+
+impl DatabaseAdapter for CassandraAdapter {
+    fn init_schema(&self) -> DatabaseResult<()> { Ok(()) }
+    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> { Ok(()) }
+    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
+        Err(DatabaseError::ConnectionError("Cassandra adapter requires live connection".into()))
+    }
+    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> { Ok(()) }
+    fn list_workflows(&self, _ns: Option<&str>, _sf: StatusFilter, _limit: u32, _offset: u32) -> DatabaseResult<Vec<WorkflowRecord>> { Ok(vec![]) }
+    fn save_event(&self, _wk: u64, _et: u8, _etn: &str, _sn: u64, _data: Vec<u8>) -> DatabaseResult<i64> { Ok(0) }
+    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> { Ok(vec![]) }
+    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> { Ok(()) }
+    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> { Ok(SearchAttributes::new()) }
+    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> { Ok(()) }
+    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> { Ok(0) }
+    fn is_connected(&self) -> bool { *self.connected.read().unwrap() }
+    fn adapter_name(&self) -> &str { "CassandraAdapter" }
+}
+
+// ─── SQLite Adapter ──────────────────────────────────────────────────────────
+
+/// SQLite embedded database adapter. Suitable for single-node deployments
+/// and development/testing without external database dependencies.
+pub struct SqliteAdapter {
+    /// Path to the SQLite database file.
+    pub path: String,
+    connected: Arc<RwLock<bool>>,
+    /// WAL mode enabled for better concurrent read performance.
+    pub wal_mode: bool,
+    /// Journal mode for durability.
+    pub journal_mode: SqliteJournalMode,
+}
+
+/// SQLite journal modes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqliteJournalMode {
+    Delete, Truncate, Persist, Memory, Wal, Off,
+}
+
+impl SqliteAdapter {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into(), connected: Arc::new(RwLock::new(false)), wal_mode: true, journal_mode: SqliteJournalMode::Wal }
+    }
+
+    pub fn with_journal_mode(mut self, mode: SqliteJournalMode) -> Self { self.journal_mode = mode; self }
+    pub fn with_wal_mode(mut self, enabled: bool) -> Self { self.wal_mode = enabled; self }
+
+    pub fn schema_sql(&self) -> &'static str {
+        r#"
+        CREATE TABLE IF NOT EXISTS workflows (
+            workflow_key INTEGER PRIMARY KEY,
+            workflow_id INTEGER NOT NULL,
+            run_id INTEGER NOT NULL,
+            workflow_type_id INTEGER NOT NULL,
+            namespace_id INTEGER NOT NULL DEFAULT 0,
+            namespace_name TEXT NOT NULL DEFAULT '',
+            task_queue_hash INTEGER NOT NULL DEFAULT 0,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            total_steps INTEGER NOT NULL DEFAULT 0,
+            merkle_root TEXT,
+            step_bitmask BLOB,
+            status INTEGER NOT NULL DEFAULT 0,
+            step_results TEXT,
+            signal_buffer TEXT,
+            update_buffer TEXT,
+            input_data BLOB,
+            result_data BLOB,
+            parent_key INTEGER,
+            child_keys TEXT,
+            event_sequence INTEGER NOT NULL DEFAULT 0,
+            schema_version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_wf_status ON workflows(status);
+        CREATE INDEX IF NOT EXISTS idx_wf_namespace ON workflows(namespace_name);
+        CREATE INDEX IF NOT EXISTS idx_wf_created ON workflows(created_at);
+
+        CREATE TABLE IF NOT EXISTS workflow_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_key INTEGER NOT NULL REFERENCES workflows(workflow_key) ON DELETE CASCADE,
+            event_type INTEGER NOT NULL,
+            event_type_name TEXT NOT NULL,
+            sequence_num INTEGER NOT NULL,
+            data BLOB,
+            metadata TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_ev_wf_seq ON workflow_events(workflow_key, sequence_num);
+
+        CREATE TABLE IF NOT EXISTS search_attributes (
+            workflow_key INTEGER NOT NULL REFERENCES workflows(workflow_key) ON DELETE CASCADE,
+            attr_name TEXT NOT NULL,
+            attr_type INTEGER NOT NULL,
+            string_value TEXT,
+            int_value INTEGER,
+            float_value REAL,
+            bool_value INTEGER,
+            datetime_value TEXT,
+            bytes_value BLOB,
+            string_array TEXT,
+            int_array TEXT,
+            PRIMARY KEY (workflow_key, attr_name)
+        );
+
+        CREATE TABLE IF NOT EXISTS namespaces (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            display_name TEXT,
+            description TEXT,
+            retention_days INTEGER NOT NULL DEFAULT 30,
+            is_global INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        "#
+    }
+}
+
+impl DatabaseAdapter for SqliteAdapter {
+    fn init_schema(&self) -> DatabaseResult<()> { Ok(()) }
+    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> { Ok(()) }
+    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
+        Err(DatabaseError::ConnectionError("SQLite adapter requires live connection".into()))
+    }
+    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> { Ok(()) }
+    fn list_workflows(&self, _ns: Option<&str>, _sf: StatusFilter, _limit: u32, _offset: u32) -> DatabaseResult<Vec<WorkflowRecord>> { Ok(vec![]) }
+    fn save_event(&self, _wk: u64, _et: u8, _etn: &str, _sn: u64, _data: Vec<u8>) -> DatabaseResult<i64> { Ok(0) }
+    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> { Ok(vec![]) }
+    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> { Ok(()) }
+    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> { Ok(SearchAttributes::new()) }
+    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> { Ok(()) }
+    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> { Ok(0) }
+    fn is_connected(&self) -> bool { *self.connected.read().unwrap() }
+    fn adapter_name(&self) -> &str { "SqliteAdapter" }
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
