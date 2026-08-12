@@ -5371,6 +5371,151 @@ pub extern "C" fn velocity_ai_add_tool_call(tool: *const u8, tool_len: u32, args
     ctx.stats().total_tool_calls + 1
 }
 
+// ─── Hardware Abstraction Layer FFI ─────────────────────────────────────────
+
+use crate::hardware_integration::{HardwareAbstractionLayer, MerkleEccResult, compute_simple_merkle_root};
+
+static HAL: OnceLock<std::sync::Mutex<HardwareAbstractionLayer>> = OnceLock::new();
+
+fn get_hal() -> &'static std::sync::Mutex<HardwareAbstractionLayer> {
+    HAL.get_or_init(|| std::sync::Mutex::new(HardwareAbstractionLayer::with_simulated_hardware()))
+}
+
+/// Initialize the HAL with simulated hardware. Returns 1 on success.
+#[no_mangle]
+pub extern "C" fn velocity_hal_init() -> u32 {
+    let _ = get_hal();
+    1
+}
+
+/// Called after slab mutation. Computes ECC parity and optionally offloads to SmartNIC.
+/// Returns the parity length in bytes.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_hal_on_slab_write(
+    workflow_key: u64,
+    slab_ptr: *const u8,
+    slab_len: u32,
+    merkle_root_ptr: *const u8,
+) -> u64 {
+    let slab_data = std::slice::from_raw_parts(slab_ptr, slab_len as usize);
+    let mut merkle_root = [0u8; 32];
+    if !merkle_root_ptr.is_null() {
+        merkle_root.copy_from_slice(std::slice::from_raw_parts(merkle_root_ptr, 32));
+    }
+    let parity = get_hal().lock().unwrap().on_slab_write(workflow_key, slab_data, merkle_root);
+    parity.len() as u64
+}
+
+/// Called before slab read. Verifies Merkle root + ECC parity.
+/// Returns: 0 = Valid, 1 = Repaired, 2 = Unrecoverable
+#[no_mangle]
+pub unsafe extern "C" fn velocity_hal_on_slab_read(
+    workflow_key: u64,
+    slab_ptr: *mut u8,
+    slab_len: u32,
+    merkle_root_ptr: *const u8,
+) -> u32 {
+    let slab_data = std::slice::from_raw_parts_mut(slab_ptr, slab_len as usize);
+    let mut merkle_root = [0u8; 32];
+    if !merkle_root_ptr.is_null() {
+        merkle_root.copy_from_slice(std::slice::from_raw_parts(merkle_root_ptr, 32));
+    }
+    let result = get_hal().lock().unwrap().on_slab_read(workflow_key, slab_data, &merkle_root);
+    match result {
+        crate::hardware_traits::VerificationResult::Valid => 0,
+        crate::hardware_traits::VerificationResult::Repaired => 1,
+        crate::hardware_traits::VerificationResult::Unrecoverable => 2,
+    }
+}
+
+/// Full Merkle ECC self-healing loop. Returns: 0 = Valid, 1 = Repaired, 2 = Unrecoverable
+#[no_mangle]
+pub unsafe extern "C" fn velocity_hal_merkle_ecc_self_heal(
+    workflow_key: u64,
+    slab_ptr: *mut u8,
+    slab_len: u32,
+) -> u32 {
+    let slab_data = std::slice::from_raw_parts_mut(slab_ptr, slab_len as usize);
+    let result = get_hal().lock().unwrap().merkle_ecc_self_heal(workflow_key, slab_data);
+    match result {
+        MerkleEccResult::Valid => 0,
+        MerkleEccResult::Repaired => 1,
+        MerkleEccResult::MerkleMismatchUnrecoverable | MerkleEccResult::Unrecoverable => 2,
+    }
+}
+
+/// Get ECC verification count.
+#[no_mangle]
+pub extern "C" fn velocity_hal_ecc_verifications() -> u64 {
+    get_hal().lock().unwrap().ecc_stats().total_verifications
+}
+
+/// Get ECC repair count.
+#[no_mangle]
+pub extern "C" fn velocity_hal_ecc_repairs() -> u64 {
+    get_hal().lock().unwrap().ecc_stats().total_repairs
+}
+
+/// Get slab write count (HAL-tracked).
+#[no_mangle]
+pub extern "C" fn velocity_hal_slab_write_count() -> u64 {
+    get_hal().lock().unwrap().slab_write_count()
+}
+
+/// Get slab read count (HAL-tracked).
+#[no_mangle]
+pub extern "C" fn velocity_hal_slab_read_count() -> u64 {
+    get_hal().lock().unwrap().slab_read_count()
+}
+
+/// Get SmartNIC offload count.
+#[no_mangle]
+pub extern "C" fn velocity_hal_nic_offload_count() -> u64 {
+    get_hal().lock().unwrap().nic_offload_count()
+}
+
+/// Get TEE enclave count.
+#[no_mangle]
+pub extern "C" fn velocity_hal_tee_enclave_count() -> u64 {
+    get_hal().lock().unwrap().tee_enclave_count()
+}
+
+/// Cleanup HAL data for a workflow.
+#[no_mangle]
+pub extern "C" fn velocity_hal_cleanup_workflow(workflow_key: u64) {
+    get_hal().lock().unwrap().cleanup_workflow(workflow_key);
+}
+
+/// Check if ECC verification is enabled.
+#[no_mangle]
+pub extern "C" fn velocity_hal_is_ecc_enabled() -> u32 {
+    if get_hal().lock().unwrap().is_ecc_enabled() { 1 } else { 0 }
+}
+
+/// Check if SmartNIC offload is enabled.
+#[no_mangle]
+pub extern "C" fn velocity_hal_is_nic_enabled() -> u32 {
+    if get_hal().lock().unwrap().is_nic_enabled() { 1 } else { 0 }
+}
+
+/// Check if TEE protection is enabled.
+#[no_mangle]
+pub extern "C" fn velocity_hal_is_tee_enabled() -> u32 {
+    if get_hal().lock().unwrap().is_tee_enabled() { 1 } else { 0 }
+}
+
+/// Compute a simple Merkle root for arbitrary data.
+#[no_mangle]
+pub unsafe extern "C" fn velocity_hal_compute_merkle_root(
+    data_ptr: *const u8,
+    data_len: u32,
+    out_root: *mut u8,
+) {
+    let data = std::slice::from_raw_parts(data_ptr, data_len as usize);
+    let root = compute_simple_merkle_root(data);
+    std::ptr::copy_nonoverlapping(root.as_ptr(), out_root, 32);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

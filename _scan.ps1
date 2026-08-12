@@ -1,15 +1,13 @@
-$root = "E:\Temporal-V2\VELOCITY-WorkFlow"
-$files = Get-ChildItem -Path $root -Recurse -File -Include *.rs,*.cs,*.fs,*.proto,*.py,*.go,*.ts,*.js,*.toml,*.csproj,*.fsproj,*.slnx | Where-Object { $_.FullName -notmatch '\\(target|bin|obj|node_modules|\.git)\\' }
-$total = 0
-$count = 0
+$root = 'E:\Temporal-V2\VELOCITY-WorkFlow'
+$exts = @('*.cs','*.rs','*.fs','*.toml','*.csproj','*.fsproj','*.slnx','*.ps1','*.md')
+$files = Get-ChildItem -Path $root -Recurse -File -Include $exts | Where-Object { $_.FullName -notmatch 'target\\|bin\\|obj\\|\.git\\|node_modules' }
+$totalLoc = 0
+$fileCount = 0
 foreach ($f in $files) {
-    $lines = (Get-Content $f.FullName -ErrorAction SilentlyContinue | Measure-Object -Line).Lines
-    $rel = $f.FullName.Replace("$root\", "")
-    if ($lines -gt 20) {
-        Write-Output "$lines`t$rel"
-    }
-    $total += $lines
-    $count++
+    $lines = (Get-Content $f.FullName | Measure-Object -Line).Lines
+    $totalLoc += $lines
+    $fileCount++
+    Write-Output "$($f.FullName) | $lines LOC"
 }
 Write-Output "---"
-Write-Output "TOTAL: $count files, $total LOC"
+Write-Output "TOTAL: $fileCount files, $totalLoc LOC"

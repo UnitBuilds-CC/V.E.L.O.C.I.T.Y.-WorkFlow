@@ -1251,4 +1251,41 @@ public static unsafe partial class NativeBridge
     public static partial ulong AiMessageCount();
     [LibraryImport(EngineDll, EntryPoint = "velocity_ai_add_tool_call")]
     public static partial ulong AiAddToolCall(byte* tool, uint toolLen, byte* args, uint argsLen);
+
+    // ─── Hardware Abstraction Layer ──────────────────────────────────────────
+
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_init")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool HalInit();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_on_slab_write")]
+    public static partial ulong HalOnSlabWrite(ulong workflowKey, byte* slabPtr, uint slabLen, byte* merkleRootPtr);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_on_slab_read")]
+    public static partial uint HalOnSlabRead(ulong workflowKey, byte* slabPtr, uint slabLen, byte* merkleRootPtr);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_merkle_ecc_self_heal")]
+    public static partial uint HalMerkleEccSelfHeal(ulong workflowKey, byte* slabPtr, uint slabLen);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_ecc_verifications")]
+    public static partial ulong HalEccVerifications();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_ecc_repairs")]
+    public static partial ulong HalEccRepairs();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_slab_write_count")]
+    public static partial ulong HalSlabWriteCount();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_slab_read_count")]
+    public static partial ulong HalSlabReadCount();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_nic_offload_count")]
+    public static partial ulong HalNicOffloadCount();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_tee_enclave_count")]
+    public static partial ulong HalTeeEnclaveCount();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_cleanup_workflow")]
+    public static partial void HalCleanupWorkflow(ulong workflowKey);
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_is_ecc_enabled")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool HalIsEccEnabled();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_is_nic_enabled")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool HalIsNicEnabled();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_is_tee_enabled")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool HalIsTeeEnabled();
+    [LibraryImport(EngineDll, EntryPoint = "velocity_hal_compute_merkle_root")]
+    public static partial void HalComputeMerkleRoot(byte* dataPtr, uint dataLen, byte* outRoot);
 }

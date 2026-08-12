@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Velocity.Workflow.Core\Velocity.Workflow.Core.csproj" />
+    <ProjectReference Include="..\..\tools\temporal2velocity\temporal2velocity.csproj" />
   </ItemGroup>
 
   <!-- Copy native Rust DLLs from Core project runtimes folder -->

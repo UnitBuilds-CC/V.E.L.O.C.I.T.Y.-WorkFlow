@@ -38,6 +38,7 @@ use crate::partition::PartitionManager;
 use crate::replay::ReplayEngine;
 use crate::worker_registry::WorkerRegistry;
 use crate::cold_storage::{CloudStorageAdapter, MockS3Adapter};
+use crate::hardware_integration::HardwareAbstractionLayer;
 
 // ─── Activity Timeouts & Retry ─────────────────────────────────────────────
 
@@ -341,6 +342,8 @@ pub struct WorkflowEngine {
     version_history_store: Arc<VersionHistoryStore>,
     /// Replication transport for sending/receiving tasks to/from remote clusters.
     replication_transport: Arc<ReplicationTransport>,
+    /// Hardware abstraction layer — integrates ECC, SmartNIC, TEE into slab data paths.
+    hal: RwLock<HardwareAbstractionLayer>,
 }
 
 impl WorkflowEngine {
@@ -384,6 +387,7 @@ impl WorkflowEngine {
             pending_retries: std::sync::Mutex::new(HashMap::new()),
             version_history_store: Arc::new(VersionHistoryStore::new()),
             replication_transport: Arc::new(ReplicationTransport::new()),
+            hal: RwLock::new(HardwareAbstractionLayer::with_simulated_hardware()),
         }
     }
 
@@ -429,6 +433,7 @@ impl WorkflowEngine {
             pending_retries: std::sync::Mutex::new(HashMap::new()),
             version_history_store: Arc::new(VersionHistoryStore::new()),
             replication_transport: Arc::new(ReplicationTransport::new()),
+            hal: RwLock::new(HardwareAbstractionLayer::with_simulated_hardware()),
         })
     }
 
@@ -499,6 +504,16 @@ impl WorkflowEngine {
     pub fn replication_transport(&self) -> &Arc<ReplicationTransport> { &self.replication_transport }
     pub fn cloud_storage(&self) -> Arc<dyn CloudStorageAdapter> {
         self.cloud_storage.read().unwrap().clone()
+    }
+
+    /// Access the hardware abstraction layer (read-only).
+    pub fn hal(&self) -> std::sync::RwLockReadGuard<'_, HardwareAbstractionLayer> {
+        self.hal.read().unwrap()
+    }
+
+    /// Access the hardware abstraction layer (write).
+    pub fn hal_mut(&self) -> std::sync::RwLockWriteGuard<'_, HardwareAbstractionLayer> {
+        self.hal.write().unwrap()
     }
 
     /// Set the cloud storage adapter (e.g., switch from mock S3 to mock GCS).
@@ -662,11 +677,17 @@ impl WorkflowEngine {
 
     /// Complete a step: store the result, update the bitmask + Merkle root, and schedule
     /// the next workflow task to continue execution.
+    /// Also triggers ECC parity computation via the HAL (Merkle ECC self-healing write path).
     pub fn complete_step(&self, workflow_key: u64, step: u32, result: Vec<u8>) {
         {
             let mut workflows = self.workflows.write().unwrap();
             if let Some(ctx) = workflows.get_mut(&workflow_key) {
                 ctx.complete_step(step, result.clone());
+
+                // ── HAL: Compute ECC parity after slab mutation ──
+                let slab_bytes = ctx.slab.merkle_root;
+                let mut hal = self.hal.write().unwrap();
+                hal.on_slab_write(workflow_key, &slab_bytes, ctx.slab.merkle_root);
             }
         }
 
@@ -964,9 +985,18 @@ impl WorkflowEngine {
     }
 
     /// Get the slab header for a workflow (for Merkle verification).
+    /// Also triggers ECC verification via the HAL (Merkle ECC self-healing read path).
     pub fn get_slab(&self, workflow_key: u64) -> Option<SlabHeader> {
-        let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).map(|ctx| ctx.slab)
+        let mut workflows = self.workflows.write().unwrap();
+        if let Some(ctx) = workflows.get_mut(&workflow_key) {
+            // ── HAL: Verify slab integrity via Merkle ECC self-healing loop ──
+            let mut hal = self.hal.write().unwrap();
+            let slab_data = &mut ctx.slab.merkle_root;
+            let _ = hal.merkle_ecc_self_heal(workflow_key, slab_data.as_mut());
+            Some(ctx.slab)
+        } else {
+            None
+        }
     }
 
     /// Schedule a durable timer. When it fires, a workflow task is enqueued.
