@@ -82,7 +82,7 @@ if [ -f "$HOME/velocity-repo.tar.gz" ]; then
     log "[3/6] Extracting uploaded repository..."
     log "  Tarball size: $(ls -lh "$HOME/velocity-repo.tar.gz" | awk '{print $5}')"
     log "  Tarball contents (first 10):"
-    tar tzf "$HOME/velocity-repo.tar.gz" | head -10
+    tar tzf "$HOME/velocity-repo.tar.gz" 2>/dev/null | head -10 || true
 
     rm -rf "$REPO_DIR"
     mkdir -p "$REPO_DIR"
