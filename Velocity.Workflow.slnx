@@ -4,7 +4,11 @@
     <Project Path="src/Velocity.Workflow.Generators/Velocity.Workflow.Generators.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/temporal2velocity.Tests/temporal2velocity.Tests.csproj" />
     <Project Path="tests/Velocity.Workflow.Core.Tests/Velocity.Workflow.Core.Tests.csproj" />
     <Project Path="tests/Velocity.Workflow.Generators.Tests/Velocity.Workflow.Generators.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/temporal2velocity/temporal2velocity.csproj" />
   </Folder>
 </Solution>
