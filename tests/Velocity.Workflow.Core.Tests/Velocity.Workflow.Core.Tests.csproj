@@ -23,10 +23,16 @@
     <ProjectReference Include="..\..\tools\temporal2velocity\temporal2velocity.csproj" />
   </ItemGroup>
 
-  <!-- Copy native Rust DLLs from Core project runtimes folder (Windows only) -->
-  <Target Name="CopyNativeDlls" BeforeTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+  <!-- Copy native Rust DLLs from Core project runtimes folder (Windows) -->
+  <Target Name="CopyNativeDllsWin" BeforeTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <Copy SourceFiles="..\..\src\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_core.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="..\..\src\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_engine.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Copy native Rust .so files from Core project runtimes folder (Linux) -->
+  <Target Name="CopyNativeDllsLinux" BeforeTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Copy SourceFiles="..\..\src\Velocity.Workflow.Core\runtimes\linux-x64\native\libvelocity_workflow_core.so" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\..\src\Velocity.Workflow.Core\runtimes\linux-x64\native\libvelocity_workflow_engine.so" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
