@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .search-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .search-box {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+        
+        .search-input-large {
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 2.5rem;
+            border: 2px solid var(--border-color);
+            border-radius: var(--radius);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+        
+        .search-input-large:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(88,166,255,0.15);
+        }
+        
+        .search-icon {
+            position: absolute;
+            left: 0.875rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+        
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .saved-searches {
+            background: var(--bg-tertiary);
+            border-radius: var(--radius);
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .saved-search-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        
+        .saved-search-item:hover {
+            background: var(--bg-secondary);
+        }
+        
+        .saved-search-name {
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .saved-search-query {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+        
+        .query-builder {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .query-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            align-items: center;
+        }
+        
+        .query-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .results-table {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        
+        .results-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .results-count {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        .export-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .highlight {
+            background: rgba(210, 153, 34, 0.2);
+            padding: 0.125rem 0.25rem;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>›</span>
+                <strong>Search</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">◑</button>
+        </div>
+    </div>
+    
+    <div class="content-area">
+        <!-- Search Container -->
+        <div class="search-container">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="search-input-large" id="search-input" 
+                       placeholder="Search workflows by ID, type, namespace, or custom attributes..."
+                       oninput="performSearch()">
+            </div>
+            
+            <!-- Filters -->
+            <div class="filter-grid">
+                <div>
+                    <label class="form-label">Status</label>
+                    <select class="form-select" id="filter-status" onchange="performSearch()">
+                        <option value="">All Status</option>
+                        <option value="Running">Running</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Failed">Failed</option>
+                        <option value="Canceled">Canceled</option>
+                        <option value="Terminated">Terminated</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Namespace</label>
+                    <input type="text" class="form-input" id="filter-namespace" placeholder="All namespaces" oninput="performSearch()">
+                </div>
+                <div>
+                    <label class="form-label">Workflow Type</label>
+                    <input type="text" class="form-input" id="filter-type" placeholder="All types" oninput="performSearch()">
+                </div>
+                <div>
+                    <label class="form-label">Date Range</label>
+                    <select class="form-select" id="filter-date" onchange="performSearch()">
+                        <option value="">All time</option>
+                        <option value="1h">Last hour</option>
+                        <option value="24h">Last 24 hours</option>
+                        <option value="7d">Last 7 days</option>
+                        <option value="30d">Last 30 days</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Query Builder -->
+            <div class="query-builder">
+                <div style="font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.5rem;">Search Attributes Query Builder</div>
+                <div id="query-rows"></div>
+                <button class="btn btn-sm" onclick="addQueryRow()" style="margin-top: 0.5rem;">+ Add Condition</button>
+            </div>
+            
+            <!-- Saved Searches -->
+            <div class="saved-searches">
+                <div style="font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.5rem;">Saved Searches</div>
+                <div id="saved-searches-list"></div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="results-table">
+            <div class="results-header">
+                <div class="results-count" id="results-count">0 results found</div>
+                <div class="export-buttons">
+                    <button class="btn btn-sm" onclick="exportCSV()">📥 Export CSV</button>
+                    <button class="btn btn-sm" onclick="exportJSON()">📥 Export JSON</button>
+                    <button class="btn btn-sm btn-primary" onclick="saveCurrentSearch()">💾 Save Search</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th onclick="sortResults('key')">Workflow Key</th>
+                            <th onclick="sortResults('type')">Type</th>
+                            <th onclick="sortResults('namespace')">Namespace</th>
+                            <th onclick="sortResults('status')">Status</th>
+                            <th onclick="sortResults('start_time')">Start Time</th>
+                            <th onclick="sortResults('duration')">Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        // Initialize theme
+        velocityTheme.init();
+
+        // Mock workflow data
+        const mockWorkflows = [];
+        const statuses = ['Running', 'Completed', 'Failed', 'Canceled', 'Terminated'];
+        const types = ['order-processing', 'payment-workflow', 'notification', 'data-sync', 'cleanup'];
+        const namespaces = ['default', 'production', 'staging'];
+        
+        for (let i = 0; i < 50; i++) {
+            mockWorkflows.push({
+                key: 1000 + i,
+                type: types[i % types.length],
+                namespace: namespaces[i % namespaces.length],
+                status: statuses[i % statuses.length],
+                start_time: Date.now() - Math.floor(Math.random() * 86400000 * 7),
+                duration: Math.floor(Math.random() * 3600000)
+            });
+        }
+
+        let results = [...mockWorkflows];
+        let sortField = 'key';
+        let sortDirection = 'desc';
+        let queryConditions = [];
+
+        function performSearch() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const statusFilter = document.getElementById('filter-status').value;
+            const namespaceFilter = document.getElementById('filter-namespace').value.toLowerCase();
+            const typeFilter = document.getElementById('filter-type').value.toLowerCase();
+            const dateFilter = document.getElementById('filter-date').value;
+            
+            results = mockWorkflows.filter(wf => {
+                // Text search
+                if (query) {
+                    const searchText = `${wf.key} ${wf.type} ${wf.namespace}`.toLowerCase();
+                    if (!searchText.includes(query)) return false;
+                }
+                
+                // Status filter
+                if (statusFilter && wf.status !== statusFilter) return false;
+                
+                // Namespace filter
+                if (namespaceFilter && !wf.namespace.toLowerCase().includes(namespaceFilter)) return false;
+                
+                // Type filter
+                if (typeFilter && !wf.type.toLowerCase().includes(typeFilter)) return false;
+                
+                // Date filter
+                if (dateFilter) {
+                    const now = Date.now();
+                    const cutoff = {
+                        '1h': 3600000,
+                        '24h': 86400000,
+                        '7d': 604800000,
+                        '30d': 2592000000
+                    }[dateFilter];
+                    
+                    if (now - wf.start_time > cutoff) return false;
+                }
+                
+                return true;
+            });
+            
+            // Apply query conditions
+            if (queryConditions.length > 0) {
+                results = results.filter(wf => {
+                    return queryConditions.every(condition => {
+                        const value = wf[condition.field];
+                        switch (condition.operator) {
+                            case 'equals': return value == condition.value;
+                            case 'not_equals': return value != condition.value;
+                            case 'contains': return String(value).toLowerCase().includes(condition.value.toLowerCase());
+                            case 'gt': return value > condition.value;
+                            case 'lt': return value < condition.value;
+                            default: return true;
+                        }
+                    });
+                });
+            }
+            
+            sortResults();
+            renderResults();
+        }
+
+        function sortResults(field = null) {
+            if (field) {
+                if (sortField === field) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortField = field;
+                    sortDirection = 'asc';
+                }
+            }
+            
+            results.sort((a, b) => {
+                let aVal = a[sortField];
+                let bVal = b[sortField];
+                
+                if (typeof aVal === 'string') {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+                
+                if (sortDirection === 'asc') {
+                    return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+                } else {
+                    return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+                }
+            });
+            
+            renderResults();
+        }
+
+        function renderResults() {
+            const tbody = document.getElementById('results-tbody');
+            const count = document.getElementById('results-count');
+            
+            count.textContent = `${results.length} result${results.length !== 1 ? 's' : ''} found`;
+            
+            if (results.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">No workflows found</td></tr>';
+                return;
+            }
+            
+            const query = document.getElementById('search-input').value;
+            
+            tbody.innerHTML = results.map(wf => {
+                const key = highlightText(wf.key, query);
+                const type = highlightText(wf.type, query);
+                const namespace = highlightText(wf.namespace, query);
+                
+                return `
+                    <tr class="clickable" onclick="window.location.href='workflow-detail.html?key=${wf.key}'">
+                        <td class="mono">${key}</td>
+                        <td>${type}</td>
+                        <td>${namespace}</td>
+                        <td><span class="badge badge-${wf.status.toLowerCase()}">${wf.status}</span></td>
+                        <td class="mono" style="font-size: 0.75rem;">${VelocityUtils.formatTimestamp(wf.start_time)}</td>
+                        <td class="mono">${VelocityUtils.formatDuration(wf.duration)}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function highlightText(text, query) {
+            if (!query) return text;
+            const regex = new RegExp(`(${query})`, 'gi');
+            return String(text).replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        function addQueryRow() {
+            queryConditions.push({ field: 'status', operator: 'equals', value: '' });
+            renderQueryRows();
+        }
+
+        function removeQueryRow(index) {
+            queryConditions.splice(index, 1);
+            renderQueryRows();
+            performSearch();
+        }
+
+        function updateQueryRow(index, field, value) {
+            queryConditions[index][field] = value;
+            performSearch();
+        }
+
+        function renderQueryRows() {
+            const container = document.getElementById('query-rows');
+            
+            if (queryConditions.length === 0) {
+                container.innerHTML = '<div style="font-size: 0.75rem; color: var(--text-muted);">No conditions added</div>';
+                return;
+            }
+            
+            container.innerHTML = queryConditions.map((condition, i) => `
+                <div class="query-row">
+                    <select class="form-select" style="width: 150px;" onchange="updateQueryRow(${i}, 'field', this.value)">
+                        <option value="key" ${condition.field === 'key' ? 'selected' : ''}>Workflow Key</option>
+                        <option value="type" ${condition.field === 'type' ? 'selected' : ''}>Type</option>
+                        <option value="namespace" ${condition.field === 'namespace' ? 'selected' : ''}>Namespace</option>
+                        <option value="status" ${condition.field === 'status' ? 'selected' : ''}>Status</option>
+                        <option value="start_time" ${condition.field === 'start_time' ? 'selected' : ''}>Start Time</option>
+                    </select>
+                    <select class="form-select" style="width: 120px;" onchange="updateQueryRow(${i}, 'operator', this.value)">
+                        <option value="equals" ${condition.operator === 'equals' ? 'selected' : ''}>Equals</option>
+                        <option value="not_equals" ${condition.operator === 'not_equals' ? 'selected' : ''}>Not Equals</option>
+                        <option value="contains" ${condition.operator === 'contains' ? 'selected' : ''}>Contains</option>
+                        <option value="gt" ${condition.operator === 'gt' ? 'selected' : ''}>Greater Than</option>
+                        <option value="lt" ${condition.operator === 'lt' ? 'selected' : ''}>Less Than</option>
+                    </select>
+                    <input type="text" class="form-input" style="flex: 1;" placeholder="Value" 
+                           value="${condition.value}" oninput="updateQueryRow(${i}, 'value', this.value)">
+                    <button class="btn btn-sm btn-danger" onclick="removeQueryRow(${i})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function saveCurrentSearch() {
+            const name = prompt('Enter a name for this search:');
+            if (!name) return;
+            
+            const search = {
+                name,
+                query: document.getElementById('search-input').value,
+                filters: {
+                    status: document.getElementById('filter-status').value,
+                    namespace: document.getElementById('filter-namespace').value,
+                    type: document.getElementById('filter-type').value,
+                    date: document.getElementById('filter-date').value
+                },
+                conditions: [...queryConditions]
+            };
+            
+            const savedSearches = JSON.parse(localStorage.getItem('velocity-saved-searches') || '[]');
+            savedSearches.push(search);
+            localStorage.setItem('velocity-saved-searches', JSON.stringify(savedSearches));
+            
+            renderSavedSearches();
+            showToast('Search saved successfully', 'success');
+        }
+
+        function loadSavedSearch(index) {
+            const savedSearches = JSON.parse(localStorage.getItem('velocity-saved-searches') || '[]');
+            const search = savedSearches[index];
+            
+            if (!search) return;
+            
+            document.getElementById('search-input').value = search.query;
+            document.getElementById('filter-status').value = search.filters.status;
+            document.getElementById('filter-namespace').value = search.filters.namespace;
+            document.getElementById('filter-type').value = search.filters.type;
+            document.getElementById('filter-date').value = search.filters.date;
+            
+            queryConditions = [...search.conditions];
+            renderQueryRows();
+            performSearch();
+            
+            showToast('Search loaded', 'info');
+        }
+
+        function deleteSavedSearch(index) {
+            if (!confirm('Delete this saved search?')) return;
+            
+            const savedSearches = JSON.parse(localStorage.getItem('velocity-saved-searches') || '[]');
+            savedSearches.splice(index, 1);
+            localStorage.setItem('velocity-saved-searches', JSON.stringify(savedSearches));
+            
+            renderSavedSearches();
+            showToast('Search deleted', 'info');
+        }
+
+        function renderSavedSearches() {
+            const container = document.getElementById('saved-searches-list');
+            const savedSearches = JSON.parse(localStorage.getItem('velocity-saved-searches') || '[]');
+            
+            if (savedSearches.length === 0) {
+                container.innerHTML = '<div style="font-size: 0.75rem; color: var(--text-muted);">No saved searches</div>';
+                return;
+            }
+            
+            container.innerHTML = savedSearches.map((search, i) => `
+                <div class="saved-search-item">
+                    <div onclick="loadSavedSearch(${i})">
+                        <div class="saved-search-name">${search.name}</div>
+                        <div class="saved-search-query">${search.query || 'No query'}</div>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="deleteSavedSearch(${i})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function exportCSV() {
+            VelocityUtils.exportCSV(results, 'workflow-search-results.csv');
+            showToast('Results exported as CSV', 'success');
+        }
+
+        function exportJSON() {
+            VelocityUtils.exportJSON(results, 'workflow-search-results.json');
+            showToast('Results exported as JSON', 'success');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // Initialize
+        renderQueryRows();
+        renderSavedSearches();
+        performSearch();
+    </script>
+</body>
+</html>

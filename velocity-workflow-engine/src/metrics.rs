@@ -212,6 +212,21 @@ impl MetricsRegistry {
             + self.gauges.read().unwrap().len()
             + self.histograms.read().unwrap().len()
     }
+
+    /// Return a snapshot of all counter names and their current values.
+    pub fn counter_snapshot(&self) -> Vec<(String, u64)> {
+        self.counters.read().unwrap().iter().map(|(k, v)| (k.clone(), v.get())).collect()
+    }
+
+    /// Return a snapshot of all gauge names and their current values.
+    pub fn gauge_snapshot(&self) -> Vec<(String, i64)> {
+        self.gauges.read().unwrap().iter().map(|(k, v)| (k.clone(), v.get())).collect()
+    }
+
+    /// Return a snapshot of all histogram names, counts, and sums.
+    pub fn histogram_snapshot(&self) -> Vec<(String, u64, u64)> {
+        self.histograms.read().unwrap().iter().map(|(k, v)| (k.clone(), v.count(), v.sum())).collect()
+    }
 }
 
 impl Default for MetricsRegistry {

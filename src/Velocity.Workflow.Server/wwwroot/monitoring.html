@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring Dashboard — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .metric-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            transition: var(--transition);
+        }
+        
+        .metric-card:hover {
+            border-color: var(--accent-blue);
+        }
+        
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .metric-title {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-trend {
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .metric-trend.up {
+            color: var(--accent-green);
+        }
+        
+        .metric-trend.down {
+            color: var(--accent-red);
+        }
+        
+        .chart-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .chart-title {
+            font-size: 0.9375rem;
+            font-weight: 600;
+        }
+        
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 120px;
+            padding: 0.5rem 0;
+        }
+        
+        .bar {
+            flex: 1;
+            min-width: 8px;
+            max-width: 24px;
+            background: var(--accent-cyan);
+            border-radius: 2px 2px 0 0;
+            transition: height 0.3s ease;
+            opacity: 0.7;
+            position: relative;
+        }
+        
+        .bar:hover {
+            opacity: 1;
+        }
+        
+        .bar-label {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.625rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        
+        .histogram {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 100px;
+            margin-top: 1rem;
+        }
+        
+        .histogram-bar {
+            flex: 1;
+            background: var(--accent-purple);
+            border-radius: 2px 2px 0 0;
+            opacity: 0.7;
+        }
+        
+        .histogram-bar:hover {
+            opacity: 1;
+        }
+        
+        .gauge {
+            position: relative;
+            width: 200px;
+            height: 100px;
+            margin: 1rem auto;
+        }
+        
+        .gauge-bg {
+            fill: none;
+            stroke: var(--bg-tertiary);
+            stroke-width: 20;
+        }
+        
+        .gauge-fill {
+            fill: none;
+            stroke: var(--accent-green);
+            stroke-width: 20;
+            stroke-linecap: round;
+            transition: stroke-dasharray 0.5s ease;
+        }
+        
+        .gauge-value {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        
+        .health-indicators {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .health-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius);
+        }
+        
+        .health-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        
+        .health-dot.ok {
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+        
+        .health-dot.warn {
+            background: var(--accent-yellow);
+            box-shadow: 0 0 8px var(--accent-yellow);
+        }
+        
+        .health-dot.err {
+            background: var(--accent-red);
+            box-shadow: 0 0 8px var(--accent-red);
+        }
+        
+        .health-label {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+        
+        .health-value {
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .latency-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .latency-stat {
+            text-align: center;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius);
+        }
+        
+        .latency-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+        
+        .latency-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>›</span>
+                <strong>Monitoring Dashboard</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-primary" onclick="exportMetrics()">📥 Export Prometheus</button>
+            <button class="btn btn-sm" onclick="refreshMetrics()">↻ Refresh</button>
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">◑</button>
+        </div>
+    </div>
+    
+    <div class="content-area">
+        <!-- Key Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-header">
+                    <div class="metric-title">Workflow Throughput</div>
+                    <span style="font-size: 1.5rem;">⚡</span>
+                </div>
+                <div class="metric-value" style="color: var(--accent-cyan);" id="throughput">0</div>
+                <div class="metric-trend up">
+                    <span>↑</span>
+                    <span id="throughput-trend">+12% from last hour</span>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-header">
+                    <div class="metric-title">Active Workflows</div>
+                    <span style="font-size: 1.5rem;">🔄</span>
+                </div>
+                <div class="metric-value" style="color: var(--accent-green);" id="active-workflows">0</div>
+                <div class="metric-trend up">
+                    <span>↑</span>
+                    <span id="active-trend">+5 from last minute</span>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-header">
+                    <div class="metric-title">Error Rate</div>
+                    <span style="font-size: 1.5rem;">⚠️</span>
+                </div>
+                <div class="metric-value" style="color: var(--accent-red);" id="error-rate">0%</div>
+                <div class="metric-trend down">
+                    <span>↓</span>
+                    <span id="error-trend">-2% from last hour</span>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-header">
+                    <div class="metric-title">Memory Usage</div>
+                    <span style="font-size: 1.5rem;">💾</span>
+                </div>
+                <div class="metric-value" style="color: var(--accent-purple);" id="memory-usage">0 MB</div>
+                <div class="metric-trend up">
+                    <span>↑</span>
+                    <span id="memory-trend">+15 MB from last minute</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Throughput Chart -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">Workflow Throughput (Last 60 minutes)</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Updated via SSE</div>
+            </div>
+            <div class="bar-chart" id="throughput-chart"></div>
+        </div>
+
+        <!-- Latency Histogram -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">Latency Distribution</div>
+            </div>
+            <div class="histogram" id="latency-histogram"></div>
+            <div class="latency-stats">
+                <div class="latency-stat">
+                    <div class="latency-label">P50</div>
+                    <div class="latency-value" style="color: var(--accent-green);" id="p50">0ms</div>
+                </div>
+                <div class="latency-stat">
+                    <div class="latency-label">P95</div>
+                    <div class="latency-value" style="color: var(--accent-yellow);" id="p95">0ms</div>
+                </div>
+                <div class="latency-stat">
+                    <div class="latency-label">P99</div>
+                    <div class="latency-value" style="color: var(--accent-red);" id="p99">0ms</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Workflow Gauge -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">Active Workflow Capacity</div>
+            </div>
+            <div class="gauge">
+                <svg width="200" height="100" viewBox="0 0 200 100">
+                    <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
+                    <path class="gauge-fill" id="gauge-fill" d="M 20 100 A 80 80 0 0 1 180 100" 
+                          stroke-dasharray="0 251" />
+                </svg>
+                <div class="gauge-value" id="gauge-value">0%</div>
+            </div>
+            <div style="text-align: center; margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                <span id="active-count">0</span> / <span id="max-capacity">100</span> workflows
+            </div>
+        </div>
+
+        <!-- Memory Usage Chart -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">Memory Usage (Last 30 minutes)</div>
+            </div>
+            <div class="bar-chart" id="memory-chart"></div>
+        </div>
+
+        <!-- Engine Health -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">Engine Health Indicators</div>
+            </div>
+            <div class="health-indicators" id="health-indicators"></div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        // Initialize theme
+        velocityTheme.init();
+
+        // Mock metrics data
+        let metrics = {
+            throughput: 42,
+            throughput_trend: 12,
+            active_workflows: 28,
+            active_trend: 5,
+            error_rate: 2.3,
+            error_trend: -2,
+            memory_mb: 256,
+            memory_trend: 15,
+            p50: 125,
+            p95: 450,
+            p99: 1200,
+            max_capacity: 100
+        };
+
+        // Generate mock throughput data
+        const throughputData = Array.from({ length: 60 }, () => Math.floor(Math.random() * 50) + 20);
+        
+        // Generate mock latency histogram
+        const latencyBuckets = [
+            { range: '0-50ms', count: 45 },
+            { range: '50-100ms', count: 120 },
+            { range: '100-200ms', count: 85 },
+            { range: '200-500ms', count: 42 },
+            { range: '500ms-1s', count: 18 },
+            { range: '1-2s', count: 8 },
+            { range: '2-5s', count: 3 },
+            { range: '5s+', count: 1 }
+        ];
+
+        // Generate mock memory data
+        const memoryData = Array.from({ length: 30 }, (_, i) => 200 + Math.floor(Math.random() * 100) + i * 2);
+
+        function renderThroughputChart() {
+            const chart = document.getElementById('throughput-chart');
+            const max = Math.max(...throughputData);
+            
+            chart.innerHTML = throughputData.map((value, i) => {
+                const height = (value / max) * 100;
+                return `<div class="bar" style="height: ${height}%;" title="${value} workflows/min"></div>`;
+            }).join('');
+        }
+
+        function renderLatencyHistogram() {
+            const histogram = document.getElementById('latency-histogram');
+            const max = Math.max(...latencyBuckets.map(b => b.count));
+            
+            histogram.innerHTML = latencyBuckets.map(bucket => {
+                const height = (bucket.count / max) * 100;
+                return `<div class="histogram-bar" style="height: ${height}%;" title="${bucket.range}: ${bucket.count}"></div>`;
+            }).join('');
+        }
+
+        function renderMemoryChart() {
+            const chart = document.getElementById('memory-chart');
+            const max = Math.max(...memoryData);
+            
+            chart.innerHTML = memoryData.map((value, i) => {
+                const height = (value / max) * 100;
+                return `<div class="bar" style="height: ${height}%; background: var(--accent-purple);" title="${value} MB"></div>`;
+            }).join('');
+        }
+
+        function renderGauge() {
+            const percentage = (metrics.active_workflows / metrics.max_capacity) * 100;
+            const gaugeFill = document.getElementById('gauge-fill');
+            const gaugeValue = document.getElementById('gauge-value');
+            
+            // Calculate stroke-dasharray for semi-circle (arc length ≈ 251)
+            const arcLength = 251;
+            const filledLength = (percentage / 100) * arcLength;
+            
+            gaugeFill.setAttribute('stroke-dasharray', `${filledLength} ${arcLength}`);
+            gaugeValue.textContent = `${Math.round(percentage)}%`;
+            
+            document.getElementById('active-count').textContent = metrics.active_workflows;
+            document.getElementById('max-capacity').textContent = metrics.max_capacity;
+        }
+
+        function renderHealthIndicators() {
+            const indicators = [
+                { name: 'Workflow Engine', status: 'ok', value: 'Healthy' },
+                { name: 'Database Connection', status: 'ok', value: 'Connected' },
+                { name: 'Task Queue', status: 'ok', value: 'Processing' },
+                { name: 'Event Bus', status: 'ok', value: 'Active' },
+                { name: 'Memory Usage', status: metrics.memory_mb > 500 ? 'warn' : 'ok', value: `${metrics.memory_mb} MB` },
+                { name: 'Error Rate', status: metrics.error_rate > 5 ? 'err' : metrics.error_rate > 2 ? 'warn' : 'ok', value: `${metrics.error_rate}%` }
+            ];
+            
+            const container = document.getElementById('health-indicators');
+            container.innerHTML = indicators.map(ind => `
+                <div class="health-item">
+                    <div class="health-dot ${ind.status}"></div>
+                    <div>
+                        <div class="health-label">${ind.name}</div>
+                        <div class="health-value">${ind.value}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateMetrics() {
+            document.getElementById('throughput').textContent = metrics.throughput;
+            document.getElementById('throughput-trend').textContent = `${metrics.throughput_trend > 0 ? '+' : ''}${metrics.throughput_trend}% from last hour`;
+            
+            document.getElementById('active-workflows').textContent = metrics.active_workflows;
+            document.getElementById('active-trend').textContent = `${metrics.active_trend > 0 ? '+' : ''}${metrics.active_trend} from last minute`;
+            
+            document.getElementById('error-rate').textContent = `${metrics.error_rate}%`;
+            document.getElementById('error-trend').textContent = `${metrics.error_trend > 0 ? '+' : ''}${metrics.error_trend}% from last hour`;
+            
+            document.getElementById('memory-usage').textContent = `${metrics.memory_mb} MB`;
+            document.getElementById('memory-trend').textContent = `${metrics.memory_trend > 0 ? '+' : ''}${metrics.memory_trend} MB from last minute`;
+            
+            document.getElementById('p50').textContent = `${metrics.p50}ms`;
+            document.getElementById('p95').textContent = `${metrics.p95}ms`;
+            document.getElementById('p99').textContent = `${metrics.p99}ms`;
+        }
+
+        function refreshMetrics() {
+            // Simulate metric updates
+            metrics.throughput = Math.floor(Math.random() * 50) + 30;
+            metrics.active_workflows = Math.floor(Math.random() * 40) + 20;
+            metrics.error_rate = Math.random() * 5;
+            metrics.memory_mb = Math.floor(Math.random() * 200) + 200;
+            metrics.p50 = Math.floor(Math.random() * 100) + 80;
+            metrics.p95 = Math.floor(Math.random() * 300) + 300;
+            metrics.p99 = Math.floor(Math.random() * 800) + 800;
+            
+            // Update charts
+            throughputData.shift();
+            throughputData.push(metrics.throughput);
+            
+            memoryData.shift();
+            memoryData.push(metrics.memory_mb);
+            
+            updateMetrics();
+            renderThroughputChart();
+            renderLatencyHistogram();
+            renderMemoryChart();
+            renderGauge();
+            renderHealthIndicators();
+            
+            showToast('Metrics refreshed', 'info');
+        }
+
+        function exportMetrics() {
+            const prometheusFormat = `
+# VELOCITY WorkFlow Metrics
+# Generated at ${new Date().toISOString()}
+
+# HELP velocity_workflow_throughput Total workflow throughput per minute
+# TYPE velocity_workflow_throughput gauge
+velocity_workflow_throughput ${metrics.throughput}
+
+# HELP velocity_workflow_active Number of active workflows
+# TYPE velocity_workflow_active gauge
+velocity_workflow_active ${metrics.active_workflows}
+
+# HELP velocity_workflow_error_rate Error rate percentage
+# TYPE velocity_workflow_error_rate gauge
+velocity_workflow_error_rate ${metrics.error_rate}
+
+# HELP velocity_memory_usage_mb Memory usage in megabytes
+# TYPE velocity_memory_usage_mb gauge
+velocity_memory_usage_mb ${metrics.memory_mb}
+
+# HELP velocity_latency_p50 50th percentile latency in milliseconds
+# TYPE velocity_latency_p50 gauge
+velocity_latency_p50 ${metrics.p50}
+
+# HELP velocity_latency_p95 95th percentile latency in milliseconds
+# TYPE velocity_latency_p95 gauge
+velocity_latency_p95 ${metrics.p95}
+
+# HELP velocity_latency_p99 99th percentile latency in milliseconds
+# TYPE velocity_latency_p99 gauge
+velocity_latency_p99 ${metrics.p99}
+`.trim();
+            
+            const blob = new Blob([prometheusFormat], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'velocity_metrics.prom';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showToast('Metrics exported in Prometheus format', 'success');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // Initialize
+        updateMetrics();
+        renderThroughputChart();
+        renderLatencyHistogram();
+        renderMemoryChart();
+        renderGauge();
+        renderHealthIndicators();
+
+        // Auto-refresh every 5 seconds
+        setInterval(refreshMetrics, 5000);
+    </script>
+</body>
+</html>

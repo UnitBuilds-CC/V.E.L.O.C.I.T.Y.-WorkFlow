@@ -1,0 +1,65 @@
+===============================================================================
+  Velocity Workflow Engine — {{ .Chart.AppVersion }}
+===============================================================================
+
+Congratulations! The Velocity Workflow Engine has been deployed.
+
+{{- $fullName := include "velocity.fullname" . }}
+
+━━━ Accessing the Service ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  HTTP API:
+    export POD_NAME=$(kubectl get pods -n {{ .Release.Namespace }} \
+      -l "app.kubernetes.io/name={{ include "velocity.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" \
+      -o jsonpath="{.items[0].metadata.name}")
+
+    kubectl port-forward $POD_NAME {{ .Values.service.httpPort }}:{{ .Values.service.httpPort }} -n {{ .Release.Namespace }}
+    open http://127.0.0.1:{{ .Values.service.httpPort }}
+
+  gRPC API:
+    kubectl port-forward $POD_NAME {{ .Values.service.grpcPort }}:{{ .Values.service.grpcPort }} -n {{ .Release.Namespace }}
+    # Connect your gRPC client to 127.0.0.1:{{ .Values.service.grpcPort }}
+
+{{- if .Values.ingress.enabled }}
+
+━━━ Ingress ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  The service is exposed via Ingress at:
+  {{- range .Values.ingress.hosts }}
+    http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+
+━━━ PostgreSQL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  A PostgreSQL instance is bundled with this release.
+  Connect from within the cluster:
+    {{ include "velocity.postgresFullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.postgresql.port }}
+{{- end }}
+
+{{- if .Values.monitoring.prometheus.enabled }}
+
+━━━ Prometheus ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  kubectl port-forward svc/{{ include "velocity.prometheusFullname" . }} 9090:9090 -n {{ .Release.Namespace }}
+  open http://127.0.0.1:9090
+{{- end }}
+
+{{- if .Values.monitoring.grafana.enabled }}
+
+━━━ Grafana ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  kubectl port-forward svc/{{ include "velocity.grafanaFullname" . }} 3000:3000 -n {{ .Release.Namespace }}
+  open http://127.0.0.1:3000
+  Username: {{ .Values.monitoring.grafana.adminUser }}
+{{- end }}
+
+━━━ Useful Commands ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  kubectl get pods    -n {{ .Release.Namespace }} -l "app.kubernetes.io/instance={{ .Release.Name }}"
+  kubectl get svc     -n {{ .Release.Namespace }} -l "app.kubernetes.io/instance={{ .Release.Name }}"
+  kubectl logs -f     -n {{ .Release.Namespace }} $POD_NAME
+
+===============================================================================

@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "velocity.fullname" . }}-test-grpc
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+  containers:
+    - name: grpc-health-probe
+      image: golang:1.22-alpine
+      command:
+        - /bin/sh
+        - -ec
+        - |
+          echo "Installing grpc_health_probe..."
+          apk add --no-cache wget >/dev/null 2>&1
+          GRPC_HOST="{{ include "velocity.fullname" . }}"
+          GRPC_PORT={{ .Values.service.grpcPort }}
+          echo "Probing gRPC endpoint at ${GRPC_HOST}:${GRPC_PORT}..."
+          # Use wget to verify the gRPC port is reachable and responds
+          for i in 1 2 3 4 5; do
+            if wget -qO- --timeout=5 "http://${GRPC_HOST}:${GRPC_PORT}" 2>/dev/null; then
+              echo "gRPC endpoint reachable at ${GRPC_HOST}:${GRPC_PORT}"
+              exit 0
+            fi
+            echo "Attempt ${i} failed, retrying in 5s..."
+            sleep 5
+          done
+          echo "gRPC health check failed after 5 attempts"
+          exit 1
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi
+        requests:
+          cpu: 50m
+          memory: 32Mi

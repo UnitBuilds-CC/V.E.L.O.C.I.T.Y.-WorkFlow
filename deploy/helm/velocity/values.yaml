@@ -1,33 +1,53 @@
 # =============================================================================
 # Default values for the Velocity Workflow Helm chart
+# Production-grade configuration
 # =============================================================================
 
+# ── Replica Count ────────────────────────────────────────────────────────────
 replicaCount: 2
 
+# ── Deployment Strategy ──────────────────────────────────────────────────────
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Keep this many old ReplicaSets for rollback
+revisionHistoryLimit: 10
+
+# ── Image ────────────────────────────────────────────────────────────────────
 image:
   repository: velocity-workflow-server
-  pullPolicy: IfNotPresent
   tag: "latest"
+  pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# ── Service Account ──────────────────────────────────────────────────────────
 serviceAccount:
   create: true
   annotations: {}
   name: "velocity-server"
 
+# ── Pod Metadata ─────────────────────────────────────────────────────────────
 podAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "5000"
   prometheus.io/path: "/metrics"
 
+podLabels: {}
+
+# ── Security ─────────────────────────────────────────────────────────────────
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
   runAsGroup: 1000
   fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -36,11 +56,17 @@ securityContext:
     drop:
       - ALL
 
+# ── Service ──────────────────────────────────────────────────────────────────
 service:
   type: ClusterIP
   httpPort: 5000
   grpcPort: 50051
+  annotations: {}
+  # Optional static IPs for LoadBalancer type
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
 
+# ── Ingress ──────────────────────────────────────────────────────────────────
 ingress:
   enabled: false
   className: nginx
@@ -51,7 +77,11 @@ ingress:
         - path: /
           pathType: Prefix
   tls: []
+  #  - secretName: velocity-tls
+  #    hosts:
+  #      - velocity.local
 
+# ── Resources ────────────────────────────────────────────────────────────────
 resources:
   limits:
     cpu: "2"
@@ -60,18 +90,39 @@ resources:
     cpu: 500m
     memory: 512Mi
 
+# ── Autoscaling ──────────────────────────────────────────────────────────────
 autoscaling:
   enabled: true
   minReplicas: 2
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
 
+# ── Scheduling ───────────────────────────────────────────────────────────────
 nodeSelector: {}
 tolerations: []
 affinity: {}
+priorityClassName: ""
+dnsPolicy: ClusterFirst
+dnsConfig:
+  options:
+    - name: ndots
+      value: "2"
 
-# ── Application Configuration ──────────────────────────────────────────────
+# ── Application Configuration ────────────────────────────────────────────────
 config:
   environment: Production
   logging:
@@ -79,79 +130,166 @@ config:
   metrics:
     enabled: true
 
-# ── PostgreSQL ──────────────────────────────────────────────────────────────
+# ── PostgreSQL ───────────────────────────────────────────────────────────────
 postgresql:
+  # Set to false to use an external database; set host accordingly.
   enabled: true
-  host: ""
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    username: velocity
+    password: velocity_secret
+    database: velocity
+    existingSecret: ""
+    existingSecretKey: password
   port: 5432
-  database: velocity
-  username: velocity
-  password: velocity_secret
-  existingSecret: ""
-  existingSecretKey: password
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  # Init container runs schema migrations on first boot
+  initSchema:
+    enabled: true
+    image:
+      repository: postgres
+      tag: "16-alpine"
+  # PostgreSQL tuning (applied via environment variables)
+  tuning:
+    maxConnections: 200
+    sharedBuffers: 256MB
+    effectiveCacheSize: 768MB
+    workMem: 4MB
+    maintenanceWorkMem: 64MB
+    walLevel: replica
+    maxWalSenders: 3
 
-# ── gRPC ────────────────────────────────────────────────────────────────────
+# ── gRPC ─────────────────────────────────────────────────────────────────────
 grpc:
   port: 50051
 
-# ── Auth ────────────────────────────────────────────────────────────────────
+# ── Auth ─────────────────────────────────────────────────────────────────────
 auth:
   jwtIssuer: ""
   jwtAudience: ""
   apiKeys: []
 
-# ── Persistence ─────────────────────────────────────────────────────────────
-persistence:
-  enabled: true
-  storageClass: ""
-  size: 10Gi
-  accessModes:
-    - ReadWriteOnce
-
-# ── Pod Disruption Budget ───────────────────────────────────────────────────
+# ── Pod Disruption Budget ────────────────────────────────────────────────────
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
   # maxUnavailable: 1
 
-# ── Network Policy ──────────────────────────────────────────────────────────
+# ── Network Policy ───────────────────────────────────────────────────────────
 networkPolicy:
   enabled: true
-  # Restrict ingress to these namespaces (empty = allow all)
   allowedIngressNamespaces: []
-  # Namespace where PostgreSQL runs (for egress rules)
   postgresqlNamespace: ""
-  # Namespace where Prometheus runs (for egress rules)
   prometheusNamespace: "monitoring"
+  ingressRules: []
+  #  - from:
+  #      - namespaceSelector:
+  #          matchLabels:
+  #            kubernetes.io/metadata.name: monitoring
+  #    ports:
+  #      - protocol: TCP
+  #        port: 5000
+  egressRules: []
+  #  - to:
+  #      - namespaceSelector:
+  #          matchLabels:
+  #            kubernetes.io/metadata.name: velocity-system
+  #    ports:
+  #      - protocol: TCP
+  #        port: 5432
 
-# ── Service Monitor (Prometheus Operator) ───────────────────────────────────
+# ── Service Monitor (Prometheus Operator) ────────────────────────────────────
 serviceMonitor:
   enabled: true
   interval: 30s
   scrapeTimeout: 10s
   metricsPath: /metrics
   honorLabels: true
-  # Additional labels for ServiceMonitor (e.g., for Prometheus selector)
   additionalLabels: {}
-  # Relabeling rules
   relabelings: []
 
-# ── Grafana Dashboard ───────────────────────────────────────────────────────
+# ── Grafana Dashboard ────────────────────────────────────────────────────────
 grafanaDashboard:
   enabled: true
-  # Additional labels for dashboard ConfigMap (e.g., grafana_dashboard: "1")
   additionalLabels:
     grafana_dashboard: "1"
   annotations: {}
 
-# ── Topology Spread Constraints ─────────────────────────────────────────────
+# ── Topology Spread Constraints ──────────────────────────────────────────────
 topologySpreadConstraints:
   enabled: true
   maxSkew: 1
   topologyKey: topology.kubernetes.io/zone
   whenUnsatisfiable: DoNotSchedule
 
-# ── Operator ──────────────────────────────────────────────────────────────────
+# ── Monitoring ───────────────────────────────────────────────────────────────
+monitoring:
+  dashboards:
+    enabled: false
+    namespace: monitoring
+    labels:
+      grafana_dashboard: "1"
+  prometheus:
+    enabled: false
+    image:
+      repository: prom/prometheus
+      tag: "v2.51.0"
+      pullPolicy: IfNotPresent
+    scrapeInterval: 30s
+    retention: 15d
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: "1"
+        memory: 2Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+    replicas: 1
+  grafana:
+    enabled: false
+    image:
+      repository: grafana/grafana
+      tag: "10.4.0"
+      pullPolicy: IfNotPresent
+    replicas: 1
+    adminUser: admin
+    adminPassword: admin
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    dashboards:
+      # Auto-import dashboards from ConfigMaps labeled grafana_dashboard
+      autoImport: true
+      label: grafana_dashboard
+
+# ── Operator ─────────────────────────────────────────────────────────────────
 operator:
   enabled: false
   image:
@@ -201,11 +339,62 @@ tls:
   duration: 2160h   # 90 days
   renewBefore: 360h # 15 days
 
-# ── Monitoring ───────────────────────────────────────────────────────────────
-monitoring:
-  dashboards:
-    enabled: false
-    # Namespace where Grafana is deployed (for dashboard ConfigMap label selector)
-    namespace: monitoring
-    labels:
-      grafana_dashboard: "1"
+# ── Probes ───────────────────────────────────────────────────────────────────
+# Override default probe settings for the velocity-server container.
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+startupProbe:
+  enabled: false
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  failureThreshold: 30
+
+# ── Lifecycle ────────────────────────────────────────────────────────────────
+lifecycle:
+  preStop:
+    exec:
+      command:
+        - /bin/sh
+        - -c
+        - sleep 10   # allow in-flight requests to drain
+
+# ── Extra / Override ─────────────────────────────────────────────────────────
+# Inject additional environment variables into the velocity-server container.
+extraEnv: []
+#  - name: MY_VAR
+#    value: "my-value"
+#  - name: SECRET_VAR
+#    valueFrom:
+#      secretKeyRef:
+#        name: my-secret
+#        key: my-key
+
+# Mount additional volumes into the velocity-server container.
+extraVolumes: []
+#  - name: custom-config
+#    configMap:
+#      name: my-config
+
+extraVolumeMounts: []
+#  - name: custom-config
+#    mountPath: /etc/velocity/custom
+#    readOnly: true

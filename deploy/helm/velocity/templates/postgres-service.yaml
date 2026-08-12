@@ -1,0 +1,40 @@
+{{- if .Values.postgresql.enabled }}
+# Headless service for StatefulSet DNS resolution
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "velocity.postgresFullname" . }}-headless
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: {{ .Values.postgresql.port }}
+      targetPort: postgresql
+      protocol: TCP
+      name: postgresql
+  selector:
+    {{- include "velocity.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+---
+# Regular service for client connections
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "velocity.postgresFullname" . }}
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.postgresql.port }}
+      targetPort: postgresql
+      protocol: TCP
+      name: postgresql
+  selector:
+    {{- include "velocity.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+{{- end }}

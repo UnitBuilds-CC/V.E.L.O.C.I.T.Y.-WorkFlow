@@ -1,0 +1,74 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namePrefix: multi-
+namespace: velocity-multi-region
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/region: primary
+    includeSelectors: false
+  - pairs:
+      topology.kubernetes.io/region: us-east-1
+    includeSelectors: false
+
+patches:
+  - target:
+      kind: Deployment
+      name: velocity-server
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: add
+        path: /spec/template/spec/affinity
+        value:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: topology.kubernetes.io/region
+                      operator: In
+                      values:
+                        - us-east-1
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: velocity-server
+                  topologyKey: kubernetes.io/hostname
+      - op: add
+        path: /spec/template/metadata/annotations
+        value:
+          velocity.io/region: us-east-1
+          velocity.io/cluster: primary
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "5000"
+          prometheus.io/path: "/metrics"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 500m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 512Mi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 2Gi
+
+configMapGenerator:
+  - name: velocity-config
+    literals:
+      - ENVIRONMENT=Production
+      - LOG_LEVEL=Information
+      - REGION=us-east-1
+      - CLUSTER_ROLE=primary
+      - MULTI_REGION=true
+      - REPLICATION_FACTOR=3

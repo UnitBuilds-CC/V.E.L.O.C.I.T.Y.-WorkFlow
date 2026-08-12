@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Namespace Manager — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .namespace-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1rem;
+        }
+        
+        .namespace-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            transition: var(--transition);
+            cursor: pointer;
+        }
+        
+        .namespace-card:hover {
+            border-color: var(--accent-blue);
+            box-shadow: var(--shadow);
+        }
+        
+        .namespace-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+        
+        .namespace-name {
+            font-weight: 600;
+            font-size: 1.125rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .namespace-description {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+        
+        .namespace-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            margin: 1rem 0;
+        }
+        
+        .namespace-stat {
+            background: var(--bg-tertiary);
+            padding: 0.75rem;
+            border-radius: var(--radius);
+        }
+        
+        .namespace-stat-label {
+            font-size: 0.6875rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.25rem;
+        }
+        
+        .namespace-stat-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        
+        .retention-bar {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+        
+        .retention-fill {
+            height: 100%;
+            background: var(--accent-green);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        .retention-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>›</span>
+                <strong>Namespace Manager</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-primary" onclick="openCreateModal()">+ New Namespace</button>
+            <button class="btn btn-sm" onclick="refreshNamespaces()">↻ Refresh</button>
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">◑</button>
+        </div>
+    </div>
+    
+    <div class="content-area">
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Namespaces</div>
+                <div class="stat-value cyan" id="stat-total">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Workflows</div>
+                <div class="stat-value blue" id="stat-workflows">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Workflows</div>
+                <div class="stat-value green" id="stat-active">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Retention</div>
+                <div class="stat-value purple" id="stat-retention">0d</div>
+            </div>
+        </div>
+
+        <!-- Namespace List -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">🏷️ Namespaces</div>
+            </div>
+            <div class="section-body">
+                <div class="namespace-grid" id="namespace-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Namespace Modal -->
+    <div class="modal-overlay" id="create-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Create Namespace</h3>
+                <button class="btn btn-sm" onclick="closeCreateModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Namespace Name</label>
+                    <input type="text" class="form-input" id="namespace-name" placeholder="e.g., production">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-textarea" id="namespace-description" placeholder="Optional description..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Retention Period (days)</label>
+                    <input type="number" class="form-input" id="namespace-retention" value="7" min="1" max="365">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeCreateModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="createNamespace()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Namespace Detail Modal -->
+    <div class="modal-overlay" id="detail-modal">
+        <div class="modal" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3 id="detail-title">Namespace Detail</h3>
+                <button class="btn btn-sm" onclick="closeDetailModal()">✕</button>
+            </div>
+            <div class="modal-body" id="detail-body"></div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        // Initialize theme
+        velocityTheme.init();
+
+        // Mock namespace data
+        const mockNamespaces = [
+            {
+                id: 1,
+                name: 'default',
+                description: 'Default namespace for development',
+                retention_days: 7,
+                workflow_count: 42,
+                active_workflows: 12,
+                completed_workflows: 28,
+                failed_workflows: 2,
+                created_at: Date.now() - 86400000 * 90,
+                search_attributes: ['custom_status', 'user_id', 'priority'],
+                config: {
+                    max_concurrent_workflows: 100,
+                    workflow_timeout_days: 30
+                }
+            },
+            {
+                id: 2,
+                name: 'production',
+                description: 'Production workflows',
+                retention_days: 30,
+                workflow_count: 156,
+                active_workflows: 45,
+                completed_workflows: 108,
+                failed_workflows: 3,
+                created_at: Date.now() - 86400000 * 60,
+                search_attributes: ['custom_status', 'user_id', 'priority', 'region'],
+                config: {
+                    max_concurrent_workflows: 500,
+                    workflow_timeout_days: 90
+                }
+            },
+            {
+                id: 3,
+                name: 'staging',
+                description: 'Staging environment for testing',
+                retention_days: 3,
+                workflow_count: 23,
+                active_workflows: 5,
+                completed_workflows: 17,
+                failed_workflows: 1,
+                created_at: Date.now() - 86400000 * 45,
+                search_attributes: ['custom_status', 'test_id'],
+                config: {
+                    max_concurrent_workflows: 50,
+                    workflow_timeout_days: 7
+                }
+            }
+        ];
+
+        let namespaces = [...mockNamespaces];
+
+        function renderNamespaces() {
+            const grid = document.getElementById('namespace-grid');
+            
+            if (namespaces.length === 0) {
+                grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏷️</div><p>No namespaces found</p></div>';
+                return;
+            }
+
+            grid.innerHTML = namespaces.map(ns => {
+                const retentionPercentage = Math.min((ns.workflow_count / 100) * 100, 100);
+                
+                return `
+                    <div class="namespace-card" onclick="viewNamespaceDetail(${ns.id})">
+                        <div class="namespace-header">
+                            <div>
+                                <div class="namespace-name">${ns.name}</div>
+                                <div class="namespace-description">${ns.description || 'No description'}</div>
+                            </div>
+                            <span class="badge badge-active">Active</span>
+                        </div>
+                        
+                        <div class="namespace-stats">
+                            <div class="namespace-stat">
+                                <div class="namespace-stat-label">Total Workflows</div>
+                                <div class="namespace-stat-value" style="color: var(--accent-blue);">${ns.workflow_count}</div>
+                            </div>
+                            <div class="namespace-stat">
+                                <div class="namespace-stat-label">Active</div>
+                                <div class="namespace-stat-value" style="color: var(--accent-green);">${ns.active_workflows}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                                Retention: ${ns.retention_days} days
+                            </div>
+                            <div class="retention-bar">
+                                <div class="retention-fill" style="width: ${retentionPercentage}%;"></div>
+                            </div>
+                            <div class="retention-info">
+                                <span>${ns.completed_workflows} completed</span>
+                                <span>${ns.failed_workflows} failed</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateStats() {
+            const total = namespaces.length;
+            const totalWorkflows = namespaces.reduce((sum, ns) => sum + ns.workflow_count, 0);
+            const activeWorkflows = namespaces.reduce((sum, ns) => sum + ns.active_workflows, 0);
+            const avgRetention = total > 0 
+                ? Math.round(namespaces.reduce((sum, ns) => sum + ns.retention_days, 0) / total)
+                : 0;
+
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-workflows').textContent = totalWorkflows;
+            document.getElementById('stat-active').textContent = activeWorkflows;
+            document.getElementById('stat-retention').textContent = `${avgRetention}d`;
+        }
+
+        function openCreateModal() {
+            document.getElementById('create-modal').classList.add('active');
+        }
+
+        function closeCreateModal() {
+            document.getElementById('create-modal').classList.remove('active');
+        }
+
+        async function createNamespace() {
+            const name = document.getElementById('namespace-name').value;
+            const description = document.getElementById('namespace-description').value;
+            const retentionDays = parseInt(document.getElementById('namespace-retention').value) || 7;
+
+            if (!name) {
+                showToast('Please enter a namespace name', 'error');
+                return;
+            }
+
+            const newNamespace = {
+                id: Date.now(),
+                name,
+                description,
+                retention_days: retentionDays,
+                workflow_count: 0,
+                active_workflows: 0,
+                completed_workflows: 0,
+                failed_workflows: 0,
+                created_at: Date.now(),
+                search_attributes: [],
+                config: {
+                    max_concurrent_workflows: 100,
+                    workflow_timeout_days: 30
+                }
+            };
+
+            namespaces.push(newNamespace);
+            renderNamespaces();
+            updateStats();
+            closeCreateModal();
+            showToast('Namespace created successfully', 'success');
+
+            // Clear form
+            document.getElementById('namespace-name').value = '';
+            document.getElementById('namespace-description').value = '';
+            document.getElementById('namespace-retention').value = '7';
+        }
+
+        function viewNamespaceDetail(id) {
+            const ns = namespaces.find(n => n.id === id);
+            if (!ns) return;
+
+            document.getElementById('detail-title').textContent = ns.name;
+            
+            document.getElementById('detail-body').innerHTML = `
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Name</div>
+                        <div class="detail-value">${ns.name}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Description</div>
+                        <div class="detail-value">${ns.description || '—'}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Retention Period</div>
+                        <div class="detail-value">${ns.retention_days} days</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Created</div>
+                        <div class="detail-value">${VelocityUtils.formatTimestamp(ns.created_at)}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Total Workflows</div>
+                        <div class="detail-value">${ns.workflow_count}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Active Workflows</div>
+                        <div class="detail-value">${ns.active_workflows}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Completed</div>
+                        <div class="detail-value">${ns.completed_workflows}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Failed</div>
+                        <div class="detail-value">${ns.failed_workflows}</div>
+                    </div>
+                </div>
+                
+                <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Configuration</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Max Concurrent Workflows</div>
+                        <div class="detail-value">${ns.config.max_concurrent_workflows}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Workflow Timeout</div>
+                        <div class="detail-value">${ns.config.workflow_timeout_days} days</div>
+                    </div>
+                </div>
+                
+                <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Search Attributes</h4>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    ${ns.search_attributes.length > 0 
+                        ? ns.search_attributes.map(attr => `<span class="badge badge-completed">${attr}</span>`).join('')
+                        : '<span style="color: var(--text-muted);">No custom search attributes</span>'
+                    }
+                </div>
+                
+                <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Retention Policy</h4>
+                <div style="background: var(--bg-tertiary); padding: 1rem; border-radius: var(--radius);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span style="font-size: 0.8125rem; color: var(--text-secondary);">Data Retention</span>
+                        <span style="font-size: 0.8125rem; font-weight: 600;">${ns.retention_days} days</span>
+                    </div>
+                    <div class="retention-bar">
+                        <div class="retention-fill" style="width: ${Math.min((ns.retention_days / 365) * 100, 100)}%;"></div>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">
+                        Workflow data is automatically deleted after ${ns.retention_days} days
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('detail-modal').classList.add('active');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detail-modal').classList.remove('active');
+        }
+
+        function refreshNamespaces() {
+            renderNamespaces();
+            updateStats();
+            showToast('Namespaces refreshed', 'info');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // Initialize
+        renderNamespaces();
+        updateStats();
+    </script>
+</body>
+</html>

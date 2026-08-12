@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "velocity.fullname" . }}-test-workflow
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+  containers:
+    - name: workflow-test
+      image: curlimages/curl:8.5.0
+      command:
+        - /bin/sh
+        - -ec
+        - |
+          API="{{ include "velocity.fullname" . }}:{{ .Values.service.httpPort }}"
+          echo "=== Velocity Workflow Integration Test ==="
+
+          echo "[1/4] Checking health endpoint..."
+          HEALTH=$(curl -sf --max-time 10 "http://${API}/health" || echo "FAIL")
+          if [ "${HEALTH}" = "FAIL" ]; then
+            echo "FAIL: /health endpoint not reachable"
+            exit 1
+          fi
+          echo "  Health OK: ${HEALTH}"
+
+          echo "[2/4] Creating test workflow..."
+          WORKFLOW_RESPONSE=$(curl -sf --max-time 15 \
+            -X POST "http://${API}/api/v1/workflows" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "helm-smoke-test",
+              "description": "Created by Helm test hook",
+              "steps": [
+                {
+                  "name": "step-1",
+                  "type": "activity",
+                  "input": {"message": "hello from helm test"}
+                }
+              ]
+            }' || echo "FAIL")
+          if [ "${WORKFLOW_RESPONSE}" = "FAIL" ]; then
+            echo "FAIL: Could not create workflow"
+            exit 1
+          fi
+          WORKFLOW_ID=$(echo "${WORKFLOW_RESPONSE}" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "  Workflow created: ${WORKFLOW_ID}"
+
+          echo "[3/4] Waiting for workflow completion (max 60s)..."
+          for i in $(seq 1 12); do
+            STATUS_RESPONSE=$(curl -sf --max-time 10 \
+              "http://${API}/api/v1/workflows/${WORKFLOW_ID}" || echo "FAIL")
+            STATUS=$(echo "${STATUS_RESPONSE}" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+            echo "  Attempt ${i}: status=${STATUS}"
+            if [ "${STATUS}" = "Completed" ] || [ "${STATUS}" = "Succeeded" ]; then
+              echo "  Workflow completed successfully!"
+              break
+            fi
+            if [ "${STATUS}" = "Failed" ] || [ "${STATUS}" = "FAULTED" ]; then
+              echo "FAIL: Workflow entered failed state"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          echo "[4/4] Cleaning up test workflow..."
+          curl -sf --max-time 10 \
+            -X DELETE "http://${API}/api/v1/workflows/${WORKFLOW_ID}" || true
+          echo "  Cleanup done"
+
+          echo "=== All integration tests passed ==="
+      resources:
+        limits:
+          cpu: 100m
+          memory: 64Mi
+        requests:
+          cpu: 50m
+          memory: 32Mi

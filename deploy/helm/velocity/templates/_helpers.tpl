@@ -63,9 +63,41 @@ Service account name
 PostgreSQL secret name
 */}}
 {{- define "velocity.postgresSecretName" -}}
-{{- if .Values.postgresql.existingSecret }}
-{{- .Values.postgresql.existingSecret }}
+{{- if .Values.postgresql.auth.existingSecret }}
+{{- .Values.postgresql.auth.existingSecret }}
 {{- else }}
 {{- printf "%s-postgres" (include "velocity.fullname" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
+PostgreSQL fully-qualified name
+*/}}
+{{- define "velocity.postgresFullname" -}}
+{{- printf "%s-postgresql" (include "velocity.fullname" .) }}
+{{- end }}
+
+{{/*
+Prometheus fully-qualified name
+*/}}
+{{- define "velocity.prometheusFullname" -}}
+{{- printf "%s-prometheus" (include "velocity.fullname" .) }}
+{{- end }}
+
+{{/*
+Grafana fully-qualified name
+*/}}
+{{- define "velocity.grafanaFullname" -}}
+{{- printf "%s-grafana" (include "velocity.fullname" .) }}
+{{- end }}
+
+{{/*
+PostgreSQL connection string
+*/}}
+{{- define "velocity.postgresConnectionString" -}}
+{{- if .Values.postgresql.enabled -}}
+postgresql://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "velocity.postgresFullname" . }}:{{ .Values.postgresql.port }}/{{ .Values.postgresql.auth.database }}
+{{- else -}}
+postgresql://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ .Values.postgresql.host | default (include "velocity.postgresFullname" .) }}:{{ .Values.postgresql.port }}/{{ .Values.postgresql.auth.database }}
 {{- end }}
 {{- end }}
