@@ -141,7 +141,7 @@ ls -lh target/release/velocity-dev \
 log "[5/6] Starting services..."
 
 # 5a. Real Temporal server via Docker
-log "  Starting Temporal (Docker: PostgreSQL + Temporal + Web UI)..."
+log "  Starting Temporal (Docker: PostgreSQL + Temporal)..."
 sudo docker compose -f velocity-bench/docker-compose.temporal.yml up -d 2>&1 || {
     warn "  Docker compose failed (Temporal will use bridge fallback)."
 }
@@ -159,13 +159,14 @@ done
 echo ""
 
 if [ "$TEMPORAL_READY" = false ]; then
-    warn "  Temporal not ready on :7233 — checking Docker status..."
-    sudo docker compose -f velocity-bench/docker-compose.temporal.yml ps 2>/dev/null || true
-    sudo docker compose -f velocity-bench/docker-compose.temporal.yml logs --tail 10 temporal 2>/dev/null || true
+    warn "  Temporal not ready on :7233 — Docker status:"
+    sudo docker compose -f velocity-bench/docker-compose.temporal.yml ps 2>&1 || true
+    warn "  Temporal container logs:"
+    sudo docker logs velocity-bench-temporal --tail 30 2>&1 || true
     # Continue anyway — benchmark uses temporal-bridge, not real Temporal directly
     warn "  Continuing with temporal-bridge for benchmark comparison."
 else
-    log "  Temporal ready (gRPC :7233, Web UI :8233)"
+    log "  Temporal ready (gRPC :7233)"
 fi
 
 # 5b. VELOCITY dev-server

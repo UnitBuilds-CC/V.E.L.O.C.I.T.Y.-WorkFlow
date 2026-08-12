@@ -6,8 +6,6 @@
 # This starts Temporal with PostgreSQL for persistence.
 # The Temporal frontend gRPC is exposed on port 7233.
 
-version: "3.8"
-
 services:
   # ─── PostgreSQL for Temporal ──────────────────────────────────────────────
   temporal-postgres:
@@ -28,7 +26,7 @@ services:
 
   # ─── Temporal Server ─────────────────────────────────────────────────────
   temporal:
-    image: temporalio/auto-setup:latest
+    image: temporalio/auto-setup:1.27.1
     container_name: velocity-bench-temporal
     depends_on:
       temporal-postgres:
@@ -39,28 +37,13 @@ services:
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=temporal-postgres
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
     ports:
       - "7233:7233"   # Frontend gRPC
-      - "8233:8233"   # Web UI
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 7233 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 30
-
-  # ─── Temporal Web UI ─────────────────────────────────────────────────────
-  temporal-ui:
-    image: temporalio/ui:latest
-    container_name: velocity-bench-temporal-ui
-    depends_on:
-      temporal:
-        condition: service_healthy
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
-    ports:
-      - "8080:8080"
 
 volumes:
   temporal_pgdata:
