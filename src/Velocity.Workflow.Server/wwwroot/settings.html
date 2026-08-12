@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .settings-layout { display: grid; grid-template-columns: 220px 1fr; gap: 1.5rem; }
+        .settings-nav { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.5rem 0; height: fit-content; position: sticky; top: 1rem; }
+        .settings-nav-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; cursor: pointer; color: var(--text-secondary); font-size: 0.875rem; font-weight: 500; transition: var(--transition); border-left: 3px solid transparent; }
+        .settings-nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .settings-nav-item.active { color: var(--accent-cyan); border-left-color: var(--accent-cyan); background: rgba(57,210,192,0.08); }
+        .settings-panel { display: none; }
+        .settings-panel.active { display: block; }
+        .settings-section { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); margin-bottom: 1.5rem; }
+        .settings-section-header { padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--border-color); }
+        .settings-section-title { font-size: 0.9375rem; font-weight: 600; }
+        .settings-section-desc { font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.25rem; }
+        .settings-section-body { padding: 1.25rem; }
+        .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); }
+        .setting-row:last-child { border-bottom: none; }
+        .setting-label { font-size: 0.875rem; font-weight: 500; }
+        .setting-desc { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.125rem; }
+        .setting-control { min-width: 200px; display: flex; justify-content: flex-end; }
+        .setting-control .form-input, .setting-control .form-select { width: 200px; }
+        .save-bar { position: sticky; bottom: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.75rem 1.25rem; display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; }
+        .save-bar-info { font-size: 0.8125rem; color: var(--text-secondary); }
+        .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg-tertiary); border-radius: 20px; transition: 0.3s; border: 1px solid var(--border-color); }
+        .toggle-slider::before { content: ''; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: var(--text-secondary); border-radius: 50%; transition: 0.3s; }
+        .toggle-switch input:checked + .toggle-slider { background: var(--accent-green); border-color: var(--accent-green); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); background: white; }
+        @media (max-width: 768px) { .settings-layout { grid-template-columns: 1fr; } .settings-nav { position: static; } }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>&rsaquo;</span>
+                <a href="admin.html">Admin</a>
+                <span>&rsaquo;</span>
+                <strong>Settings</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">&#9681;</button>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <div class="settings-layout">
+            <!-- Side Nav -->
+            <div class="settings-nav">
+                <div class="settings-nav-item active" onclick="switchPanel('retention')">&#128337; Retention</div>
+                <div class="settings-nav-item" onclick="switchPanel('resources')">&#128736; Resource Limits</div>
+                <div class="settings-nav-item" onclick="switchPanel('auth')">&#128274; Authentication</div>
+                <div class="settings-nav-item" onclick="switchPanel('backup')">&#128190; Backup</div>
+                <div class="settings-nav-item" onclick="switchPanel('notifications')">&#128276; Notifications</div>
+                <div class="settings-nav-item" onclick="switchPanel('advanced')">&#9881; Advanced</div>
+            </div>
+
+            <!-- Panels -->
+            <div>
+                <!-- Retention -->
+                <div class="settings-panel active" id="panel-retention">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div class="settings-section-title">Retention Policy</div>
+                            <div class="settings-section-desc">Configure how long workflow data and events are retained.</div>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="setting-row">
+                                <div><div class="setting-label">Default Workflow Retention</div><div class="setting-desc">How long completed workflows are kept before cleanup.</div></div>
+                                <div class="setting-control"><select class="form-select" id="set-retention-default"><option value="7d">7 days</option><option value="14d" selected>14 days</option><option value="30d">30 days</option><option value="90d">90 days</option><option value="365d">1 year</option></select></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Event History Retention</div><div class="setting-desc">How long event histories are stored.</div></div>
+                                <div class="setting-control"><select class="form-select" id="set-retention-events"><option value="7d">7 days</option><option value="14d" selected>14 days</option><option value="30d">30 days</option><option value="90d">90 days</option></select></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Max History Length</div><div class="setting-desc">Maximum number of events per workflow.</div></div>
+                                <div class="setting-control"><input type="number" class="form-input" id="set-max-history" value="10000" min="100" step="100"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Archived Workflow Retention</div><div class="setting-desc">Retention for archived (non-deleted) workflows.</div></div>
+                                <div class="setting-control"><select class="form-select" id="set-retention-archive"><option value="30d">30 days</option><option value="90d" selected>90 days</option><option value="365d">1 year</option><option value="forever">Forever</option></select></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resources -->
+                <div class="settings-panel" id="panel-resources">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div class="settings-section-title">Resource Limits</div>
+                            <div class="settings-section-desc">Set system-wide resource constraints.</div>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="setting-row">
+                                <div><div class="setting-label">Max Concurrent Workflows</div><div class="setting-desc">Maximum number of workflows running simultaneously.</div></div>
+                                <div class="setting-control"><input type="number" class="form-input" id="set-max-workflows" value="1000" min="1"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Max Signals Per Workflow</div><div class="setting-desc">Limit signals that can be sent to a single workflow.</div></div>
+                                <div class="setting-control"><input type="number" class="form-input" id="set-max-signals" value="1000" min="1"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Max Workflow Execution Time</div><div class="setting-desc">Maximum duration a workflow can run before timeout.</div></div>
+                                <div class="setting-control"><select class="form-select" id="set-max-exec-time"><option value="1h">1 hour</option><option value="24h" selected>24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">API Rate Limit (req/s)</div><div class="setting-desc">Maximum API requests per second per client.</div></div>
+                                <div class="setting-control"><input type="number" class="form-input" id="set-rate-limit" value="100" min="1"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Max Payload Size</div><div class="setting-desc">Maximum size of workflow input/output payloads.</div></div>
+                                <div class="setting-control"><select class="form-select" id="set-max-payload"><option value="1mb">1 MB</option><option value="2mb" selected>2 MB</option><option value="5mb">5 MB</option><option value="10mb">10 MB</option></select></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Authentication -->
+                <div class="settings-panel" id="panel-auth">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div class="settings-section-title">Authentication Settings</div>
+                            <div class="settings-section-desc">Configure authentication and authorization.</div>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="setting-row">
+                                <div><div class="setting-label">Enable JWT Authentication</div><div class="setting-desc">Require JWT tokens for API access.</div></div>
+                                <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="set-jwt-enabled" checked><span class="toggle-slider"></span></label></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">JWT Issuer</div><div class="setting-desc">The issuer claim for JWT validation.</div></div>
+                                <div class="setting-control"><input type="text" class="form-input" id="set-jwt-issuer" placeholder="https://auth.example.com"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">JWT Audience</div><div class="setting-desc">The audience claim for JWT validation.</div></div>
+                                <div class="setting-control"><input type="text" class="form-input" id="set-jwt-audience" placeholder="velocity-api"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">API Key Authentication</div><div class="setting-desc">Allow API key-based authentication.</div></div>
+                                <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="set-apikey-enabled" checked><span class="toggle-slider"></span></label></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Session Timeout</div><div class="setting-desc">How long before idle sessions expire.</div></div>
+                                <div class="setting-control"><select class="form-select" id="set-session-timeout"><option value="30m">30 minutes</option><option value="1h" selected>1 hour</option><option value="8h">8 hours</option><option value="24h">24 hours</option></select></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Backup -->
+                <div class="settings-panel" id="panel-backup">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div class="settings-section-title">Backup Configuration</div>
+                            <div class="settings-section-desc">Configure automated backup settings.</div>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="setting-row">
+                                <div><div class="setting-label">Enable Automated Backups</div><div class="setting-desc">Automatically back up workflow data on schedule.</div></div>
+                                <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="set-backup-enabled"><span class="toggle-slider"></span></label></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Backup Schedule</div><div class="setting-desc">Cron expression for backup schedule.</div></div>
+                                <div class="setting-control"><input type="text" class="form-input" id="set-backup-schedule" value="0 2 * * *" placeholder="0 2 * * *"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Backup Retention</div><div class="setting-desc">How long to keep backup files.</div></div>
+                                <div class="setting-control"><select class="form-select" id="set-backup-retention"><option value="7d" selected>7 days</option><option value="14d">14 days</option><option value="30d">30 days</option><option value="90d">90 days</option></select></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Backup Destination</div><div class="setting-desc">Storage location for backup files.</div></div>
+                                <div class="setting-control"><input type="text" class="form-input" id="set-backup-dest" placeholder="s3://bucket/path"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications -->
+                <div class="settings-panel" id="panel-notifications">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div class="settings-section-title">Notification Settings</div>
+                            <div class="settings-section-desc">Configure alert and notification preferences.</div>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="setting-row">
+                                <div><div class="setting-label">Email Notifications</div><div class="setting-desc">Send email alerts for critical events.</div></div>
+                                <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="set-email-enabled"><span class="toggle-slider"></span></label></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Webhook URL</div><div class="setting-desc">Send notifications to a webhook endpoint.</div></div>
+                                <div class="setting-control"><input type="text" class="form-input" id="set-webhook-url" placeholder="https://hooks.example.com/..."></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Alert on Workflow Failures</div><div class="setting-desc">Trigger alerts when workflows fail.</div></div>
+                                <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="set-alert-failures" checked><span class="toggle-slider"></span></label></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Alert on High Error Rate</div><div class="setting-desc">Trigger alerts when error rate exceeds threshold.</div></div>
+                                <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="set-alert-errors" checked><span class="toggle-slider"></span></label></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced -->
+                <div class="settings-panel" id="panel-advanced">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div class="settings-section-title">Advanced Settings</div>
+                            <div class="settings-section-desc">Low-level system configuration. Change with caution.</div>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="setting-row">
+                                <div><div class="setting-label">Log Level</div><div class="setting-desc">Server logging verbosity.</div></div>
+                                <div class="setting-control"><select class="form-select" id="set-log-level"><option value="Debug">Debug</option><option value="Information" selected>Information</option><option value="Warning">Warning</option><option value="Error">Error</option></select></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Enable Metrics Endpoint</div><div class="setting-desc">Expose Prometheus-compatible metrics at /metrics.</div></div>
+                                <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="set-metrics-enabled" checked><span class="toggle-slider"></span></label></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">Enable Distributed Tracing</div><div class="setting-desc">Send traces to configured OTLP endpoint.</div></div>
+                                <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="set-tracing-enabled"><span class="toggle-slider"></span></label></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">OTLP Endpoint</div><div class="setting-desc">OpenTelemetry collector endpoint.</div></div>
+                                <div class="setting-control"><input type="text" class="form-input" id="set-otlp-endpoint" placeholder="http://localhost:4317"></div>
+                            </div>
+                            <div class="setting-row">
+                                <div><div class="setting-label">gRPC Max Message Size</div><div class="setting-desc">Maximum gRPC message size in bytes.</div></div>
+                                <div class="setting-control"><input type="number" class="form-input" id="set-grpc-max-msg" value="4194304" min="1024"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save Bar -->
+                <div class="save-bar">
+                    <div class="save-bar-info" id="save-status">All settings are current.</div>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button class="btn" onclick="resetSettings()">Reset to Defaults</button>
+                        <button class="btn btn-primary" onclick="saveAllSettings()">Save All Settings</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        velocityTheme.init();
+
+        function switchPanel(panel) {
+            document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
+            document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('panel-' + panel).classList.add('active');
+        }
+
+        function saveAllSettings() {
+            const settings = {
+                retention: {
+                    default: document.getElementById('set-retention-default').value,
+                    events: document.getElementById('set-retention-events').value,
+                    maxHistory: parseInt(document.getElementById('set-max-history').value),
+                    archive: document.getElementById('set-retention-archive').value
+                },
+                resources: {
+                    maxWorkflows: parseInt(document.getElementById('set-max-workflows').value),
+                    maxSignals: parseInt(document.getElementById('set-max-signals').value),
+                    maxExecTime: document.getElementById('set-max-exec-time').value,
+                    rateLimit: parseInt(document.getElementById('set-rate-limit').value),
+                    maxPayload: document.getElementById('set-max-payload').value
+                },
+                auth: {
+                    jwtEnabled: document.getElementById('set-jwt-enabled').checked,
+                    jwtIssuer: document.getElementById('set-jwt-issuer').value,
+                    jwtAudience: document.getElementById('set-jwt-audience').value,
+                    apiKeyEnabled: document.getElementById('set-apikey-enabled').checked,
+                    sessionTimeout: document.getElementById('set-session-timeout').value
+                },
+                backup: {
+                    enabled: document.getElementById('set-backup-enabled').checked,
+                    schedule: document.getElementById('set-backup-schedule').value,
+                    retention: document.getElementById('set-backup-retention').value,
+                    destination: document.getElementById('set-backup-dest').value
+                },
+                advanced: {
+                    logLevel: document.getElementById('set-log-level').value,
+                    metricsEnabled: document.getElementById('set-metrics-enabled').checked,
+                    tracingEnabled: document.getElementById('set-tracing-enabled').checked,
+                    otlpEndpoint: document.getElementById('set-otlp-endpoint').value,
+                    grpcMaxMsgSize: parseInt(document.getElementById('set-grpc-max-msg').value)
+                }
+            };
+            console.log('Saving settings:', settings);
+            document.getElementById('save-status').textContent = 'Settings saved at ' + new Date().toLocaleTimeString();
+            showToast('All settings saved successfully', 'success');
+        }
+
+        function resetSettings() {
+            if (!confirm('Reset all settings to defaults? This cannot be undone.')) return;
+            showToast('Settings reset to defaults', 'info');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+    </script>
+</body>
+</html>

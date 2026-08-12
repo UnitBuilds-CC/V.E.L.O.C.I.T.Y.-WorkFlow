@@ -343,6 +343,36 @@ powershell -ExecutionPolicy Bypass -File ./benchmarks/run_reproducible_benchmark
 
 ---
 
+## 📚 Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](docs/getting_started.md) | Quick start guide, installation, first workflow tutorial |
+| [Architecture](docs/architecture.md) | System architecture, slab memory model, WAL, replication |
+| [Deployment](docs/deployment.md) | Docker, Kubernetes, Helm, production checklist, monitoring |
+| [SDK Guide](docs/sdk_guide.md) | All 7 language SDKs — Python, TypeScript, Go, Java, Rust, PHP, Ruby |
+| [Migration from Temporal](docs/migration_from_temporal.md) | Comparison, API mapping, migration strategy, AST transpiler |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues, debugging techniques, FAQ |
+| [API Reference](docs/api_reference.md) | Full gRPC API and SDK method reference |
+| [SDK Development](docs/sdk_development.md) | How to build a VELOCITY-WorkFlow SDK for any language |
+| [Architecture Guide](docs/ARCHITECTURE_GUIDE.md) | Internal architecture deep dive |
+
+### Worker Examples
+
+Each SDK ships with ready-to-run worker examples:
+
+| SDK | Worker Example | Path |
+|-----|---------------|------|
+| Python | `simple_worker.py` | `sdk/python/examples/simple_worker.py` |
+| TypeScript | `simple-worker.ts` | `sdk/typescript/examples/simple-worker.ts` |
+| Go | `simple_worker.go` | `sdk/go/examples/simple_worker.go` |
+| Java | `SimpleWorker.java` | `sdk/java/src/main/java/io/velocity/examples/SimpleWorker.java` |
+| Rust | `simple_worker.rs` | `sdk/rust/examples/simple_worker.rs` |
+| PHP | `simple_worker.php` | `sdk/php/examples/simple_worker.php` |
+| Ruby | `simple_worker.rb` | `sdk/ruby/examples/simple_worker.rb` |
+
+---
+
 ## 📜 Licensing
 
 `V.E.L.O.C.I.T.Y.-WorkFlow` is open-source software licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. Enterprise migration tooling and commercial support are available under proprietary licenses.

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .admin-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); overflow: hidden; }
+        .admin-card-header { padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .admin-card-title { font-size: 0.9375rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+        .admin-card-body { padding: 1.25rem; }
+        .admin-list { list-style: none; }
+        .admin-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.625rem 0; border-bottom: 1px solid var(--border-color); font-size: 0.875rem; }
+        .admin-list-item:last-child { border-bottom: none; }
+        .admin-list-item .item-name { font-weight: 500; }
+        .admin-list-item .item-meta { color: var(--text-secondary); font-size: 0.75rem; }
+        .key-display { font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 0.8125rem; background: var(--bg-tertiary); padding: 0.25rem 0.5rem; border-radius: 4px; word-break: break-all; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); width: 90%; max-width: 520px; max-height: 80vh; overflow-y: auto; }
+        .modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-size: 1rem; font-weight: 600; }
+        .modal-body { padding: 1.25rem; }
+        .modal-footer { padding: 0.75rem 1.25rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem; }
+        .audit-entry { padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); font-size: 0.8125rem; }
+        .audit-entry:last-child { border-bottom: none; }
+        .audit-time { color: var(--text-muted); font-size: 0.75rem; font-family: 'SF Mono', Monaco, Consolas, monospace; }
+        .audit-action { font-weight: 500; margin-top: 0.25rem; }
+        .audit-user { color: var(--text-secondary); font-size: 0.75rem; }
+        .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg-tertiary); border-radius: 20px; transition: 0.3s; border: 1px solid var(--border-color); }
+        .toggle-slider::before { content: ''; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: var(--text-secondary); border-radius: 50%; transition: 0.3s; }
+        .toggle-switch input:checked + .toggle-slider { background: var(--accent-green); border-color: var(--accent-green); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); background: white; }
+        .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; }
+        .tab-btn { padding: 0.625rem 1.25rem; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: var(--transition); }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>&rsaquo;</span>
+                <strong>Admin Dashboard</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-sm" onclick="refreshAdmin()">&#8635; Refresh</button>
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">&#9681;</button>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Namespaces</div>
+                <div class="stat-value cyan" id="stat-namespaces">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Workers</div>
+                <div class="stat-value green" id="stat-workers">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">API Keys</div>
+                <div class="stat-value blue" id="stat-keys">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Audit Events (24h)</div>
+                <div class="stat-value purple" id="stat-audit">0</div>
+            </div>
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchAdminTab('namespaces')">Namespaces</button>
+            <button class="tab-btn" onclick="switchAdminTab('queues')">Task Queues</button>
+            <button class="tab-btn" onclick="switchAdminTab('apikeys')">API Keys</button>
+            <button class="tab-btn" onclick="switchAdminTab('system')">System</button>
+            <button class="tab-btn" onclick="switchAdminTab('auditlog')">Audit Log</button>
+        </div>
+
+        <!-- Namespaces Tab -->
+        <div class="tab-content active" id="tab-namespaces">
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">&#127991; Namespace Management</div>
+                    <button class="btn btn-primary btn-sm" onclick="openNamespaceModal()">+ Create Namespace</button>
+                </div>
+                <div class="section-body no-pad">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Name</th><th>Retention</th><th>Workflows</th><th>Status</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="ns-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Queues Tab -->
+        <div class="tab-content" id="tab-queues">
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">&#128232; Task Queue Management</div>
+                    <div class="toolbar">
+                        <select class="form-select" id="queue-filter" onchange="filterQueues()">
+                            <option value="all">All Queues</option>
+                            <option value="active">Active</option>
+                            <option value="paused">Paused</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="section-body no-pad">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Queue Name</th><th>Namespace</th><th>Pollers</th><th>Backlog</th><th>Status</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="queue-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Keys Tab -->
+        <div class="tab-content" id="tab-apikeys">
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">&#128273; API Key Management</div>
+                    <button class="btn btn-primary btn-sm" onclick="openApiKeyModal()">+ Generate API Key</button>
+                </div>
+                <div class="section-body no-pad">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Name</th><th>Key</th><th>Created</th><th>Last Used</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="keys-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Tab -->
+        <div class="tab-content" id="tab-system">
+            <div class="admin-grid">
+                <div class="admin-card">
+                    <div class="admin-card-header"><div class="admin-card-title">&#9881; Retention Defaults</div></div>
+                    <div class="admin-card-body">
+                        <div class="form-group">
+                            <label class="form-label">Default Workflow Retention</label>
+                            <select class="form-select" id="sys-retention">
+                                <option value="7d">7 days</option>
+                                <option value="14d" selected>14 days</option>
+                                <option value="30d">30 days</option>
+                                <option value="90d">90 days</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Max Workflow History Length</label>
+                            <input type="number" class="form-input" id="sys-max-history" value="10000">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveSystemSettings()">Save</button>
+                    </div>
+                </div>
+                <div class="admin-card">
+                    <div class="admin-card-header"><div class="admin-card-title">&#128737; Rate Limits</div></div>
+                    <div class="admin-card-body">
+                        <div class="form-group">
+                            <label class="form-label">Max Workflows Per Second</label>
+                            <input type="number" class="form-input" id="sys-max-wps" value="100">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Max Signals Per Workflow</label>
+                            <input type="number" class="form-input" id="sys-max-signals" value="1000">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveRateLimits()">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audit Log Tab -->
+        <div class="tab-content" id="tab-auditlog">
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">&#128220; Recent Audit Events</div>
+                    <a href="audit.html" class="btn btn-sm">View Full Audit Log &rarr;</a>
+                </div>
+                <div class="section-body" id="audit-preview"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Namespace Modal -->
+    <div class="modal-overlay" id="ns-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">Create Namespace</div>
+                <button class="btn btn-sm" onclick="closeModal('ns-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Namespace Name</label>
+                    <input type="text" class="form-input" id="ns-name" placeholder="e.g. production">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Retention Period</label>
+                    <select class="form-select" id="ns-retention">
+                        <option value="7d">7 days</option>
+                        <option value="14d" selected>14 days</option>
+                        <option value="30d">30 days</option>
+                        <option value="90d">90 days</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-textarea" id="ns-desc" placeholder="Optional description..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeModal('ns-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createNamespace()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Key Modal -->
+    <div class="modal-overlay" id="key-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">Generate API Key</div>
+                <button class="btn btn-sm" onclick="closeModal('key-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Key Name</label>
+                    <input type="text" class="form-input" id="key-name" placeholder="e.g. ci-deploy-key">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Namespace Scope</label>
+                    <select class="form-select" id="key-namespace">
+                        <option value="*">All Namespaces</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Expiration</label>
+                    <select class="form-select" id="key-expiry">
+                        <option value="30d">30 days</option>
+                        <option value="90d" selected>90 days</option>
+                        <option value="365d">1 year</option>
+                        <option value="never">Never</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeModal('key-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="generateApiKey()">Generate</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        velocityTheme.init();
+
+        // ─── Mock Data ───────────────────────────────────────────────────────
+        const mockNamespaces = [
+            { name: 'default', retention: '14d', workflows: 142, status: 'active' },
+            { name: 'production', retention: '90d', workflows: 1847, status: 'active' },
+            { name: 'staging', retention: '7d', workflows: 56, status: 'active' },
+            { name: 'development', retention: '7d', workflows: 23, status: 'active' }
+        ];
+
+        const mockQueues = [
+            { name: 'workflow-tasks', namespace: 'default', pollers: 4, backlog: 12, status: 'active' },
+            { name: 'activity-tasks', namespace: 'default', pollers: 8, backlog: 0, status: 'active' },
+            { name: 'signal-tasks', namespace: 'production', pollers: 2, backlog: 5, status: 'active' },
+            { name: 'timer-tasks', namespace: 'production', pollers: 1, backlog: 0, status: 'paused' },
+            { name: 'batch-tasks', namespace: 'staging', pollers: 0, backlog: 0, status: 'paused' }
+        ];
+
+        const mockApiKeys = [
+            { name: 'ci-deploy-key', key: 'vel_sk_...a3f8', created: '2025-12-01', lastUsed: '2026-01-15' },
+            { name: 'monitoring-key', key: 'vel_sk_...b7c2', created: '2025-11-20', lastUsed: '2026-01-16' },
+            { name: 'admin-key', key: 'vel_sk_...d1e9', created: '2025-10-05', lastUsed: '2026-01-14' }
+        ];
+
+        const mockAudit = [
+            { time: '2026-01-16T14:32:01Z', action: 'namespace.created', user: 'admin', detail: 'Created namespace "staging"' },
+            { time: '2026-01-16T14:28:45Z', action: 'apikey.created', user: 'admin', detail: 'Generated API key "ci-deploy-key"' },
+            { time: '2026-01-16T13:15:22Z', action: 'queue.paused', user: 'ops-bot', detail: 'Paused queue "timer-tasks" in production' },
+            { time: '2026-01-16T12:00:00Z', action: 'settings.updated', user: 'admin', detail: 'Updated retention policy for "default"' },
+            { time: '2026-01-16T10:45:33Z', action: 'apikey.revoked', user: 'admin', detail: 'Revoked key "old-service-key"' }
+        ];
+
+        // ─── Render Functions ────────────────────────────────────────────────
+        function renderNamespaces() {
+            const tbody = document.getElementById('ns-table-body');
+            tbody.innerHTML = mockNamespaces.map(ns => `
+                <tr>
+                    <td><strong>${ns.name}</strong></td>
+                    <td>${ns.retention}</td>
+                    <td>${ns.workflows.toLocaleString()}</td>
+                    <td><span class="badge badge-running">${ns.status}</span></td>
+                    <td>
+                        <button class="btn btn-sm" onclick="configureNamespace('${ns.name}')">Configure</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteNamespace('${ns.name}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderQueues(filter = 'all') {
+            const filtered = filter === 'all' ? mockQueues : mockQueues.filter(q => q.status === filter);
+            const tbody = document.getElementById('queue-table-body');
+            tbody.innerHTML = filtered.map(q => `
+                <tr>
+                    <td><strong>${q.name}</strong></td>
+                    <td>${q.namespace}</td>
+                    <td>${q.pollers}</td>
+                    <td>${q.backlog}</td>
+                    <td><span class="badge ${q.status === 'active' ? 'badge-running' : 'badge-canceled'}">${q.status}</span></td>
+                    <td>
+                        <button class="btn btn-sm" onclick="toggleQueue('${q.name}')">${q.status === 'active' ? 'Pause' : 'Resume'}</button>
+                        <button class="btn btn-sm" onclick="configureQueue('${q.name}')">Configure</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderApiKeys() {
+            const tbody = document.getElementById('keys-table-body');
+            tbody.innerHTML = mockApiKeys.map(k => `
+                <tr>
+                    <td><strong>${k.name}</strong></td>
+                    <td><span class="key-display">${k.key}</span></td>
+                    <td>${k.created}</td>
+                    <td>${k.lastUsed}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="revokeApiKey('${k.name}')">Revoke</button></td>
+                </tr>
+            `).join('');
+        }
+
+        function renderAuditPreview() {
+            const container = document.getElementById('audit-preview');
+            container.innerHTML = mockAudit.slice(0, 5).map(e => `
+                <div class="audit-entry">
+                    <div class="audit-time">${new Date(e.time).toLocaleString()}</div>
+                    <div class="audit-action">${e.action}</div>
+                    <div class="audit-user">${e.user} &mdash; ${e.detail}</div>
+                </div>
+            `).join('');
+        }
+
+        function updateStats() {
+            document.getElementById('stat-namespaces').textContent = mockNamespaces.length;
+            document.getElementById('stat-workers').textContent = mockQueues.reduce((s, q) => s + q.pollers, 0);
+            document.getElementById('stat-keys').textContent = mockApiKeys.length;
+            document.getElementById('stat-audit').textContent = mockAudit.length;
+        }
+
+        // ─── Actions ─────────────────────────────────────────────────────────
+        function switchAdminTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tab).classList.add('active');
+        }
+
+        function openNamespaceModal() { document.getElementById('ns-modal').classList.add('active'); }
+        function openApiKeyModal() { document.getElementById('key-modal').classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        function createNamespace() {
+            const name = document.getElementById('ns-name').value.trim();
+            if (!name) return showToast('Namespace name is required', 'error');
+            mockNamespaces.push({ name, retention: document.getElementById('ns-retention').value, workflows: 0, status: 'active' });
+            renderNamespaces(); updateStats(); closeModal('ns-modal');
+            showToast(`Namespace "${name}" created`, 'success');
+        }
+
+        function deleteNamespace(name) {
+            if (name === 'default') return showToast('Cannot delete default namespace', 'error');
+            if (!confirm(`Delete namespace "${name}"? This cannot be undone.`)) return;
+            const idx = mockNamespaces.findIndex(n => n.name === name);
+            if (idx > -1) { mockNamespaces.splice(idx, 1); renderNamespaces(); updateStats(); }
+            showToast(`Namespace "${name}" deleted`, 'success');
+        }
+
+        function configureNamespace(name) { showToast(`Configure dialog for "${name}" — coming soon`, 'info'); }
+
+        function filterQueues() { renderQueues(document.getElementById('queue-filter').value); }
+
+        function toggleQueue(name) {
+            const q = mockQueues.find(q => q.name === name);
+            if (q) { q.status = q.status === 'active' ? 'paused' : 'active'; renderQueues(); showToast(`Queue "${name}" ${q.status}`, 'success'); }
+        }
+
+        function configureQueue(name) { showToast(`Configure dialog for queue "${name}" — coming soon`, 'info'); }
+
+        function generateApiKey() {
+            const name = document.getElementById('key-name').value.trim();
+            if (!name) return showToast('Key name is required', 'error');
+            const key = 'vel_sk_...' + Math.random().toString(36).substring(2, 6);
+            mockApiKeys.push({ name, key, created: new Date().toISOString().split('T')[0], lastUsed: 'Never' });
+            renderApiKeys(); updateStats(); closeModal('key-modal');
+            showToast(`API key "${name}" generated`, 'success');
+        }
+
+        function revokeApiKey(name) {
+            if (!confirm(`Revoke API key "${name}"?`)) return;
+            const idx = mockApiKeys.findIndex(k => k.name === name);
+            if (idx > -1) { mockApiKeys.splice(idx, 1); renderApiKeys(); updateStats(); }
+            showToast(`API key "${name}" revoked`, 'success');
+        }
+
+        function saveSystemSettings() { showToast('System settings saved', 'success'); }
+        function saveRateLimits() { showToast('Rate limits updated', 'success'); }
+
+        function refreshAdmin() {
+            renderNamespaces(); renderQueues(); renderApiKeys(); renderAuditPreview(); updateStats();
+            showToast('Admin data refreshed', 'info');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // ─── Init ────────────────────────────────────────────────────────────
+        refreshAdmin();
+    </script>
+</body>
+</html>

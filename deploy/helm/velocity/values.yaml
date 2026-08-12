@@ -330,6 +330,74 @@ monitoring:
       autoImport: true
       label: grafana_dashboard
 
+  # ── Jaeger (Distributed Tracing) ────────────────────────────────────────────
+  jaeger:
+    enabled: false
+    image:
+      repository: jaegertracing/all-in-one
+      tag: "1.55"
+      pullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # ── Tempo (Distributed Tracing — alternative to Jaeger) ─────────────────────
+  tempo:
+    enabled: false
+    image:
+      repository: grafana/tempo
+      tag: "2.4.0"
+      pullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # ── Loki (Log Aggregation) ──────────────────────────────────────────────────
+  loki:
+    enabled: false
+    image:
+      repository: grafana/loki
+      tag: "2.9.4"
+      pullPolicy: IfNotPresent
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # ── Alertmanager ────────────────────────────────────────────────────────────
+  alertmanager:
+    enabled: false
+    resolveTimeout: 5m
+    smtpFrom: ""
+    smtpSmarthost: "localhost:25"
+    route:
+      groupBy:
+        - alertname
+        - namespace
+      groupWait: 30s
+      groupInterval: 5m
+      repeatInterval: 4h
+      receiver: default
+      routes: []
+    receivers:
+      webhook: {}
+      email: {}
+
 # ── Operator ─────────────────────────────────────────────────────────────────
 operator:
   enabled: false

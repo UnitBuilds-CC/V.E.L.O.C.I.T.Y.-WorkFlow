@@ -1,0 +1,94 @@
+{{- if .Values.redis.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "velocity.redisFullname" . }}
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+spec:
+  serviceName: {{ include "velocity.redisFullname" . }}-headless
+  replicas: {{ .Values.redis.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "velocity.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        {{- include "velocity.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/name: redis
+    spec:
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          command:
+            - redis-server
+            - --maxmemory
+            - {{ .Values.redis.maxMemory | default "256mb" }}
+            - --maxmemory-policy
+            - {{ .Values.redis.maxMemoryPolicy | default "allkeys-lru" }}
+            {{- if .Values.redis.persistence.enabled }}
+            - --appendonly
+            - "yes"
+            - --dir
+            - /data
+            {{- end }}
+            {{- if .Values.redis.password }}
+            - --requirepass
+            - {{ .Values.redis.password | quote }}
+            {{- end }}
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                {{- if .Values.redis.password }}
+                - -a
+                - {{ .Values.redis.password | quote }}
+                {{- end }}
+                - ping
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                {{- if .Values.redis.password }}
+                - -a
+                - {{ .Values.redis.password | quote }}
+                {{- end }}
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  {{- if .Values.redis.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "velocity.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/name: redis
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.redis.persistence.storageClass }}
+        storageClassName: {{ .Values.redis.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.persistence.size }}
+  {{- end }}
+{{- end }}

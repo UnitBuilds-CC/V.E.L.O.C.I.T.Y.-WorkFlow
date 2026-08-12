@@ -1,79 +1,126 @@
 #!/usr/bin/env python3
 """
-Example: Simple workflow worker using the VELOCITY-WorkFlow Python SDK.
+Example: Simple task worker using the VELOCITY-WorkFlow Python SDK.
 
-This demonstrates that the VELOCITY-WorkFlow gRPC API is language-agnostic.
-The same workflow engine serves C#, Python, Go, Java, or any gRPC client.
+Demonstrates:
+  - Connecting to the VELOCITY-WorkFlow server
+  - Registering for a task queue
+  - Polling for tasks in a loop
+  - Executing task logic
+  - Graceful error handling
+  - Graceful shutdown on SIGINT / SIGTERM
 
 Prerequisites:
-    1. Start the VELOCITY-WorkFlow server:
-       cd VELOCITY-WorkFlow/src/Velocity.Workflow.Server
-       dotnet run
+  1. Start the VELOCITY-WorkFlow server:
+     cd VELOCITY-WorkFlow/src/Velocity.Workflow.Server && dotnet run
 
-    2. Generate gRPC stubs:
-       cd VELOCITY-WorkFlow/sdk/python
-       pip install -r requirements.txt
-       python -m grpc_tools.protoc \
-           -I../../src/Velocity.Workflow.Server/Protos \
-           --python_out=velocity_sdk --grpc_python_out=velocity_sdk \
-           ../../src/Velocity.Workflow.Server/Protos/workflow_service.proto
+  2. Install the SDK:
+     cd VELOCITY-WorkFlow/sdk/python && pip install -r requirements.txt
 
-    3. Run this example:
-       python examples/simple_worker.py
+  3. Run this worker:
+     python examples/simple_worker.py
 """
 
-import sys
 import os
+import signal
+import sys
+import time
+import json
+import logging
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from velocity_sdk import VelocityClient, WorkflowStatus
+from velocity_sdk import VelocityClient, WorkflowStatus, VelocityError
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger("velocity-worker")
+
+# ── Configuration ────────────────────────────────────────────────────────
+SERVER_ADDR = "localhost:50051"
+TASK_QUEUE = "orders"
+POLL_INTERVAL_SEC = 1.0
+MAX_RETRIES = 3
+
+# ── Graceful shutdown flag ───────────────────────────────────────────────
+shutdown_requested = False
 
 
-def main():
-    print("=== VELOCITY-WorkFlow Python SDK Example ===\n")
+def handle_signal(signum, frame):
+    global shutdown_requested
+    logger.info("Received signal %s — shutting down gracefully...", signum)
+    shutdown_requested = True
 
-    # Connect to the server (no JWT = anonymous access)
-    with VelocityClient("localhost:50051") as client:
-        # 1. Start a workflow
-        print("1. Starting workflow...")
-        handle = client.start_workflow(
-            workflow_type="order-processing",
-            namespace="default",
-            task_queue="orders",
-            total_steps=5,
-            input_data=b'{"order_id": 12345}',
-        )
-        print(f"   Workflow started: key={handle.workflow_key}")
 
-        # 2. Describe the workflow
-        print("\n2. Describing workflow...")
-        desc = client.describe_workflow(handle.workflow_key)
-        print(f"   Status: {desc.status.name}")
-        print(f"   Step: {desc.current_step}/{desc.total_steps}")
+signal.signal(signal.SIGINT, handle_signal)
+signal.signal(signal.SIGTERM, handle_signal)
 
-        # 3. Send a signal
-        print("\n3. Sending signal...")
-        ok = client.signal_workflow(
-            handle.workflow_key,
-            "payment-confirmed",
-            b'{"amount": 99.99}',
-        )
-        print(f"   Signal sent: {ok}")
 
-        # 4. Complete the workflow
-        print("\n4. Completing workflow...")
-        ok = client.complete_workflow(handle.workflow_key, b'{"result": "order shipped"}')
-        print(f"   Completed: {ok}")
+# ── Task handlers ────────────────────────────────────────────────────────
+def process_order(task):
+    """Process an incoming order task."""
+    payload = json.loads(task.get("input", "{}"))
+    order_id = payload.get("order_id", "unknown")
+    logger.info("Processing order %s", order_id)
+    # Simulate work
+    time.sleep(0.05)
+    return {"status": "shipped", "order_id": order_id}
 
-        # 5. Verify final state
-        print("\n5. Verifying final state...")
-        desc = client.describe_workflow(handle.workflow_key)
-        print(f"   Status: {desc.status.name}")
-        assert desc.status == WorkflowStatus.COMPLETED, f"Expected COMPLETED, got {desc.status}"
 
-    print("\n=== All operations succeeded! ===")
-    print("The Python SDK successfully communicated with the Rust/C# workflow engine via gRPC.")
+TASK_HANDLERS = {
+    "order-processing": process_order,
+}
+
+
+# ── Worker loop ──────────────────────────────────────────────────────────
+def run_worker():
+    logger.info("Starting VELOCITY-WorkFlow Python worker")
+    logger.info("Server: %s | Queue: %s", SERVER_ADDR, TASK_QUEUE)
+
+    client = VelocityClient(SERVER_ADDR)
+
+    try:
+        logger.info("Worker registered on task queue '%s'", TASK_QUEUE)
+
+        while not shutdown_requested:
+            try:
+                # Poll for a workflow task from the server
+                task = client.poll_task(TASK_QUEUE, timeout_ms=2000)
+
+                if task is None:
+                    logger.debug("No task available — retrying")
+                    time.sleep(POLL_INTERVAL_SEC)
+                    continue
+
+                task_type = task.get("workflow_type", "unknown")
+                handler = TASK_HANDLERS.get(task_type)
+
+                if handler is None:
+                    logger.warning("No handler for task type '%s' — skipping", task_type)
+                    client.fail_task(task["workflow_key"], f"No handler for {task_type}")
+                    continue
+
+                # Execute the task
+                result = handler(task)
+                client.complete_workflow(task["workflow_key"], json.dumps(result).encode())
+                logger.info("Task '%s' completed successfully", task_type)
+
+            except VelocityError as exc:
+                logger.error("Velocity error while processing task: %s", exc)
+                time.sleep(POLL_INTERVAL_SEC)
+
+            except Exception as exc:
+                logger.exception("Unexpected error processing task: %s", exc)
+                time.sleep(POLL_INTERVAL_SEC)
+
+    except Exception as exc:
+        logger.exception("Fatal worker error: %s", exc)
+    finally:
+        client.close()
+        logger.info("Worker shut down cleanly")
 
 
 if __name__ == "__main__":
-    main()
+    run_worker()

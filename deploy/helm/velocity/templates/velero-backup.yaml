@@ -1,0 +1,35 @@
+{{- if and .Values.backup.enabled .Values.backup.velero.enabled }}
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: {{ include "velocity.veleroFullname" . }}-backup
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    helm.sh/chart: {{ include "velocity.chart" . }}
+spec:
+  {{- if .Values.backup.velero.includedNamespaces }}
+  includedNamespaces:
+    {{- toYaml .Values.backup.velero.includedNamespaces | nindent 4 }}
+  {{- else }}
+  includedNamespaces:
+    - {{ .Release.Namespace }}
+  {{- end }}
+  labelSelector:
+    matchLabels:
+      {{- include "velocity.selectorLabels" . | nindent 6 }}
+  storageLocation: {{ .Values.backup.velero.storageLocation | default "default" }}
+  {{- if .Values.backup.velero.volumeSnapshotLocations }}
+  volumeSnapshotLocations:
+    {{- toYaml .Values.backup.velero.volumeSnapshotLocations | nindent 4 }}
+  {{- end }}
+  ttl: {{ .Values.backup.velero.ttl | default "720h" }}
+  {{- if .Values.backup.velero.includeClusterResources }}
+  includeClusterResources: true
+  {{- end }}
+  {{- if .Values.backup.velero.excludedResources }}
+  excludedResources:
+    {{- toYaml .Values.backup.velero.excludedResources | nindent 4 }}
+  {{- end }}
+{{- end }}

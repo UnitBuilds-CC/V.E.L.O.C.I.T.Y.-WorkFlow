@@ -101,3 +101,45 @@ postgresql://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ incl
 postgresql://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ .Values.postgresql.host | default (include "velocity.postgresFullname" .) }}:{{ .Values.postgresql.port }}/{{ .Values.postgresql.auth.database }}
 {{- end }}
 {{- end }}
+
+{{/*
+Velero fully-qualified name
+*/}}
+{{- define "velocity.veleroFullname" -}}
+{{- printf "%s-velero" (include "velocity.fullname" .) }}
+{{- end }}
+
+{{/*
+Jaeger fully-qualified name
+*/}}
+{{- define "velocity.jaegerFullname" -}}
+{{- printf "%s-jaeger" (include "velocity.fullname" .) }}
+{{- end }}
+
+{{/*
+Tempo fully-qualified name
+*/}}
+{{- define "velocity.tempoFullname" -}}
+{{- printf "%s-tempo" (include "velocity.fullname" .) }}
+{{- end }}
+
+{{/*
+Loki fully-qualified name
+*/}}
+{{- define "velocity.lokiFullname" -}}
+{{- printf "%s-loki" (include "velocity.fullname" .) }}
+{{- end }}
+
+{{/*
+Redis fully-qualified name
+*/}}
+{{- define "velocity.redisFullname" -}}
+{{- printf "%s-redis" (include "velocity.fullname" .) }}
+{{- end }}
+
+{{/*
+Alertmanager fully-qualified name
+*/}}
+{{- define "velocity.alertmanagerFullname" -}}
+{{- printf "%s-alertmanager" (include "velocity.fullname" .) }}
+{{- end }}

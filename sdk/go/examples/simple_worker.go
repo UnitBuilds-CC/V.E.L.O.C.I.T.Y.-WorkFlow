@@ -1,62 +1,149 @@
-// Example: Simple workflow worker using the VELOCITY-WorkFlow Go SDK.
+// Example: Simple task worker using the VELOCITY-WorkFlow Go SDK.
 //
-// This demonstrates that the VELOCITY-WorkFlow gRPC API is language-agnostic.
-// The same workflow engine serves Go, Python, C#, Java, TypeScript, or any gRPC client.
+// Demonstrates:
+//   - Worker registration with a task queue
+//   - Polling for tasks in a loop
+//   - Executing task logic via registered handlers
+//   - Error handling with typed errors
+//   - Signal handling for graceful shutdown (SIGINT / SIGTERM)
 //
 // Prerequisites:
 //   1. Start the VELOCITY-WorkFlow server:
-//      cd VELOCITY-WorkFlow/src/Velocity.Workflow.Server
-//      dotnet run
+//      cd VELOCITY-WorkFlow/src/Velocity.Workflow.Server && dotnet run
 //
-//   2. Generate gRPC stubs:
-//      cd VELOCITY-WorkFlow/sdk/go
-//      protoc -I../../src/Velocity.Workflow.Server/Protos \
-//          --go_out=velocity_sdk --go-grpc_out=velocity_sdk \
-//          ../../src/Velocity.Workflow.Server/Protos/workflow_service.proto
+//   2. Build the SDK:
+//      cd VELOCITY-WorkFlow/sdk/go && go build ./...
 //
-//   3. Run this example:
+//   3. Run this worker:
 //      go run examples/simple_worker.go
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	velocity_sdk "github.com/velocity-workflow/sdk/go/velocity_sdk"
 )
 
-func main() {
-	fmt.Println("=== VELOCITY-WorkFlow Go SDK Example ===")
-	fmt.Println()
+// ── Configuration ────────────────────────────────────────────────────────
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+const (
+	serverAddr   = "localhost:50051"
+	taskQueue    = "orders"
+	pollInterval = 1 * time.Second
+)
+
+// ── Task handler ─────────────────────────────────────────────────────────
+
+type taskHandler func(ctx context.Context, input json.RawMessage) (interface{}, error)
+
+func processOrder(ctx context.Context, input json.RawMessage) (interface{}, error) {
+	var payload struct {
+		OrderID string `json:"order_id"`
+	}
+	if err := json.Unmarshal(input, &payload); err != nil {
+		return nil, fmt.Errorf("unmarshal input: %w", err)
+	}
+	log.Printf("[worker] Processing order %s", payload.OrderID)
+
+	// Simulate work
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	return map[string]interface{}{
+		"status":   "shipped",
+		"order_id": payload.OrderID,
+	}, nil
+}
+
+var handlers = map[string]taskHandler{
+	"order-processing": processOrder,
+}
+
+// ── Worker loop ──────────────────────────────────────────────────────────
+
+func main() {
+	log.Println("[worker] Starting VELOCITY-WorkFlow Go worker")
+	log.Printf("[worker] Server: %s | Queue: %s", serverAddr, taskQueue)
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Connect to the server (no JWT = anonymous access)
-	client, err := velocity_sdk.NewClient("localhost:50051", "")
+	// Signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		log.Printf("[worker] Received signal %s — shutting down...", sig)
+		cancel()
+	}()
+
+	// Connect to the server
+	client, err := velocity_sdk.NewClient(serverAddr, "")
 	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		log.Fatalf("[worker] Failed to connect: %v", err)
 	}
 	defer client.Close()
 
-	fmt.Printf("Connected to: %s\n", client.Target())
+	log.Printf("[worker] Registered on task queue '%s'", taskQueue)
 
-	// Verify connectivity
-	if err := client.Ping(ctx); err != nil {
-		log.Fatalf("Ping failed: %v", err)
+	// Poll loop
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("[worker] Shut down cleanly")
+			return
+		default:
+		}
+
+		task, err := client.PollTask(ctx, taskQueue, 2*time.Second)
+		if err != nil {
+			log.Printf("[worker] Poll error: %v", err)
+			select {
+			case <-time.After(pollInterval):
+			case <-ctx.Done():
+				return
+			}
+			continue
+		}
+
+		if task == nil {
+			select {
+			case <-time.After(pollInterval):
+			case <-ctx.Done():
+				return
+			}
+			continue
+		}
+
+		handler, ok := handlers[task.WorkflowType]
+		if !ok {
+			log.Printf("[worker] No handler for task type '%s' — failing task", task.WorkflowType)
+			_ = client.FailTask(ctx, task.WorkflowKey, fmt.Sprintf("no handler for %s", task.WorkflowType))
+			continue
+		}
+
+		result, err := handler(ctx, task.Input)
+		if err != nil {
+			log.Printf("[worker] Task execution error: %v", err)
+			_ = client.FailTask(ctx, task.WorkflowKey, err.Error())
+			continue
+		}
+
+		resultBytes, _ := json.Marshal(result)
+		if err := client.CompleteWorkflow(ctx, task.WorkflowKey, resultBytes); err != nil {
+			log.Printf("[worker] Failed to complete workflow: %v", err)
+			continue
+		}
+		log.Printf("[worker] Task '%s' completed successfully", task.WorkflowType)
 	}
-	fmt.Println("Server ping: OK")
-
-	// In a full implementation, you would:
-	// 1. Start a workflow
-	// 2. Describe the workflow
-	// 3. Send signals
-	// 4. Complete/fail/cancel the workflow
-	// 5. Query the final state
-
-	fmt.Println()
-	fmt.Println("=== Go SDK connected successfully! ===")
-	fmt.Println("The Go SDK can communicate with the Rust/C# workflow engine via gRPC.")
 }

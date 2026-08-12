@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .filter-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); }
+        .filter-bar .form-group { margin-bottom: 0; min-width: 140px; }
+        .filter-bar .form-label { margin-bottom: 0.25rem; }
+        .event-detail { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 1rem; margin-top: 0.75rem; font-size: 0.8125rem; }
+        .event-detail-row { display: flex; gap: 1rem; padding: 0.375rem 0; border-bottom: 1px solid var(--border-color); }
+        .event-detail-row:last-child { border-bottom: none; }
+        .event-detail-key { color: var(--text-secondary); min-width: 120px; font-weight: 500; }
+        .event-detail-val { font-family: 'SF Mono', Monaco, Consolas, monospace; word-break: break-all; }
+        .audit-row { cursor: pointer; }
+        .audit-row:hover td { background: var(--bg-tertiary); }
+        .audit-row.expanded td { border-bottom: none; }
+        .detail-row td { padding: 0 !important; background: var(--bg-secondary); }
+        .search-bar { position: relative; flex: 1; min-width: 200px; }
+        .search-bar input { padding-left: 2rem; width: 100%; }
+        .search-bar::before { content: '\1F50D'; position: absolute; left: 0.6rem; top: 50%; transform: translateY(-50%); font-size: 0.8rem; z-index: 1; }
+        .export-btns { display: flex; gap: 0.5rem; }
+        .badge-event { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
+        .badge-event::before { background: var(--accent-blue); }
+        .action-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-family: 'SF Mono', Monaco, Consolas, monospace; background: var(--bg-tertiary); color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>&rsaquo;</span>
+                <a href="admin.html">Admin</a>
+                <span>&rsaquo;</span>
+                <strong>Audit Log</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <div class="export-btns">
+                <button class="btn btn-sm" onclick="exportCSV()">&#128229; CSV</button>
+                <button class="btn btn-sm" onclick="exportJSON()">&#128229; JSON</button>
+            </div>
+            <button class="btn btn-sm" onclick="refreshAudit()">&#8635; Refresh</button>
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">&#9681;</button>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <div class="search-bar">
+                <div class="form-group">
+                    <label class="form-label">Search</label>
+                    <input type="text" class="form-input" id="filter-search" placeholder="Search audit entries..." oninput="applyFilters()">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Action</label>
+                <select class="form-select" id="filter-action" onchange="applyFilters()">
+                    <option value="">All Actions</option>
+                    <option value="namespace.created">namespace.created</option>
+                    <option value="namespace.deleted">namespace.deleted</option>
+                    <option value="workflow.started">workflow.started</option>
+                    <option value="workflow.completed">workflow.completed</option>
+                    <option value="workflow.failed">workflow.failed</option>
+                    <option value="apikey.created">apikey.created</option>
+                    <option value="apikey.revoked">apikey.revoked</option>
+                    <option value="queue.paused">queue.paused</option>
+                    <option value="queue.resumed">queue.resumed</option>
+                    <option value="settings.updated">settings.updated</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">User</label>
+                <select class="form-select" id="filter-user" onchange="applyFilters()">
+                    <option value="">All Users</option>
+                    <option value="admin">admin</option>
+                    <option value="ops-bot">ops-bot</option>
+                    <option value="system">system</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Namespace</label>
+                <select class="form-select" id="filter-namespace" onchange="applyFilters()">
+                    <option value="">All Namespaces</option>
+                    <option value="default">default</option>
+                    <option value="production">production</option>
+                    <option value="staging">staging</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">From</label>
+                <input type="datetime-local" class="form-input" id="filter-from" onchange="applyFilters()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">To</label>
+                <input type="datetime-local" class="form-input" id="filter-to" onchange="applyFilters()">
+            </div>
+            <div class="form-group">
+                <button class="btn btn-sm" onclick="clearFilters()">Clear Filters</button>
+            </div>
+        </div>
+
+        <!-- Results Info -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;font-size:0.8125rem;color:var(--text-secondary);">
+            <span id="result-count">0 entries</span>
+            <span id="filter-status"></span>
+        </div>
+
+        <!-- Audit Table -->
+        <div class="section">
+            <div class="section-body no-pad">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th onclick="sortBy('time')">Timestamp <span class="sort-icon">&#8597;</span></th>
+                                <th onclick="sortBy('action')">Action <span class="sort-icon">&#8597;</span></th>
+                                <th onclick="sortBy('user')">User <span class="sort-icon">&#8597;</span></th>
+                                <th onclick="sortBy('namespace')">Namespace <span class="sort-icon">&#8597;</span></th>
+                                <th>Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="pagination">
+                <span id="page-info">Page 1 of 1</span>
+                <div class="pagination-btns">
+                    <button class="btn btn-sm" onclick="changePage(-1)">&laquo; Prev</button>
+                    <button class="btn btn-sm" onclick="changePage(1)">Next &raquo;</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        velocityTheme.init();
+
+        // ─── Mock Data ───────────────────────────────────────────────────────
+        const allAuditEntries = [];
+        const actions = ['namespace.created','namespace.deleted','workflow.started','workflow.completed','workflow.failed','apikey.created','apikey.revoked','queue.paused','queue.resumed','settings.updated','worker.registered','worker.deregistered'];
+        const users = ['admin','ops-bot','system','deploy-svc','ci-pipeline'];
+        const namespaces = ['default','production','staging','development'];
+
+        for (let i = 0; i < 87; i++) {
+            const action = actions[Math.floor(Math.random() * actions.length)];
+            const user = users[Math.floor(Math.random() * users.length)];
+            const ns = namespaces[Math.floor(Math.random() * namespaces.length)];
+            const ts = new Date(Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000));
+            allAuditEntries.push({
+                id: 'evt_' + (1000 + i),
+                time: ts.toISOString(),
+                action, user, namespace: ns,
+                detail: `${action.replace('.', ' ')} by ${user} in ${ns}`,
+                metadata: { requestId: 'req_' + Math.random().toString(36).substring(2, 10), source: 'velocity-server', version: '0.1.0' }
+            });
+        }
+        allAuditEntries.sort((a, b) => new Date(b.time) - new Date(a.time));
+
+        let filteredEntries = [...allAuditEntries];
+        let currentPage = 1;
+        const pageSize = 20;
+        let sortField = 'time';
+        let sortDir = -1;
+        let expandedRow = null;
+
+        // ─── Render ──────────────────────────────────────────────────────────
+        function renderTable() {
+            const start = (currentPage - 1) * pageSize;
+            const pageEntries = filteredEntries.slice(start, start + pageSize);
+            const tbody = document.getElementById('audit-table-body');
+
+            tbody.innerHTML = pageEntries.map((e, i) => `
+                <tr class="audit-row ${expandedRow === e.id ? 'expanded' : ''}" onclick="toggleDetail('${e.id}')">
+                    <td style="font-family:'SF Mono',Monaco,Consolas,monospace;font-size:0.8125rem;">${new Date(e.time).toLocaleString()}</td>
+                    <td><span class="action-tag">${e.action}</span></td>
+                    <td>${e.user}</td>
+                    <td>${e.namespace}</td>
+                    <td style="color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.detail}</td>
+                </tr>
+                ${expandedRow === e.id ? `
+                <tr class="detail-row">
+                    <td colspan="5">
+                        <div class="event-detail">
+                            <div class="event-detail-row"><span class="event-detail-key">Event ID</span><span class="event-detail-val">${e.id}</span></div>
+                            <div class="event-detail-row"><span class="event-detail-key">Timestamp</span><span class="event-detail-val">${e.time}</span></div>
+                            <div class="event-detail-row"><span class="event-detail-key">Action</span><span class="event-detail-val">${e.action}</span></div>
+                            <div class="event-detail-row"><span class="event-detail-key">User</span><span class="event-detail-val">${e.user}</span></div>
+                            <div class="event-detail-row"><span class="event-detail-key">Namespace</span><span class="event-detail-val">${e.namespace}</span></div>
+                            <div class="event-detail-row"><span class="event-detail-key">Detail</span><span class="event-detail-val">${e.detail}</span></div>
+                            <div class="event-detail-row"><span class="event-detail-key">Request ID</span><span class="event-detail-val">${e.metadata.requestId}</span></div>
+                            <div class="event-detail-row"><span class="event-detail-key">Source</span><span class="event-detail-val">${e.metadata.source}</span></div>
+                        </div>
+                    </td>
+                </tr>` : ''}
+            `).join('');
+
+            const totalPages = Math.ceil(filteredEntries.length / pageSize) || 1;
+            document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('result-count').textContent = `${filteredEntries.length} entries`;
+        }
+
+        // ─── Filters ─────────────────────────────────────────────────────────
+        function applyFilters() {
+            const search = document.getElementById('filter-search').value.toLowerCase();
+            const action = document.getElementById('filter-action').value;
+            const user = document.getElementById('filter-user').value;
+            const ns = document.getElementById('filter-namespace').value;
+            const from = document.getElementById('filter-from').value;
+            const to = document.getElementById('filter-to').value;
+
+            filteredEntries = allAuditEntries.filter(e => {
+                if (search && !e.detail.toLowerCase().includes(search) && !e.action.toLowerCase().includes(search) && !e.user.toLowerCase().includes(search)) return false;
+                if (action && e.action !== action) return false;
+                if (user && e.user !== user) return false;
+                if (ns && e.namespace !== ns) return false;
+                if (from && new Date(e.time) < new Date(from)) return false;
+                if (to && new Date(e.time) > new Date(to)) return false;
+                return true;
+            });
+
+            currentPage = 1;
+            expandedRow = null;
+            const activeFilters = [action, user, ns, from, to, search].filter(Boolean).length;
+            document.getElementById('filter-status').textContent = activeFilters ? `${activeFilters} filter(s) active` : '';
+            renderTable();
+        }
+
+        function clearFilters() {
+            document.getElementById('filter-search').value = '';
+            document.getElementById('filter-action').value = '';
+            document.getElementById('filter-user').value = '';
+            document.getElementById('filter-namespace').value = '';
+            document.getElementById('filter-from').value = '';
+            document.getElementById('filter-to').value = '';
+            applyFilters();
+        }
+
+        // ─── Sort ────────────────────────────────────────────────────────────
+        function sortBy(field) {
+            if (sortField === field) { sortDir *= -1; } else { sortField = field; sortDir = -1; }
+            filteredEntries.sort((a, b) => {
+                const va = a[field], vb = b[field];
+                if (va < vb) return -1 * sortDir;
+                if (va > vb) return 1 * sortDir;
+                return 0;
+            });
+            currentPage = 1;
+            renderTable();
+        }
+
+        // ─── Pagination ─────────────────────────────────────────────────────
+        function changePage(delta) {
+            const totalPages = Math.ceil(filteredEntries.length / pageSize) || 1;
+            currentPage = Math.max(1, Math.min(totalPages, currentPage + delta));
+            expandedRow = null;
+            renderTable();
+        }
+
+        // ─── Detail Toggle ──────────────────────────────────────────────────
+        function toggleDetail(id) {
+            expandedRow = expandedRow === id ? null : id;
+            renderTable();
+        }
+
+        // ─── Export ──────────────────────────────────────────────────────────
+        function exportCSV() {
+            const headers = ['Timestamp', 'Action', 'User', 'Namespace', 'Detail'];
+            const rows = filteredEntries.map(e => [e.time, e.action, e.user, e.namespace, `"${e.detail}"`]);
+            const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            downloadFile(csv, 'audit_log.csv', 'text/csv');
+            showToast(`Exported ${filteredEntries.length} entries as CSV`, 'success');
+        }
+
+        function exportJSON() {
+            const json = JSON.stringify(filteredEntries, null, 2);
+            downloadFile(json, 'audit_log.json', 'application/json');
+            showToast(`Exported ${filteredEntries.length} entries as JSON`, 'success');
+        }
+
+        function downloadFile(content, filename, type) {
+            const blob = new Blob([content], { type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename; a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function refreshAudit() {
+            applyFilters();
+            showToast('Audit log refreshed', 'info');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // ─── Init ────────────────────────────────────────────────────────────
+        applyFilters();
+    </script>
+</body>
+</html>

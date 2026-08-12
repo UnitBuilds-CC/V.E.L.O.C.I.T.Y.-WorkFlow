@@ -1,0 +1,64 @@
+{{- if .Values.monitoring.alertmanager.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "velocity.alertmanagerFullname" . }}-config
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: alerting
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: {{ .Values.monitoring.alertmanager.resolveTimeout | default "5m" }}
+      {{- if .Values.monitoring.alertmanager.smtpFrom }}
+      smtp_from: {{ .Values.monitoring.alertmanager.smtpFrom }}
+      smtp_smarthost: {{ .Values.monitoring.alertmanager.smtpSmarthost | default "localhost:25" }}
+      {{- end }}
+    route:
+      group_by: {{ .Values.monitoring.alertmanager.route.groupBy | default (list "alertname" "namespace") | toJson }}
+      group_wait: {{ .Values.monitoring.alertmanager.route.groupWait | default "30s" }}
+      group_interval: {{ .Values.monitoring.alertmanager.route.groupInterval | default "5m" }}
+      repeat_interval: {{ .Values.monitoring.alertmanager.route.repeatInterval | default "4h" }}
+      receiver: {{ .Values.monitoring.alertmanager.route.receiver | default "default" }}
+      routes:
+        {{- if .Values.monitoring.alertmanager.route.routes }}
+        {{- toYaml .Values.monitoring.alertmanager.route.routes | nindent 8 }}
+        {{- end }}
+    receivers:
+      - name: {{ .Values.monitoring.alertmanager.route.receiver | default "default" }}
+        {{- if .Values.monitoring.alertmanager.receivers.webhook }}
+        webhook_configs:
+          - url: {{ .Values.monitoring.alertmanager.receivers.webhook.url | quote }}
+            send_resolved: true
+        {{- end }}
+        {{- if .Values.monitoring.alertmanager.receivers.email }}
+        email_configs:
+          - to: {{ .Values.monitoring.alertmanager.receivers.email.to | quote }}
+            send_resolved: true
+        {{- end }}
+    inhibit_rules:
+      - source_matchers:
+          - severity = "critical"
+        target_matchers:
+          - severity = "warning"
+        equal:
+          - alertname
+          - namespace
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "velocity.alertmanagerFullname" . }}
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: alerting
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9093
+      targetPort: http
+  selector:
+    {{- include "velocity.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/name: alertmanager
+{{- end }}

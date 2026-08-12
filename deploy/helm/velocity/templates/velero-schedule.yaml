@@ -1,0 +1,26 @@
+{{- if and .Values.backup.enabled .Values.backup.velero.schedule.enabled }}
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: {{ include "velocity.veleroFullname" . }}-schedule
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.velero.schedule.cron | default "0 2 * * *" | quote }}
+  template:
+    includedNamespaces:
+      {{- if .Values.backup.velero.schedule.includedNamespaces }}
+      {{- toYaml .Values.backup.velero.schedule.includedNamespaces | nindent 6 }}
+      {{- else }}
+      - {{ .Release.Namespace }}
+      {{- end }}
+    labelSelector:
+      matchLabels:
+        {{- include "velocity.selectorLabels" . | nindent 8 }}
+    storageLocation: {{ .Values.backup.velero.schedule.storageLocation | default "default" }}
+    ttl: {{ .Values.backup.velero.schedule.ttl | default "720h" }}
+    {{- if .Values.backup.velero.schedule.includeClusterResources }}
+    includeClusterResources: true
+    {{- end }}
+{{- end }}

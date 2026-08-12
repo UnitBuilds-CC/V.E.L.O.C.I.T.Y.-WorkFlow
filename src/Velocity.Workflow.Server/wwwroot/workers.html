@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workers — VELOCITY WorkFlow</title>
+    <link rel="stylesheet" href="css/velocity.css">
+    <style>
+        .worker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .worker-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 1.25rem; transition: var(--transition); }
+        .worker-card:hover { border-color: var(--accent-blue); }
+        .worker-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .worker-name { font-size: 0.9375rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+        .worker-status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .worker-status-dot.online { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); animation: pulse 2s infinite; }
+        .worker-status-dot.busy { background: var(--accent-yellow); box-shadow: 0 0 8px var(--accent-yellow); }
+        .worker-status-dot.offline { background: var(--accent-red); box-shadow: 0 0 8px var(--accent-red); }
+        .worker-status-dot.paused { background: var(--accent-orange); }
+        .worker-meta { font-size: 0.8125rem; color: var(--text-secondary); }
+        .worker-meta-row { display: flex; justify-content: space-between; padding: 0.375rem 0; border-bottom: 1px solid var(--border-color); }
+        .worker-meta-row:last-child { border-bottom: none; }
+        .worker-meta-key { color: var(--text-muted); }
+        .worker-meta-val { font-weight: 500; font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 0.8125rem; }
+        .load-bar-container { margin-top: 0.75rem; }
+        .load-bar-bg { height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+        .load-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+        .load-bar-label { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; }
+        .queue-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; background: var(--bg-tertiary); color: var(--text-secondary); margin: 0.125rem; border: 1px solid var(--border-color); }
+        .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .health-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 1rem; display: flex; align-items: center; gap: 0.75rem; }
+        .health-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+        .health-icon.ok { background: rgba(63,185,80,0.15); }
+        .health-icon.warn { background: rgba(210,153,34,0.15); }
+        .health-icon.err { background: rgba(248,81,73,0.15); }
+        .health-label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
+        .health-val { font-size: 1.125rem; font-weight: 700; }
+        .filter-row { display: flex; gap: 0.75rem; align-items: flex-end; margin-bottom: 1rem; flex-wrap: wrap; }
+        .filter-row .form-group { margin-bottom: 0; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="breadcrumb">
+                <a href="index.html">VELOCITY</a>
+                <span>&rsaquo;</span>
+                <strong>Workers</strong>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <button class="btn btn-sm" onclick="refreshWorkers()">&#8635; Refresh</button>
+            <button class="btn btn-sm" onclick="velocityTheme.toggle()">&#9681;</button>
+        </div>
+    </div>
+
+    <div class="content-area">
+        <!-- Health Overview -->
+        <div class="health-grid" id="health-overview"></div>
+
+        <!-- Filters -->
+        <div class="filter-row">
+            <div class="form-group">
+                <label class="form-label">Status</label>
+                <select class="form-select" id="filter-status" onchange="applyFilters()">
+                    <option value="all">All Workers</option>
+                    <option value="online">Online</option>
+                    <option value="busy">Busy</option>
+                    <option value="paused">Paused</option>
+                    <option value="offline">Offline</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Namespace</label>
+                <select class="form-select" id="filter-namespace" onchange="applyFilters()">
+                    <option value="all">All Namespaces</option>
+                    <option value="default">default</option>
+                    <option value="production">production</option>
+                    <option value="staging">staging</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-input" id="filter-search" placeholder="Filter workers..." oninput="applyFilters()">
+            </div>
+        </div>
+
+        <!-- Worker Cards -->
+        <div class="worker-grid" id="worker-grid"></div>
+
+        <!-- Detailed Table -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">&#128187; Worker Details</div>
+                <div class="toolbar">
+                    <select class="form-select" id="table-view" onchange="renderTable()">
+                        <option value="all">All Columns</option>
+                        <option value="compact">Compact</option>
+                    </select>
+                </div>
+            </div>
+            <div class="section-body no-pad">
+                <div class="table-container">
+                    <table>
+                        <thead id="worker-thead">
+                            <tr>
+                                <th>Worker ID</th>
+                                <th>Status</th>
+                                <th>Namespace</th>
+                                <th>Task Queues</th>
+                                <th>Active Tasks</th>
+                                <th>Capacity</th>
+                                <th>Uptime</th>
+                                <th>Load</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="worker-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/velocity.js"></script>
+    <script>
+        velocityTheme.init();
+
+        // ─── Mock Data ───────────────────────────────────────────────────────
+        const mockWorkers = [
+            { id: 'worker-node-01', status: 'online', namespace: 'default', queues: ['workflow-tasks','activity-tasks'], activeTasks: 4, capacity: 10, uptime: '3d 14h', load: 40, host: '10.0.1.12', version: '0.1.0', lastHeartbeat: Date.now() - 2000 },
+            { id: 'worker-node-02', status: 'busy', namespace: 'production', queues: ['workflow-tasks','signal-tasks','timer-tasks'], activeTasks: 9, capacity: 10, uptime: '7d 2h', load: 90, host: '10.0.1.13', version: '0.1.0', lastHeartbeat: Date.now() - 1000 },
+            { id: 'worker-node-03', status: 'online', namespace: 'staging', queues: ['activity-tasks'], activeTasks: 2, capacity: 8, uptime: '1d 8h', load: 25, host: '10.0.1.14', version: '0.1.0', lastHeartbeat: Date.now() - 3000 },
+            { id: 'worker-node-04', status: 'paused', namespace: 'production', queues: ['batch-tasks'], activeTasks: 0, capacity: 5, uptime: '0d 0h', load: 0, host: '10.0.1.15', version: '0.1.0', lastHeartbeat: Date.now() - 300000 },
+            { id: 'worker-node-05', status: 'online', namespace: 'default', queues: ['workflow-tasks','activity-tasks','signal-tasks'], activeTasks: 6, capacity: 12, uptime: '14d 5h', load: 50, host: '10.0.1.16', version: '0.1.0', lastHeartbeat: Date.now() - 1500 },
+            { id: 'worker-node-06', status: 'offline', namespace: 'staging', queues: ['workflow-tasks'], activeTasks: 0, capacity: 8, uptime: '0d 0h', load: 0, host: '10.0.1.17', version: '0.0.9', lastHeartbeat: Date.now() - 3600000 },
+            { id: 'worker-node-07', status: 'busy', namespace: 'production', queues: ['activity-tasks','signal-tasks'], activeTasks: 7, capacity: 8, uptime: '5d 11h', load: 87, host: '10.0.1.18', version: '0.1.0', lastHeartbeat: Date.now() - 800 }
+        ];
+
+        let filteredWorkers = [...mockWorkers];
+
+        // ─── Render ──────────────────────────────────────────────────────────
+        function renderHealthOverview() {
+            const online = mockWorkers.filter(w => w.status === 'online' || w.status === 'busy').length;
+            const busy = mockWorkers.filter(w => w.status === 'busy').length;
+            const paused = mockWorkers.filter(w => w.status === 'paused').length;
+            const offline = mockWorkers.filter(w => w.status === 'offline').length;
+            const totalLoad = Math.round(mockWorkers.reduce((s, w) => s + w.load, 0) / mockWorkers.length);
+            const totalTasks = mockWorkers.reduce((s, w) => s + w.activeTasks, 0);
+
+            document.getElementById('health-overview').innerHTML = `
+                <div class="health-card"><div class="health-icon ok">&#9989;</div><div><div class="health-label">Online</div><div class="health-val" style="color:var(--accent-green)">${online}</div></div></div>
+                <div class="health-card"><div class="health-icon warn">&#9888;</div><div><div class="health-label">Busy</div><div class="health-val" style="color:var(--accent-yellow)">${busy}</div></div></div>
+                <div class="health-card"><div class="health-icon" style="background:rgba(227,135,45,0.15)">&#9888;</div><div><div class="health-label">Paused</div><div class="health-val" style="color:var(--accent-orange)">${paused}</div></div></div>
+                <div class="health-card"><div class="health-icon err">&#10060;</div><div><div class="health-label">Offline</div><div class="health-val" style="color:var(--accent-red)">${offline}</div></div></div>
+                <div class="health-card"><div class="health-icon ok">&#128200;</div><div><div class="health-label">Avg Load</div><div class="health-val">${totalLoad}%</div></div></div>
+                <div class="health-card"><div class="health-icon ok">&#9889;</div><div><div class="health-label">Active Tasks</div><div class="health-val">${totalTasks}</div></div></div>
+            `;
+        }
+
+        function renderCards() {
+            const grid = document.getElementById('worker-grid');
+            grid.innerHTML = filteredWorkers.map(w => {
+                const loadColor = w.load > 80 ? 'var(--accent-red)' : w.load > 50 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+                return `
+                <div class="worker-card">
+                    <div class="worker-card-header">
+                        <div class="worker-name"><div class="worker-status-dot ${w.status}"></div>${w.id}</div>
+                        <span class="badge badge-${w.status === 'online' ? 'running' : w.status === 'busy' ? 'running' : w.status === 'paused' ? 'canceled' : 'failed'}">${w.status}</span>
+                    </div>
+                    <div class="worker-meta">
+                        <div class="worker-meta-row"><span class="worker-meta-key">Namespace</span><span class="worker-meta-val">${w.namespace}</span></div>
+                        <div class="worker-meta-row"><span class="worker-meta-key">Host</span><span class="worker-meta-val">${w.host}</span></div>
+                        <div class="worker-meta-row"><span class="worker-meta-key">Version</span><span class="worker-meta-val">${w.version}</span></div>
+                        <div class="worker-meta-row"><span class="worker-meta-key">Uptime</span><span class="worker-meta-val">${w.uptime}</span></div>
+                        <div class="worker-meta-row"><span class="worker-meta-key">Tasks</span><span class="worker-meta-val">${w.activeTasks} / ${w.capacity}</span></div>
+                    </div>
+                    <div style="margin-top:0.75rem;">
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.25rem;">Task Queues</div>
+                        ${w.queues.map(q => `<span class="queue-tag">${q}</span>`).join('')}
+                    </div>
+                    <div class="load-bar-container">
+                        <div class="load-bar-bg"><div class="load-bar-fill" style="width:${w.load}%;background:${loadColor};"></div></div>
+                        <div class="load-bar-label"><span>Load</span><span style="color:${loadColor}">${w.load}%</span></div>
+                    </div>
+                    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;">
+                        <button class="btn btn-sm" onclick="toggleWorker('${w.id}')">${w.status === 'paused' ? 'Resume' : 'Pause'}</button>
+                        <button class="btn btn-sm" onclick="viewWorkerDetail('${w.id}')">Details</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('worker-table-body');
+            const compact = document.getElementById('table-view').value === 'compact';
+            tbody.innerHTML = filteredWorkers.map(w => `
+                <tr>
+                    <td><strong>${w.id}</strong></td>
+                    <td><span class="badge badge-${w.status === 'online' ? 'running' : w.status === 'busy' ? 'running' : w.status === 'paused' ? 'canceled' : 'failed'}">${w.status}</span></td>
+                    <td>${w.namespace}</td>
+                    <td>${w.queues.map(q => `<span class="queue-tag">${q}</span>`).join('')}</td>
+                    ${compact ? '' : `<td>${w.activeTasks}</td><td>${w.capacity}</td><td>${w.uptime}</td>`}
+                    <td>
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            <div style="flex:1;height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden;min-width:60px;">
+                                <div style="height:100%;width:${w.load}%;background:${w.load > 80 ? 'var(--accent-red)' : w.load > 50 ? 'var(--accent-yellow)' : 'var(--accent-green)'};border-radius:2px;"></div>
+                            </div>
+                            <span style="font-size:0.75rem;font-weight:600;">${w.load}%</span>
+                        </div>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm" onclick="toggleWorker('${w.id}')">${w.status === 'paused' ? 'Resume' : 'Pause'}</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // ─── Actions ─────────────────────────────────────────────────────────
+        function applyFilters() {
+            const status = document.getElementById('filter-status').value;
+            const ns = document.getElementById('filter-namespace').value;
+            const search = document.getElementById('filter-search').value.toLowerCase();
+            filteredWorkers = mockWorkers.filter(w => {
+                if (status !== 'all' && w.status !== status) return false;
+                if (ns !== 'all' && w.namespace !== ns) return false;
+                if (search && !w.id.toLowerCase().includes(search) && !w.host.toLowerCase().includes(search)) return false;
+                return true;
+            });
+            renderCards();
+            renderTable();
+        }
+
+        function toggleWorker(id) {
+            const w = mockWorkers.find(w => w.id === id);
+            if (!w) return;
+            if (w.status === 'offline') return showToast(`Cannot resume offline worker "${id}"`, 'error');
+            w.status = w.status === 'paused' ? 'online' : 'paused';
+            w.load = w.status === 'paused' ? 0 : Math.floor(Math.random() * 40) + 30;
+            applyFilters(); renderHealthOverview();
+            showToast(`Worker "${id}" ${w.status}`, 'success');
+        }
+
+        function viewWorkerDetail(id) {
+            const w = mockWorkers.find(w => w.id === id);
+            if (!w) return;
+            showToast(`Worker ${id}: ${w.activeTasks}/${w.capacity} tasks, load ${w.load}%, host ${w.host}`, 'info');
+        }
+
+        function refreshWorkers() {
+            mockWorkers.forEach(w => {
+                if (w.status !== 'offline' && w.status !== 'paused') {
+                    w.lastHeartbeat = Date.now();
+                    w.activeTasks = Math.min(w.capacity, Math.max(0, w.activeTasks + Math.floor(Math.random() * 5) - 2));
+                    w.load = Math.round((w.activeTasks / w.capacity) * 100);
+                }
+            });
+            applyFilters(); renderHealthOverview();
+            showToast('Worker data refreshed', 'info');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // ─── Init ────────────────────────────────────────────────────────────
+        renderHealthOverview();
+        applyFilters();
+
+        // Auto-refresh every 10 seconds
+        setInterval(() => {
+            mockWorkers.forEach(w => {
+                if (w.status !== 'offline' && w.status !== 'paused') {
+                    w.lastHeartbeat = Date.now();
+                }
+            });
+        }, 10000);
+    </script>
+</body>
+</html>
