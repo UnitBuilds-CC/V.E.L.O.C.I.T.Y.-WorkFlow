@@ -369,7 +369,9 @@ impl SystemMetricsProbe {
             #[cfg(target_os = "windows")]
             system: std::sync::Mutex::new({
                 let mut sys = sysinfo::System::new();
-                sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]));
+                sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(
+                    pid,
+                )]));
                 Some(sys)
             }),
         }

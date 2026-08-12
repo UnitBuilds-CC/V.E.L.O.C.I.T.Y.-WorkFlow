@@ -43,11 +43,11 @@ enum WorkflowStatus {
 
 struct WorkflowState {
     workflow_id: String,
-    run_id: String,
+    _run_id: String,
     workflow_type: String,
     namespace: String,
     status: WorkflowStatus,
-    start_time: Instant,
+    _start_time: Instant,
     signals_received: Vec<(String, Vec<u8>)>,
     result: Option<Vec<u8>>,
 }
@@ -87,11 +87,11 @@ impl TemporalEngine {
 
         let state = WorkflowState {
             workflow_id: wf_id.clone(),
-            run_id: run_id.clone(),
+            _run_id: run_id.clone(),
             workflow_type: workflow_type.to_string(),
             namespace: namespace.to_string(),
             status: WorkflowStatus::Running,
-            start_time: Instant::now(),
+            _start_time: Instant::now(),
             signals_received: Vec::new(),
             result: None,
         };

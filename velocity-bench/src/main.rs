@@ -390,7 +390,10 @@ async fn run_simple_workflow(
                         if result.success {
                             // Now wait for the server to confirm completion.
                             match engine
-                                .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
+                                .wait_for_completion(
+                                    &handle,
+                                    Duration::from_millis(config.timeout_ms),
+                                )
                                 .await
                             {
                                 Ok(completion) => {

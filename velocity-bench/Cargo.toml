@@ -21,14 +21,10 @@ path = "src/temporal_bridge.rs"
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
 
-# gRPC client (BenchmarkService — shared proto for both engines)
+# gRPC client + server (BenchmarkService — shared proto for both engines)
 tonic = "0.12"
 prost = "0.13"
 prost-types = "0.13"
-
-# Temporal SDK (for temporal-bridge binary)
-temporalio-client = "0.6"
-temporalio-sdk = "0.6"
 
 # Metrics & timing
 hdrhistogram = "7"
