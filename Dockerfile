@@ -43,6 +43,7 @@ COPY velocity-workflow-daemon/ velocity-workflow-daemon/
 COPY velocity-bench/ velocity-bench/
 COPY velocity-dev-server/ velocity-dev-server/
 COPY velocity-test-framework/ velocity-test-framework/
+COPY migrations/ migrations/
 
 RUN cargo build --profile ci --workspace
 
