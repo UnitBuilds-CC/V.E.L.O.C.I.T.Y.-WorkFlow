@@ -13,4 +13,10 @@
     <ProjectReference Include="..\Velocity.Workflow.Generators\Velocity.Workflow.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <!-- Copy native Rust DLLs to output -->
+  <Target Name="CopyNativeDlls" BeforeTargets="Build">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)runtimes\win-x64\native\velocity_workflow_core.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)runtimes\win-x64\native\velocity_workflow_engine.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

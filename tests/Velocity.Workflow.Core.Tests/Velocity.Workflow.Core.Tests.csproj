@@ -22,4 +22,10 @@
     <ProjectReference Include="..\..\src\Velocity.Workflow.Core\Velocity.Workflow.Core.csproj" />
   </ItemGroup>
 
+  <!-- Copy native Rust DLLs from Core project runtimes folder -->
+  <Target Name="CopyNativeDlls" BeforeTargets="Build">
+    <Copy SourceFiles="..\..\src\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_core.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\..\src\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_engine.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

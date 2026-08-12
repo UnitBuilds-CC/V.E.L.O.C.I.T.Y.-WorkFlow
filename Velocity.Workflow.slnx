@@ -5,6 +5,7 @@
   <Folder Name="/src/">
     <Project Path="src/Velocity.Workflow.Core/Velocity.Workflow.Core.csproj" />
     <Project Path="src/Velocity.Workflow.Generators/Velocity.Workflow.Generators.csproj" />
+    <Project Path="src/Velocity.Workflow.Server/Velocity.Workflow.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/temporal2velocity.Tests/temporal2velocity.Tests.csproj" />

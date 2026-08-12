@@ -1,0 +1,21 @@
+{
+  "name": "@velocity-workflow/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript gRPC client for the VELOCITY-WorkFlow server",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "example": "ts-node examples/simple_worker.ts"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.10.0",
+    "@grpc/proto-loader": "^0.7.10"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.11.0"
+  },
+  "license": "MIT"
+}

@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 velocity-workflow-core = { path = "../velocity-workflow-core" }
+velocity-workflow-engine = { path = "../velocity-workflow-engine" }

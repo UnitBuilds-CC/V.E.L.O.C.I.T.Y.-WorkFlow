@@ -1,0 +1,1815 @@
+syntax = "proto3";
+
+package velocity.workflow.v1;
+
+option csharp_namespace = "Velocity.Workflow.Server.Protos";
+
+// ─── Workflow Service ─────────────────────────────────────────────────────────
+
+service WorkflowService {
+  // Workflow lifecycle
+  rpc StartWorkflow (StartWorkflowRequest) returns (StartWorkflowResponse);
+  rpc SignalWorkflow (SignalWorkflowRequest) returns (SignalWorkflowResponse);
+  rpc QueryWorkflow (QueryWorkflowRequest) returns (QueryWorkflowResponse);
+  rpc TerminateWorkflow (TerminateWorkflowRequest) returns (TerminateWorkflowResponse);
+  rpc CancelWorkflow (CancelWorkflowRequest) returns (CancelWorkflowResponse);
+  rpc DescribeWorkflow (DescribeWorkflowRequest) returns (DescribeWorkflowResponse);
+
+  // Visibility / Search
+  rpc ListWorkflows (ListWorkflowsRequest) returns (ListWorkflowsResponse);
+  rpc CountWorkflows (CountWorkflowsRequest) returns (CountWorkflowsResponse);
+
+  // Namespace management
+  rpc RegisterNamespace (RegisterNamespaceRequest) returns (RegisterNamespaceResponse);
+  rpc DescribeNamespace (DescribeNamespaceRequest) returns (DescribeNamespaceResponse);
+  rpc ListNamespaces (ListNamespacesRequest) returns (ListNamespacesResponse);
+
+  // Task queue
+  rpc PollActivityTaskQueue (PollActivityTaskQueueRequest) returns (PollActivityTaskQueueResponse);
+  rpc RespondActivityTaskCompleted (RespondActivityTaskCompletedRequest) returns (RespondActivityTaskCompletedResponse);
+  rpc RespondActivityTaskFailed (RespondActivityTaskFailedRequest) returns (RespondActivityTaskFailedResponse);
+
+  // Advanced workflow operations
+  rpc SignalWithStart (SignalWithStartRequest) returns (SignalWithStartResponse);
+  rpc ContinueAsNew (ContinueAsNewRequest) returns (ContinueAsNewResponse);
+  rpc GetWorkflowExecutionHistory (GetWorkflowExecutionHistoryRequest) returns (GetWorkflowExecutionHistoryResponse);
+  rpc DescribeTaskQueue (DescribeTaskQueueRequest) returns (DescribeTaskQueueResponse);
+
+  // Workflow reset
+  rpc ResetWorkflow (ResetWorkflowRequest) returns (ResetWorkflowResponse);
+
+  // Activity heartbeat
+  rpc RecordActivityHeartbeat (RecordActivityHeartbeatRequest) returns (RecordActivityHeartbeatResponse);
+
+  // Workflow update
+  rpc UpdateWorkflowExecution (UpdateWorkflowExecutionRequest) returns (UpdateWorkflowExecutionResponse);
+
+  // Search attributes
+  rpc UpsertWorkflowSearchAttributes (UpsertWorkflowSearchAttributesRequest) returns (UpsertWorkflowSearchAttributesResponse);
+
+  // Replay / Recovery
+  rpc ReplayWorkflow (ReplayWorkflowRequest) returns (ReplayWorkflowResponse);
+
+  // Dynamic configuration
+  rpc GetConfig (GetConfigRequest) returns (GetConfigResponse);
+  rpc SetConfig (SetConfigRequest) returns (SetConfigResponse);
+
+  // Worker versioning
+  rpc CreateWorkerVersionSet (CreateWorkerVersionSetRequest) returns (CreateWorkerVersionSetResponse);
+  rpc AddBuildId (AddBuildIdRequest) returns (AddBuildIdResponse);
+
+  // Nexus cross-service
+  rpc RegisterNexusService (RegisterNexusServiceRequest) returns (RegisterNexusServiceResponse);
+
+  // Schedules
+  rpc CreateSchedule (CreateScheduleRequest) returns (CreateScheduleResponse);
+  rpc PauseSchedule (PauseScheduleRequest) returns (PauseScheduleResponse);
+  rpc DeleteSchedule (DeleteScheduleRequest) returns (DeleteScheduleResponse);
+
+  // Memo
+  rpc SetMemo (SetMemoRequest) returns (SetMemoResponse);
+  rpc GetMemo (GetMemoRequest) returns (GetMemoResponse);
+
+  // Archival
+  rpc ListArchivedWorkflows (ListArchivedWorkflowsRequest) returns (ListArchivedWorkflowsResponse);
+
+  // Cold storage
+  rpc ArchiveWorkflow (ArchiveWorkflowRequest) returns (ArchiveWorkflowResponse);
+  rpc RetrieveColdWorkflow (RetrieveColdWorkflowRequest) returns (RetrieveColdWorkflowResponse);
+  rpc ColdStorageCount (ColdStorageCountRequest) returns (ColdStorageCountResponse);
+
+  // Partition management
+  rpc DescribePartition (DescribePartitionRequest) returns (DescribePartitionResponse);
+
+  // Saga orchestration
+  rpc CreateSaga (CreateSagaRequest) returns (CreateSagaResponse);
+  rpc CompensateSaga (CompensateSagaRequest) returns (CompensateSagaResponse);
+  rpc DescribeSaga (DescribeSagaRequest) returns (DescribeSagaResponse);
+
+  // Payload codec
+  rpc EncodePayload (EncodePayloadRequest) returns (EncodePayloadResponse);
+  rpc DecodePayload (DecodePayloadRequest) returns (DecodePayloadResponse);
+
+  // History event stream
+  rpc GetHistoryEvents (GetHistoryEventsRequest) returns (GetHistoryEventsResponse);
+
+  // Worker management
+  rpc RegisterWorker (RegisterWorkerRequest) returns (RegisterWorkerResponse);
+  rpc UnregisterWorker (UnregisterWorkerRequest) returns (UnregisterWorkerResponse);
+  rpc WorkerHeartbeat (WorkerHeartbeatRequest) returns (WorkerHeartbeatResponse);
+  rpc DescribeWorkers (DescribeWorkersRequest) returns (DescribeWorkersResponse);
+
+  // Batch operations
+  rpc BatchTerminateWorkflows (BatchTerminateRequest) returns (BatchTerminateResponse);
+  rpc BatchCancelWorkflows (BatchCancelRequest) returns (BatchCancelResponse);
+  rpc BatchSignalWorkflows (BatchSignalRequest) returns (BatchSignalResponse);
+
+  // Schedule introspection
+  rpc ListSchedules (ListSchedulesRequest) returns (ListSchedulesResponse);
+  rpc DescribeSchedule (DescribeScheduleRequest) returns (DescribeScheduleResponse);
+
+  // Dynamic config
+  rpc ListConfigKeys (ListConfigKeysRequest) returns (ListConfigKeysResponse);
+
+  // Workflow count aggregation
+  rpc CountByStatus (CountByStatusRequest) returns (CountByStatusResponse);
+  rpc CountByNamespace (CountByNamespaceRequest) returns (CountByNamespaceResponse);
+  rpc CountByType (CountByTypeRequest) returns (CountByTypeResponse);
+
+  // Namespace retention
+  rpc GetNamespaceRetention (GetNamespaceRetentionRequest) returns (GetNamespaceRetentionResponse);
+  rpc CleanupExpiredWorkflows (CleanupExpiredWorkflowsRequest) returns (CleanupExpiredWorkflowsResponse);
+  
+      // ─── Cluster Replication (Batch 21) ──────────────────────────────────
+      rpc EnqueueReplication (EnqueueReplicationRequest) returns (EnqueueReplicationResponse);
+      rpc DrainReplicationTasks (DrainReplicationTasksRequest) returns (DrainReplicationTasksResponse);
+      rpc GetClusterInfo (GetClusterInfoRequest) returns (GetClusterInfoResponse);
+  
+      // ─── Sharding Enhanced (Batch 21) ────────────────────────────────────
+      rpc GetShardOwner (GetShardOwnerRequest) returns (GetShardOwnerResponse);
+      rpc GetShardsForHost (GetShardsForHostRequest) returns (GetShardsForHostResponse);
+  
+      // ─── Nexus Operations (Batch 21) ─────────────────────────────────────
+      rpc NexusStartOperation (NexusStartOperationRequest) returns (NexusStartOperationResponse);
+      rpc NexusCompleteOperation (NexusCompleteOperationRequest) returns (NexusCompleteOperationResponse);
+      rpc NexusFailOperation (NexusFailOperationRequest) returns (NexusFailOperationResponse);
+      rpc NexusGetOperation (NexusGetOperationRequest) returns (NexusGetOperationResponse);
+
+      // ─── Rate Limiter Enhanced (Batch 22) ────────────────────────────────
+      rpc SetNamespaceRateLimit (SetNamespaceRateLimitRequest) returns (SetNamespaceRateLimitResponse);
+      rpc GetRateLimitInfo (GetRateLimitInfoRequest) returns (GetRateLimitInfoResponse);
+
+      // ─── Memo Enhanced (Batch 22) ────────────────────────────────────────
+      rpc RemoveMemo (RemoveMemoRequest) returns (RemoveMemoResponse);
+      rpc GetMemoWorkflowCount (GetMemoWorkflowCountRequest) returns (GetMemoWorkflowCountResponse);
+
+      // ─── Worker Versioning Enhanced (Batch 22) ───────────────────────────
+      rpc SetCurrentBuildId (SetCurrentBuildIdRequest) returns (SetCurrentBuildIdResponse);
+      rpc GetCurrentBuildId (GetCurrentBuildIdRequest) returns (GetCurrentBuildIdResponse);
+      rpc AddRoutingRule (AddRoutingRuleRequest) returns (AddRoutingRuleResponse);
+      rpc ResolveBuildId (ResolveBuildIdRequest) returns (ResolveBuildIdResponse);
+
+      // ─── Auth Enhanced (Batch 22) ────────────────────────────────────────
+      rpc DenySubject (DenySubjectRequest) returns (DenySubjectResponse);
+      rpc GetAuthInfo (GetAuthInfoRequest) returns (GetAuthInfoResponse);
+
+      // ─── Metrics Enhanced (Batch 23) ─────────────────────────────────────
+      rpc MetricsIncCounter (MetricsIncCounterRequest) returns (MetricsIncCounterResponse);
+      rpc MetricsGetCounter (MetricsGetCounterRequest) returns (MetricsGetCounterResponse);
+      rpc MetricsSetGauge (MetricsSetGaugeRequest) returns (MetricsSetGaugeResponse);
+      rpc MetricsGetGauge (MetricsGetGaugeRequest) returns (MetricsGetGaugeResponse);
+
+      // ─── History/Archive Enhanced (Batch 23) ────────────────────────────
+      rpc HistoryEventCount (HistoryEventCountRequest) returns (HistoryEventCountResponse);
+      rpc HistoryRemove (HistoryRemoveRequest) returns (HistoryRemoveResponse);
+      rpc ArchiveRetrieve (ArchiveRetrieveRequest) returns (ArchiveRetrieveResponse);
+      rpc ArchiveDelete (ArchiveDeleteRequest) returns (ArchiveDeleteResponse);
+      rpc ArchiveCountByStatus (ArchiveCountByStatusRequest) returns (ArchiveCountByStatusResponse);
+
+      // ─── Namespace Enhanced (Batch 24) ───────────────────────────────────
+      rpc DeactivateNamespace (DeactivateNamespaceRequest) returns (DeactivateNamespaceResponse);
+      rpc ActivateNamespace (ActivateNamespaceRequest) returns (ActivateNamespaceResponse);
+
+      // ─── Cron Enhanced (Batch 24) ────────────────────────────────────────
+      rpc CronNextFireTime (CronNextFireTimeRequest) returns (CronNextFireTimeResponse);
+      rpc CronSetPaused (CronSetPausedRequest) returns (CronSetPausedResponse);
+      rpc CronUnregister (CronUnregisterRequest) returns (CronUnregisterResponse);
+
+      // ─── Codec/Search Enhanced (Batch 24) ───────────────────────────────
+      rpc GetCodecCount (GetCodecCountRequest) returns (GetCodecCountResponse);
+      rpc GetSearchAttrCount (GetSearchAttrCountRequest) returns (GetSearchAttrCountResponse);
+
+      // ─── Patch Management (Batch 26) ──────────────────────────────────────
+      rpc RegisterPatch (RegisterPatchRequest) returns (RegisterPatchResponse);
+      rpc DeactivatePatch (DeactivatePatchRequest) returns (DeactivatePatchResponse);
+      rpc FindPatch (FindPatchRequest) returns (FindPatchResponse);
+      rpc GetPatch (GetPatchRequest) returns (GetPatchResponse);
+      rpc ListActivePatches (ListActivePatchesRequest) returns (ListActivePatchesResponse);
+
+      // ─── Parent Close Policy (Batch 26) ───────────────────────────────────
+      rpc ApplyParentClosePolicy (ApplyParentClosePolicyRequest) returns (ApplyParentClosePolicyResponse);
+
+      // ─── Activity Retry (Batch 26) ────────────────────────────────────────
+      rpc FailActivityWithRetry (FailActivityWithRetryRequest) returns (FailActivityWithRetryResponse);
+
+      // ─── Timeout Enforcement (Batch 26) ───────────────────────────────────
+      rpc ScheduleActivityWithTimeouts (ScheduleActivityWithTimeoutsRequest) returns (ScheduleActivityWithTimeoutsResponse);
+      rpc CheckActivityTimeouts (CheckActivityTimeoutsRequest) returns (CheckActivityTimeoutsResponse);
+      rpc CheckWorkflowTimeouts (CheckWorkflowTimeoutsRequest) returns (CheckWorkflowTimeoutsResponse);
+      rpc SetWorkflowExecutionTimeout (SetWorkflowExecutionTimeoutRequest) returns (SetWorkflowExecutionTimeoutResponse);
+
+      // ─── Config Enhanced (Batch 26) ──────────────────────────────────────
+      rpc SetConfigBool (SetConfigBoolRequest) returns (SetConfigBoolResponse);
+      rpc SetConfigFloat (SetConfigFloatRequest) returns (SetConfigFloatResponse);
+      rpc SetConfigString (SetConfigStringRequest) returns (SetConfigStringResponse);
+      rpc GetConfigBool (GetConfigBoolRequest) returns (GetConfigBoolResponse);
+      rpc GetConfigFloat (GetConfigFloatRequest) returns (GetConfigFloatResponse);
+      rpc GetConfigKeyCount (GetConfigKeyCountRequest) returns (GetConfigKeyCountResponse);
+
+      // ─── Heartbeat Enhanced (Batch 26) ───────────────────────────────────
+      rpc UnregisterHeartbeat (UnregisterHeartbeatRequest) returns (UnregisterHeartbeatResponse);
+
+      // ─── Cloud Storage Adapter (Batch 28) ──────────────────────────────
+      rpc CloudSetBackend (CloudSetBackendRequest) returns (CloudSetBackendResponse);
+      rpc CloudArchive (CloudArchiveRequest) returns (CloudArchiveResponse);
+      rpc CloudContains (CloudContainsRequest) returns (CloudContainsResponse);
+      rpc CloudDelete (CloudDeleteRequest) returns (CloudDeleteResponse);
+      rpc CloudCount (CloudCountRequest) returns (CloudCountResponse);
+      rpc CloudListByNamespace (CloudListByNamespaceRequest) returns (CloudListByNamespaceResponse);
+      rpc CloudGc (CloudGcRequest) returns (CloudGcResponse);
+      rpc CloudBackendName (CloudBackendNameRequest) returns (CloudBackendNameResponse);
+
+      // ─── Query/Reset Enhanced (Batch 28) ───────────────────────────────
+      rpc UnregisterQueryHandler (UnregisterQueryHandlerRequest) returns (UnregisterQueryHandlerResponse);
+      rpc GetResetPoints (GetResetPointsRequest) returns (GetResetPointsResponse);
+
+      // ─── Replay Recovery (Batch 28) ────────────────────────────────────
+      rpc ReplayAndRestore (ReplayAndRestoreRequest) returns (ReplayAndRestoreResponse);
+      rpc RecoverFromWal (RecoverFromWalRequest) returns (RecoverFromWalResponse);
+
+      // ─── Visibility Listing Enhanced (Batch 29) ───────────────────────────
+      rpc ListBySearchAttribute (ListBySearchAttributeRequest) returns (ListBySearchAttributeResponse);
+      rpc ListByTimeRange (ListByTimeRangeRequest) returns (ListByTimeRangeResponse);
+
+      // ─── Replay Cache Management (Batch 29) ───────────────────────────────
+      rpc ReplayInvalidate (ReplayInvalidateRequest) returns (ReplayInvalidateResponse);
+      rpc ReplayClearCache (ReplayClearCacheRequest) returns (ReplayClearCacheResponse);
+      rpc ReplayCacheSize (ReplayCacheSizeRequest) returns (ReplayCacheSizeResponse);
+
+      // ─── Schedule Management Enhanced (Batch 29) ──────────────────────────
+      rpc ScheduleSetOverlapPolicy (ScheduleSetOverlapPolicyRequest) returns (ScheduleSetOverlapPolicyResponse);
+      rpc ScheduleSetRemainingActions (ScheduleSetRemainingActionsRequest) returns (ScheduleSetRemainingActionsResponse);
+
+      // ─── Event History Enhanced (Batch 29) ────────────────────────────────
+      rpc HistoryWorkflowCount (HistoryWorkflowCountRequest) returns (HistoryWorkflowCountResponse);
+
+      // ─── Partition Worker Management (Batch 29) ───────────────────────────
+      rpc PartitionTotalPending (PartitionTotalPendingRequest) returns (PartitionTotalPendingResponse);
+
+      // ─── Nexus Enhanced (Batch 29) ────────────────────────────────────────
+      rpc NexusRegisterService (NexusRegisterServiceRequest) returns (NexusRegisterServiceResponse);
+
+      // ─── Real Cloud Storage SDK (Batch 29) ────────────────────────────────
+      rpc CloudSetS3 (CloudSetS3Request) returns (CloudSetS3Response);
+      rpc CloudSetGcs (CloudSetGcsRequest) returns (CloudSetGcsResponse);
+
+      // ─── Search Attributes + Replication (Batch 30) ───────────────────────
+      rpc StartWorkflowWithSearchAttrs (StartWorkflowWithSearchAttrsRequest) returns (StartWorkflowWithSearchAttrsResponse);
+      rpc ApplyReplicationTask (ApplyReplicationTaskRequest) returns (ApplyReplicationTaskResponse);
+      rpc ProcessFiredTimer (ProcessFiredTimerRequest) returns (ProcessFiredTimerResponse);
+      rpc ReplicationStatus (ReplicationStatusRequest) returns (ReplicationStatusResponse);
+      rpc SetClusterActive (SetClusterActiveRequest) returns (SetClusterActiveResponse);
+      rpc SetFailoverVersion (SetFailoverVersionRequest) returns (SetFailoverVersionResponse);
+
+      // ─── Nexus Full Lifecycle (Batch 32) ──────────────────────────────────
+      rpc NexusMarkStarted (NexusMarkStartedRequest) returns (NexusMarkStartedResponse);
+      rpc NexusCancel (NexusCancelRequest) returns (NexusCancelResponse);
+      rpc NexusTimeoutOp (NexusTimeoutOpRequest) returns (NexusTimeoutOpResponse);
+      rpc NexusRetry (NexusRetryRequest) returns (NexusRetryResponse);
+      rpc NexusCountByState (NexusCountByStateRequest) returns (NexusCountByStateResponse);
+
+      // ─── Worker Load-Aware Dispatch (Batch 32) ───────────────────────────
+      rpc SelectWorker (SelectWorkerRequest) returns (SelectWorkerResponse);
+      rpc WorkerHasCapacity (WorkerHasCapacityRequest) returns (WorkerHasCapacityResponse);
+      rpc DrainWorker (DrainWorkerRequest) returns (DrainWorkerResponse);
+      rpc WorkerTotalLoad (WorkerTotalLoadRequest) returns (WorkerTotalLoadResponse);
+      rpc WorkerTotalCapacity (WorkerTotalCapacityRequest) returns (WorkerTotalCapacityResponse);
+
+      // ─── Consistent Hash Ring Sharding (Batch 32) ────────────────────────
+      rpc ShardingAddHost (ShardingAddHostRequest) returns (ShardingAddHostResponse);
+      rpc ShardingRemoveHost (ShardingRemoveHostRequest) returns (ShardingRemoveHostResponse);
+      rpc ShardingMigrate (ShardingMigrateRequest) returns (ShardingMigrateResponse);
+      rpc ShardingHostCount (ShardingHostCountRequest) returns (ShardingHostCountResponse);
+
+      // ─── Hierarchical Partitions (Batch 32) ──────────────────────────────
+      rpc PartitionCreateChild (PartitionCreateChildRequest) returns (PartitionCreateChildResponse);
+      rpc PartitionDelete (PartitionDeleteRequest) returns (PartitionDeleteResponse);
+      rpc PartitionDepth (PartitionDepthRequest) returns (PartitionDepthResponse);
+      rpc PartitionBacklog (PartitionBacklogRequest) returns (PartitionBacklogResponse);
+
+      // ─── Get Workflow Search Attributes (Batch 32) ───────────────────────
+      rpc GetWorkflowSearchAttributes (GetWorkflowSearchAttributesRequest) returns (GetWorkflowSearchAttributesResponse);
+
+      // ─── Replication Transport (Batch 33) ────────────────────────────────
+      rpc ReplicationAddLink (ReplicationAddLinkRequest) returns (ReplicationAddLinkResponse);
+      rpc ReplicationRemoveLink (ReplicationRemoveLinkRequest) returns (ReplicationRemoveLinkResponse);
+      rpc ReplicationSetLinkActive (ReplicationSetLinkActiveRequest) returns (ReplicationSetLinkActiveResponse);
+      rpc ReplicationPullTasks (ReplicationPullTasksRequest) returns (ReplicationPullTasksResponse);
+      rpc ReplicationPushTasks (ReplicationPushTasksRequest) returns (ReplicationPushTasksResponse);
+      rpc ReplicationLinkStatus (ReplicationLinkStatusRequest) returns (ReplicationLinkStatusResponse);
+
+      // ─── Replication Daemon (Batch 34) ──────────────────────────────────────
+      rpc StartReplicationDaemon (StartReplicationDaemonRequest) returns (StartReplicationDaemonResponse);
+      rpc StopReplicationDaemon (StopReplicationDaemonRequest) returns (StopReplicationDaemonResponse);
+      rpc ReplicationDaemonStatus (ReplicationDaemonStatusRequest) returns (ReplicationDaemonStatusResponse);
+      rpc ReplicationDaemonPollOnce (ReplicationDaemonPollOnceRequest) returns (ReplicationDaemonPollOnceResponse);
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+message StartWorkflowRequest {
+  string workflow_id = 1;
+  string workflow_type = 2;
+  string namespace_name = 3;
+  string task_queue = 4;
+  bytes input = 5;
+  map<string, string> search_attributes = 6;
+  map<string, bytes> memo = 7;
+}
+
+message StartWorkflowResponse {
+  string run_id = 1;
+}
+
+message SignalWorkflowRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string signal_name = 3;
+  bytes payload = 4;
+  string namespace_name = 5;
+}
+
+message SignalWorkflowResponse {}
+
+message QueryWorkflowRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string query_type = 3;
+  bytes payload = 4;
+  string namespace_name = 5;
+}
+
+message QueryWorkflowResponse {
+  bytes result = 1;
+}
+
+message TerminateWorkflowRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string reason = 3;
+  string namespace_name = 4;
+}
+
+message TerminateWorkflowResponse {}
+
+message CancelWorkflowRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace_name = 3;
+}
+
+message CancelWorkflowResponse {}
+
+message DescribeWorkflowRequest {
+  string workflow_id = 1;
+  string run_id = 2;
+  string namespace_name = 3;
+}
+
+message DescribeWorkflowResponse {
+  WorkflowExecutionInfo execution_info = 1;
+}
+
+message ListWorkflowsRequest {
+  string namespace_name = 1;
+  string query = 2; // SQL-like query (e.g., "WorkflowType = 'OrderWorkflow' AND Status = 'Running'")
+  int32 page_size = 3;
+  bytes next_page_token = 4;
+}
+
+message ListWorkflowsResponse {
+  repeated WorkflowExecutionInfo executions = 1;
+  bytes next_page_token = 2;
+}
+
+message CountWorkflowsRequest {
+  string namespace_name = 1;
+  string query = 2;
+}
+
+message CountWorkflowsResponse {
+  int64 count = 1;
+}
+
+message RegisterNamespaceRequest {
+  string namespace_name = 1;
+  string description = 2;
+  int64 retention_days = 3;
+  bool is_global = 4;
+}
+
+message RegisterNamespaceResponse {
+  string namespace_id = 1;
+}
+
+message DescribeNamespaceRequest {
+  string namespace_name = 1;
+}
+
+message DescribeNamespaceResponse {
+  NamespaceInfo info = 1;
+}
+
+message ListNamespacesRequest {
+  int32 page_size = 1;
+  bytes next_page_token = 2;
+}
+
+message ListNamespacesResponse {
+  repeated NamespaceInfo namespaces = 1;
+  bytes next_page_token = 2;
+}
+
+message PollActivityTaskQueueRequest {
+  string namespace_name = 1;
+  string task_queue = 2;
+}
+
+message PollActivityTaskQueueResponse {
+  string task_token = 1;
+  string workflow_id = 2;
+  string run_id = 3;
+  string activity_type = 4;
+  bytes input = 5;
+  int32 attempt = 6;
+}
+
+message RespondActivityTaskCompletedRequest {
+  string task_token = 1;
+  bytes result = 2;
+  string namespace_name = 3;
+}
+
+message RespondActivityTaskCompletedResponse {}
+
+message RespondActivityTaskFailedRequest {
+  string task_token = 1;
+  string failure_message = 2;
+  string namespace_name = 3;
+}
+
+message RespondActivityTaskFailedResponse {}
+
+// ─── Common Types ─────────────────────────────────────────────────────────────
+
+message WorkflowExecutionInfo {
+  string workflow_id = 1;
+  string run_id = 2;
+  string workflow_type = 3;
+  string namespace_name = 4;
+  WorkflowExecutionStatus status = 5;
+  int64 start_time_unix_nano = 6;
+  int64 close_time_unix_nano = 7;
+  string task_queue = 8;
+  map<string, string> search_attributes = 9;
+}
+
+enum WorkflowExecutionStatus {
+  WORKFLOW_EXECUTION_STATUS_UNSPECIFIED = 0;
+  WORKFLOW_EXECUTION_STATUS_RUNNING = 1;
+  WORKFLOW_EXECUTION_STATUS_COMPLETED = 2;
+  WORKFLOW_EXECUTION_STATUS_FAILED = 3;
+  WORKFLOW_EXECUTION_STATUS_CANCELED = 4;
+  WORKFLOW_EXECUTION_STATUS_TERMINATED = 5;
+  WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW = 6;
+  WORKFLOW_EXECUTION_STATUS_TIMED_OUT = 7;
+}
+
+message NamespaceInfo {
+  string name = 1;
+  string id = 2;
+  string description = 3;
+  int64 retention_days = 4;
+  bool is_active = 5;
+}
+
+// ─── Advanced Operations ─────────────────────────────────────────────────────
+
+message SignalWithStartRequest {
+  string workflow_id = 1;
+  string workflow_type = 2;
+  string namespace_name = 3;
+  string task_queue = 4;
+  string signal_name = 5;
+  bytes signal_payload = 6;
+  int32 total_steps = 7;
+}
+
+message SignalWithStartResponse {
+  string run_id = 1;
+  bool was_started = 2;
+}
+
+message ContinueAsNewRequest {
+  string run_id = 1;
+  bytes new_input = 2;
+}
+
+message ContinueAsNewResponse {
+  string new_run_id = 1;
+}
+
+message GetWorkflowExecutionHistoryRequest {
+  string run_id = 1;
+  int32 page_size = 2;
+  int64 start_event_id = 3;
+}
+
+message GetWorkflowExecutionHistoryResponse {
+  repeated HistoryEvent events = 1;
+  int64 total_event_count = 2;
+}
+
+message HistoryEvent {
+  int64 event_id = 1;
+  int32 event_type = 2;
+  bytes payload = 3;
+}
+
+message DescribeTaskQueueRequest {
+  string task_queue = 1;
+}
+
+message DescribeTaskQueueResponse {
+  int64 pending_tasks = 1;
+  string task_queue = 2;
+}
+
+// ─── Workflow Reset ──────────────────────────────────────────────────────────
+
+message ResetWorkflowRequest {
+  string run_id = 1;
+  int64 reset_to_event_id = 2;
+}
+
+message ResetWorkflowResponse {
+  bool success = 1;
+}
+
+// ─── Activity Heartbeat ──────────────────────────────────────────────────────
+
+message RecordActivityHeartbeatRequest {
+  string task_token = 1;
+  bytes details = 2;
+}
+
+message RecordActivityHeartbeatResponse {}
+
+// ─── Workflow Update ─────────────────────────────────────────────────────────
+
+message UpdateWorkflowExecutionRequest {
+  string run_id = 1;
+  string update_name = 2;
+  bytes payload = 3;
+}
+
+message UpdateWorkflowExecutionResponse {
+  bool accepted = 1;
+}
+
+// ─── Search Attributes ───────────────────────────────────────────────────────
+
+message UpsertWorkflowSearchAttributesRequest {
+  string run_id = 1;
+  map<string, string> search_attributes = 2;
+}
+
+message UpsertWorkflowSearchAttributesResponse {}
+
+// ─── Replay / Recovery ───────────────────────────────────────────────────────
+
+message ReplayWorkflowRequest {
+  string run_id = 1;
+}
+
+message ReplayWorkflowResponse {
+  bool success = 1;
+  int32 status = 2;
+  int32 events_replayed = 3;
+  int32 steps_reconstructed = 4;
+}
+
+// ─── Dynamic Configuration ───────────────────────────────────────────────────
+
+message GetConfigRequest {
+  string key = 1;
+  int64 default_value = 2;
+}
+
+message GetConfigResponse {
+  int64 value = 1;
+}
+
+message SetConfigRequest {
+  string key = 1;
+  int64 value = 2;
+}
+
+message SetConfigResponse {}
+
+// ─── Worker Versioning ───────────────────────────────────────────────────────
+
+message CreateWorkerVersionSetRequest {}
+
+message CreateWorkerVersionSetResponse {
+  uint64 version_set_id = 1;
+}
+
+message AddBuildIdRequest {
+  uint64 version_set_id = 1;
+  string build_id = 2;
+}
+
+message AddBuildIdResponse {}
+
+// ─── Nexus Cross-Service ─────────────────────────────────────────────────────
+
+message RegisterNexusServiceRequest {
+  string name = 1;
+  string endpoint = 2;
+}
+
+message RegisterNexusServiceResponse {}
+
+// ─── Schedules ───────────────────────────────────────────────────────────────
+
+message CreateScheduleRequest {
+  string workflow_type = 1;
+  string namespace_name = 2;
+  string task_queue = 3;
+  uint32 overlap_policy = 4;
+  uint64 jitter_seconds = 5;
+}
+
+message CreateScheduleResponse {
+  uint64 schedule_id = 1;
+}
+
+message PauseScheduleRequest {
+  uint64 schedule_id = 1;
+}
+
+message PauseScheduleResponse {}
+
+message DeleteScheduleRequest {
+  uint64 schedule_id = 1;
+}
+
+message DeleteScheduleResponse {}
+
+// ─── Memo ────────────────────────────────────────────────────────────────────
+
+message SetMemoRequest {
+  string run_id = 1;
+  string key = 2;
+  bytes value = 3;
+}
+
+message SetMemoResponse {}
+
+message GetMemoRequest {
+  string run_id = 1;
+  string key = 2;
+}
+
+message GetMemoResponse {
+  bytes value = 1;
+}
+
+// ─── Archival ────────────────────────────────────────────────────────────────
+
+message ListArchivedWorkflowsRequest {
+  string namespace_name = 1;
+  int32 page_size = 2;
+}
+
+message ListArchivedWorkflowsResponse {
+  repeated WorkflowExecutionInfo executions = 1;
+  int64 total_count = 2;
+}
+
+// ─── Cold Storage ───────────────────────────────────────────────────────────
+
+message ArchiveWorkflowRequest {
+  string run_id = 1;
+  string storage_dir = 2;
+}
+
+message ArchiveWorkflowResponse {
+  bool success = 1;
+}
+
+message RetrieveColdWorkflowRequest {
+  string run_id = 1;
+  string storage_dir = 2;
+}
+
+message RetrieveColdWorkflowResponse {
+  int32 status = 1;
+  int32 step_count = 2;
+}
+
+message ColdStorageCountRequest {
+  string storage_dir = 1;
+}
+
+message ColdStorageCountResponse {
+  int32 count = 1;
+}
+
+// ─── Partition ──────────────────────────────────────────────────────────────
+
+message DescribePartitionRequest {
+  uint32 partition_id = 1;
+}
+
+message DescribePartitionResponse {
+  uint32 partition_id = 1;
+  uint64 task_queue_hash = 2;
+  uint64 pending_tasks = 3;
+  uint64 worker_count = 4;
+  bool has_parent = 5;
+  uint32 parent_partition_id = 6;
+  double forward_rate = 7;
+}
+
+// ─── Saga Orchestration ───────────────────────────────────────────────────
+
+message SagaStepDefinition {
+  string name = 1;
+  uint64 workflow_type_id = 2;
+  bytes input = 3;
+  uint64 compensation_workflow_type_id = 4;
+  bytes compensation_input = 5;
+}
+
+message CreateSagaRequest {
+  uint64 workflow_key = 1;
+  repeated SagaStepDefinition steps = 2;
+}
+
+message CreateSagaResponse {
+  uint64 saga_id = 1;
+}
+
+message CompensateSagaRequest {
+  uint64 saga_id = 1;
+}
+
+message CompensateSagaResponse {
+  bool success = 1;
+}
+
+message DescribeSagaRequest {
+  uint64 saga_id = 1;
+}
+
+message DescribeSagaResponse {
+  uint64 saga_id = 1;
+  uint64 workflow_key = 2;
+  int32 status = 3;
+  uint32 current_step = 4;
+  uint32 step_count = 5;
+  repeated SagaStepInfo steps = 6;
+}
+
+message SagaStepInfo {
+  string name = 1;
+  int32 status = 2;
+  uint64 workflow_type_id = 3;
+}
+
+// ─── Payload Codec ────────────────────────────────────────────────────────
+
+message EncodePayloadRequest {
+  bytes payload = 1;
+}
+
+message EncodePayloadResponse {
+  bytes encoded = 1;
+}
+
+message DecodePayloadRequest {
+  bytes encoded = 1;
+}
+
+message DecodePayloadResponse {
+  bytes payload = 1;
+}
+
+// ─── History Event Stream ─────────────────────────────────────────────────
+
+message GetHistoryEventsRequest {
+  uint64 workflow_key = 1;
+  uint64 start_event_id = 2;
+  uint32 max_count = 3;
+}
+
+message GetHistoryEventsResponse {
+  repeated HistoryEventDetail events = 1;
+  int64 total_count = 2;
+}
+
+message HistoryEventDetail {
+  uint64 event_id = 1;
+  int32 event_type = 2;
+  uint64 timestamp_ms = 3;
+  bytes payload = 4;
+}
+
+// ─── Worker Management ────────────────────────────────────────────────────
+
+message RegisterWorkerRequest {
+  string address = 1;
+  repeated uint64 task_queue_hashes = 2;
+  string version = 3;
+}
+
+message RegisterWorkerResponse {
+  uint64 worker_id = 1;
+}
+
+message UnregisterWorkerRequest {
+  uint64 worker_id = 1;
+}
+
+message UnregisterWorkerResponse {
+  bool success = 1;
+}
+
+message WorkerHeartbeatRequest {
+  uint64 worker_id = 1;
+}
+
+message WorkerHeartbeatResponse {
+  bool acknowledged = 1;
+}
+
+message DescribeWorkersRequest {}
+
+message DescribeWorkersResponse {
+  uint64 total_workers = 1;
+  uint64 active_workers = 2;
+  uint64 total_tasks_completed = 3;
+  uint64 total_tasks_failed = 4;
+}
+
+// ─── Batch Operations ──────────────────────────────────────────────────────
+
+message BatchTerminateRequest {
+  repeated uint64 workflow_keys = 1;
+}
+
+message BatchTerminateResponse {
+  uint64 batch_id = 1;
+  uint32 submitted = 2;
+}
+
+message BatchCancelRequest {
+  repeated uint64 workflow_keys = 1;
+}
+
+message BatchCancelResponse {
+  uint64 batch_id = 1;
+  uint32 submitted = 2;
+}
+
+message BatchSignalRequest {
+  repeated uint64 workflow_keys = 1;
+  uint64 signal_name_id = 2;
+  bytes payload = 3;
+}
+
+message BatchSignalResponse {
+  uint64 batch_id = 1;
+  uint32 submitted = 2;
+}
+
+// ─── Schedule Introspection ──────────────────────────────────────────────
+
+message ListSchedulesRequest {}
+
+message ListSchedulesResponse {
+  repeated uint64 schedule_ids = 1;
+  uint32 total_count = 2;
+}
+
+message DescribeScheduleRequest {
+  uint64 schedule_id = 1;
+}
+
+message DescribeScheduleResponse {
+  bool found = 1;
+  uint64 schedule_id = 2;
+  uint64 workflow_type_id = 3;
+  uint64 namespace_id = 4;
+  uint64 task_queue_hash = 5;
+  int32 overlap_policy = 6;
+  uint64 action_count = 7;
+  bool is_paused = 8;
+}
+
+// ─── Dynamic Config ──────────────────────────────────────────────────────
+
+message ListConfigKeysRequest {}
+
+message ListConfigKeysResponse {
+  repeated string keys = 1;
+  uint32 total_count = 2;
+}
+
+// ─── Workflow Count Aggregation ──────────────────────────────────────────
+
+message CountByStatusRequest {
+  int32 status = 1;
+}
+
+message CountByStatusResponse {
+  uint64 count = 1;
+}
+
+message CountByNamespaceRequest {
+  uint64 namespace_id = 1;
+}
+
+message CountByNamespaceResponse {
+  uint64 count = 1;
+}
+
+message CountByTypeRequest {
+  uint64 workflow_type_id = 1;
+}
+
+message CountByTypeResponse {
+  uint64 count = 1;
+}
+
+// ─── Namespace Retention ─────────────────────────────────────────────────
+
+message GetNamespaceRetentionRequest {
+  uint64 namespace_id = 1;
+}
+
+message GetNamespaceRetentionResponse {
+  uint64 retention_ms = 1;
+}
+
+message CleanupExpiredWorkflowsRequest {}
+
+message CleanupExpiredWorkflowsResponse {
+  uint64 removed_count = 1;
+}
+
+// ─── Cluster Replication (Batch 21) ──────────────────────────────────────
+
+message EnqueueReplicationRequest {
+  uint64 source_cluster_id = 1;
+  uint64 target_cluster_id = 2;
+  uint64 workflow_key = 3;
+  uint32 event_type = 4;
+  bytes payload = 5;
+}
+
+message EnqueueReplicationResponse {
+  uint64 task_id = 1;
+}
+
+message DrainReplicationTasksRequest {}
+
+message DrainReplicationTasksResponse {
+  uint64 drained_count = 1;
+}
+
+message GetClusterInfoRequest {
+  uint64 cluster_id = 1;
+}
+
+message GetClusterInfoResponse {
+  uint64 cluster_id = 1;
+  bool is_active = 2;
+  uint64 failover_version = 3;
+  bool replication_enabled = 4;
+}
+
+// ─── Sharding Enhanced (Batch 21) ────────────────────────────────────────
+
+message GetShardOwnerRequest {
+  uint32 shard_id = 1;
+}
+
+message GetShardOwnerResponse {
+  string owner = 1;
+}
+
+message GetShardsForHostRequest {
+  string host = 1;
+}
+
+message GetShardsForHostResponse {
+  repeated uint32 shard_ids = 1;
+}
+
+// ─── Nexus Operations (Batch 21) ─────────────────────────────────────────
+
+message NexusStartOperationRequest {
+  string service = 1;
+  string operation = 2;
+  uint64 workflow_key = 3;
+  bytes input = 4;
+  string callback_url = 5;
+}
+
+message NexusStartOperationResponse {
+  uint64 operation_id = 1;
+}
+
+message NexusCompleteOperationRequest {
+  uint64 operation_id = 1;
+  bytes result = 2;
+}
+
+message NexusCompleteOperationResponse {
+  bool success = 1;
+}
+
+message NexusFailOperationRequest {
+  uint64 operation_id = 1;
+}
+
+message NexusFailOperationResponse {
+  bool success = 1;
+}
+
+message NexusGetOperationRequest {
+  uint64 operation_id = 1;
+}
+
+message NexusGetOperationResponse {
+  uint64 operation_id = 1;
+  uint64 workflow_key = 2;
+  int32 state = 3;
+  bool has_result = 4;
+}
+
+// ─── Rate Limiter Enhanced (Batch 22) ──────────────────────────────────────
+
+message SetNamespaceRateLimitRequest {
+  uint64 namespace_id = 1;
+  double rate = 2;
+  uint64 capacity = 3;
+}
+
+message SetNamespaceRateLimitResponse {}
+
+message GetRateLimitInfoRequest {}
+
+message GetRateLimitInfoResponse {
+  uint64 namespace_count = 1;
+}
+
+// ─── Memo Enhanced (Batch 22) ──────────────────────────────────────────────
+
+message RemoveMemoRequest {
+  uint64 workflow_key = 1;
+  string key = 2;
+}
+
+message RemoveMemoResponse {
+  bool success = 1;
+}
+
+message GetMemoWorkflowCountRequest {}
+
+message GetMemoWorkflowCountResponse {
+  uint64 count = 1;
+}
+
+// ─── Worker Versioning Enhanced (Batch 22) ─────────────────────────────────
+
+message SetCurrentBuildIdRequest {
+  uint64 set_id = 1;
+  string build_id = 2;
+}
+
+message SetCurrentBuildIdResponse {
+  bool success = 1;
+}
+
+message GetCurrentBuildIdRequest {
+  uint64 set_id = 1;
+}
+
+message GetCurrentBuildIdResponse {
+  string build_id = 1;
+}
+
+message AddRoutingRuleRequest {
+  string task_queue = 1;
+  string build_id = 2;
+  uint32 percentage = 3;
+}
+
+message AddRoutingRuleResponse {}
+
+message ResolveBuildIdRequest {
+  string task_queue = 1;
+}
+
+message ResolveBuildIdResponse {
+  string build_id = 1;
+}
+
+// ─── Auth Enhanced (Batch 22) ──────────────────────────────────────────────
+
+message DenySubjectRequest {
+  string subject = 1;
+}
+
+message DenySubjectResponse {}
+
+message GetAuthInfoRequest {}
+
+message GetAuthInfoResponse {
+  uint64 role_count = 1;
+}
+
+// ─── Metrics Enhanced (Batch 23) ─────────────────────────────────────────
+
+message MetricsIncCounterRequest {
+  string name = 1;
+}
+
+message MetricsIncCounterResponse {}
+
+message MetricsGetCounterRequest {
+  string name = 1;
+}
+
+message MetricsGetCounterResponse {
+  uint64 value = 1;
+}
+
+message MetricsSetGaugeRequest {
+  string name = 1;
+  int64 value = 2;
+}
+
+message MetricsSetGaugeResponse {}
+
+message MetricsGetGaugeRequest {
+  string name = 1;
+}
+
+message MetricsGetGaugeResponse {
+  int64 value = 1;
+}
+
+// ─── History/Archive Enhanced (Batch 23) ─────────────────────────────────
+
+message HistoryEventCountRequest {
+  uint64 workflow_key = 1;
+}
+
+message HistoryEventCountResponse {
+  uint64 count = 1;
+}
+
+message HistoryRemoveRequest {
+  uint64 workflow_key = 1;
+}
+
+message HistoryRemoveResponse {
+  bool success = 1;
+}
+
+message ArchiveRetrieveRequest {
+  uint64 workflow_key = 1;
+}
+
+message ArchiveRetrieveResponse {
+  uint64 workflow_key = 1;
+  uint64 namespace_id = 2;
+  uint64 workflow_type_id = 3;
+  int32 status = 4;
+  uint64 event_count = 5;
+}
+
+message ArchiveDeleteRequest {
+  uint64 workflow_key = 1;
+}
+
+message ArchiveDeleteResponse {
+  bool success = 1;
+}
+
+message ArchiveCountByStatusRequest {
+  int32 status = 1;
+}
+
+message ArchiveCountByStatusResponse {
+  uint64 count = 1;
+}
+
+// ─── Namespace Enhanced (Batch 24) ───────────────────────────────────────
+
+message DeactivateNamespaceRequest {
+  uint64 namespace_id = 1;
+}
+
+message DeactivateNamespaceResponse {
+  bool success = 1;
+}
+
+message ActivateNamespaceRequest {
+  uint64 namespace_id = 1;
+}
+
+message ActivateNamespaceResponse {
+  bool success = 1;
+}
+
+// ─── Cron Enhanced (Batch 24) ────────────────────────────────────────────
+
+message CronNextFireTimeRequest {
+  uint64 schedule_id = 1;
+}
+
+message CronNextFireTimeResponse {
+  uint64 next_fire_time = 1;
+}
+
+message CronSetPausedRequest {
+  uint64 schedule_id = 1;
+  bool paused = 2;
+}
+
+message CronSetPausedResponse {
+  bool success = 1;
+}
+
+message CronUnregisterRequest {
+  uint64 schedule_id = 1;
+}
+
+message CronUnregisterResponse {
+  bool success = 1;
+}
+
+// ─── Codec/Search Enhanced (Batch 24) ────────────────────────────────────
+
+message GetCodecCountRequest {}
+
+message GetCodecCountResponse {
+  uint64 count = 1;
+}
+
+message GetSearchAttrCountRequest {
+  uint64 workflow_key = 1;
+}
+
+message GetSearchAttrCountResponse {
+  uint64 count = 1;
+}
+
+// ─── Patch Management (Batch 26) ──────────────────────────────────────────
+
+message RegisterPatchRequest {
+  uint64 workflow_type_id = 1;
+  string version_marker = 2;
+  uint64 min_version = 3;
+  uint64 max_version = 4;
+  string description = 5;
+}
+
+message RegisterPatchResponse {
+  uint64 patch_id = 1;
+}
+
+message DeactivatePatchRequest {
+  uint64 patch_id = 1;
+}
+
+message DeactivatePatchResponse {
+  bool success = 1;
+}
+
+message FindPatchRequest {
+  uint64 workflow_type_id = 1;
+  uint64 version = 2;
+}
+
+message FindPatchResponse {
+  uint64 patch_id = 1;
+}
+
+message GetPatchRequest {
+  uint64 patch_id = 1;
+}
+
+message GetPatchResponse {
+  uint64 patch_id = 1;
+  uint64 workflow_type_id = 2;
+  uint64 min_version = 3;
+  uint64 max_version = 4;
+  bool is_active = 5;
+}
+
+message ListActivePatchesRequest {
+  uint64 workflow_type_id = 1;
+}
+
+message ListActivePatchesResponse {
+  repeated uint64 patch_ids = 1;
+}
+
+// ─── Parent Close Policy (Batch 26) ───────────────────────────────────────
+
+message ApplyParentClosePolicyRequest {
+  uint64 parent_key = 1;
+  // 0=Terminate, 1=Cancel, 2=Abandon
+  uint32 policy = 2;
+}
+
+message ApplyParentClosePolicyResponse {
+  bool success = 1;
+}
+
+// ─── Activity Retry (Batch 26) ────────────────────────────────────────────
+
+message FailActivityWithRetryRequest {
+  uint64 workflow_key = 1;
+  uint32 step = 2;
+}
+
+message FailActivityWithRetryResponse {
+  bool was_retried = 1;
+}
+
+// ─── Timeout Enforcement (Batch 26) ───────────────────────────────────────
+
+message ScheduleActivityWithTimeoutsRequest {
+  uint64 workflow_key = 1;
+  uint32 step = 2;
+  uint64 activity_name_id = 3;
+  bytes args = 4;
+  uint64 schedule_to_start_ms = 5;
+  uint64 start_to_close_ms = 6;
+  uint64 schedule_to_close_ms = 7;
+  uint64 heartbeat_ms = 8;
+}
+
+message ScheduleActivityWithTimeoutsResponse {
+  bool success = 1;
+}
+
+message CheckActivityTimeoutsRequest {}
+
+message CheckActivityTimeoutsResponse {
+  uint32 timed_out_count = 1;
+}
+
+message CheckWorkflowTimeoutsRequest {}
+
+message CheckWorkflowTimeoutsResponse {
+  uint32 timed_out_count = 1;
+}
+
+message SetWorkflowExecutionTimeoutRequest {
+  uint64 workflow_key = 1;
+  uint64 timeout_ms = 2;
+}
+
+message SetWorkflowExecutionTimeoutResponse {
+  bool success = 1;
+}
+
+// ─── Config Enhanced (Batch 26) ─────────────────────────────────────────
+
+message SetConfigBoolRequest {
+  string key = 1;
+  bool value = 2;
+}
+
+message SetConfigBoolResponse {}
+
+message SetConfigFloatRequest {
+  string key = 1;
+  double value = 2;
+}
+
+message SetConfigFloatResponse {}
+
+message SetConfigStringRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message SetConfigStringResponse {}
+
+message GetConfigBoolRequest {
+  string key = 1;
+}
+
+message GetConfigBoolResponse {
+  bool value = 1;
+}
+
+message GetConfigFloatRequest {
+  string key = 1;
+}
+
+message GetConfigFloatResponse {
+  double value = 1;
+}
+
+message GetConfigKeyCountRequest {}
+
+message GetConfigKeyCountResponse {
+  uint64 count = 1;
+}
+
+// ─── Heartbeat Enhanced (Batch 26) ──────────────────────────────────────
+
+message UnregisterHeartbeatRequest {
+  uint64 workflow_key = 1;
+  uint64 activity_id = 2;
+}
+
+message UnregisterHeartbeatResponse {}
+
+// ─── Cloud Storage Adapter (Batch 28) ─────────────────────────────────────
+
+message CloudSetBackendRequest {
+  uint32 backend = 1; // 0 = MockS3, 1 = MockGCS
+}
+
+message CloudSetBackendResponse {
+  bool success = 1;
+}
+
+message CloudArchiveRequest {
+  uint64 workflow_key = 1;
+  uint64 namespace_id = 2;
+  int32 status = 3;
+}
+
+message CloudArchiveResponse {
+  bool success = 1;
+}
+
+message CloudContainsRequest {
+  uint64 workflow_key = 1;
+}
+
+message CloudContainsResponse {
+  bool contains = 1;
+}
+
+message CloudDeleteRequest {
+  uint64 workflow_key = 1;
+}
+
+message CloudDeleteResponse {
+  bool success = 1;
+}
+
+message CloudCountRequest {}
+
+message CloudCountResponse {
+  uint64 count = 1;
+}
+
+message CloudListByNamespaceRequest {
+  uint64 namespace_id = 1;
+}
+
+message CloudListByNamespaceResponse {
+  repeated uint64 workflow_keys = 1;
+}
+
+message CloudGcRequest {
+  uint64 retention_ms = 1;
+}
+
+message CloudGcResponse {
+  int32 deleted_count = 1;
+}
+
+message CloudBackendNameRequest {}
+
+message CloudBackendNameResponse {
+  string name = 1;
+}
+
+// ─── Query/Reset Enhanced (Batch 28) ──────────────────────────────────────
+
+message UnregisterQueryHandlerRequest {
+  uint64 workflow_key = 1;
+}
+
+message UnregisterQueryHandlerResponse {}
+
+message GetResetPointsRequest {
+  uint64 workflow_key = 1;
+}
+
+message GetResetPointsResponse {
+  repeated uint64 event_ids = 1;
+}
+
+// ─── Replay Recovery (Batch 28) ───────────────────────────────────────────
+
+message ReplayAndRestoreRequest {
+  uint64 workflow_key = 1;
+}
+
+message ReplayAndRestoreResponse {
+  bool success = 1;
+  int32 reconstructed_status = 2;
+}
+
+message RecoverFromWalRequest {}
+
+message RecoverFromWalResponse {
+  uint64 records_replayed = 1;
+}
+
+// ─── Batch 29 Messages ───────────────────────────────────────────────────────
+
+message ListBySearchAttributeRequest {
+  string attribute_key = 1;
+  string attribute_value = 2;
+}
+
+message ListBySearchAttributeResponse {
+  repeated uint64 workflow_keys = 1;
+}
+
+message ListByTimeRangeRequest {
+  uint64 start_time_ms = 1;
+  uint64 end_time_ms = 2;
+}
+
+message ListByTimeRangeResponse {
+  repeated uint64 workflow_keys = 1;
+}
+
+message ReplayInvalidateRequest {
+  uint64 workflow_key = 1;
+}
+
+message ReplayInvalidateResponse {}
+
+message ReplayClearCacheRequest {}
+
+message ReplayClearCacheResponse {}
+
+message ReplayCacheSizeRequest {}
+
+message ReplayCacheSizeResponse {
+  uint64 cache_size = 1;
+}
+
+message ScheduleSetOverlapPolicyRequest {
+  uint64 schedule_id = 1;
+  uint32 policy = 2;
+}
+
+message ScheduleSetOverlapPolicyResponse {
+  bool success = 1;
+}
+
+message ScheduleSetRemainingActionsRequest {
+  uint64 schedule_id = 1;
+  uint64 remaining = 2;
+}
+
+message ScheduleSetRemainingActionsResponse {
+  bool success = 1;
+}
+
+message HistoryWorkflowCountRequest {}
+
+message HistoryWorkflowCountResponse {
+  uint64 count = 1;
+}
+
+message PartitionTotalPendingRequest {
+  uint64 task_queue_hash = 1;
+}
+
+message PartitionTotalPendingResponse {
+  uint64 pending_count = 1;
+}
+
+message NexusRegisterServiceRequest {
+  string service_name = 1;
+  string endpoint = 2;
+}
+
+message NexusRegisterServiceResponse {
+  bool success = 1;
+}
+
+// ─── Real Cloud Storage SDK Messages (Batch 29) ─────────────────────────────
+
+message CloudSetS3Request {
+  string bucket = 1;
+  string region = 2;
+  string access_key = 3;
+  string secret_key = 4;
+}
+
+message CloudSetS3Response {
+  bool success = 1;
+}
+
+message CloudSetGcsRequest {
+  string bucket = 1;
+  string oauth_token = 2;
+}
+
+message CloudSetGcsResponse {
+  bool success = 1;
+}
+
+// ─── Batch 30 Messages ──────────────────────────────────────────────────────
+
+message StartWorkflowWithSearchAttrsRequest {
+  uint64 workflow_id = 1;
+  uint64 workflow_type_id = 2;
+  uint64 namespace_id = 3;
+  uint64 task_queue_hash = 4;
+  uint32 total_steps = 5;
+  bytes input = 6;
+  map<string, string> search_attributes = 7;
+}
+
+message StartWorkflowWithSearchAttrsResponse {
+  uint64 workflow_key = 1;
+}
+
+message ApplyReplicationTaskRequest {
+  uint64 source_cluster_id = 1;
+  uint64 target_cluster_id = 2;
+  uint64 workflow_key = 3;
+  uint32 event_type = 4;
+  bytes payload = 5;
+  uint64 failover_version = 6;
+}
+
+message ApplyReplicationTaskResponse {
+  bool success = 1;
+}
+
+message ProcessFiredTimerRequest {
+  uint64 workflow_key = 1;
+}
+
+message ProcessFiredTimerResponse {}
+
+message ReplicationStatusRequest {}
+
+message ReplicationStatusResponse {
+  uint64 pending_tasks = 1;
+  uint64 cluster_count = 2;
+  uint64 active_clusters = 3;
+}
+
+message SetClusterActiveRequest {
+  uint64 cluster_id = 1;
+  bool active = 2;
+}
+
+message SetClusterActiveResponse {
+  bool success = 1;
+}
+
+message SetFailoverVersionRequest {
+  uint64 cluster_id = 1;
+  uint64 version = 2;
+}
+
+message SetFailoverVersionResponse {
+  bool success = 1;
+}
+
+// ─── Nexus Lifecycle Messages (Batch 32) ──────────────────────────────────
+
+message NexusMarkStartedRequest { uint64 op_id = 1; }
+message NexusMarkStartedResponse { bool success = 1; }
+message NexusCancelRequest { uint64 op_id = 1; }
+message NexusCancelResponse { bool success = 1; }
+message NexusTimeoutOpRequest { uint64 op_id = 1; }
+message NexusTimeoutOpResponse { bool success = 1; }
+message NexusRetryRequest { uint64 op_id = 1; }
+message NexusRetryResponse { bool success = 1; }
+message NexusCountByStateRequest { uint32 state = 1; }
+message NexusCountByStateResponse { uint64 count = 1; }
+
+// ─── Worker Dispatch Messages (Batch 32) ──────────────────────────────────
+
+message SelectWorkerRequest { uint64 tq_hash = 1; }
+message SelectWorkerResponse { uint64 worker_id = 1; }
+message WorkerHasCapacityRequest { uint64 worker_id = 1; }
+message WorkerHasCapacityResponse { bool has_capacity = 1; }
+message DrainWorkerRequest { uint64 worker_id = 1; }
+message DrainWorkerResponse { bool success = 1; }
+message WorkerTotalLoadRequest {}
+message WorkerTotalLoadResponse { uint64 load = 1; }
+message WorkerTotalCapacityRequest {}
+message WorkerTotalCapacityResponse { uint64 capacity = 1; }
+
+// ─── Sharding Messages (Batch 32) ─────────────────────────────────────────
+
+message ShardingAddHostRequest { string host = 1; }
+message ShardingAddHostResponse {}
+message ShardingRemoveHostRequest { string host = 1; }
+message ShardingRemoveHostResponse { bool success = 1; }
+message ShardingMigrateRequest { uint32 shard_id = 1; string host = 2; }
+message ShardingMigrateResponse { bool success = 1; }
+message ShardingHostCountRequest {}
+message ShardingHostCountResponse { uint64 count = 1; }
+
+// ─── Partition Messages (Batch 32) ────────────────────────────────────────
+
+message PartitionCreateChildRequest { uint32 parent_id = 1; uint64 tq_hash = 2; }
+message PartitionCreateChildResponse { uint64 child_id = 1; }
+message PartitionDeleteRequest { uint32 partition_id = 1; }
+message PartitionDeleteResponse { bool success = 1; }
+message PartitionDepthRequest { uint32 partition_id = 1; }
+message PartitionDepthResponse { int32 depth = 1; }
+message PartitionBacklogRequest { uint64 tq_hash = 1; }
+message PartitionBacklogResponse { uint64 backlog = 1; }
+
+// ─── Search Attributes Messages (Batch 32) ────────────────────────────────
+
+message GetWorkflowSearchAttributesRequest { uint64 workflow_key = 1; }
+message GetWorkflowSearchAttributesResponse {
+  uint64 count = 1;
+  map<string, string> attributes = 2;
+}
+
+// ─── Replication Transport Messages (Batch 33) ────────────────────────────
+
+message ReplicationAddLinkRequest {
+  string cluster_name = 1;
+  uint64 cluster_id = 2;
+  string endpoint = 3;
+}
+message ReplicationAddLinkResponse {}
+
+message ReplicationRemoveLinkRequest { uint64 cluster_id = 1; }
+message ReplicationRemoveLinkResponse { bool success = 1; }
+
+message ReplicationSetLinkActiveRequest { uint64 cluster_id = 1; bool active = 2; }
+message ReplicationSetLinkActiveResponse { bool success = 1; }
+
+message ReplicationPullTasksRequest { uint64 cluster_id = 1; uint32 max_count = 2; }
+message ReplicationPullTasksResponse { uint32 task_count = 1; }
+
+message ReplicationPushTask {
+  uint64 workflow_key = 1;
+  uint32 event_type = 2;
+  bytes payload = 3;
+  uint64 failover_version = 4;
+  uint64 last_event_id = 5;
+}
+message ReplicationPushTasksRequest {
+  uint64 cluster_id = 1;
+  repeated ReplicationPushTask tasks = 2;
+}
+message ReplicationPushTasksResponse { uint32 received_count = 1; }
+
+message ReplicationLinkStatusRequest { uint64 cluster_id = 1; }
+message ReplicationLinkStatusResponse {
+  uint64 active_links = 1;
+  uint64 pending_outgoing = 2;
+  uint64 pending_incoming = 3;
+}
+
+// ─── Replication Daemon Messages (Batch 34) ──────────────────────────────
+message StartReplicationDaemonRequest {}
+message StartReplicationDaemonResponse { bool started = 1; }
+
+message StopReplicationDaemonRequest {}
+message StopReplicationDaemonResponse { bool stopped = 1; }
+
+message ReplicationDaemonStatusRequest {}
+message ReplicationDaemonStatusResponse {
+  bool is_running = 1;
+  uint64 total_cycles = 2;
+  uint64 total_delivered = 3;
+  uint64 total_applied = 4;
+  uint64 total_failures = 5;
+  uint64 uptime_ms = 6;
+  uint64 pending_outgoing = 7;
+  uint64 pending_incoming = 8;
+  uint64 delivery_log_count = 9;
+}
+
+message ReplicationDaemonPollOnceRequest {}
+message ReplicationDaemonPollOnceResponse {
+  uint64 delivered = 1;
+  uint64 applied = 2;
+}

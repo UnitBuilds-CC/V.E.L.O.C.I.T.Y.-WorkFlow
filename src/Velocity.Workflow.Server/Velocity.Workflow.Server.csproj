@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Velocity.Workflow.Server</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore" Version="2.67.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.69.0" PrivateAssets="All" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\workflow_service.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\admin_service.proto" GrpcServices="Server" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Velocity.Workflow.Core\Velocity.Workflow.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Copy native Rust DLLs from Core project runtimes folder -->
+  <Target Name="CopyNativeDlls" BeforeTargets="Build">
+    <Copy SourceFiles="..\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_core.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\Velocity.Workflow.Core\runtimes\win-x64\native\velocity_workflow_engine.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
