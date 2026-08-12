@@ -1,9 +1,21 @@
 # =============================================================================
-# Docker Compose for Velocity Workflow Platform
-# Services: velocity-server, postgres, prometheus, grafana
+# Docker Compose for Velocity Workflow Platform (Production-Grade)
+# Services: velocity-server, postgres, prometheus, grafana, velocity-cli, velocity-web
 # =============================================================================
 
 version: "3.9"
+
+x-common-env: &common-env
+  TZ: UTC
+  LOG_LEVEL: information
+
+x-resource-limits: &server-limits
+  cpus: "2.0"
+  memory: 2G
+
+x-resource-limits-pg: &pg-limits
+  cpus: "1.0"
+  memory: 1G
 
 services:
   # ── Velocity Workflow Server ──────────────────────────────────────────────
@@ -16,6 +28,7 @@ services:
       - "5000:5000"   # HTTP API
       - "50051:50051" # gRPC
     environment:
+      <<: *common-env
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:5000
       - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=velocity;Username=velocity;Password=${POSTGRES_PASSWORD:-velocity_secret}
@@ -28,12 +41,24 @@ services:
     networks:
       - velocity-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          <<: *server-limits
+        reservations:
+          cpus: "0.5"
+          memory: 512M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ── PostgreSQL ────────────────────────────────────────────────────────────
   postgres:
@@ -51,12 +76,24 @@ services:
     networks:
       - velocity-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          <<: *pg-limits
+        reservations:
+          cpus: "0.25"
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U velocity -d velocity"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   # ── Prometheus ────────────────────────────────────────────────────────────
   prometheus:
@@ -74,6 +111,25 @@ services:
     networks:
       - velocity-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   # ── Grafana ───────────────────────────────────────────────────────────────
   grafana:
@@ -89,18 +145,120 @@ services:
       - grafana-data:/var/lib/grafana
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
     networks:
       - velocity-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ── Velocity CLI (Management Commands) ────────────────────────────────────
+  velocity-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: velocity-cli
+    entrypoint: ["dotnet", "Velocity.Workflow.Server.dll"]
+    command: ["cli", "--help"]
+    environment:
+      <<: *common-env
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=velocity;Username=velocity;Password=${POSTGRES_PASSWORD:-velocity_secret}
+      - VELOCITY__SERVER__URL=http://velocity-server:5000
+      - VELOCITY__GRPC__URL=http://velocity-server:50051
+    depends_on:
+      velocity-server:
+        condition: service_healthy
+    networks:
+      - velocity-net
+    profiles:
+      - cli
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ── Velocity Web UI ───────────────────────────────────────────────────────
+  velocity-web:
+    image: velocity-web:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: velocity-web
+    ports:
+      - "8080:80"
+    environment:
+      - VELOCITY_API_URL=http://velocity-server:5000
+      - VELOCITY_GRPC_URL=http://velocity-server:50051
+    depends_on:
+      velocity-server:
+        condition: service_healthy
+    networks:
+      - velocity-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
 
 volumes:
   postgres-data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/postgres
   prometheus-data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/prometheus
   grafana-data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/grafana
 
 networks:
   velocity-net:
@@ -108,3 +266,6 @@ networks:
     ipam:
       config:
         - subnet: 172.28.0.0/16
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"

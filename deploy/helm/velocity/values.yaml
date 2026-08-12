@@ -107,3 +107,46 @@ persistence:
   size: 10Gi
   accessModes:
     - ReadWriteOnce
+
+# ── Pod Disruption Budget ───────────────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# ── Network Policy ──────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+  # Restrict ingress to these namespaces (empty = allow all)
+  allowedIngressNamespaces: []
+  # Namespace where PostgreSQL runs (for egress rules)
+  postgresqlNamespace: ""
+  # Namespace where Prometheus runs (for egress rules)
+  prometheusNamespace: "monitoring"
+
+# ── Service Monitor (Prometheus Operator) ───────────────────────────────────
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+  metricsPath: /metrics
+  honorLabels: true
+  # Additional labels for ServiceMonitor (e.g., for Prometheus selector)
+  additionalLabels: {}
+  # Relabeling rules
+  relabelings: []
+
+# ── Grafana Dashboard ───────────────────────────────────────────────────────
+grafanaDashboard:
+  enabled: true
+  # Additional labels for dashboard ConfigMap (e.g., grafana_dashboard: "1")
+  additionalLabels:
+    grafana_dashboard: "1"
+  annotations: {}
+
+# ── Topology Spread Constraints ─────────────────────────────────────────────
+topologySpreadConstraints:
+  enabled: true
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: DoNotSchedule

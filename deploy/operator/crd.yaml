@@ -1,0 +1,191 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: velocityworkflows.workflow.velocity.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+spec:
+  group: workflow.velocity.io
+  names:
+    kind: VelocityWorkflow
+    listKind: VelocityWorkflowList
+    plural: velocityworkflows
+    singular: velocityworkflow
+    shortNames:
+      - vwf
+      - velocity
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Workflow Type
+          type: string
+          jsonPath: .spec.workflowType
+        - name: State
+          type: string
+          jsonPath: .status.state
+        - name: Current Step
+          type: string
+          jsonPath: .status.currentStep
+        - name: Started At
+          type: date
+          jsonPath: .status.startedAt
+        - name: Completed At
+          type: date
+          jsonPath: .status.completedAt
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - workflowType
+                - namespace
+                - taskQueue
+              properties:
+                workflowType:
+                  type: string
+                  description: "Type/name of the workflow to execute"
+                  minLength: 1
+                  maxLength: 256
+                namespace:
+                  type: string
+                  description: "Velocity namespace for workflow isolation"
+                  minLength: 1
+                  maxLength: 128
+                steps:
+                  type: array
+                  description: "Ordered list of workflow steps"
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - activity
+                    properties:
+                      name:
+                        type: string
+                        description: "Human-readable step name"
+                      activity:
+                        type: string
+                        description: "Activity type to execute"
+                      timeout:
+                        type: string
+                        description: "Step timeout (e.g., '30s', '5m')"
+                        pattern: '^[0-9]+(ms|s|m|h)$'
+                      retryPolicy:
+                        type: object
+                        properties:
+                          maxAttempts:
+                            type: integer
+                            minimum: 1
+                            maximum: 100
+                          initialInterval:
+                            type: string
+                          backoffCoefficient:
+                            type: number
+                            minimum: 1.0
+                            maximum: 10.0
+                      input:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                        description: "Arbitrary JSON input for the step"
+                taskQueue:
+                  type: string
+                  description: "Task queue for activity dispatch"
+                  minLength: 1
+                  maxLength: 128
+                executionTimeout:
+                  type: string
+                  description: "Overall workflow execution timeout"
+                  pattern: '^[0-9]+(ms|s|m|h)$'
+                runTimeout:
+                  type: string
+                  description: "Single workflow run timeout"
+                  pattern: '^[0-9]+(ms|s|m|h)$'
+            status:
+              type: object
+              properties:
+                state:
+                  type: string
+                  description: "Current workflow state"
+                  enum:
+                    - Pending
+                    - Running
+                    - Completed
+                    - Failed
+                    - Cancelled
+                    - TimedOut
+                currentStep:
+                  type: string
+                  description: "Name of the currently executing step"
+                startedAt:
+                  type: string
+                  format: date-time
+                  description: "When the workflow started executing"
+                completedAt:
+                  type: string
+                  format: date-time
+                  description: "When the workflow completed"
+                workflowId:
+                  type: string
+                  description: "Internal workflow execution ID"
+                runId:
+                  type: string
+                  description: "Internal workflow run ID"
+                stepResults:
+                  type: array
+                  description: "Results from completed steps"
+                  items:
+                    type: object
+                    properties:
+                      stepName:
+                        type: string
+                      status:
+                        type: string
+                      output:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      completedAt:
+                        type: string
+                        format: date-time
+                conditions:
+                  type: array
+                  description: "Standard Kubernetes conditions"
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum: ["True", "False", "Unknown"]
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                observedGeneration:
+                  type: integer
+                  format: int64
+                  description: "Last observed generation of the resource"

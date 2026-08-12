@@ -1,0 +1,31 @@
+version: v2
+
+plugins:
+  - name: go
+    out: gen/go
+    opt:
+      - paths=source_relative
+
+  - name: go-grpc
+    out: gen/go
+    opt:
+      - paths=source_relative
+
+  - name: java
+    out: gen/java
+
+  - name: ts
+    out: gen/ts
+    opt:
+      - target=ts
+
+deps:
+  - buf.build/googleapis/googleapis
+
+lint:
+  use:
+    - DEFAULT
+
+breaking:
+  use:
+    - FILE

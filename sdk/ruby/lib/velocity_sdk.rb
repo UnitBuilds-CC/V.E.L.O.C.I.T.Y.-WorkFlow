@@ -19,6 +19,9 @@ require_relative 'velocity_sdk/errors'
 require_relative 'velocity_sdk/interceptors'
 require_relative 'velocity_sdk/client'
 require_relative 'velocity_sdk/testing'
+require_relative 'velocity_sdk/retry'
+require_relative 'velocity_sdk/payload_codec'
+require_relative 'velocity_sdk/workflow_stub'
 
 module VelocitySdk
   # Gem version, kept in sync with the gemspec.

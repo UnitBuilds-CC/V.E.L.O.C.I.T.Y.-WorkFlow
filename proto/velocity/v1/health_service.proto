@@ -1,0 +1,60 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+
+// ─── HealthService ─────────────────────────────────────────────────────────────
+// Standard health check service for load balancers, orchestrators, and
+// monitoring systems. Follows the gRPC Health Checking Protocol convention.
+
+service HealthService {
+
+  // Check returns the health status of the server or a specific service.
+  //
+  // The service name can be empty string for overall server health,
+  // or a specific service name (e.g., "velocity.v1.WorkflowService").
+  rpc Check(HealthCheckRequest)
+      returns (HealthCheckResponse);
+
+  // Watch streams health status changes for a specific service.
+  // The server sends a new response whenever the serving status changes.
+  rpc Watch(HealthCheckRequest)
+      returns (stream HealthCheckResponse);
+}
+
+// ─── Health Check Request ──────────────────────────────────────────────────────
+
+message HealthCheckRequest {
+  // Service name to check. Empty string means overall server health.
+  string service = 1;
+}
+
+// ─── Health Check Response ─────────────────────────────────────────────────────
+
+message HealthCheckResponse {
+  // Serving status of the checked service.
+  ServingStatus status = 1;
+
+  // Human-readable status message (optional).
+  string message = 2;
+
+  // Timestamp of the health check.
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+// ─── Serving Status ────────────────────────────────────────────────────────────
+
+enum ServingStatus {
+  SERVING_STATUS_UNSPECIFIED = 0;
+  SERVING_STATUS_SERVING = 1;
+  SERVING_STATUS_NOT_SERVING = 2;
+  SERVING_STATUS_SERVICE_UNKNOWN = 3;
+}

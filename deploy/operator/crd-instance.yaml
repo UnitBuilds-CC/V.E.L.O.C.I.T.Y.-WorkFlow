@@ -1,0 +1,48 @@
+apiVersion: workflow.velocity.io/v1alpha1
+kind: VelocityWorkflow
+metadata:
+  name: example-payment-workflow
+  namespace: velocity-system
+  labels:
+    app.kubernetes.io/name: velocity-workflow-example
+    app.kubernetes.io/part-of: velocity
+spec:
+  workflowType: PaymentProcessing
+  namespace: payments
+  taskQueue: payment-queue
+  executionTimeout: "30m"
+  runTimeout: "10m"
+  steps:
+    - name: validate-order
+      activity: ValidateOrderActivity
+      timeout: "30s"
+      retryPolicy:
+        maxAttempts: 3
+        initialInterval: "1s"
+        backoffCoefficient: 2.0
+      input:
+        orderId: "ORD-12345"
+        amount: 99.99
+        currency: "USD"
+
+    - name: charge-payment
+      activity: ChargePaymentActivity
+      timeout: "60s"
+      retryPolicy:
+        maxAttempts: 5
+        initialInterval: "2s"
+        backoffCoefficient: 2.0
+      input:
+        provider: stripe
+        method: card
+
+    - name: send-confirmation
+      activity: SendConfirmationActivity
+      timeout: "30s"
+      retryPolicy:
+        maxAttempts: 3
+        initialInterval: "5s"
+        backoffCoefficient: 1.5
+      input:
+        channel: email
+        template: order-confirmation

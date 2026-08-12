@@ -1,0 +1,150 @@
+{{- if .Values.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "velocity.fullname" . }}-grafana-dashboard
+  labels:
+    {{- include "velocity.labels" . | nindent 4 }}
+    {{- with .Values.grafanaDashboard.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.grafanaDashboard.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  velocity-workflow-dashboard.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "iteration": 1700000000000,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "title": "Workflow Executions (rate)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(rate(velocity_workflow_executions_total[5m])) by (workflow_type, status)",
+              "legendFormat": "{{workflow_type}} - {{status}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "ops" }
+          }
+        },
+        {
+          "title": "Workflow Latency (p50 / p95 / p99)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(velocity_workflow_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p50"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(velocity_workflow_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(velocity_workflow_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p99"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "s" }
+          }
+        },
+        {
+          "title": "Error Rate by Workflow Type",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(rate(velocity_workflow_executions_total{status=\"failed\"}[5m])) by (workflow_type) / sum(rate(velocity_workflow_executions_total[5m])) by (workflow_type)",
+              "legendFormat": "{{workflow_type}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "percentunit" }
+          }
+        },
+        {
+          "title": "Slab Utilization",
+          "type": "gauge",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "velocity_slab_utilization_ratio",
+              "legendFormat": "slab-{{slab_id}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.7 },
+                  { "color": "red", "value": 0.9 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Active Workflows",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(velocity_workflow_active)",
+              "legendFormat": "Active"
+            }
+          ]
+        },
+        {
+          "title": "Task Queue Depth",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 6, "y": 16 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(velocity_task_queue_depth) by (task_queue)",
+              "legendFormat": "{{task_queue}}"
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["velocity", "workflow"],
+      "templating": {
+        "list": [
+          {
+            "current": {},
+            "hide": 0,
+            "includeAll": false,
+            "name": "datasource",
+            "query": "prometheus",
+            "type": "datasource"
+          }
+        ]
+      },
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "Velocity Workflow Engine",
+      "uid": "velocity-workflow",
+      "version": 1
+    }
+{{- end }}

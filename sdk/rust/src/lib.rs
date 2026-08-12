@@ -20,6 +20,8 @@ pub mod client;
 pub mod errors;
 pub mod interceptors;
 pub mod testing;
+pub mod retry;
+pub mod codec;
 
 #[cfg(test)]
 mod tests;
@@ -33,6 +35,8 @@ pub use interceptors::{
     LoggingInterceptor, MetricsInterceptor, InterceptorChain,
 };
 pub use testing::{TestWorkflowEnvironment, MockClient};
+pub use retry::{RetryPolicy, RetryPolicyBuilder, execute_with_retry, execute_with_retry_if};
+pub use codec::{PayloadCodec, JsonCodec, BinaryCodec, NullCodec, CodecChain, CodecError};
 
 /// Re-export the engine's WorkflowStatus so consumers don't need a direct dep.
 pub use velocity_workflow_engine::WorkflowStatus;

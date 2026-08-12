@@ -30,6 +30,15 @@ from .testing import (
     assert_workflow_completed,
     assert_signal_received,
 )
+from .retry import RetryPolicy, retry_with_policy, calculate_backoff, RetryableOperation
+from .payload_codec import (
+    PayloadCodec,
+    JsonCodec,
+    BinaryCodec,
+    ProtobufCodec,
+    CodecChain,
+)
+from .workflow_stub import WorkflowStub, WorkflowStubOptions
 
 __all__ = [
     # Client
@@ -64,6 +73,20 @@ __all__ = [
     "MockVelocityClient",
     "assert_workflow_completed",
     "assert_signal_received",
+    # Retry
+    "RetryPolicy",
+    "retry_with_policy",
+    "calculate_backoff",
+    "RetryableOperation",
+    # Payload Codec
+    "PayloadCodec",
+    "JsonCodec",
+    "BinaryCodec",
+    "ProtobufCodec",
+    "CodecChain",
+    # Workflow Stub
+    "WorkflowStub",
+    "WorkflowStubOptions",
 ]
 
 __version__ = "0.1.0"

@@ -1,0 +1,175 @@
+// Copyright (c) VELOCITY Suite. All rights reserved.
+// Licensed under the MIT License.
+
+syntax = "proto3";
+
+package velocity.v1;
+
+option go_package = "go.velocity.dev/api/velocity/v1";
+option java_package = "dev.velocity.api.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "velocity/v1/common.proto";
+import "velocity/v1/messages.proto";
+
+// ─── AdminService ──────────────────────────────────────────────────────────────
+// Administrative operations for cluster management, namespace CRUD,
+// and runtime configuration. These RPCs are typically restricted to
+// operator-level credentials.
+
+service AdminService {
+
+  // ─── Cluster Info ────────────────────────────────────────────────────────
+
+  // GetClusterInfo returns information about the VELOCITY-WorkFlow cluster.
+  rpc GetClusterInfo(GetClusterInfoRequest)
+      returns (GetClusterInfoResponse);
+
+  // ListClusterMembers returns all nodes in the cluster.
+  rpc ListClusterMembers(ListClusterMembersRequest)
+      returns (ListClusterMembersResponse);
+
+  // ─── Namespace Management ────────────────────────────────────────────────
+
+  // DeleteNamespace permanently removes a namespace and all its workflows.
+  rpc DeleteNamespace(DeleteNamespaceRequest)
+      returns (DeleteNamespaceResponse);
+
+  // ─── Configuration ───────────────────────────────────────────────────────
+
+  // GetDynamicConfig returns the current dynamic configuration.
+  rpc GetDynamicConfig(GetDynamicConfigRequest)
+      returns (GetDynamicConfigResponse);
+
+  // UpdateDynamicConfig updates a dynamic configuration value at runtime.
+  rpc UpdateDynamicConfig(UpdateDynamicConfigRequest)
+      returns (UpdateDynamicConfigResponse);
+
+  // ListDynamicConfigKeys lists all available dynamic configuration keys.
+  rpc ListDynamicConfigKeys(ListDynamicConfigKeysRequest)
+      returns (ListDynamicConfigKeysResponse);
+
+  // ─── Shard Management ────────────────────────────────────────────────────
+
+  // DescribeShard returns information about a specific shard.
+  rpc DescribeShard(DescribeShardRequest)
+      returns (DescribeShardResponse);
+
+  // CloseShard forces a shard to close (for maintenance).
+  rpc CloseShard(CloseShardRequest)
+      returns (CloseShardResponse);
+}
+
+// ─── GetClusterInfo ────────────────────────────────────────────────────────────
+
+message GetClusterInfoRequest {
+}
+
+message GetClusterInfoResponse {
+  // Cluster identifier.
+  string cluster_id = 1;
+
+  // Server version.
+  string server_version = 2;
+
+  // Number of nodes in the cluster.
+  int32 node_count = 3;
+
+  // Supported API versions.
+  repeated string supported_api_versions = 4;
+
+  // Cluster uptime.
+  google.protobuf.Duration uptime = 5;
+
+  // Whether the cluster is healthy.
+  bool healthy = 6;
+}
+
+// ─── ListClusterMembers ────────────────────────────────────────────────────────
+
+message ListClusterMembersRequest {
+}
+
+message ListClusterMembersResponse {
+  repeated ClusterMember members = 1;
+}
+
+message ClusterMember {
+  string node_id = 1;
+  string address = 2;
+  int32 port = 3;
+  string role = 4;
+  google.protobuf.Timestamp last_heartbeat = 5;
+  bool healthy = 6;
+}
+
+// ─── DeleteNamespace ───────────────────────────────────────────────────────────
+
+message DeleteNamespaceRequest {
+  string namespace = 1;
+}
+
+message DeleteNamespaceResponse {
+  // Number of workflows deleted.
+  uint64 workflows_deleted = 1;
+}
+
+// ─── Dynamic Configuration ─────────────────────────────────────────────────────
+
+message GetDynamicConfigRequest {
+  string key = 1;
+}
+
+message GetDynamicConfigResponse {
+  string key = 1;
+  string value = 2;
+  google.protobuf.Timestamp last_updated = 3;
+}
+
+message UpdateDynamicConfigRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message UpdateDynamicConfigResponse {
+  bool applied = 1;
+}
+
+message ListDynamicConfigKeysRequest {
+}
+
+message ListDynamicConfigKeysResponse {
+  repeated ConfigKeyInfo keys = 1;
+}
+
+message ConfigKeyInfo {
+  string key = 1;
+  string description = 2;
+  string default_value = 3;
+  string current_value = 4;
+  string value_type = 5;
+}
+
+// ─── Shard Management ──────────────────────────────────────────────────────────
+
+message DescribeShardRequest {
+  uint32 shard_id = 1;
+}
+
+message DescribeShardResponse {
+  uint32 shard_id = 1;
+  string owner_node = 2;
+  uint64 workflow_count = 3;
+  google.protobuf.Timestamp last_transfer_lsn = 4;
+  string state = 5;
+}
+
+message CloseShardRequest {
+  uint32 shard_id = 1;
+  string reason = 2;
+}
+
+message CloseShardResponse {
+}

@@ -1,0 +1,42 @@
+version: v2
+
+plugins:
+  # Go
+  - name: go
+    out: ../sdk/go/gen
+    opt:
+      - paths=source_relative
+
+  - name: go-grpc
+    out: ../sdk/go/gen
+    opt:
+      - paths=source_relative
+
+  # Java
+  - name: java
+    out: ../sdk/java/src/main/java
+
+  # TypeScript
+  - name: ts
+    out: ../sdk/typescript/src/gen
+    opt:
+      - target=ts
+
+  # Python
+  - name: python
+    out: ../sdk/python/velocity_sdk/gen
+
+  - name: grpc-python
+    out: ../sdk/python/velocity_sdk/gen
+
+  # Ruby
+  - name: ruby
+    out: ../sdk/ruby/lib/velocity_sdk/gen
+
+  # PHP
+  - name: php
+    out: ../sdk/php/src/gen
+
+  # Rust (via prost)
+  - name: prost
+    out: ../sdk/rust/src/gen

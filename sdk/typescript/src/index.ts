@@ -36,3 +36,26 @@ export {
   assertWorkflowCompleted,
   assertSignalReceived,
 } from './testing';
+
+// Retry
+export {
+  retryWithBackoff,
+  calculateBackoff,
+  validateRetryOptions,
+  createRetry,
+  DEFAULT_RETRY_OPTIONS,
+} from './retry';
+export type { RetryOptions } from './retry';
+
+// Payload Codec
+export {
+  JsonCodec,
+  BinaryCodec,
+  NullCodec,
+  CodecChain,
+} from './payload-codec';
+export type { PayloadCodec } from './payload-codec';
+
+// Workflow Stub
+export { WorkflowStub } from './workflow-stub';
+export type { WorkflowStubOptions } from './workflow-stub';

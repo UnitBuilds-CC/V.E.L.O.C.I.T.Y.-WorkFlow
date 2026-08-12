@@ -1,0 +1,83 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: velocity-operator
+  namespace: velocity-system
+  labels:
+    app.kubernetes.io/name: velocity-operator
+    app.kubernetes.io/part-of: velocity
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: velocity-operator
+  labels:
+    app.kubernetes.io/name: velocity-operator
+    app.kubernetes.io/part-of: velocity
+rules:
+  # Manage VelocityWorkflow CRDs
+  - apiGroups:
+      - workflow.velocity.io
+    resources:
+      - velocityworkflows
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  # Update status subresource
+  - apiGroups:
+      - workflow.velocity.io
+    resources:
+      - velocityworkflows/status
+    verbs:
+      - get
+      - patch
+      - update
+  # Manage finalizers
+  - apiGroups:
+      - workflow.velocity.io
+    resources:
+      - velocityworkflows/finalizers
+    verbs:
+      - update
+  # Leader election
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+  # Events for audit trail
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: velocity-operator
+  labels:
+    app.kubernetes.io/name: velocity-operator
+    app.kubernetes.io/part-of: velocity
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: velocity-operator
+subjects:
+  - kind: ServiceAccount
+    name: velocity-operator
+    namespace: velocity-system
