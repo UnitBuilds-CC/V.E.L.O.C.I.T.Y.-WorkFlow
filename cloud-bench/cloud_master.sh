@@ -140,21 +140,38 @@ log "  SSH ready."
 
 # ── 6. Upload repo + scripts ──────────────────────────────────────────────
 log "[6/7] Uploading repository and scripts..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+# Find repo root reliably via git
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+    REPO_ROOT="$(git rev-parse --show-toplevel)"
+else
+    # Fallback: walk up from script location looking for Cargo.toml
+    _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    while [ "$_dir" != "/" ] && [ ! -f "$_dir/Cargo.toml" ]; do
+        _dir="$(dirname "$_dir")"
+    done
+    REPO_ROOT="$_dir"
+fi
+
+if [ ! -f "$REPO_ROOT/Cargo.toml" ]; then
+    err "Could not find repo root (no Cargo.toml found). Run from inside the repo."
+    exit 1
+fi
+
+log "  Repo root: $REPO_ROOT"
 
 # Tar repo (exclude heavy dirs) and upload
 cd "$REPO_ROOT"
-log "  Tarring from: $(pwd)"
 tar czf /tmp/velocity-repo.tar.gz \
-    --exclude='.git' --exclude='target' --exclude='node_modules' --exclude='*.log' .
+    --exclude='.git' --exclude='target' --exclude='node_modules' --exclude='*.log' \
+    --exclude='.ssh' --exclude='.zshrc' --exclude='.lesshst' --exclude='.bash_history' .
 log "  Tarball: $(ls -lh /tmp/velocity-repo.tar.gz | awk '{print $5}')"
 log "  Contains Cargo.toml: $(tar tzf /tmp/velocity-repo.tar.gz | grep -c 'Cargo.toml') files"
 scp $SSH_OPTS /tmp/velocity-repo.tar.gz "ubuntu@$PUBLIC_IP:~/velocity-repo.tar.gz"
 rm -f /tmp/velocity-repo.tar.gz
 
 # Upload the EC2 benchmark script
-scp $SSH_OPTS "$SCRIPT_DIR/cloud_ec2_bench.sh" "ubuntu@$PUBLIC_IP:~/cloud_ec2_bench.sh"
+scp $SSH_OPTS "$REPO_ROOT/cloud-bench/cloud_ec2_bench.sh" "ubuntu@$PUBLIC_IP:~/cloud_ec2_bench.sh"
 log "  Uploaded."
 
 # ── 7. Run benchmark ──────────────────────────────────────────────────────
