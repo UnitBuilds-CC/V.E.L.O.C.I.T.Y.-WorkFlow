@@ -1,0 +1,12 @@
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\bin\Debug\net10.0\Velocity.Workflow.Core.deps.json
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\bin\Debug\net10.0\Velocity.Workflow.Core.dll
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\bin\Debug\net10.0\Velocity.Workflow.Core.pdb
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\Velocity.Workflow.Core.GeneratedMSBuildEditorConfig.editorconfig
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\Velocity.Workflow.Core.AssemblyInfoInputs.cache
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\Velocity.Workflow.Core.AssemblyInfo.cs
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\Velocity.Workflow.Core.csproj.CoreCompileInputs.cache
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\Velocity.Workflow.Core.sourcelink.json
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\Velocity.Workflow.Core.dll
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\refint\Velocity.Workflow.Core.dll
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\Velocity.Workflow.Core.pdb
+E:\Temporal-V2\VELOCITY-WorkFlow\src\Velocity.Workflow.Core\obj\Debug\net10.0\ref\Velocity.Workflow.Core.dll
