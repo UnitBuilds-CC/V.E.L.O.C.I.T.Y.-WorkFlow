@@ -121,6 +121,11 @@ pub mod workflow_context;
 pub mod workflow_reset;
 pub mod workflow_state_machine;
 pub mod workflow_task_handler;
+pub mod queue_infrastructure;
+pub mod workflow_execution;
+pub mod shard_controller;
+pub mod deletion_manager;
+pub mod notification_system;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
 // Requires protoc to be installed for proto compilation.
@@ -681,4 +686,64 @@ pub use worker_deployment::{
     DeploymentError as WdDeploymentError, DeploymentManager as WdDeploymentManager,
     DeploymentManagerStats as WdDeploymentManagerStats, DeploymentState as WdDeploymentState,
     WorkerDeployment as WdWorkerDeployment,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Batch 5: Deep subsystem modules (queue infra, workflow execution, shard ctrl, deletion, notifications)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// queue_infrastructure: slices, executables, DLQ, reader/writer, grouper, alerts
+pub use queue_infrastructure::{
+    TaskPredicate, TaskKey as QiTaskKey, QueueTaskDescriptor,
+    ExecutableTask, ExecutableState, ExecutablePriority,
+    QueueSlice, QueueSliceStats,
+    QueueReader, QueueRange, QueueReaderStats,
+    DlqWriter, DlqRecord, DlqWriterStats,
+    QueueGrouper, GroupBy, GrouperStats,
+    QueueIterator, QueueIteratorStats,
+    QueueAction, ActionResult,
+    ActiveStandbyExecutor, ActiveStandbyStats, ClusterRole,
+    QueueAlertManager, QueueAlert, AlertSeverity, AlertThresholds, AlertManagerStats,
+    QueueMonitor, QueueHealthReport, QueueMonitorStats,
+};
+
+// workflow_execution: deep mutable state, query/update registries, state transitions
+pub use workflow_execution::{
+    MutableState as DeepMutableState, MutableStateStats,
+    WorkflowExecutionStatus, WorkflowState as DeepWorkflowState, WorkflowStatus as DeepWorkflowStatus,
+    ActivityState as WfActivityState, ActivityStateEnum,
+    TimerState as WfTimerState, TimerStateEnum,
+    ChildWorkflowState as WfChildWorkflowState, ChildState,
+    SignalInfo as WfSignalInfo, HistoryEvent as DeepHistoryEvent,
+    QueryRegistry as DeepQueryRegistry, QueryEntry as DeepQueryEntry, QueryState as DeepQueryState,
+    UpdateRegistry, UpdateEntry, UpdateState, UpdateRegistryStats,
+    StateTransitionHistory, StateTransition,
+    WorkflowChecksum,
+    RetryPolicy as DeepRetryPolicy, RetryState as DeepRetryState,
+    SearchAttributeValue as DeepSearchAttributeValue,
+    TaskGenerator as DeepTaskGenerator, GeneratedTask as DeepGeneratedTask, TaskGeneratorStats,
+};
+
+// shard_controller: shard ownership, handover, engine factory, distribution
+pub use shard_controller::{
+    ShardContext as DeepShardContext, ShardState as DeepShardState, ShardConfig, ShardContextStats,
+    ShardEngine, ShardEngineStats,
+    HandoverTracker, HandoverInfo, HandoverTrackerStats,
+    ShardController, ShardControllerConfig, ShardControllerStats,
+    ShardEngineFactory, ShardEngineFactoryConfig,
+    ShardDistribution,
+    ShardError, ShardHealthReport,
+};
+
+// deletion_manager: workflow deletion pipeline
+pub use deletion_manager::{
+    DeletionManager, DeletionManagerConfig, DeletionManagerStats,
+    DeletionRecord, DeletionStage, StepResult,
+};
+
+// notification_system: state change notifications, subscriptions, time-skipping
+pub use notification_system::{
+    NotificationType, NotificationCategory, NotificationEvent, NotificationPriority,
+    NotificationHub, NotificationHubStats,
+    Subscription, NotificationFilter, SubscriberId,
 };
