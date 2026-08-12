@@ -3,9 +3,12 @@
 //! Covers: ring-based consistent hashing, host info, health checking,
 //! member list management, shard ownership resolution, and cluster topology.
 
-use std::collections::{HashMap, BTreeMap};
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Host Info
@@ -18,8 +21,15 @@ pub struct HostAddress {
 }
 
 impl HostAddress {
-    pub fn new(host: &str, port: u16) -> Self { Self { host: host.into(), port } }
-    pub fn address(&self) -> String { format!("{}:{}", self.host, self.port) }
+    pub fn new(host: &str, port: u16) -> Self {
+        Self {
+            host: host.into(),
+            port,
+        }
+    }
+    pub fn address(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
 }
 
 impl std::fmt::Display for HostAddress {
@@ -42,23 +52,45 @@ pub struct HostInfo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ServiceRole { History, Matching, Frontend, Worker, Admin }
+pub enum ServiceRole {
+    History,
+    Matching,
+    Frontend,
+    Worker,
+    Admin,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HostState { Active, Draining, Drained, Unhealthy, Removed }
+pub enum HostState {
+    Active,
+    Draining,
+    Drained,
+    Unhealthy,
+    Removed,
+}
 
 impl HostInfo {
     pub fn new(identity: &str, host: &str, port: u16, roles: Vec<ServiceRole>) -> Self {
         let now = now_millis();
         Self {
-            identity: identity.into(), address: HostAddress::new(host, port),
-            grpc_address: None, roles, labels: HashMap::new(),
-            state: HostState::Active, joined_at: now, last_heartbeat: now, shard_count: 0,
+            identity: identity.into(),
+            address: HostAddress::new(host, port),
+            grpc_address: None,
+            roles,
+            labels: HashMap::new(),
+            state: HostState::Active,
+            joined_at: now,
+            last_heartbeat: now,
+            shard_count: 0,
         }
     }
 
-    pub fn is_active(&self) -> bool { self.state == HostState::Active }
-    pub fn has_role(&self, role: ServiceRole) -> bool { self.roles.contains(&role) }
+    pub fn is_active(&self) -> bool {
+        self.state == HostState::Active
+    }
+    pub fn has_role(&self, role: ServiceRole) -> bool {
+        self.roles.contains(&role)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -74,13 +106,20 @@ pub struct RingHash {
 
 #[derive(Debug, Default)]
 pub struct RingHashStats {
-    pub lookups: AtomicU64, pub rebalances: AtomicU64,
-    pub members_added: AtomicU64, pub members_removed: AtomicU64,
+    pub lookups: AtomicU64,
+    pub rebalances: AtomicU64,
+    pub members_added: AtomicU64,
+    pub members_removed: AtomicU64,
 }
 
 impl RingHash {
     pub fn new(virtual_nodes: u32) -> Self {
-        Self { ring: RwLock::new(BTreeMap::new()), virtual_nodes, members: RwLock::new(HashMap::new()), stats: RingHashStats::default() }
+        Self {
+            ring: RwLock::new(BTreeMap::new()),
+            virtual_nodes,
+            members: RwLock::new(HashMap::new()),
+            stats: RingHashStats::default(),
+        }
     }
 
     pub fn add_member(&self, host: HostInfo) {
@@ -109,9 +148,13 @@ impl RingHash {
     pub fn lookup(&self, key: &str) -> Option<HostInfo> {
         self.stats.lookups.fetch_add(1, Ordering::Relaxed);
         let ring = self.ring.read().unwrap();
-        if ring.is_empty() { return None; }
+        if ring.is_empty() {
+            return None;
+        }
         let hash = hash_key(key);
-        let identity = ring.range(hash..).next()
+        let identity = ring
+            .range(hash..)
+            .next()
             .or_else(|| ring.iter().next())
             .map(|(_, id)| id.clone())?;
         self.members.read().unwrap().get(&identity).cloned()
@@ -121,18 +164,32 @@ impl RingHash {
         self.lookup(&format!("shard-{}", shard_id))
     }
 
-    pub fn member_count(&self) -> usize { self.members.read().unwrap().len() }
+    pub fn member_count(&self) -> usize {
+        self.members.read().unwrap().len()
+    }
 
     pub fn all_members(&self) -> Vec<HostInfo> {
         self.members.read().unwrap().values().cloned().collect()
     }
 
     pub fn active_members(&self) -> Vec<HostInfo> {
-        self.members.read().unwrap().values().filter(|h| h.is_active()).cloned().collect()
+        self.members
+            .read()
+            .unwrap()
+            .values()
+            .filter(|h| h.is_active())
+            .cloned()
+            .collect()
     }
 
     pub fn members_for_role(&self, role: ServiceRole) -> Vec<HostInfo> {
-        self.members.read().unwrap().values().filter(|h| h.has_role(role) && h.is_active()).cloned().collect()
+        self.members
+            .read()
+            .unwrap()
+            .values()
+            .filter(|h| h.has_role(role) && h.is_active())
+            .cloned()
+            .collect()
     }
 }
 
@@ -159,21 +216,35 @@ pub struct HealthResult {
 
 #[derive(Debug, Default)]
 pub struct HealthCheckerStats {
-    pub checks_performed: AtomicU64, pub healthy_count: AtomicU64,
-    pub unhealthy_count: AtomicU64, pub timeouts: AtomicU64,
+    pub checks_performed: AtomicU64,
+    pub healthy_count: AtomicU64,
+    pub unhealthy_count: AtomicU64,
+    pub timeouts: AtomicU64,
 }
 
 impl HealthChecker {
     pub fn new(ring: Arc<RingHash>, timeout: Duration) -> Self {
-        Self { ring, timeout, results: RwLock::new(HashMap::new()), stats: HealthCheckerStats::default() }
+        Self {
+            ring,
+            timeout,
+            results: RwLock::new(HashMap::new()),
+            stats: HealthCheckerStats::default(),
+        }
     }
 
     pub fn check_host(&self, identity: &str) -> HealthResult {
         let result = HealthResult {
-            identity: identity.into(), healthy: true, latency_ms: 5,
-            checked_at: now_millis(), failure_count: 0, last_error: None,
+            identity: identity.into(),
+            healthy: true,
+            latency_ms: 5,
+            checked_at: now_millis(),
+            failure_count: 0,
+            last_error: None,
         };
-        self.results.write().unwrap().insert(identity.into(), result.clone());
+        self.results
+            .write()
+            .unwrap()
+            .insert(identity.into(), result.clone());
         self.stats.checks_performed.fetch_add(1, Ordering::Relaxed);
         self.stats.healthy_count.fetch_add(1, Ordering::Relaxed);
         result
@@ -181,10 +252,17 @@ impl HealthChecker {
 
     pub fn mark_unhealthy(&self, identity: &str, error: &str) {
         let result = HealthResult {
-            identity: identity.into(), healthy: false, latency_ms: 0,
-            checked_at: now_millis(), failure_count: 1, last_error: Some(error.into()),
+            identity: identity.into(),
+            healthy: false,
+            latency_ms: 0,
+            checked_at: now_millis(),
+            failure_count: 1,
+            last_error: Some(error.into()),
         };
-        self.results.write().unwrap().insert(identity.into(), result);
+        self.results
+            .write()
+            .unwrap()
+            .insert(identity.into(), result);
         self.stats.unhealthy_count.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -193,11 +271,23 @@ impl HealthChecker {
     }
 
     pub fn healthy_hosts(&self) -> Vec<String> {
-        self.results.read().unwrap().iter().filter(|(_, r)| r.healthy).map(|(id, _)| id.clone()).collect()
+        self.results
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|(_, r)| r.healthy)
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 
     pub fn unhealthy_hosts(&self) -> Vec<String> {
-        self.results.read().unwrap().iter().filter(|(_, r)| !r.healthy).map(|(id, _)| id.clone()).collect()
+        self.results
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|(_, r)| !r.healthy)
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 }
 
@@ -216,14 +306,22 @@ pub struct ClusterTopology {
 
 #[derive(Debug, Default)]
 pub struct ClusterTopologyStats {
-    pub shard_resolutions: AtomicU64, pub topology_updates: AtomicU64,
+    pub shard_resolutions: AtomicU64,
+    pub topology_updates: AtomicU64,
 }
 
 impl ClusterTopology {
     pub fn new(cluster_name: &str, total_shards: u32) -> Self {
         let ring = Arc::new(RingHash::new(100));
         let health = Arc::new(HealthChecker::new(ring.clone(), Duration::from_secs(5)));
-        Self { cluster_name: cluster_name.into(), ring, health_checker: health, total_shards, shard_to_host: RwLock::new(HashMap::new()), stats: ClusterTopologyStats::default() }
+        Self {
+            cluster_name: cluster_name.into(),
+            ring,
+            health_checker: health,
+            total_shards,
+            shard_to_host: RwLock::new(HashMap::new()),
+            stats: ClusterTopologyStats::default(),
+        }
     }
 
     pub fn add_host(&self, host: HostInfo) {
@@ -257,8 +355,13 @@ impl ClusterTopology {
     }
 
     pub fn shards_on_host(&self, host_identity: &str) -> Vec<u32> {
-        self.shard_to_host.read().unwrap().iter()
-            .filter(|(_, h)| *h == host_identity).map(|(s, _)| *s).collect()
+        self.shard_to_host
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|(_, h)| *h == host_identity)
+            .map(|(s, _)| *s)
+            .collect()
     }
 
     pub fn cluster_report(&self) -> ClusterReport {
@@ -268,27 +371,37 @@ impl ClusterTopology {
         for (_, host) in self.shard_to_host.read().unwrap().iter() {
             *host_shard_counts.entry(host.clone()).or_insert(0) += 1;
         }
-        let balanced = if host_shard_counts.is_empty() { true } else {
+        let balanced = if host_shard_counts.is_empty() {
+            true
+        } else {
             let counts: Vec<usize> = host_shard_counts.values().cloned().collect();
             let max = *counts.iter().max().unwrap_or(&0);
             let min = *counts.iter().min().unwrap_or(&0);
             max - min <= 2
         };
         ClusterReport {
-            cluster_name: self.cluster_name.clone(), total_shards: self.total_shards,
-            total_hosts: members.len(), active_hosts: active,
-            shard_distribution: host_shard_counts, balanced,
+            cluster_name: self.cluster_name.clone(),
+            total_shards: self.total_shards,
+            total_hosts: members.len(),
+            active_hosts: active,
+            shard_distribution: host_shard_counts,
+            balanced,
         }
     }
 
-    pub fn host_count(&self) -> usize { self.ring.member_count() }
+    pub fn host_count(&self) -> usize {
+        self.ring.member_count()
+    }
 }
 
 #[derive(Debug)]
 pub struct ClusterReport {
-    pub cluster_name: String, pub total_shards: u32,
-    pub total_hosts: usize, pub active_hosts: usize,
-    pub shard_distribution: HashMap<String, usize>, pub balanced: bool,
+    pub cluster_name: String,
+    pub total_shards: u32,
+    pub total_hosts: usize,
+    pub active_hosts: usize,
+    pub shard_distribution: HashMap<String, usize>,
+    pub balanced: bool,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -297,12 +410,18 @@ pub struct ClusterReport {
 
 fn hash_key(key: &str) -> u32 {
     let mut hash: u32 = 2166136261;
-    for byte in key.bytes() { hash ^= byte as u32; hash = hash.wrapping_mul(16777619); }
+    for byte in key.bytes() {
+        hash ^= byte as u32;
+        hash = hash.wrapping_mul(16777619);
+    }
     hash
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -314,7 +433,12 @@ mod tests {
     use super::*;
 
     fn make_host(id: &str, port: u16) -> HostInfo {
-        HostInfo::new(id, "127.0.0.1", port, vec![ServiceRole::History, ServiceRole::Matching])
+        HostInfo::new(
+            id,
+            "127.0.0.1",
+            port,
+            vec![ServiceRole::History, ServiceRole::Matching],
+        )
     }
 
     #[test]
@@ -379,7 +503,8 @@ mod tests {
     fn test_ring_hash_members_for_role() {
         let ring = RingHash::new(10);
         ring.add_member(make_host("host-1", 8080));
-        let mut frontend_host = HostInfo::new("host-2", "127.0.0.1", 8081, vec![ServiceRole::Frontend]);
+        let mut frontend_host =
+            HostInfo::new("host-2", "127.0.0.1", 8081, vec![ServiceRole::Frontend]);
         ring.add_member(frontend_host);
         assert_eq!(ring.members_for_role(ServiceRole::History).len(), 1);
         assert_eq!(ring.members_for_role(ServiceRole::Frontend).len(), 1);

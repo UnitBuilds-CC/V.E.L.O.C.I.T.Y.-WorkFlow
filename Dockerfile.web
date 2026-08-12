@@ -1,0 +1,17 @@
+# Velocity Web UI — minimal static file server
+FROM nginx:1.27-alpine
+
+RUN mkdir -p /usr/share/nginx/html
+
+# Create a minimal placeholder page
+RUN echo '<!DOCTYPE html><html><head><title>Velocity Workflow</title><style>body{font-family:system-ui;max-width:800px;margin:40px auto;padding:0 20px}h1{color:#1a1a2e}a{color:#0066cc}</style></head><body><h1>Velocity Workflow Platform</h1><p>Web dashboard is running.</p><ul><li><a href="/health">Health Check</a></li></ul></body></html>' > /usr/share/nginx/html/index.html
+
+# Health check endpoint
+RUN echo '{"status":"ok"}' > /usr/share/nginx/html/health
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD wget --spider -q http://localhost:80/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

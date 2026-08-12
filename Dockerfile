@@ -58,7 +58,7 @@ RUN dotnet publish src/Velocity.Workflow.Server/Velocity.Workflow.Server.csproj 
     /p:UseAppHost=false
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview AS runtime
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

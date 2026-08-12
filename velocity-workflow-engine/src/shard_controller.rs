@@ -4,8 +4,11 @@
 //! handover tracking, engine factory, shard distribution, and shard health monitoring.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicI64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Shard Context — represents the state and operations for a single shard
@@ -29,7 +32,14 @@ pub struct ShardContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShardState { Initialized, Acquired, Owned, HandingOver, Lost, Closed }
+pub enum ShardState {
+    Initialized,
+    Acquired,
+    Owned,
+    HandingOver,
+    Lost,
+    Closed,
+}
 
 #[derive(Debug, Clone)]
 pub struct ShardConfig {
@@ -47,9 +57,13 @@ pub struct ShardConfig {
 impl Default for ShardConfig {
     fn default() -> Self {
         Self {
-            shard_id: 0, history_max_page_size: 1000, mutable_state_max_updates: 10000,
-            max_queue_reader_batch_size: 100, queue_max_batch_size: 100,
-            timer_max_batch_size: 100, replication_max_batch_size: 50,
+            shard_id: 0,
+            history_max_page_size: 1000,
+            mutable_state_max_updates: 10000,
+            max_queue_reader_batch_size: 100,
+            queue_max_batch_size: 100,
+            timer_max_batch_size: 100,
+            replication_max_batch_size: 50,
             shard_ownership_retry_count: 5,
             shard_ownership_loss_detection_interval: Duration::from_secs(5),
         }
@@ -70,13 +84,19 @@ pub struct ShardContextStats {
 impl ShardContext {
     pub fn new(shard_id: u32, owner_host: &str, config: ShardConfig) -> Self {
         Self {
-            shard_id, owner_host: RwLock::new(owner_host.to_string()),
-            range_id: AtomicI64::new(1), state: RwLock::new(ShardState::Initialized),
+            shard_id,
+            owner_host: RwLock::new(owner_host.to_string()),
+            range_id: AtomicI64::new(1),
+            state: RwLock::new(ShardState::Initialized),
             engine: RwLock::new(None),
-            transfer_ack_level: AtomicI64::new(0), timer_ack_level: AtomicI64::new(0),
-            replication_ack_level: AtomicI64::new(0), visibility_ack_level: AtomicI64::new(0),
-            namespace_notification_version: AtomicI64::new(0), config,
-            stats: ShardContextStats::default(), created_at: now_millis(),
+            transfer_ack_level: AtomicI64::new(0),
+            timer_ack_level: AtomicI64::new(0),
+            replication_ack_level: AtomicI64::new(0),
+            visibility_ack_level: AtomicI64::new(0),
+            namespace_notification_version: AtomicI64::new(0),
+            config,
+            stats: ShardContextStats::default(),
+            created_at: now_millis(),
             last_updated: RwLock::new(now_millis()),
         }
     }
@@ -88,12 +108,17 @@ impl ShardContext {
                 *state = ShardState::Acquired;
                 *self.owner_host.write().unwrap() = host.to_string();
                 self.range_id.fetch_add(1, Ordering::Relaxed);
-                self.stats.ownership_acquisitions.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .ownership_acquisitions
+                    .fetch_add(1, Ordering::Relaxed);
                 self.stats.state_transitions.fetch_add(1, Ordering::Relaxed);
                 *self.last_updated.write().unwrap() = now_millis();
                 Ok(())
             }
-            _ => Err(ShardError::InvalidTransition(format!("Cannot acquire from {:?}", *state))),
+            _ => Err(ShardError::InvalidTransition(format!(
+                "Cannot acquire from {:?}",
+                *state
+            ))),
         }
     }
 
@@ -105,7 +130,10 @@ impl ShardContext {
             *self.last_updated.write().unwrap() = now_millis();
             Ok(())
         } else {
-            Err(ShardError::InvalidTransition(format!("Cannot set owned from {:?}", *state)))
+            Err(ShardError::InvalidTransition(format!(
+                "Cannot set owned from {:?}",
+                *state
+            )))
         }
     }
 
@@ -118,7 +146,10 @@ impl ShardContext {
             *self.last_updated.write().unwrap() = now_millis();
             Ok(())
         } else {
-            Err(ShardError::InvalidTransition(format!("Cannot handover from {:?}", *state)))
+            Err(ShardError::InvalidTransition(format!(
+                "Cannot handover from {:?}",
+                *state
+            )))
         }
     }
 
@@ -132,7 +163,10 @@ impl ShardContext {
             *self.last_updated.write().unwrap() = now_millis();
             Ok(())
         } else {
-            Err(ShardError::InvalidTransition(format!("Cannot complete handover from {:?}", *state)))
+            Err(ShardError::InvalidTransition(format!(
+                "Cannot complete handover from {:?}",
+                *state
+            )))
         }
     }
 
@@ -148,14 +182,28 @@ impl ShardContext {
         self.stats.engine_closures.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn is_owned(&self) -> bool { *self.state.read().unwrap() == ShardState::Owned }
-    pub fn current_state(&self) -> ShardState { *self.state.read().unwrap() }
-    pub fn owner(&self) -> String { self.owner_host.read().unwrap().clone() }
+    pub fn is_owned(&self) -> bool {
+        *self.state.read().unwrap() == ShardState::Owned
+    }
+    pub fn current_state(&self) -> ShardState {
+        *self.state.read().unwrap()
+    }
+    pub fn owner(&self) -> String {
+        self.owner_host.read().unwrap().clone()
+    }
 
-    pub fn update_transfer_ack(&self, level: i64) { self.transfer_ack_level.store(level, Ordering::Relaxed); }
-    pub fn update_timer_ack(&self, level: i64) { self.timer_ack_level.store(level, Ordering::Relaxed); }
-    pub fn update_replication_ack(&self, level: i64) { self.replication_ack_level.store(level, Ordering::Relaxed); }
-    pub fn update_visibility_ack(&self, level: i64) { self.visibility_ack_level.store(level, Ordering::Relaxed); }
+    pub fn update_transfer_ack(&self, level: i64) {
+        self.transfer_ack_level.store(level, Ordering::Relaxed);
+    }
+    pub fn update_timer_ack(&self, level: i64) {
+        self.timer_ack_level.store(level, Ordering::Relaxed);
+    }
+    pub fn update_replication_ack(&self, level: i64) {
+        self.replication_ack_level.store(level, Ordering::Relaxed);
+    }
+    pub fn update_visibility_ack(&self, level: i64) {
+        self.visibility_ack_level.store(level, Ordering::Relaxed);
+    }
 
     pub fn create_engine(&self) -> Arc<ShardEngine> {
         let engine = Arc::new(ShardEngine::new(self.shard_id));
@@ -197,7 +245,8 @@ pub struct ShardEngineStats {
 impl ShardEngine {
     pub fn new(shard_id: u32) -> Self {
         Self {
-            shard_id, active: AtomicBool::new(true),
+            shard_id,
+            active: AtomicBool::new(true),
             pending_workflow_tasks: AtomicU64::new(0),
             pending_timer_tasks: AtomicU64::new(0),
             pending_replication_tasks: AtomicU64::new(0),
@@ -207,33 +256,51 @@ impl ShardEngine {
         }
     }
 
-    pub fn start(&self) { self.active.store(true, Ordering::Relaxed); }
-    pub fn stop(&self) { self.active.store(false, Ordering::Relaxed); }
-    pub fn is_active(&self) -> bool { self.active.load(Ordering::Relaxed) }
+    pub fn start(&self) {
+        self.active.store(true, Ordering::Relaxed);
+    }
+    pub fn stop(&self) {
+        self.active.store(false, Ordering::Relaxed);
+    }
+    pub fn is_active(&self) -> bool {
+        self.active.load(Ordering::Relaxed)
+    }
 
     pub fn process_workflow_task(&self) {
         self.pending_workflow_tasks.fetch_sub(1, Ordering::Relaxed);
-        self.stats.workflow_tasks_processed.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .workflow_tasks_processed
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn process_timer_task(&self) {
         self.pending_timer_tasks.fetch_sub(1, Ordering::Relaxed);
-        self.stats.timer_tasks_processed.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .timer_tasks_processed
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn process_transfer_task(&self) {
         self.pending_transfer_tasks.fetch_sub(1, Ordering::Relaxed);
-        self.stats.transfer_tasks_processed.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .transfer_tasks_processed
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn process_replication_task(&self) {
-        self.pending_replication_tasks.fetch_sub(1, Ordering::Relaxed);
-        self.stats.replication_tasks_processed.fetch_add(1, Ordering::Relaxed);
+        self.pending_replication_tasks
+            .fetch_sub(1, Ordering::Relaxed);
+        self.stats
+            .replication_tasks_processed
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn process_visibility_task(&self) {
-        self.pending_visibility_tasks.fetch_sub(1, Ordering::Relaxed);
-        self.stats.visibility_tasks_processed.fetch_add(1, Ordering::Relaxed);
+        self.pending_visibility_tasks
+            .fetch_sub(1, Ordering::Relaxed);
+        self.stats
+            .visibility_tasks_processed
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn total_pending(&self) -> u64 {
@@ -278,22 +345,49 @@ pub struct HandoverTrackerStats {
 
 impl HandoverTracker {
     pub fn new() -> Self {
-        Self { active_handovers: RwLock::new(HashMap::new()), completed_handovers: RwLock::new(Vec::new()), stats: HandoverTrackerStats::default() }
+        Self {
+            active_handovers: RwLock::new(HashMap::new()),
+            completed_handovers: RwLock::new(Vec::new()),
+            stats: HandoverTrackerStats::default(),
+        }
     }
 
-    pub fn start_handover(&self, shard_id: u32, from_host: &str, to_host: &str) -> Result<(), String> {
+    pub fn start_handover(
+        &self,
+        shard_id: u32,
+        from_host: &str,
+        to_host: &str,
+    ) -> Result<(), String> {
         let mut handovers = self.active_handovers.write().unwrap();
-        if handovers.contains_key(&shard_id) { return Err("Handover already in progress".into()); }
-        handovers.insert(shard_id, HandoverInfo {
-            shard_id, from_host: from_host.to_string(), to_host: to_host.to_string(),
-            started_at: now_millis(), transfer_ack: 0, timer_ack: 0,
-            replication_ack: 0, visibility_ack: 0, completed: false,
-        });
+        if handovers.contains_key(&shard_id) {
+            return Err("Handover already in progress".into());
+        }
+        handovers.insert(
+            shard_id,
+            HandoverInfo {
+                shard_id,
+                from_host: from_host.to_string(),
+                to_host: to_host.to_string(),
+                started_at: now_millis(),
+                transfer_ack: 0,
+                timer_ack: 0,
+                replication_ack: 0,
+                visibility_ack: 0,
+                completed: false,
+            },
+        );
         self.stats.handovers_started.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn update_ack_levels(&self, shard_id: u32, transfer: i64, timer: i64, replication: i64, visibility: i64) -> Result<(), String> {
+    pub fn update_ack_levels(
+        &self,
+        shard_id: u32,
+        transfer: i64,
+        timer: i64,
+        replication: i64,
+        visibility: i64,
+    ) -> Result<(), String> {
         let mut handovers = self.active_handovers.write().unwrap();
         let info = handovers.get_mut(&shard_id).ok_or("No handover")?;
         info.transfer_ack = transfer;
@@ -308,8 +402,12 @@ impl HandoverTracker {
         let mut info = handovers.remove(&shard_id).ok_or("No handover")?;
         info.completed = true;
         let duration = (now_millis() - info.started_at) as u64;
-        self.stats.total_handover_duration_ms.fetch_add(duration, Ordering::Relaxed);
-        self.stats.handovers_completed.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_handover_duration_ms
+            .fetch_add(duration, Ordering::Relaxed);
+        self.stats
+            .handovers_completed
+            .fetch_add(1, Ordering::Relaxed);
         self.completed_handovers.write().unwrap().push(info.clone());
         Ok(info)
     }
@@ -322,10 +420,16 @@ impl HandoverTracker {
     }
 
     pub fn get_active(&self, shard_id: u32) -> Option<HandoverInfo> {
-        self.active_handovers.read().unwrap().get(&shard_id).cloned()
+        self.active_handovers
+            .read()
+            .unwrap()
+            .get(&shard_id)
+            .cloned()
     }
 
-    pub fn active_count(&self) -> usize { self.active_handovers.read().unwrap().len() }
+    pub fn active_count(&self) -> usize {
+        self.active_handovers.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -354,7 +458,8 @@ pub struct ShardControllerConfig {
 impl Default for ShardControllerConfig {
     fn default() -> Self {
         Self {
-            total_shards: 512, max_shards_per_host: 64,
+            total_shards: 512,
+            max_shards_per_host: 64,
             shard_ownership_retry_interval: Duration::from_secs(1),
             shard_health_check_interval: Duration::from_secs(10),
             rebalance_interval: Duration::from_secs(60),
@@ -374,11 +479,15 @@ pub struct ShardControllerStats {
 impl ShardController {
     pub fn new(host_address: &str, total_shards: u32) -> Self {
         Self {
-            total_shards, host_address: host_address.to_string(),
+            total_shards,
+            host_address: host_address.to_string(),
             shard_contexts: RwLock::new(HashMap::new()),
             shard_owners: RwLock::new(HashMap::new()),
             handover_tracker: Arc::new(HandoverTracker::new()),
-            config: ShardControllerConfig { total_shards, ..Default::default() },
+            config: ShardControllerConfig {
+                total_shards,
+                ..Default::default()
+            },
             stats: ShardControllerStats::default(),
         }
     }
@@ -387,22 +496,33 @@ impl ShardController {
         if shard_id >= self.total_shards {
             return Err(ShardError::InvalidShardId(shard_id));
         }
-        let ctx = Arc::new(ShardContext::new(shard_id, &self.host_address, ShardConfig::default()));
+        let ctx = Arc::new(ShardContext::new(
+            shard_id,
+            &self.host_address,
+            ShardConfig::default(),
+        ));
         ctx.acquire(&self.host_address)?;
         ctx.set_owned()?;
         let engine = ctx.create_engine();
         engine.start();
         let mut contexts = self.shard_contexts.write().unwrap();
         contexts.insert(shard_id, ctx.clone());
-        self.shard_owners.write().unwrap().insert(shard_id, self.host_address.clone());
+        self.shard_owners
+            .write()
+            .unwrap()
+            .insert(shard_id, self.host_address.clone());
         self.stats.shards_acquired.fetch_add(1, Ordering::Relaxed);
         Ok(ctx)
     }
 
     pub fn release_shard(&self, shard_id: u32) -> Result<(), ShardError> {
         let contexts = self.shard_contexts.read().unwrap();
-        let ctx = contexts.get(&shard_id).ok_or(ShardError::NotFound(shard_id))?;
-        if let Some(engine) = ctx.get_engine() { engine.stop(); }
+        let ctx = contexts
+            .get(&shard_id)
+            .ok_or(ShardError::NotFound(shard_id))?;
+        if let Some(engine) = ctx.get_engine() {
+            engine.stop();
+        }
         ctx.close();
         self.stats.shards_closed.fetch_add(1, Ordering::Relaxed);
         Ok(())
@@ -422,27 +542,39 @@ impl ShardController {
     }
 
     pub fn owned_shards(&self) -> Vec<u32> {
-        self.shard_contexts.read().unwrap()
-            .iter().filter(|(_, ctx)| ctx.is_owned())
-            .map(|(id, _)| *id).collect()
+        self.shard_contexts
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|(_, ctx)| ctx.is_owned())
+            .map(|(id, _)| *id)
+            .collect()
     }
 
-    pub fn shard_count(&self) -> usize { self.shard_contexts.read().unwrap().len() }
+    pub fn shard_count(&self) -> usize {
+        self.shard_contexts.read().unwrap().len()
+    }
 
     pub fn initiate_handover(&self, shard_id: u32, target_host: &str) -> Result<(), ShardError> {
         let contexts = self.shard_contexts.read().unwrap();
-        let ctx = contexts.get(&shard_id).ok_or(ShardError::NotFound(shard_id))?;
+        let ctx = contexts
+            .get(&shard_id)
+            .ok_or(ShardError::NotFound(shard_id))?;
         ctx.start_handover()?;
-        self.handover_tracker.start_handover(shard_id, &self.host_address, target_host)
+        self.handover_tracker
+            .start_handover(shard_id, &self.host_address, target_host)
             .map_err(|e| ShardError::HandoverError(e))?;
         Ok(())
     }
 
     pub fn complete_handover(&self, shard_id: u32) -> Result<(), ShardError> {
         let contexts = self.shard_contexts.read().unwrap();
-        let ctx = contexts.get(&shard_id).ok_or(ShardError::NotFound(shard_id))?;
+        let ctx = contexts
+            .get(&shard_id)
+            .ok_or(ShardError::NotFound(shard_id))?;
         ctx.complete_handover()?;
-        self.handover_tracker.complete_handover(shard_id)
+        self.handover_tracker
+            .complete_handover(shard_id)
             .map_err(|e| ShardError::HandoverError(e))?;
         self.shard_owners.write().unwrap().remove(&shard_id);
         Ok(())
@@ -452,8 +584,14 @@ impl ShardController {
         let contexts = self.shard_contexts.read().unwrap();
         let total = contexts.len();
         let owned = contexts.values().filter(|c| c.is_owned()).count();
-        let handing_over = contexts.values().filter(|c| c.current_state() == ShardState::HandingOver).count();
-        let lost = contexts.values().filter(|c| c.current_state() == ShardState::Lost).count();
+        let handing_over = contexts
+            .values()
+            .filter(|c| c.current_state() == ShardState::HandingOver)
+            .count();
+        let lost = contexts
+            .values()
+            .filter(|c| c.current_state() == ShardState::Lost)
+            .count();
         let mut total_pending = 0u64;
         for ctx in contexts.values() {
             if let Some(engine) = ctx.get_engine() {
@@ -461,8 +599,11 @@ impl ShardController {
             }
         }
         ShardHealthReport {
-            total_shards: self.total_shards, owned_shards: owned,
-            handing_over, lost, total_pending_tasks: total_pending,
+            total_shards: self.total_shards,
+            owned_shards: owned,
+            handing_over,
+            lost,
+            total_pending_tasks: total_pending,
             active_handovers: self.handover_tracker.active_count(),
             healthy: lost == 0 && total_pending < 100_000,
         }
@@ -490,8 +631,10 @@ pub struct ShardEngineFactoryConfig {
 impl Default for ShardEngineFactoryConfig {
     fn default() -> Self {
         Self {
-            max_concurrent_workflow_tasks: 100, max_concurrent_timer_tasks: 100,
-            max_concurrent_transfer_tasks: 100, max_concurrent_replication_tasks: 50,
+            max_concurrent_workflow_tasks: 100,
+            max_concurrent_timer_tasks: 100,
+            max_concurrent_transfer_tasks: 100,
+            max_concurrent_replication_tasks: 50,
             max_concurrent_visibility_tasks: 50,
         }
     }
@@ -499,7 +642,10 @@ impl Default for ShardEngineFactoryConfig {
 
 impl ShardEngineFactory {
     pub fn new() -> Self {
-        Self { created_engines: AtomicU64::new(0), config: ShardEngineFactoryConfig::default() }
+        Self {
+            created_engines: AtomicU64::new(0),
+            config: ShardEngineFactoryConfig::default(),
+        }
     }
 
     pub fn create_engine(&self, shard_id: u32) -> Arc<ShardEngine> {
@@ -507,7 +653,9 @@ impl ShardEngineFactory {
         Arc::new(ShardEngine::new(shard_id))
     }
 
-    pub fn engine_count(&self) -> u64 { self.created_engines.load(Ordering::Relaxed) }
+    pub fn engine_count(&self) -> u64 {
+        self.created_engines.load(Ordering::Relaxed)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -523,17 +671,26 @@ pub struct ShardDistribution {
 
 impl ShardDistribution {
     pub fn new(total_shards: u32, hosts: Vec<String>) -> Self {
-        let dist = Self { total_shards, hosts: RwLock::new(hosts.clone()), shard_to_host: RwLock::new(HashMap::new()), host_to_shards: RwLock::new(HashMap::new()) };
+        let dist = Self {
+            total_shards,
+            hosts: RwLock::new(hosts.clone()),
+            shard_to_host: RwLock::new(HashMap::new()),
+            host_to_shards: RwLock::new(HashMap::new()),
+        };
         dist.compute_distribution();
         dist
     }
 
     fn compute_distribution(&self) {
         let hosts = self.hosts.read().unwrap();
-        if hosts.is_empty() { return; }
+        if hosts.is_empty() {
+            return;
+        }
         let mut s2h = HashMap::new();
         let mut h2s: HashMap<String, Vec<u32>> = HashMap::new();
-        for h in hosts.iter() { h2s.insert(h.clone(), Vec::new()); }
+        for h in hosts.iter() {
+            h2s.insert(h.clone(), Vec::new());
+        }
         for shard_id in 0..self.total_shards {
             let host_idx = (shard_id as usize) % hosts.len();
             let host = hosts[host_idx].clone();
@@ -549,7 +706,12 @@ impl ShardDistribution {
     }
 
     pub fn get_shards_for_host(&self, host: &str) -> Vec<u32> {
-        self.host_to_shards.read().unwrap().get(host).cloned().unwrap_or_default()
+        self.host_to_shards
+            .read()
+            .unwrap()
+            .get(host)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn add_host(&self, host: &str) {
@@ -562,7 +724,9 @@ impl ShardDistribution {
         self.compute_distribution();
     }
 
-    pub fn host_count(&self) -> usize { self.hosts.read().unwrap().len() }
+    pub fn host_count(&self) -> usize {
+        self.hosts.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -580,8 +744,12 @@ pub enum ShardError {
 
 #[derive(Debug)]
 pub struct ShardHealthReport {
-    pub total_shards: u32, pub owned_shards: usize, pub handing_over: usize,
-    pub lost: usize, pub total_pending_tasks: u64, pub active_handovers: usize,
+    pub total_shards: u32,
+    pub owned_shards: usize,
+    pub handing_over: usize,
+    pub lost: usize,
+    pub total_pending_tasks: u64,
+    pub active_handovers: usize,
     pub healthy: bool,
 }
 
@@ -599,7 +767,10 @@ fn fnv1a_hash(s: &str) -> u32 {
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -657,7 +828,13 @@ mod tests {
         engine.pending_workflow_tasks.store(5, Ordering::Relaxed);
         engine.process_workflow_task();
         assert_eq!(engine.pending_workflow_tasks.load(Ordering::Relaxed), 4);
-        assert_eq!(engine.stats.workflow_tasks_processed.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            engine
+                .stats
+                .workflow_tasks_processed
+                .load(Ordering::Relaxed),
+            1
+        );
         engine.stop();
         assert!(!engine.is_active());
     }

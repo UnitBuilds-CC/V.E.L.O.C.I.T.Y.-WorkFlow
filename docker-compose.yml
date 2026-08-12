@@ -3,8 +3,6 @@
 # Services: velocity-server, postgres, prometheus, grafana, velocity-cli, velocity-web
 # =============================================================================
 
-version: "3.9"
-
 # Common environment variables
 x-common-env:
   TZ: UTC
@@ -247,23 +245,8 @@ services:
 
 volumes:
   postgres-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./data/postgres
   prometheus-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./data/prometheus
   grafana-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./data/grafana
 
 networks:
   velocity-net:

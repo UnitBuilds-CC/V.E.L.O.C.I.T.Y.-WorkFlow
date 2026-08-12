@@ -5,8 +5,11 @@
 //! connection pooling, query optimization, and schema management.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Backend Configuration
@@ -25,7 +28,15 @@ pub struct BackendConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BackendType { Cassandra, PostgreSQL, MySQL, SQLite, InMemory, DynamoDB, CockroachDB }
+pub enum BackendType {
+    Cassandra,
+    PostgreSQL,
+    MySQL,
+    SQLite,
+    InMemory,
+    DynamoDB,
+    CockroachDB,
+}
 
 #[derive(Debug, Clone)]
 pub struct PersistenceRetryPolicy {
@@ -37,7 +48,12 @@ pub struct PersistenceRetryPolicy {
 
 impl Default for PersistenceRetryPolicy {
     fn default() -> Self {
-        Self { max_retries: 3, initial_backoff: Duration::from_millis(100), max_backoff: Duration::from_secs(5), backoff_multiplier: 2.0 }
+        Self {
+            max_retries: 3,
+            initial_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(5),
+            backoff_multiplier: 2.0,
+        }
     }
 }
 
@@ -62,7 +78,12 @@ pub struct PoolConnection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionState { Idle, InUse, Draining, Closed }
+pub enum ConnectionState {
+    Idle,
+    InUse,
+    Draining,
+    Closed,
+}
 
 #[derive(Debug, Default)]
 pub struct ConnectionPoolStats {
@@ -78,9 +99,20 @@ impl ConnectionPool {
         let max = config.max_connections;
         let mut connections = Vec::with_capacity(max as usize);
         for i in 0..max {
-            connections.push(PoolConnection { id: i, state: ConnectionState::Idle, created_at: now_millis(), last_used_at: now_millis(), query_count: 0 });
+            connections.push(PoolConnection {
+                id: i,
+                state: ConnectionState::Idle,
+                created_at: now_millis(),
+                last_used_at: now_millis(),
+                query_count: 0,
+            });
         }
-        Self { config, connections: RwLock::new(connections), stats: ConnectionPoolStats::default(), healthy: AtomicBool::new(true) }
+        Self {
+            config,
+            connections: RwLock::new(connections),
+            stats: ConnectionPoolStats::default(),
+            healthy: AtomicBool::new(true),
+        }
     }
 
     pub fn acquire(&self) -> Option<u32> {
@@ -92,7 +124,9 @@ impl ConnectionPool {
                 return Some(conn.id);
             }
         }
-        self.stats.pool_exhaustion_events.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .pool_exhaustion_events
+            .fetch_add(1, Ordering::Relaxed);
         None
     }
 
@@ -106,16 +140,32 @@ impl ConnectionPool {
     }
 
     pub fn active_count(&self) -> usize {
-        self.connections.read().unwrap().iter().filter(|c| c.state == ConnectionState::InUse).count()
+        self.connections
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|c| c.state == ConnectionState::InUse)
+            .count()
     }
 
     pub fn idle_count(&self) -> usize {
-        self.connections.read().unwrap().iter().filter(|c| c.state == ConnectionState::Idle).count()
+        self.connections
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|c| c.state == ConnectionState::Idle)
+            .count()
     }
 
-    pub fn mark_unhealthy(&self) { self.healthy.store(false, Ordering::Relaxed); }
-    pub fn mark_healthy(&self) { self.healthy.store(true, Ordering::Relaxed); }
-    pub fn is_healthy(&self) -> bool { self.healthy.load(Ordering::Relaxed) }
+    pub fn mark_unhealthy(&self) {
+        self.healthy.store(false, Ordering::Relaxed);
+    }
+    pub fn mark_healthy(&self) {
+        self.healthy.store(true, Ordering::Relaxed);
+    }
+    pub fn is_healthy(&self) -> bool {
+        self.healthy.load(Ordering::Relaxed)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -139,10 +189,29 @@ pub struct QueryCondition {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QueryOperator { Eq, Ne, Lt, Lte, Gt, Gte, In, Between, Like, IsNull }
+pub enum QueryOperator {
+    Eq,
+    Ne,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    In,
+    Between,
+    Like,
+    IsNull,
+}
 
 #[derive(Debug, Clone)]
-pub enum QueryValue { Null, Int(i64), Float(f64), Str(String), Bytes(Vec<u8>), Bool(bool), List(Vec<QueryValue>) }
+pub enum QueryValue {
+    Null,
+    Int(i64),
+    Float(f64),
+    Str(String),
+    Bytes(Vec<u8>),
+    Bool(bool),
+    List(Vec<QueryValue>),
+}
 
 #[derive(Debug, Clone)]
 pub struct OrderByClause {
@@ -152,7 +221,14 @@ pub struct OrderByClause {
 
 impl QueryBuilder {
     pub fn new(table: &str) -> Self {
-        Self { table: table.to_string(), conditions: Vec::new(), select_fields: Vec::new(), order_by: Vec::new(), limit: None, offset: None }
+        Self {
+            table: table.to_string(),
+            conditions: Vec::new(),
+            select_fields: Vec::new(),
+            order_by: Vec::new(),
+            limit: None,
+            offset: None,
+        }
     }
 
     pub fn select(mut self, fields: &[&str]) -> Self {
@@ -161,46 +237,94 @@ impl QueryBuilder {
     }
 
     pub fn where_eq(mut self, field: &str, value: QueryValue) -> Self {
-        self.conditions.push(QueryCondition { field: field.to_string(), op: QueryOperator::Eq, value });
+        self.conditions.push(QueryCondition {
+            field: field.to_string(),
+            op: QueryOperator::Eq,
+            value,
+        });
         self
     }
 
     pub fn where_gt(mut self, field: &str, value: QueryValue) -> Self {
-        self.conditions.push(QueryCondition { field: field.to_string(), op: QueryOperator::Gt, value });
+        self.conditions.push(QueryCondition {
+            field: field.to_string(),
+            op: QueryOperator::Gt,
+            value,
+        });
         self
     }
 
     pub fn where_lt(mut self, field: &str, value: QueryValue) -> Self {
-        self.conditions.push(QueryCondition { field: field.to_string(), op: QueryOperator::Lt, value });
+        self.conditions.push(QueryCondition {
+            field: field.to_string(),
+            op: QueryOperator::Lt,
+            value,
+        });
         self
     }
 
     pub fn where_between(mut self, field: &str, low: QueryValue, high: QueryValue) -> Self {
-        self.conditions.push(QueryCondition { field: field.to_string(), op: QueryOperator::Between, value: QueryValue::List(vec![low, high]) });
+        self.conditions.push(QueryCondition {
+            field: field.to_string(),
+            op: QueryOperator::Between,
+            value: QueryValue::List(vec![low, high]),
+        });
         self
     }
 
     pub fn order_by(mut self, field: &str, ascending: bool) -> Self {
-        self.order_by.push(OrderByClause { field: field.to_string(), ascending });
+        self.order_by.push(OrderByClause {
+            field: field.to_string(),
+            ascending,
+        });
         self
     }
 
-    pub fn limit(mut self, limit: u32) -> Self { self.limit = Some(limit); self }
-    pub fn offset(mut self, offset: u32) -> Self { self.offset = Some(offset); self }
+    pub fn limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+    pub fn offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
+    }
 
     pub fn build(&self) -> BuiltQuery {
-        let mut sql = format!("SELECT {} FROM {}", if self.select_fields.is_empty() { "*".to_string() } else { self.select_fields.join(", ") }, self.table);
+        let mut sql = format!(
+            "SELECT {} FROM {}",
+            if self.select_fields.is_empty() {
+                "*".to_string()
+            } else {
+                self.select_fields.join(", ")
+            },
+            self.table
+        );
         if !self.conditions.is_empty() {
-            let clauses: Vec<String> = self.conditions.iter().map(|c| format!("{} {:?} {:?}", c.field, c.op, c.value)).collect();
+            let clauses: Vec<String> = self
+                .conditions
+                .iter()
+                .map(|c| format!("{} {:?} {:?}", c.field, c.op, c.value))
+                .collect();
             sql.push_str(&format!(" WHERE {}", clauses.join(" AND ")));
         }
         if !self.order_by.is_empty() {
-            let orders: Vec<String> = self.order_by.iter().map(|o| format!("{} {}", o.field, if o.ascending { "ASC" } else { "DESC" })).collect();
+            let orders: Vec<String> = self
+                .order_by
+                .iter()
+                .map(|o| format!("{} {}", o.field, if o.ascending { "ASC" } else { "DESC" }))
+                .collect();
             sql.push_str(&format!(" ORDER BY {}", orders.join(", ")));
         }
-        if let Some(limit) = self.limit { sql.push_str(&format!(" LIMIT {}", limit)); }
-        if let Some(offset) = self.offset { sql.push_str(&format!(" OFFSET {}", offset)); }
-        BuiltQuery { sql, params: self.conditions.iter().map(|c| c.value.clone()).collect() }
+        if let Some(limit) = self.limit {
+            sql.push_str(&format!(" LIMIT {}", limit));
+        }
+        if let Some(offset) = self.offset {
+            sql.push_str(&format!(" OFFSET {}", offset));
+        }
+        BuiltQuery {
+            sql,
+            params: self.conditions.iter().map(|c| c.value.clone()).collect(),
+        }
     }
 }
 
@@ -238,7 +362,11 @@ pub struct SchemaManagerStats {
 
 impl SchemaManager {
     pub fn new() -> Self {
-        Self { migrations: RwLock::new(Vec::new()), applied_versions: RwLock::new(Vec::new()), stats: SchemaManagerStats::default() }
+        Self {
+            migrations: RwLock::new(Vec::new()),
+            applied_versions: RwLock::new(Vec::new()),
+            stats: SchemaManagerStats::default(),
+        }
     }
 
     pub fn register_migration(&self, migration: Migration) {
@@ -247,21 +375,34 @@ impl SchemaManager {
 
     pub fn pending_migrations(&self) -> Vec<Migration> {
         let applied = self.applied_versions.read().unwrap();
-        self.migrations.read().unwrap().iter().filter(|m| !applied.contains(&m.version)).cloned().collect()
+        self.migrations
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|m| !applied.contains(&m.version))
+            .cloned()
+            .collect()
     }
 
     pub fn apply_next(&self) -> Option<String> {
         let pending = self.pending_migrations();
         let migration = pending.first()?;
-        self.applied_versions.write().unwrap().push(migration.version.clone());
-        self.stats.migrations_applied.fetch_add(1, Ordering::Relaxed);
+        self.applied_versions
+            .write()
+            .unwrap()
+            .push(migration.version.clone());
+        self.stats
+            .migrations_applied
+            .fetch_add(1, Ordering::Relaxed);
         Some(migration.version.clone())
     }
 
     pub fn rollback_last(&self) -> Option<String> {
         let mut applied = self.applied_versions.write().unwrap();
         let version = applied.pop()?;
-        self.stats.migrations_rolled_back.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .migrations_rolled_back
+            .fetch_add(1, Ordering::Relaxed);
         Some(version)
     }
 
@@ -299,8 +440,22 @@ pub struct FailoverStats {
 
 impl PersistenceFailover {
     pub fn new(backends: Vec<BackendConfig>, failover_threshold: u32) -> Self {
-        let statuses = backends.into_iter().map(|c| BackendStatus { config: c, healthy: true, consecutive_failures: 0, last_success: now_millis(), latency_ms: 0.0 }).collect();
-        Self { backends: RwLock::new(statuses), current_primary: RwLock::new(0), failover_threshold, stats: FailoverStats::default() }
+        let statuses = backends
+            .into_iter()
+            .map(|c| BackendStatus {
+                config: c,
+                healthy: true,
+                consecutive_failures: 0,
+                last_success: now_millis(),
+                latency_ms: 0.0,
+            })
+            .collect();
+        Self {
+            backends: RwLock::new(statuses),
+            current_primary: RwLock::new(0),
+            failover_threshold,
+            stats: FailoverStats::default(),
+        }
     }
 
     pub fn record_success(&self, index: usize, latency_ms: f64) {
@@ -309,7 +464,12 @@ impl PersistenceFailover {
             b.consecutive_failures = 0;
             b.last_success = now_millis();
             b.latency_ms = latency_ms;
-            if !b.healthy { b.healthy = true; self.stats.backends_recovered.fetch_add(1, Ordering::Relaxed); }
+            if !b.healthy {
+                b.healthy = true;
+                self.stats
+                    .backends_recovered
+                    .fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 
@@ -319,12 +479,16 @@ impl PersistenceFailover {
             b.consecutive_failures += 1;
             if b.consecutive_failures >= self.failover_threshold {
                 b.healthy = false;
-                self.stats.backends_marked_down.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .backends_marked_down
+                    .fetch_add(1, Ordering::Relaxed);
             }
         }
     }
 
-    pub fn get_primary(&self) -> usize { *self.current_primary.read().unwrap() }
+    pub fn get_primary(&self) -> usize {
+        *self.current_primary.read().unwrap()
+    }
 
     pub fn trigger_failover(&self) -> bool {
         let backends = self.backends.read().unwrap();
@@ -333,7 +497,9 @@ impl PersistenceFailover {
             let idx = (current + i + 1) % backends.len();
             if backends[idx].healthy {
                 *self.current_primary.write().unwrap() = idx;
-                self.stats.failovers_triggered.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .failovers_triggered
+                    .fetch_add(1, Ordering::Relaxed);
                 return true;
             }
         }
@@ -341,7 +507,12 @@ impl PersistenceFailover {
     }
 
     pub fn healthy_backends(&self) -> usize {
-        self.backends.read().unwrap().iter().filter(|b| b.healthy).count()
+        self.backends
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|b| b.healthy)
+            .count()
     }
 }
 
@@ -363,21 +534,34 @@ pub struct BatchOpsStats {
 
 impl BatchOperations {
     pub fn new(batch_size: usize) -> Self {
-        Self { batch_size, stats: BatchOpsStats::default() }
+        Self {
+            batch_size,
+            stats: BatchOpsStats::default(),
+        }
     }
 
-    pub fn batch_insert<T>(&self, items: &[T], insert_fn: impl Fn(&[T]) -> Result<(), String>) -> Result<u64, String> {
+    pub fn batch_insert<T>(
+        &self,
+        items: &[T],
+        insert_fn: impl Fn(&[T]) -> Result<(), String>,
+    ) -> Result<u64, String> {
         let mut total = 0u64;
         for chunk in items.chunks(self.batch_size) {
             insert_fn(chunk)?;
             total += chunk.len() as u64;
             self.stats.batches_executed.fetch_add(1, Ordering::Relaxed);
-            self.stats.total_rows_processed.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+            self.stats
+                .total_rows_processed
+                .fetch_add(chunk.len() as u64, Ordering::Relaxed);
         }
         Ok(total)
     }
 
-    pub fn batch_read<T, R>(&self, keys: &[T], read_fn: impl Fn(&T) -> Option<R>) -> Vec<Option<R>> {
+    pub fn batch_read<T, R>(
+        &self,
+        keys: &[T],
+        read_fn: impl Fn(&T) -> Option<R>,
+    ) -> Vec<Option<R>> {
         keys.iter().map(|k| read_fn(k)).collect()
     }
 }
@@ -411,7 +595,11 @@ pub struct CompactionStats {
 
 impl DataCompaction {
     pub fn new() -> Self {
-        Self { compaction_rules: RwLock::new(Vec::new()), last_compaction: RwLock::new(HashMap::new()), stats: CompactionStats::default() }
+        Self {
+            compaction_rules: RwLock::new(Vec::new()),
+            last_compaction: RwLock::new(HashMap::new()),
+            stats: CompactionStats::default(),
+        }
     }
 
     pub fn add_rule(&self, rule: CompactionRule) {
@@ -421,14 +609,29 @@ impl DataCompaction {
     pub fn run_compaction(&self, rule_name: &str) -> CompactionResult {
         let rules = self.compaction_rules.read().unwrap();
         let rule = match rules.iter().find(|r| r.name == rule_name && r.enabled) {
-            Some(r) => r, None => return CompactionResult { skipped: true, ..Default::default() },
+            Some(r) => r,
+            None => {
+                return CompactionResult {
+                    skipped: true,
+                    ..Default::default()
+                }
+            }
         };
         // Simulate compaction
         let rows_compacted = rule.batch_size as u64;
-        self.last_compaction.write().unwrap().insert(rule_name.to_string(), now_millis());
+        self.last_compaction
+            .write()
+            .unwrap()
+            .insert(rule_name.to_string(), now_millis());
         self.stats.compactions_run.fetch_add(1, Ordering::Relaxed);
-        self.stats.rows_compacted.fetch_add(rows_compacted, Ordering::Relaxed);
-        CompactionResult { rows_compacted, bytes_freed: rows_compacted * 256, skipped: false }
+        self.stats
+            .rows_compacted
+            .fetch_add(rows_compacted, Ordering::Relaxed);
+        CompactionResult {
+            rows_compacted,
+            bytes_freed: rows_compacted * 256,
+            skipped: false,
+        }
     }
 }
 
@@ -440,7 +643,10 @@ pub struct CompactionResult {
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -452,7 +658,16 @@ mod tests {
     use super::*;
 
     fn test_config() -> BackendConfig {
-        BackendConfig { backend_type: BackendType::InMemory, connection_string: "memory://test".into(), max_connections: 5, connect_timeout: Duration::from_secs(5), query_timeout: Duration::from_secs(30), retry_policy: PersistenceRetryPolicy::default(), tls_enabled: false, tls_ca_path: None }
+        BackendConfig {
+            backend_type: BackendType::InMemory,
+            connection_string: "memory://test".into(),
+            max_connections: 5,
+            connect_timeout: Duration::from_secs(5),
+            query_timeout: Duration::from_secs(30),
+            retry_policy: PersistenceRetryPolicy::default(),
+            tls_enabled: false,
+            tls_ca_path: None,
+        }
     }
 
     #[test]
@@ -471,7 +686,9 @@ mod tests {
         let conns: Vec<u32> = (0..5).map(|_| pool.acquire().unwrap()).collect();
         assert!(pool.acquire().is_none());
         assert_eq!(pool.stats.pool_exhaustion_events.load(Ordering::Relaxed), 1);
-        for c in conns { pool.release(c); }
+        for c in conns {
+            pool.release(c);
+        }
         assert!(pool.acquire().is_some());
     }
 
@@ -487,14 +704,25 @@ mod tests {
 
     #[test]
     fn test_query_builder_select() {
-        let q = QueryBuilder::new("workflows").select(&["id", "name"]).where_eq("namespace", QueryValue::Str("default".into())).limit(10).build();
+        let q = QueryBuilder::new("workflows")
+            .select(&["id", "name"])
+            .where_eq("namespace", QueryValue::Str("default".into()))
+            .limit(10)
+            .build();
         assert!(q.sql.contains("SELECT id, name FROM workflows"));
         assert!(q.sql.contains("LIMIT 10"));
     }
 
     #[test]
     fn test_query_builder_complex() {
-        let q = QueryBuilder::new("events").select(&["event_id", "data"]).where_gt("event_id", QueryValue::Int(100)).where_lt("event_id", QueryValue::Int(200)).order_by("event_id", true).offset(10).limit(50).build();
+        let q = QueryBuilder::new("events")
+            .select(&["event_id", "data"])
+            .where_gt("event_id", QueryValue::Int(100))
+            .where_lt("event_id", QueryValue::Int(200))
+            .order_by("event_id", true)
+            .offset(10)
+            .limit(50)
+            .build();
         assert!(q.sql.contains("ORDER BY event_id ASC"));
         assert!(q.sql.contains("OFFSET 10"));
         assert_eq!(q.params.len(), 2);
@@ -503,8 +731,22 @@ mod tests {
     #[test]
     fn test_schema_manager() {
         let sm = SchemaManager::new();
-        sm.register_migration(Migration { version: "v1".into(), description: "Initial".into(), up_sql: vec!["CREATE TABLE t1".into()], down_sql: vec!["DROP TABLE t1".into()], backend_type: None, created_at: 0 });
-        sm.register_migration(Migration { version: "v2".into(), description: "Add index".into(), up_sql: vec!["CREATE INDEX".into()], down_sql: vec!["DROP INDEX".into()], backend_type: None, created_at: 0 });
+        sm.register_migration(Migration {
+            version: "v1".into(),
+            description: "Initial".into(),
+            up_sql: vec!["CREATE TABLE t1".into()],
+            down_sql: vec!["DROP TABLE t1".into()],
+            backend_type: None,
+            created_at: 0,
+        });
+        sm.register_migration(Migration {
+            version: "v2".into(),
+            description: "Add index".into(),
+            up_sql: vec!["CREATE INDEX".into()],
+            down_sql: vec!["DROP INDEX".into()],
+            backend_type: None,
+            created_at: 0,
+        });
         assert_eq!(sm.pending_migrations().len(), 2);
         assert_eq!(sm.apply_next().unwrap(), "v1");
         assert_eq!(sm.pending_migrations().len(), 1);
@@ -514,7 +756,14 @@ mod tests {
     #[test]
     fn test_schema_rollback() {
         let sm = SchemaManager::new();
-        sm.register_migration(Migration { version: "v1".into(), description: "Init".into(), up_sql: vec![], down_sql: vec![], backend_type: None, created_at: 0 });
+        sm.register_migration(Migration {
+            version: "v1".into(),
+            description: "Init".into(),
+            up_sql: vec![],
+            down_sql: vec![],
+            backend_type: None,
+            created_at: 0,
+        });
         sm.apply_next();
         assert_eq!(sm.rollback_last().unwrap(), "v1");
         assert!(sm.current_version().is_none());
@@ -525,7 +774,9 @@ mod tests {
         let fo = PersistenceFailover::new(vec![test_config(), test_config()], 3);
         assert_eq!(fo.get_primary(), 0);
         assert_eq!(fo.healthy_backends(), 2);
-        for _ in 0..3 { fo.record_failure(0); }
+        for _ in 0..3 {
+            fo.record_failure(0);
+        }
         assert_eq!(fo.healthy_backends(), 1);
         assert!(fo.trigger_failover());
         assert_eq!(fo.get_primary(), 1);
@@ -553,7 +804,14 @@ mod tests {
     #[test]
     fn test_data_compaction() {
         let dc = DataCompaction::new();
-        dc.add_rule(CompactionRule { name: "old_events".into(), table: "events".into(), condition_field: "created_at".into(), max_age_seconds: 86400, batch_size: 100, enabled: true });
+        dc.add_rule(CompactionRule {
+            name: "old_events".into(),
+            table: "events".into(),
+            condition_field: "created_at".into(),
+            max_age_seconds: 86400,
+            batch_size: 100,
+            enabled: true,
+        });
         let result = dc.run_compaction("old_events");
         assert!(!result.skipped);
         assert_eq!(result.rows_compacted, 100);
@@ -562,7 +820,14 @@ mod tests {
     #[test]
     fn test_compaction_disabled() {
         let dc = DataCompaction::new();
-        dc.add_rule(CompactionRule { name: "disabled".into(), table: "t".into(), condition_field: "f".into(), max_age_seconds: 100, batch_size: 10, enabled: false });
+        dc.add_rule(CompactionRule {
+            name: "disabled".into(),
+            table: "t".into(),
+            condition_field: "f".into(),
+            max_age_seconds: 100,
+            batch_size: 10,
+            enabled: false,
+        });
         let result = dc.run_compaction("disabled");
         assert!(result.skipped);
     }

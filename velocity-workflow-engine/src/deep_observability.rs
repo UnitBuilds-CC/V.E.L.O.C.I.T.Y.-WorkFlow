@@ -4,9 +4,12 @@
 //! real-time anomaly detection, performance profiling, structured logging,
 //! and predictive alerting — all built-in, zero-config.
 
-use std::collections::{HashMap, VecDeque, BTreeMap};
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicI64, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::sync::{
+    atomic::{AtomicI64, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Distributed Trace
@@ -46,46 +49,100 @@ pub struct Span {
 
 #[derive(Debug, Clone)]
 pub struct SpanEvent {
-    pub name: String, pub timestamp: i64, pub attributes: HashMap<String, String>,
+    pub name: String,
+    pub timestamp: i64,
+    pub attributes: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SpanLink {
-    pub trace_id: String, pub span_id: String, pub attributes: HashMap<String, String>,
+    pub trace_id: String,
+    pub span_id: String,
+    pub attributes: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TraceStatus { Active, Completed, Error, TimedOut }
+pub enum TraceStatus {
+    Active,
+    Completed,
+    Error,
+    TimedOut,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SpanStatus { Ok, Error, Unset }
+pub enum SpanStatus {
+    Ok,
+    Error,
+    Unset,
+}
 
 #[derive(Debug, Default)]
 pub struct TraceCollectorStats {
-    pub traces_started: AtomicU64, pub traces_completed: AtomicU64,
-    pub traces_errored: AtomicU64, pub spans_recorded: AtomicU64,
+    pub traces_started: AtomicU64,
+    pub traces_completed: AtomicU64,
+    pub traces_errored: AtomicU64,
+    pub spans_recorded: AtomicU64,
 }
 
 impl TraceCollector {
     pub fn new(max_completed: usize) -> Self {
-        Self { traces: RwLock::new(HashMap::new()), completed_traces: RwLock::new(VecDeque::new()), max_completed, stats: TraceCollectorStats::default() }
+        Self {
+            traces: RwLock::new(HashMap::new()),
+            completed_traces: RwLock::new(VecDeque::new()),
+            max_completed,
+            stats: TraceCollectorStats::default(),
+        }
     }
 
     pub fn start_trace(&self, service: &str, operation: &str) -> String {
         let trace_id = format!("trace-{}", now_millis());
         let root_span_id = format!("span-{}", now_millis());
-        let span = Span { span_id: root_span_id.clone(), parent_span_id: None, operation: operation.to_string(), start_time: now_millis(), end_time: None, status: SpanStatus::Unset, attributes: HashMap::new(), events: Vec::new(), links: Vec::new() };
-        let trace = Trace { trace_id: trace_id.clone(), root_span_id, spans: vec![span], start_time: now_millis(), end_time: None, status: TraceStatus::Active, attributes: HashMap::new(), service_name: service.to_string() };
+        let span = Span {
+            span_id: root_span_id.clone(),
+            parent_span_id: None,
+            operation: operation.to_string(),
+            start_time: now_millis(),
+            end_time: None,
+            status: SpanStatus::Unset,
+            attributes: HashMap::new(),
+            events: Vec::new(),
+            links: Vec::new(),
+        };
+        let trace = Trace {
+            trace_id: trace_id.clone(),
+            root_span_id,
+            spans: vec![span],
+            start_time: now_millis(),
+            end_time: None,
+            status: TraceStatus::Active,
+            attributes: HashMap::new(),
+            service_name: service.to_string(),
+        };
         self.traces.write().unwrap().insert(trace_id.clone(), trace);
         self.stats.traces_started.fetch_add(1, Ordering::Relaxed);
         trace_id
     }
 
-    pub fn add_span(&self, trace_id: &str, parent_span_id: &str, operation: &str) -> Option<String> {
+    pub fn add_span(
+        &self,
+        trace_id: &str,
+        parent_span_id: &str,
+        operation: &str,
+    ) -> Option<String> {
         let mut traces = self.traces.write().unwrap();
         let trace = traces.get_mut(trace_id)?;
         let span_id = format!("span-{}-{}", now_millis(), trace.spans.len());
-        let span = Span { span_id: span_id.clone(), parent_span_id: Some(parent_span_id.to_string()), operation: operation.to_string(), start_time: now_millis(), end_time: None, status: SpanStatus::Unset, attributes: HashMap::new(), events: Vec::new(), links: Vec::new() };
+        let span = Span {
+            span_id: span_id.clone(),
+            parent_span_id: Some(parent_span_id.to_string()),
+            operation: operation.to_string(),
+            start_time: now_millis(),
+            end_time: None,
+            status: SpanStatus::Unset,
+            attributes: HashMap::new(),
+            events: Vec::new(),
+            links: Vec::new(),
+        };
         trace.spans.push(span);
         self.stats.spans_recorded.fetch_add(1, Ordering::Relaxed);
         Some(span_id)
@@ -105,18 +162,33 @@ impl TraceCollector {
         let mut traces = self.traces.write().unwrap();
         if let Some(mut trace) = traces.remove(trace_id) {
             trace.end_time = Some(now_millis());
-            trace.status = if trace.spans.iter().any(|s| s.status == SpanStatus::Error) { TraceStatus::Error } else { TraceStatus::Completed };
+            trace.status = if trace.spans.iter().any(|s| s.status == SpanStatus::Error) {
+                TraceStatus::Error
+            } else {
+                TraceStatus::Completed
+            };
             self.stats.traces_completed.fetch_add(1, Ordering::Relaxed);
-            if trace.status == TraceStatus::Error { self.stats.traces_errored.fetch_add(1, Ordering::Relaxed); }
+            if trace.status == TraceStatus::Error {
+                self.stats.traces_errored.fetch_add(1, Ordering::Relaxed);
+            }
             let mut completed = self.completed_traces.write().unwrap();
-            if completed.len() >= self.max_completed { completed.pop_front(); }
+            if completed.len() >= self.max_completed {
+                completed.pop_front();
+            }
             completed.push_back(trace);
         }
     }
 
     pub fn get_trace(&self, trace_id: &str) -> Option<Trace> {
-        if let Some(t) = self.traces.read().unwrap().get(trace_id) { return Some(t.clone()); }
-        self.completed_traces.read().unwrap().iter().find(|t| t.trace_id == trace_id).cloned()
+        if let Some(t) = self.traces.read().unwrap().get(trace_id) {
+            return Some(t.clone());
+        }
+        self.completed_traces
+            .read()
+            .unwrap()
+            .iter()
+            .find(|t| t.trace_id == trace_id)
+            .cloned()
     }
 
     pub fn trace_duration(&self, trace: &Trace) -> u64 {
@@ -125,7 +197,13 @@ impl TraceCollector {
     }
 
     pub fn slow_traces(&self, threshold_ms: u64) -> Vec<Trace> {
-        self.completed_traces.read().unwrap().iter().filter(|t| self.trace_duration(t) >= threshold_ms).cloned().collect()
+        self.completed_traces
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|t| self.trace_duration(t) >= threshold_ms)
+            .cloned()
+            .collect()
     }
 }
 
@@ -158,21 +236,39 @@ pub struct MetricsRegistryStats {
 
 impl MetricsRegistry {
     pub fn new() -> Self {
-        Self { counters: RwLock::new(HashMap::new()), gauges: RwLock::new(HashMap::new()), histograms: RwLock::new(HashMap::new()), stats: MetricsRegistryStats::default() }
+        Self {
+            counters: RwLock::new(HashMap::new()),
+            gauges: RwLock::new(HashMap::new()),
+            histograms: RwLock::new(HashMap::new()),
+            stats: MetricsRegistryStats::default(),
+        }
     }
 
     pub fn register_counter(&self, name: &str) {
-        self.counters.write().unwrap().entry(name.to_string()).or_insert_with(|| AtomicI64::new(0));
-        self.stats.counters_registered.fetch_add(1, Ordering::Relaxed);
+        self.counters
+            .write()
+            .unwrap()
+            .entry(name.to_string())
+            .or_insert_with(|| AtomicI64::new(0));
+        self.stats
+            .counters_registered
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn increment_counter(&self, name: &str, value: i64) {
         let counters = self.counters.read().unwrap();
-        if let Some(c) = counters.get(name) { c.fetch_add(value, Ordering::Relaxed); }
+        if let Some(c) = counters.get(name) {
+            c.fetch_add(value, Ordering::Relaxed);
+        }
     }
 
     pub fn get_counter(&self, name: &str) -> i64 {
-        self.counters.read().unwrap().get(name).map(|c| c.load(Ordering::Relaxed)).unwrap_or(0)
+        self.counters
+            .read()
+            .unwrap()
+            .get(name)
+            .map(|c| c.load(Ordering::Relaxed))
+            .unwrap_or(0)
     }
 
     pub fn set_gauge(&self, name: &str, value: f64) {
@@ -180,13 +276,29 @@ impl MetricsRegistry {
     }
 
     pub fn get_gauge(&self, name: &str) -> f64 {
-        self.gauges.read().unwrap().get(name).cloned().unwrap_or(0.0)
+        self.gauges
+            .read()
+            .unwrap()
+            .get(name)
+            .cloned()
+            .unwrap_or(0.0)
     }
 
     pub fn record_histogram(&self, name: &str, value: f64) {
         let mut histograms = self.histograms.write().unwrap();
-        let data = histograms.entry(name.to_string()).or_insert_with(|| HistogramData { values: VecDeque::new(), max_size: 10000, count: 0, sum: 0.0, min: f64::MAX, max: f64::MIN });
-        if data.values.len() >= data.max_size { data.values.pop_front(); }
+        let data = histograms
+            .entry(name.to_string())
+            .or_insert_with(|| HistogramData {
+                values: VecDeque::new(),
+                max_size: 10000,
+                count: 0,
+                sum: 0.0,
+                min: f64::MAX,
+                max: f64::MIN,
+            });
+        if data.values.len() >= data.max_size {
+            data.values.pop_front();
+        }
         data.values.push_back(value);
         data.count += 1;
         data.sum += value;
@@ -197,9 +309,12 @@ impl MetricsRegistry {
     pub fn histogram_percentile(&self, name: &str, percentile: f64) -> f64 {
         let histograms = self.histograms.read().unwrap();
         let data = match histograms.get(name) {
-            Some(d) => d, None => return 0.0,
+            Some(d) => d,
+            None => return 0.0,
         };
-        if data.values.is_empty() { return 0.0; }
+        if data.values.is_empty() {
+            return 0.0;
+        }
         let mut sorted: Vec<f64> = data.values.iter().cloned().collect();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let idx = (sorted.len() as f64 * percentile / 100.0).ceil() as usize;
@@ -208,10 +323,21 @@ impl MetricsRegistry {
 
     pub fn histogram_mean(&self, name: &str) -> f64 {
         let histograms = self.histograms.read().unwrap();
-        histograms.get(name).map(|d| if d.count > 0 { d.sum / d.count as f64 } else { 0.0 }).unwrap_or(0.0)
+        histograms
+            .get(name)
+            .map(|d| {
+                if d.count > 0 {
+                    d.sum / d.count as f64
+                } else {
+                    0.0
+                }
+            })
+            .unwrap_or(0.0)
     }
 
-    pub fn all_counter_names(&self) -> Vec<String> { self.counters.read().unwrap().keys().cloned().collect() }
+    pub fn all_counter_names(&self) -> Vec<String> {
+        self.counters.read().unwrap().keys().cloned().collect()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -237,7 +363,14 @@ pub struct LogEntry {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum LogLevel { Trace, Debug, Info, Warn, Error, Fatal }
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Fatal,
+}
 
 #[derive(Debug, Default)]
 pub struct LoggerStats {
@@ -247,13 +380,34 @@ pub struct LoggerStats {
 
 impl StructuredLogger {
     pub fn new(max_entries: usize) -> Self {
-        Self { entries: RwLock::new(VecDeque::new()), max_entries, level: RwLock::new(LogLevel::Info), stats: LoggerStats::default() }
+        Self {
+            entries: RwLock::new(VecDeque::new()),
+            max_entries,
+            level: RwLock::new(LogLevel::Info),
+            stats: LoggerStats::default(),
+        }
     }
 
-    pub fn log(&self, level: LogLevel, source: &str, message: &str, fields: HashMap<String, String>) {
+    pub fn log(
+        &self,
+        level: LogLevel,
+        source: &str,
+        message: &str,
+        fields: HashMap<String, String>,
+    ) {
         let current_level = *self.level.read().unwrap();
-        if level < current_level { return; }
-        let entry = LogEntry { timestamp: now_millis(), level, message: message.to_string(), fields, trace_id: None, span_id: None, source: source.to_string() };
+        if level < current_level {
+            return;
+        }
+        let entry = LogEntry {
+            timestamp: now_millis(),
+            level,
+            message: message.to_string(),
+            fields,
+            trace_id: None,
+            span_id: None,
+            source: source.to_string(),
+        };
         let mut entries = self.entries.write().unwrap();
         if entries.len() >= self.max_entries {
             entries.pop_front();
@@ -263,26 +417,62 @@ impl StructuredLogger {
         self.stats.entries_written.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn log_with_trace(&self, level: LogLevel, source: &str, message: &str, fields: HashMap<String, String>, trace_id: &str, span_id: &str) {
+    pub fn log_with_trace(
+        &self,
+        level: LogLevel,
+        source: &str,
+        message: &str,
+        fields: HashMap<String, String>,
+        trace_id: &str,
+        span_id: &str,
+    ) {
         let current_level = *self.level.read().unwrap();
-        if level < current_level { return; }
-        let entry = LogEntry { timestamp: now_millis(), level, message: message.to_string(), fields, trace_id: Some(trace_id.to_string()), span_id: Some(span_id.to_string()), source: source.to_string() };
+        if level < current_level {
+            return;
+        }
+        let entry = LogEntry {
+            timestamp: now_millis(),
+            level,
+            message: message.to_string(),
+            fields,
+            trace_id: Some(trace_id.to_string()),
+            span_id: Some(span_id.to_string()),
+            source: source.to_string(),
+        };
         let mut entries = self.entries.write().unwrap();
-        if entries.len() >= self.max_entries { entries.pop_front(); }
+        if entries.len() >= self.max_entries {
+            entries.pop_front();
+        }
         entries.push_back(entry);
         self.stats.entries_written.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn search(&self, query: &str) -> Vec<LogEntry> {
-        self.entries.read().unwrap().iter().filter(|e| e.message.contains(query) || e.fields.values().any(|v| v.contains(query))).cloned().collect()
+        self.entries
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|e| e.message.contains(query) || e.fields.values().any(|v| v.contains(query)))
+            .cloned()
+            .collect()
     }
 
     pub fn errors_since(&self, timestamp: i64) -> Vec<LogEntry> {
-        self.entries.read().unwrap().iter().filter(|e| e.timestamp >= timestamp && e.level >= LogLevel::Error).cloned().collect()
+        self.entries
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|e| e.timestamp >= timestamp && e.level >= LogLevel::Error)
+            .cloned()
+            .collect()
     }
 
-    pub fn set_level(&self, level: LogLevel) { *self.level.write().unwrap() = level; }
-    pub fn entry_count(&self) -> usize { self.entries.read().unwrap().len() }
+    pub fn set_level(&self, level: LogLevel) {
+        *self.level.write().unwrap() = level;
+    }
+    pub fn entry_count(&self) -> usize {
+        self.entries.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -321,19 +511,34 @@ pub struct ProfilerStats {
 
 impl PerformanceProfiler {
     pub fn new() -> Self {
-        Self { profiles: RwLock::new(HashMap::new()), hot_paths: RwLock::new(Vec::new()), stats: ProfilerStats::default() }
+        Self {
+            profiles: RwLock::new(HashMap::new()),
+            hot_paths: RwLock::new(Vec::new()),
+            stats: ProfilerStats::default(),
+        }
     }
 
     pub fn start_profile(&self, name: &str) -> String {
         let mut profiles = self.profiles.write().unwrap();
-        profiles.entry(name.to_string()).or_insert_with(|| { self.stats.profiles_created.fetch_add(1, Ordering::Relaxed); ProfileData { name: name.to_string(), samples: VecDeque::new(), max_samples: 10000, total_time_us: 0, call_count: 0 } });
+        profiles.entry(name.to_string()).or_insert_with(|| {
+            self.stats.profiles_created.fetch_add(1, Ordering::Relaxed);
+            ProfileData {
+                name: name.to_string(),
+                samples: VecDeque::new(),
+                max_samples: 10000,
+                total_time_us: 0,
+                call_count: 0,
+            }
+        });
         name.to_string()
     }
 
     pub fn record_sample(&self, name: &str, duration_us: u64) {
         let mut profiles = self.profiles.write().unwrap();
         if let Some(p) = profiles.get_mut(name) {
-            if p.samples.len() >= p.max_samples { p.samples.pop_front(); }
+            if p.samples.len() >= p.max_samples {
+                p.samples.pop_front();
+            }
             p.samples.push_back(duration_us);
             p.total_time_us += duration_us;
             p.call_count += 1;
@@ -344,18 +549,43 @@ impl PerformanceProfiler {
     pub fn detect_hot_paths(&self) -> Vec<HotPath> {
         let profiles = self.profiles.read().unwrap();
         let total_time: u64 = profiles.values().map(|p| p.total_time_us).sum();
-        let mut hot_paths: Vec<HotPath> = profiles.values().filter(|p| p.call_count > 0).map(|p| {
-            let percentage = if total_time > 0 { p.total_time_us as f64 / total_time as f64 * 100.0 } else { 0.0 };
-            HotPath { path: vec![p.name.clone()], total_time_us: p.total_time_us, percentage, call_count: p.call_count }
-        }).collect();
+        let mut hot_paths: Vec<HotPath> = profiles
+            .values()
+            .filter(|p| p.call_count > 0)
+            .map(|p| {
+                let percentage = if total_time > 0 {
+                    p.total_time_us as f64 / total_time as f64 * 100.0
+                } else {
+                    0.0
+                };
+                HotPath {
+                    path: vec![p.name.clone()],
+                    total_time_us: p.total_time_us,
+                    percentage,
+                    call_count: p.call_count,
+                }
+            })
+            .collect();
         hot_paths.sort_by(|a, b| b.total_time_us.cmp(&a.total_time_us));
-        self.stats.hot_paths_detected.store(hot_paths.len() as u64, Ordering::Relaxed);
+        self.stats
+            .hot_paths_detected
+            .store(hot_paths.len() as u64, Ordering::Relaxed);
         *self.hot_paths.write().unwrap() = hot_paths.clone();
         hot_paths
     }
 
     pub fn profile_stats(&self, name: &str) -> Option<(u64, u64, f64)> {
-        self.profiles.read().unwrap().get(name).map(|p| (p.total_time_us, p.call_count, if p.call_count > 0 { p.total_time_us as f64 / p.call_count as f64 } else { 0.0 }))
+        self.profiles.read().unwrap().get(name).map(|p| {
+            (
+                p.total_time_us,
+                p.call_count,
+                if p.call_count > 0 {
+                    p.total_time_us as f64 / p.call_count as f64
+                } else {
+                    0.0
+                },
+            )
+        })
     }
 }
 
@@ -373,9 +603,13 @@ pub struct PredictiveAlertEngine {
 
 #[derive(Debug, Clone)]
 pub struct AlertRule {
-    pub rule_id: String, pub name: String, pub metric_name: String,
-    pub condition: AlertCondition, pub severity: AlertSeverity,
-    pub cooldown_seconds: u64, pub enabled: bool,
+    pub rule_id: String,
+    pub name: String,
+    pub metric_name: String,
+    pub condition: AlertCondition,
+    pub severity: AlertSeverity,
+    pub cooldown_seconds: u64,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -388,31 +622,52 @@ pub enum AlertCondition {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum AlertSeverity { Info, Warning, Critical, Emergency }
+pub enum AlertSeverity {
+    Info,
+    Warning,
+    Critical,
+    Emergency,
+}
 
 #[derive(Debug, Clone)]
 pub struct ActiveAlert {
-    pub alert_id: String, pub rule_id: String, pub metric_value: f64,
-    pub threshold: f64, pub started_at: i64, pub severity: AlertSeverity,
+    pub alert_id: String,
+    pub rule_id: String,
+    pub metric_value: f64,
+    pub threshold: f64,
+    pub started_at: i64,
+    pub severity: AlertSeverity,
     pub message: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct AlertRecord {
-    pub alert_id: String, pub rule_name: String, pub severity: AlertSeverity,
-    pub started_at: i64, pub resolved_at: i64, pub duration_ms: u64,
+    pub alert_id: String,
+    pub rule_name: String,
+    pub severity: AlertSeverity,
+    pub started_at: i64,
+    pub resolved_at: i64,
+    pub duration_ms: u64,
     pub peak_value: f64,
 }
 
 #[derive(Debug, Default)]
 pub struct AlertEngineStats {
-    pub rules_evaluated: AtomicU64, pub alerts_fired: AtomicU64,
-    pub alerts_resolved: AtomicU64, pub false_positives: AtomicU64,
+    pub rules_evaluated: AtomicU64,
+    pub alerts_fired: AtomicU64,
+    pub alerts_resolved: AtomicU64,
+    pub false_positives: AtomicU64,
 }
 
 impl PredictiveAlertEngine {
     pub fn new(metrics: Arc<MetricsRegistry>) -> Self {
-        Self { alert_rules: RwLock::new(Vec::new()), active_alerts: RwLock::new(Vec::new()), alert_history: RwLock::new(VecDeque::new()), metrics, stats: AlertEngineStats::default() }
+        Self {
+            alert_rules: RwLock::new(Vec::new()),
+            active_alerts: RwLock::new(Vec::new()),
+            alert_history: RwLock::new(VecDeque::new()),
+            metrics,
+            stats: AlertEngineStats::default(),
+        }
     }
 
     pub fn add_rule(&self, rule: AlertRule) {
@@ -423,34 +678,62 @@ impl PredictiveAlertEngine {
         let rules = self.alert_rules.read().unwrap().clone();
         let mut new_alerts = Vec::new();
         for rule in &rules {
-            if !rule.enabled { continue; }
+            if !rule.enabled {
+                continue;
+            }
             self.stats.rules_evaluated.fetch_add(1, Ordering::Relaxed);
             let value = self.metrics.get_gauge(&rule.metric_name);
             let triggered = match &rule.condition {
                 AlertCondition::Above { threshold, .. } => value > *threshold,
                 AlertCondition::Below { threshold, .. } => value < *threshold,
                 AlertCondition::RateOfChange { .. } => false, // simplified
-                AlertCondition::PercentileAbove { percentile, threshold } => {
-                    self.metrics.histogram_percentile(&rule.metric_name, *percentile) > *threshold
+                AlertCondition::PercentileAbove {
+                    percentile,
+                    threshold,
+                } => {
+                    self.metrics
+                        .histogram_percentile(&rule.metric_name, *percentile)
+                        > *threshold
                 }
                 AlertCondition::Absent { .. } => value == 0.0,
             };
             if triggered {
-                let alert = ActiveAlert { alert_id: format!("alert-{}", now_millis()), rule_id: rule.rule_id.clone(), metric_value: value, threshold: 0.0, started_at: now_millis(), severity: rule.severity, message: format!("{}: metric {} = {:.2}", rule.name, rule.metric_name, value) };
+                let alert = ActiveAlert {
+                    alert_id: format!("alert-{}", now_millis()),
+                    rule_id: rule.rule_id.clone(),
+                    metric_value: value,
+                    threshold: 0.0,
+                    started_at: now_millis(),
+                    severity: rule.severity,
+                    message: format!("{}: metric {} = {:.2}", rule.name, rule.metric_name, value),
+                };
                 self.stats.alerts_fired.fetch_add(1, Ordering::Relaxed);
                 new_alerts.push(alert);
             }
         }
-        self.active_alerts.write().unwrap().extend(new_alerts.clone());
+        self.active_alerts
+            .write()
+            .unwrap()
+            .extend(new_alerts.clone());
         new_alerts
     }
 
-    pub fn active_count(&self) -> usize { self.active_alerts.read().unwrap().len() }
+    pub fn active_count(&self) -> usize {
+        self.active_alerts.read().unwrap().len()
+    }
     pub fn resolve_alert(&self, alert_id: &str) {
         let mut alerts = self.active_alerts.write().unwrap();
         if let Some(pos) = alerts.iter().position(|a| a.alert_id == alert_id) {
             let alert = alerts.remove(pos);
-            self.alert_history.write().unwrap().push_back(AlertRecord { alert_id: alert_id.to_string(), rule_name: alert.rule_id, severity: alert.severity, started_at: alert.started_at, resolved_at: now_millis(), duration_ms: (now_millis() - alert.started_at) as u64, peak_value: alert.metric_value });
+            self.alert_history.write().unwrap().push_back(AlertRecord {
+                alert_id: alert_id.to_string(),
+                rule_name: alert.rule_id,
+                severity: alert.severity,
+                started_at: alert.started_at,
+                resolved_at: now_millis(),
+                duration_ms: (now_millis() - alert.started_at) as u64,
+                peak_value: alert.metric_value,
+            });
             self.stats.alerts_resolved.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -491,23 +774,51 @@ impl ObservabilityHub {
 
     pub fn record_request(&self, service: &str, operation: &str, duration_ms: u64, success: bool) {
         let trace_id = self.traces.start_trace(service, operation);
-        self.traces.complete_span(&trace_id, &self.traces.get_trace(&trace_id).unwrap().root_span_id, if success { SpanStatus::Ok } else { SpanStatus::Error });
+        self.traces.complete_span(
+            &trace_id,
+            &self.traces.get_trace(&trace_id).unwrap().root_span_id,
+            if success {
+                SpanStatus::Ok
+            } else {
+                SpanStatus::Error
+            },
+        );
         self.traces.complete_trace(&trace_id);
-        self.metrics.record_histogram(&format!("{}.{}.duration_ms", service, operation), duration_ms as f64);
-        self.metrics.increment_counter(&format!("{}.{}.total", service, operation), 1);
-        if !success { self.metrics.increment_counter(&format!("{}.{}.errors", service, operation), 1); }
+        self.metrics.record_histogram(
+            &format!("{}.{}.duration_ms", service, operation),
+            duration_ms as f64,
+        );
+        self.metrics
+            .increment_counter(&format!("{}.{}.total", service, operation), 1);
+        if !success {
+            self.metrics
+                .increment_counter(&format!("{}.{}.errors", service, operation), 1);
+        }
     }
 
     pub fn system_health_report(&self) -> String {
         let trace_count = self.traces.stats.traces_completed.load(Ordering::Relaxed);
         let error_count = self.traces.stats.traces_errored.load(Ordering::Relaxed);
-        let error_rate = if trace_count > 0 { error_count as f64 / trace_count as f64 * 100.0 } else { 0.0 };
-        format!("Traces: {} completed, {:.2}% error rate | Alerts: {} active | Log entries: {}", trace_count, error_rate, self.alerts.active_count(), self.logger.entry_count())
+        let error_rate = if trace_count > 0 {
+            error_count as f64 / trace_count as f64 * 100.0
+        } else {
+            0.0
+        };
+        format!(
+            "Traces: {} completed, {:.2}% error rate | Alerts: {} active | Log entries: {}",
+            trace_count,
+            error_rate,
+            self.alerts.active_count(),
+            self.logger.entry_count()
+        )
     }
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -522,7 +833,13 @@ mod tests {
     fn test_trace_lifecycle() {
         let tc = TraceCollector::new(100);
         let trace_id = tc.start_trace("api", "handle_request");
-        let span_id = tc.add_span(&trace_id, &tc.get_trace(&trace_id).unwrap().root_span_id, "db_query").unwrap();
+        let span_id = tc
+            .add_span(
+                &trace_id,
+                &tc.get_trace(&trace_id).unwrap().root_span_id,
+                "db_query",
+            )
+            .unwrap();
         tc.complete_span(&trace_id, &span_id, SpanStatus::Ok);
         tc.complete_trace(&trace_id);
         let trace = tc.get_trace(&trace_id).unwrap();
@@ -570,7 +887,9 @@ mod tests {
     #[test]
     fn test_metrics_histogram() {
         let mr = MetricsRegistry::new();
-        for i in 0..100 { mr.record_histogram("latency", i as f64); }
+        for i in 0..100 {
+            mr.record_histogram("latency", i as f64);
+        }
         let p50 = mr.histogram_percentile("latency", 50.0);
         let p99 = mr.histogram_percentile("latency", 99.0);
         assert!(p50 >= 49.0);
@@ -590,7 +909,12 @@ mod tests {
     #[test]
     fn test_logger_search() {
         let logger = StructuredLogger::new(1000);
-        logger.log(LogLevel::Info, "test", "user login successful", HashMap::new());
+        logger.log(
+            LogLevel::Info,
+            "test",
+            "user login successful",
+            HashMap::new(),
+        );
         logger.log(LogLevel::Info, "test", "user logout", HashMap::new());
         let results = logger.search("login");
         assert_eq!(results.len(), 1);
@@ -609,7 +933,9 @@ mod tests {
     fn test_performance_profiler() {
         let profiler = PerformanceProfiler::new();
         profiler.start_profile("db_query");
-        for _ in 0..100 { profiler.record_sample("db_query", 500); }
+        for _ in 0..100 {
+            profiler.record_sample("db_query", 500);
+        }
         let stats = profiler.profile_stats("db_query").unwrap();
         assert_eq!(stats.1, 100); // call_count
         assert!((stats.2 - 500.0).abs() < 0.01); // avg
@@ -620,8 +946,12 @@ mod tests {
         let profiler = PerformanceProfiler::new();
         profiler.start_profile("hot_func");
         profiler.start_profile("cold_func");
-        for _ in 0..1000 { profiler.record_sample("hot_func", 1000); }
-        for _ in 0..10 { profiler.record_sample("cold_func", 100); }
+        for _ in 0..1000 {
+            profiler.record_sample("hot_func", 1000);
+        }
+        for _ in 0..10 {
+            profiler.record_sample("cold_func", 100);
+        }
         let hot = profiler.detect_hot_paths();
         assert_eq!(hot[0].path[0], "hot_func");
     }
@@ -630,7 +960,18 @@ mod tests {
     fn test_alert_engine_above() {
         let metrics = Arc::new(MetricsRegistry::new());
         let engine = PredictiveAlertEngine::new(metrics.clone());
-        engine.add_rule(AlertRule { rule_id: "r1".into(), name: "High CPU".into(), metric_name: "cpu".into(), condition: AlertCondition::Above { threshold: 90.0, window_seconds: 60 }, severity: AlertSeverity::Critical, cooldown_seconds: 300, enabled: true });
+        engine.add_rule(AlertRule {
+            rule_id: "r1".into(),
+            name: "High CPU".into(),
+            metric_name: "cpu".into(),
+            condition: AlertCondition::Above {
+                threshold: 90.0,
+                window_seconds: 60,
+            },
+            severity: AlertSeverity::Critical,
+            cooldown_seconds: 300,
+            enabled: true,
+        });
         metrics.set_gauge("cpu", 95.0);
         let alerts = engine.evaluate_rules();
         assert_eq!(alerts.len(), 1);
@@ -641,7 +982,18 @@ mod tests {
     fn test_alert_engine_no_trigger() {
         let metrics = Arc::new(MetricsRegistry::new());
         let engine = PredictiveAlertEngine::new(metrics.clone());
-        engine.add_rule(AlertRule { rule_id: "r1".into(), name: "High CPU".into(), metric_name: "cpu".into(), condition: AlertCondition::Above { threshold: 90.0, window_seconds: 60 }, severity: AlertSeverity::Critical, cooldown_seconds: 300, enabled: true });
+        engine.add_rule(AlertRule {
+            rule_id: "r1".into(),
+            name: "High CPU".into(),
+            metric_name: "cpu".into(),
+            condition: AlertCondition::Above {
+                threshold: 90.0,
+                window_seconds: 60,
+            },
+            severity: AlertSeverity::Critical,
+            cooldown_seconds: 300,
+            enabled: true,
+        });
         metrics.set_gauge("cpu", 50.0);
         let alerts = engine.evaluate_rules();
         assert!(alerts.is_empty());

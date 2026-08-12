@@ -4,9 +4,12 @@
 //! data models, in-memory implementations, pagination, transactions, conflict resolution,
 //! and shard persistence.
 
-use std::collections::{HashMap, BTreeMap, VecDeque};
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicI64, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::sync::{
+    atomic::{AtomicI64, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Core Data Models
@@ -42,7 +45,15 @@ pub struct WorkflowExecutionData {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionStatus { Running, Completed, Failed, Cancelled, Terminated, ContinuedAsNew, TimedOut }
+pub enum ExecutionStatus {
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+    Terminated,
+    ContinuedAsNew,
+    TimedOut,
+}
 
 #[derive(Debug, Clone)]
 pub struct ResetPoint {
@@ -94,10 +105,17 @@ pub struct NamespaceData {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NamespaceState { Registered, Deprecated, Deleted }
+pub enum NamespaceState {
+    Registered,
+    Deprecated,
+    Deleted,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArchivalState { Disabled, Enabled }
+pub enum ArchivalState {
+    Disabled,
+    Enabled,
+}
 
 #[derive(Debug, Clone)]
 pub struct NamespaceConfig {
@@ -111,9 +129,14 @@ pub struct NamespaceConfig {
 
 impl Default for NamespaceConfig {
     fn default() -> Self {
-        Self { workflow_execution_retention_ttl: Duration::from_secs(86400 * 7), bad_binaries: Vec::new(),
-            history_archival_state: ArchivalState::Disabled, history_archival_uri: String::new(),
-            visibility_archival_state: ArchivalState::Disabled, visibility_archival_uri: String::new() }
+        Self {
+            workflow_execution_retention_ttl: Duration::from_secs(86400 * 7),
+            bad_binaries: Vec::new(),
+            history_archival_state: ArchivalState::Disabled,
+            history_archival_uri: String::new(),
+            visibility_archival_state: ArchivalState::Disabled,
+            visibility_archival_uri: String::new(),
+        }
     }
 }
 
@@ -124,7 +147,9 @@ pub struct ReplicationConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClusterReplicationConfig { pub cluster_name: String }
+pub struct ClusterReplicationConfig {
+    pub cluster_name: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct TaskQueueData {
@@ -139,10 +164,16 @@ pub struct TaskQueueData {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskQueueType { Workflow, Activity }
+pub enum TaskQueueType {
+    Workflow,
+    Activity,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskQueueKind { Normal, Sticky }
+pub enum TaskQueueKind {
+    Normal,
+    Sticky,
+}
 
 #[derive(Debug, Clone)]
 pub struct QueueData {
@@ -154,22 +185,43 @@ pub struct QueueData {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum QueueType { Transfer, Timer, Replication, Visibility, Namespace, Outbound }
+pub enum QueueType {
+    Transfer,
+    Timer,
+    Replication,
+    Visibility,
+    Namespace,
+    Outbound,
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Pagination
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone)]
-pub struct PageToken { pub value: Vec<u8> }
+pub struct PageToken {
+    pub value: Vec<u8>,
+}
 
 impl PageToken {
-    pub fn new(offset: u64) -> Self { Self { value: offset.to_le_bytes().to_vec() } }
-    pub fn offset(&self) -> u64 {
-        if self.value.len() >= 8 { u64::from_le_bytes(self.value[..8].try_into().unwrap()) } else { 0 }
+    pub fn new(offset: u64) -> Self {
+        Self {
+            value: offset.to_le_bytes().to_vec(),
+        }
     }
-    pub fn start() -> Self { Self::new(0) }
-    pub fn is_empty(&self) -> bool { self.value.is_empty() }
+    pub fn offset(&self) -> u64 {
+        if self.value.len() >= 8 {
+            u64::from_le_bytes(self.value[..8].try_into().unwrap())
+        } else {
+            0
+        }
+    }
+    pub fn start() -> Self {
+        Self::new(0)
+    }
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -184,7 +236,11 @@ pub struct PaginatedResult<T> {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransactionState { Active, Committed, RolledBack }
+pub enum TransactionState {
+    Active,
+    Committed,
+    RolledBack,
+}
 
 pub struct Transaction {
     pub tx_id: u64,
@@ -196,7 +252,11 @@ pub struct Transaction {
 #[derive(Debug, Clone)]
 pub enum TransactionOp {
     PutExecution(WorkflowExecutionData),
-    DeleteExecution { namespace_id: String, workflow_id: String, run_id: String },
+    DeleteExecution {
+        namespace_id: String,
+        workflow_id: String,
+        run_id: String,
+    },
     PutHistoryEvent(HistoryEventData),
     PutNamespace(NamespaceData),
     DeleteNamespace(String),
@@ -220,38 +280,65 @@ pub struct TransactionManagerStats {
 
 impl TransactionManager {
     pub fn new() -> Self {
-        Self { next_tx_id: AtomicU64::new(1), active_transactions: RwLock::new(HashMap::new()), stats: TransactionManagerStats::default() }
+        Self {
+            next_tx_id: AtomicU64::new(1),
+            active_transactions: RwLock::new(HashMap::new()),
+            stats: TransactionManagerStats::default(),
+        }
     }
 
     pub fn begin(&self) -> Arc<Transaction> {
         let tx_id = self.next_tx_id.fetch_add(1, Ordering::Relaxed);
-        let tx = Arc::new(Transaction { tx_id, state: RwLock::new(TransactionState::Active), operations: RwLock::new(Vec::new()), created_at: now_millis() });
-        self.active_transactions.write().unwrap().insert(tx_id, tx.clone());
-        self.stats.transactions_started.fetch_add(1, Ordering::Relaxed);
+        let tx = Arc::new(Transaction {
+            tx_id,
+            state: RwLock::new(TransactionState::Active),
+            operations: RwLock::new(Vec::new()),
+            created_at: now_millis(),
+        });
+        self.active_transactions
+            .write()
+            .unwrap()
+            .insert(tx_id, tx.clone());
+        self.stats
+            .transactions_started
+            .fetch_add(1, Ordering::Relaxed);
         tx
     }
 
     pub fn commit(&self, tx: &Transaction) -> Result<(), PersistenceError> {
         let mut state = tx.state.write().unwrap();
-        if *state != TransactionState::Active { return Err(PersistenceError::TransactionError("Not active".into())); }
+        if *state != TransactionState::Active {
+            return Err(PersistenceError::TransactionError("Not active".into()));
+        }
         *state = TransactionState::Committed;
-        self.stats.transactions_committed.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_operations.fetch_add(tx.operations.read().unwrap().len() as u64, Ordering::Relaxed);
+        self.stats
+            .transactions_committed
+            .fetch_add(1, Ordering::Relaxed);
+        self.stats.total_operations.fetch_add(
+            tx.operations.read().unwrap().len() as u64,
+            Ordering::Relaxed,
+        );
         self.active_transactions.write().unwrap().remove(&tx.tx_id);
         Ok(())
     }
 
     pub fn rollback(&self, tx: &Transaction) -> Result<(), PersistenceError> {
         let mut state = tx.state.write().unwrap();
-        if *state != TransactionState::Active { return Err(PersistenceError::TransactionError("Not active".into())); }
+        if *state != TransactionState::Active {
+            return Err(PersistenceError::TransactionError("Not active".into()));
+        }
         *state = TransactionState::RolledBack;
-        self.stats.transactions_rolled_back.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .transactions_rolled_back
+            .fetch_add(1, Ordering::Relaxed);
         self.active_transactions.write().unwrap().remove(&tx.tx_id);
         Ok(())
     }
 
     pub fn add_op(&self, tx: &Transaction, op: TransactionOp) -> Result<(), PersistenceError> {
-        if *tx.state.read().unwrap() != TransactionState::Active { return Err(PersistenceError::TransactionError("Not active".into())); }
+        if *tx.state.read().unwrap() != TransactionState::Active {
+            return Err(PersistenceError::TransactionError("Not active".into()));
+        }
         tx.operations.write().unwrap().push(op);
         Ok(())
     }
@@ -268,64 +355,119 @@ pub struct InMemoryExecutionStore {
 
 #[derive(Debug, Default)]
 pub struct ExecutionStoreStats {
-    pub reads: AtomicU64, pub writes: AtomicU64, pub deletes: AtomicU64,
-    pub list_calls: AtomicU64, pub conflicts: AtomicU64,
+    pub reads: AtomicU64,
+    pub writes: AtomicU64,
+    pub deletes: AtomicU64,
+    pub list_calls: AtomicU64,
+    pub conflicts: AtomicU64,
 }
 
 impl InMemoryExecutionStore {
     pub fn new() -> Self {
-        Self { executions: RwLock::new(HashMap::new()), stats: ExecutionStoreStats::default() }
+        Self {
+            executions: RwLock::new(HashMap::new()),
+            stats: ExecutionStoreStats::default(),
+        }
     }
 
-    fn exec_key(ns: &str, wf: &str, run: &str) -> String { format!("{}/{}/{}", ns, wf, run) }
+    fn exec_key(ns: &str, wf: &str, run: &str) -> String {
+        format!("{}/{}/{}", ns, wf, run)
+    }
 
     pub fn create_execution(&self, data: WorkflowExecutionData) -> Result<(), PersistenceError> {
         let key = Self::exec_key(&data.namespace_id, &data.workflow_id, &data.run_id);
         let mut execs = self.executions.write().unwrap();
-        if execs.contains_key(&key) { return Err(PersistenceError::ConditionFailed("Execution exists".into())); }
+        if execs.contains_key(&key) {
+            return Err(PersistenceError::ConditionFailed("Execution exists".into()));
+        }
         execs.insert(key, data);
         self.stats.writes.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn get_execution(&self, namespace_id: &str, workflow_id: &str, run_id: &str) -> Result<WorkflowExecutionData, PersistenceError> {
+    pub fn get_execution(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<WorkflowExecutionData, PersistenceError> {
         let key = Self::exec_key(namespace_id, workflow_id, run_id);
         self.stats.reads.fetch_add(1, Ordering::Relaxed);
-        self.executions.read().unwrap().get(&key).cloned().ok_or(PersistenceError::NotFound(format!("Execution {}", key)))
+        self.executions
+            .read()
+            .unwrap()
+            .get(&key)
+            .cloned()
+            .ok_or(PersistenceError::NotFound(format!("Execution {}", key)))
     }
 
     pub fn update_execution(&self, data: WorkflowExecutionData) -> Result<(), PersistenceError> {
         let key = Self::exec_key(&data.namespace_id, &data.workflow_id, &data.run_id);
         let mut execs = self.executions.write().unwrap();
-        if !execs.contains_key(&key) { return Err(PersistenceError::NotFound(key)); }
+        if !execs.contains_key(&key) {
+            return Err(PersistenceError::NotFound(key));
+        }
         execs.insert(key, data);
         self.stats.writes.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn delete_execution(&self, namespace_id: &str, workflow_id: &str, run_id: &str) -> Result<(), PersistenceError> {
+    pub fn delete_execution(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<(), PersistenceError> {
         let key = Self::exec_key(namespace_id, workflow_id, run_id);
         self.executions.write().unwrap().remove(&key);
         self.stats.deletes.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn list_executions(&self, namespace_id: &str, page_size: usize, page_token: &PageToken) -> PaginatedResult<WorkflowExecutionData> {
+    pub fn list_executions(
+        &self,
+        namespace_id: &str,
+        page_size: usize,
+        page_token: &PageToken,
+    ) -> PaginatedResult<WorkflowExecutionData> {
         let execs = self.executions.read().unwrap();
-        let matching: Vec<_> = execs.values().filter(|e| e.namespace_id == namespace_id).cloned().collect();
+        let matching: Vec<_> = execs
+            .values()
+            .filter(|e| e.namespace_id == namespace_id)
+            .cloned()
+            .collect();
         let offset = page_token.offset() as usize;
         let end = (offset + page_size).min(matching.len());
-        let items = if offset < matching.len() { matching[offset..end].to_vec() } else { Vec::new() };
-        let next = if end < matching.len() { Some(PageToken::new(end as u64)) } else { None };
+        let items = if offset < matching.len() {
+            matching[offset..end].to_vec()
+        } else {
+            Vec::new()
+        };
+        let next = if end < matching.len() {
+            Some(PageToken::new(end as u64))
+        } else {
+            None
+        };
         self.stats.list_calls.fetch_add(1, Ordering::Relaxed);
-        PaginatedResult { items, next_page_token: next, total_count: Some(matching.len() as u64) }
+        PaginatedResult {
+            items,
+            next_page_token: next,
+            total_count: Some(matching.len() as u64),
+        }
     }
 
     pub fn count_executions(&self, namespace_id: &str) -> u64 {
-        self.executions.read().unwrap().values().filter(|e| e.namespace_id == namespace_id).count() as u64
+        self.executions
+            .read()
+            .unwrap()
+            .values()
+            .filter(|e| e.namespace_id == namespace_id)
+            .count() as u64
     }
 
-    pub fn execution_count(&self) -> usize { self.executions.read().unwrap().len() }
+    pub fn execution_count(&self) -> usize {
+        self.executions.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -339,52 +481,103 @@ pub struct InMemoryHistoryStore {
 
 #[derive(Debug, Default)]
 pub struct HistoryStoreStats {
-    pub appends: AtomicU64, pub reads: AtomicU64, pub deletes: AtomicU64,
+    pub appends: AtomicU64,
+    pub reads: AtomicU64,
+    pub deletes: AtomicU64,
     pub total_events_stored: AtomicU64,
 }
 
 impl InMemoryHistoryStore {
     pub fn new() -> Self {
-        Self { events: RwLock::new(BTreeMap::new()), stats: HistoryStoreStats::default() }
+        Self {
+            events: RwLock::new(BTreeMap::new()),
+            stats: HistoryStoreStats::default(),
+        }
     }
 
-    fn history_key(ns: &str, wf: &str, run: &str) -> String { format!("{}/{}/{}", ns, wf, run) }
+    fn history_key(ns: &str, wf: &str, run: &str) -> String {
+        format!("{}/{}/{}", ns, wf, run)
+    }
 
     pub fn append_event(&self, event: HistoryEventData) -> Result<(), PersistenceError> {
         let key = Self::history_key(&event.namespace_id, &event.workflow_id, &event.run_id);
         let mut events = self.events.write().unwrap();
         events.entry(key).or_insert_with(Vec::new).push(event);
         self.stats.appends.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_events_stored.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_events_stored
+            .fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn append_events(&self, events_batch: Vec<HistoryEventData>) -> Result<(), PersistenceError> {
-        for event in events_batch { self.append_event(event)?; }
+    pub fn append_events(
+        &self,
+        events_batch: Vec<HistoryEventData>,
+    ) -> Result<(), PersistenceError> {
+        for event in events_batch {
+            self.append_event(event)?;
+        }
         Ok(())
     }
 
-    pub fn get_events(&self, namespace_id: &str, workflow_id: &str, run_id: &str, min_id: i64, max_id: i64, page_size: usize) -> PaginatedResult<HistoryEventData> {
+    pub fn get_events(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+        min_id: i64,
+        max_id: i64,
+        page_size: usize,
+    ) -> PaginatedResult<HistoryEventData> {
         let key = Self::history_key(namespace_id, workflow_id, run_id);
         let events = self.events.read().unwrap();
         let all = events.get(&key).cloned().unwrap_or_default();
-        let filtered: Vec<_> = all.into_iter().filter(|e| e.event_id >= min_id && e.event_id < max_id).collect();
+        let filtered: Vec<_> = all
+            .into_iter()
+            .filter(|e| e.event_id >= min_id && e.event_id < max_id)
+            .collect();
         let items: Vec<_> = filtered.into_iter().take(page_size).collect();
-        let next = if items.len() >= page_size { Some(PageToken::new(items.last().map(|e| e.event_id as u64).unwrap_or(0))) } else { None };
+        let next = if items.len() >= page_size {
+            Some(PageToken::new(
+                items.last().map(|e| e.event_id as u64).unwrap_or(0),
+            ))
+        } else {
+            None
+        };
         self.stats.reads.fetch_add(1, Ordering::Relaxed);
-        PaginatedResult { items, next_page_token: next, total_count: None }
+        PaginatedResult {
+            items,
+            next_page_token: next,
+            total_count: None,
+        }
     }
 
-    pub fn delete_events(&self, namespace_id: &str, workflow_id: &str, run_id: &str) -> Result<u64, PersistenceError> {
+    pub fn delete_events(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<u64, PersistenceError> {
         let key = Self::history_key(namespace_id, workflow_id, run_id);
-        let removed = self.events.write().unwrap().remove(&key).map(|v| v.len() as u64).unwrap_or(0);
+        let removed = self
+            .events
+            .write()
+            .unwrap()
+            .remove(&key)
+            .map(|v| v.len() as u64)
+            .unwrap_or(0);
         self.stats.deletes.fetch_add(1, Ordering::Relaxed);
         Ok(removed)
     }
 
     pub fn event_count(&self, namespace_id: &str, workflow_id: &str, run_id: &str) -> u64 {
         let key = Self::history_key(namespace_id, workflow_id, run_id);
-        self.events.read().unwrap().get(&key).map(|v| v.len() as u64).unwrap_or(0)
+        self.events
+            .read()
+            .unwrap()
+            .get(&key)
+            .map(|v| v.len() as u64)
+            .unwrap_or(0)
     }
 }
 
@@ -400,19 +593,34 @@ pub struct InMemoryMetadataStore {
 
 #[derive(Debug, Default)]
 pub struct MetadataStoreStats {
-    pub reads: AtomicU64, pub writes: AtomicU64, pub deletes: AtomicU64, pub list_calls: AtomicU64,
+    pub reads: AtomicU64,
+    pub writes: AtomicU64,
+    pub deletes: AtomicU64,
+    pub list_calls: AtomicU64,
 }
 
 impl InMemoryMetadataStore {
     pub fn new() -> Self {
-        Self { namespaces_by_id: RwLock::new(HashMap::new()), namespaces_by_name: RwLock::new(HashMap::new()), stats: MetadataStoreStats::default() }
+        Self {
+            namespaces_by_id: RwLock::new(HashMap::new()),
+            namespaces_by_name: RwLock::new(HashMap::new()),
+            stats: MetadataStoreStats::default(),
+        }
     }
 
     pub fn create_namespace(&self, data: NamespaceData) -> Result<(), PersistenceError> {
         let mut by_id = self.namespaces_by_id.write().unwrap();
         let mut by_name = self.namespaces_by_name.write().unwrap();
-        if by_id.contains_key(&data.id) { return Err(PersistenceError::ConditionFailed("Namespace ID exists".into())); }
-        if by_name.contains_key(&data.name) { return Err(PersistenceError::ConditionFailed("Namespace name exists".into())); }
+        if by_id.contains_key(&data.id) {
+            return Err(PersistenceError::ConditionFailed(
+                "Namespace ID exists".into(),
+            ));
+        }
+        if by_name.contains_key(&data.name) {
+            return Err(PersistenceError::ConditionFailed(
+                "Namespace name exists".into(),
+            ));
+        }
         by_name.insert(data.name.clone(), data.id.clone());
         by_id.insert(data.id.clone(), data);
         self.stats.writes.fetch_add(1, Ordering::Relaxed);
@@ -421,18 +629,36 @@ impl InMemoryMetadataStore {
 
     pub fn get_namespace_by_id(&self, id: &str) -> Result<NamespaceData, PersistenceError> {
         self.stats.reads.fetch_add(1, Ordering::Relaxed);
-        self.namespaces_by_id.read().unwrap().get(id).cloned().ok_or(PersistenceError::NotFound(format!("NS {}", id)))
+        self.namespaces_by_id
+            .read()
+            .unwrap()
+            .get(id)
+            .cloned()
+            .ok_or(PersistenceError::NotFound(format!("NS {}", id)))
     }
 
     pub fn get_namespace_by_name(&self, name: &str) -> Result<NamespaceData, PersistenceError> {
         self.stats.reads.fetch_add(1, Ordering::Relaxed);
-        let id = self.namespaces_by_name.read().unwrap().get(name).cloned().ok_or(PersistenceError::NotFound(format!("NS name {}", name)))?;
-        self.namespaces_by_id.read().unwrap().get(&id).cloned().ok_or(PersistenceError::NotFound(id))
+        let id = self
+            .namespaces_by_name
+            .read()
+            .unwrap()
+            .get(name)
+            .cloned()
+            .ok_or(PersistenceError::NotFound(format!("NS name {}", name)))?;
+        self.namespaces_by_id
+            .read()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .ok_or(PersistenceError::NotFound(id))
     }
 
     pub fn update_namespace(&self, data: NamespaceData) -> Result<(), PersistenceError> {
         let mut by_id = self.namespaces_by_id.write().unwrap();
-        if !by_id.contains_key(&data.id) { return Err(PersistenceError::NotFound(data.id.clone())); }
+        if !by_id.contains_key(&data.id) {
+            return Err(PersistenceError::NotFound(data.id.clone()));
+        }
         by_id.insert(data.id.clone(), data);
         self.stats.writes.fetch_add(1, Ordering::Relaxed);
         Ok(())
@@ -440,24 +666,44 @@ impl InMemoryMetadataStore {
 
     pub fn delete_namespace(&self, id: &str) -> Result<(), PersistenceError> {
         let mut by_id = self.namespaces_by_id.write().unwrap();
-        let ns = by_id.remove(id).ok_or(PersistenceError::NotFound(id.into()))?;
+        let ns = by_id
+            .remove(id)
+            .ok_or(PersistenceError::NotFound(id.into()))?;
         self.namespaces_by_name.write().unwrap().remove(&ns.name);
         self.stats.deletes.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn list_namespaces(&self, page_size: usize, page_token: &PageToken) -> PaginatedResult<NamespaceData> {
+    pub fn list_namespaces(
+        &self,
+        page_size: usize,
+        page_token: &PageToken,
+    ) -> PaginatedResult<NamespaceData> {
         let by_id = self.namespaces_by_id.read().unwrap();
         let all: Vec<_> = by_id.values().cloned().collect();
         let offset = page_token.offset() as usize;
         let end = (offset + page_size).min(all.len());
-        let items = if offset < all.len() { all[offset..end].to_vec() } else { Vec::new() };
-        let next = if end < all.len() { Some(PageToken::new(end as u64)) } else { None };
+        let items = if offset < all.len() {
+            all[offset..end].to_vec()
+        } else {
+            Vec::new()
+        };
+        let next = if end < all.len() {
+            Some(PageToken::new(end as u64))
+        } else {
+            None
+        };
         self.stats.list_calls.fetch_add(1, Ordering::Relaxed);
-        PaginatedResult { items, next_page_token: next, total_count: Some(all.len() as u64) }
+        PaginatedResult {
+            items,
+            next_page_token: next,
+            total_count: Some(all.len() as u64),
+        }
     }
 
-    pub fn namespace_count(&self) -> usize { self.namespaces_by_id.read().unwrap().len() }
+    pub fn namespace_count(&self) -> usize {
+        self.namespaces_by_id.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -471,22 +717,32 @@ pub struct InMemoryVisibilityStore {
 
 #[derive(Debug, Clone)]
 pub struct VisibilityRecord {
-    pub namespace_id: String, pub workflow_id: String, pub run_id: String,
-    pub workflow_type: String, pub status: ExecutionStatus,
-    pub start_time: i64, pub close_time: Option<i64>,
-    pub execution_time: i64, pub task_queue: String,
+    pub namespace_id: String,
+    pub workflow_id: String,
+    pub run_id: String,
+    pub workflow_type: String,
+    pub status: ExecutionStatus,
+    pub start_time: i64,
+    pub close_time: Option<i64>,
+    pub execution_time: i64,
+    pub task_queue: String,
     pub search_attributes: HashMap<String, Vec<u8>>,
 }
 
 #[derive(Debug, Default)]
 pub struct VisibilityStoreStats {
-    pub records_added: AtomicU64, pub records_updated: AtomicU64,
-    pub records_deleted: AtomicU64, pub queries: AtomicU64,
+    pub records_added: AtomicU64,
+    pub records_updated: AtomicU64,
+    pub records_deleted: AtomicU64,
+    pub queries: AtomicU64,
 }
 
 impl InMemoryVisibilityStore {
     pub fn new() -> Self {
-        Self { records: RwLock::new(Vec::new()), stats: VisibilityStoreStats::default() }
+        Self {
+            records: RwLock::new(Vec::new()),
+            stats: VisibilityStoreStats::default(),
+        }
     }
 
     pub fn record_workflow_started(&self, record: VisibilityRecord) {
@@ -494,9 +750,18 @@ impl InMemoryVisibilityStore {
         self.stats.records_added.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn record_workflow_closed(&self, namespace_id: &str, workflow_id: &str, run_id: &str, status: ExecutionStatus, close_time: i64) {
+    pub fn record_workflow_closed(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+        status: ExecutionStatus,
+        close_time: i64,
+    ) {
         let mut records = self.records.write().unwrap();
-        if let Some(r) = records.iter_mut().find(|r| r.namespace_id == namespace_id && r.workflow_id == workflow_id && r.run_id == run_id) {
+        if let Some(r) = records.iter_mut().find(|r| {
+            r.namespace_id == namespace_id && r.workflow_id == workflow_id && r.run_id == run_id
+        }) {
             r.status = status;
             r.close_time = Some(close_time);
             self.stats.records_updated.fetch_add(1, Ordering::Relaxed);
@@ -504,25 +769,39 @@ impl InMemoryVisibilityStore {
     }
 
     pub fn delete_visibility(&self, namespace_id: &str, workflow_id: &str, run_id: &str) {
-        self.records.write().unwrap().retain(|r| !(r.namespace_id == namespace_id && r.workflow_id == workflow_id && r.run_id == run_id));
+        self.records.write().unwrap().retain(|r| {
+            !(r.namespace_id == namespace_id && r.workflow_id == workflow_id && r.run_id == run_id)
+        });
         self.stats.records_deleted.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn list_open(&self, namespace_id: &str, page_size: usize) -> Vec<VisibilityRecord> {
         self.stats.queries.fetch_add(1, Ordering::Relaxed);
-        self.records.read().unwrap().iter()
+        self.records
+            .read()
+            .unwrap()
+            .iter()
             .filter(|r| r.namespace_id == namespace_id && r.close_time.is_none())
-            .take(page_size).cloned().collect()
+            .take(page_size)
+            .cloned()
+            .collect()
     }
 
     pub fn list_closed(&self, namespace_id: &str, page_size: usize) -> Vec<VisibilityRecord> {
         self.stats.queries.fetch_add(1, Ordering::Relaxed);
-        self.records.read().unwrap().iter()
+        self.records
+            .read()
+            .unwrap()
+            .iter()
             .filter(|r| r.namespace_id == namespace_id && r.close_time.is_some())
-            .take(page_size).cloned().collect()
+            .take(page_size)
+            .cloned()
+            .collect()
     }
 
-    pub fn record_count(&self) -> usize { self.records.read().unwrap().len() }
+    pub fn record_count(&self) -> usize {
+        self.records.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -536,17 +815,25 @@ pub struct InMemoryQueueStore {
 
 #[derive(Debug, Default)]
 pub struct QueueStoreStats {
-    pub enqueues: AtomicU64, pub dequeues: AtomicU64, pub acks: AtomicU64,
+    pub enqueues: AtomicU64,
+    pub dequeues: AtomicU64,
+    pub acks: AtomicU64,
 }
 
 impl InMemoryQueueStore {
     pub fn new() -> Self {
-        Self { queues: RwLock::new(HashMap::new()), stats: QueueStoreStats::default() }
+        Self {
+            queues: RwLock::new(HashMap::new()),
+            stats: QueueStoreStats::default(),
+        }
     }
 
     pub fn enqueue(&self, queue_type: QueueType, data: QueueData) {
         let mut queues = self.queues.write().unwrap();
-        queues.entry(queue_type).or_insert_with(VecDeque::new).push_back(data);
+        queues
+            .entry(queue_type)
+            .or_insert_with(VecDeque::new)
+            .push_back(data);
         self.stats.enqueues.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -555,12 +842,19 @@ impl InMemoryQueueStore {
         let q = queues.entry(queue_type).or_insert_with(VecDeque::new);
         let count = max_count.min(q.len());
         let items: Vec<_> = q.drain(..count).collect();
-        self.stats.dequeues.fetch_add(items.len() as u64, Ordering::Relaxed);
+        self.stats
+            .dequeues
+            .fetch_add(items.len() as u64, Ordering::Relaxed);
         items
     }
 
     pub fn queue_depth(&self, queue_type: QueueType) -> usize {
-        self.queues.read().unwrap().get(&queue_type).map(|q| q.len()).unwrap_or(0)
+        self.queues
+            .read()
+            .unwrap()
+            .get(&queue_type)
+            .map(|q| q.len())
+            .unwrap_or(0)
     }
 
     pub fn total_depth(&self) -> usize {
@@ -589,7 +883,9 @@ impl std::fmt::Display for PersistenceError {
             Self::ConditionFailed(m) => write!(f, "Condition failed: {}", m),
             Self::Timeout(m) => write!(f, "Timeout: {}", m),
             Self::TransactionError(m) => write!(f, "Transaction error: {}", m),
-            Self::ShardOwnershipLost { shard_id, range_id } => write!(f, "Shard {} ownership lost (range {})", shard_id, range_id),
+            Self::ShardOwnershipLost { shard_id, range_id } => {
+                write!(f, "Shard {} ownership lost (range {})", shard_id, range_id)
+            }
             Self::BackendError(m) => write!(f, "Backend error: {}", m),
         }
     }
@@ -611,7 +907,9 @@ pub struct DataStoreManager {
 
 #[derive(Debug, Default)]
 pub struct DataStoreManagerStats {
-    pub total_reads: AtomicU64, pub total_writes: AtomicU64, pub total_deletes: AtomicU64,
+    pub total_reads: AtomicU64,
+    pub total_writes: AtomicU64,
+    pub total_deletes: AtomicU64,
 }
 
 impl DataStoreManager {
@@ -629,8 +927,11 @@ impl DataStoreManager {
 
     pub fn health_check(&self) -> DataStoreHealth {
         DataStoreHealth {
-            execution_store_ok: true, history_store_ok: true, metadata_store_ok: true,
-            visibility_store_ok: true, queue_store_ok: true,
+            execution_store_ok: true,
+            history_store_ok: true,
+            metadata_store_ok: true,
+            visibility_store_ok: true,
+            queue_store_ok: true,
             execution_count: self.execution_store.execution_count(),
             namespace_count: self.metadata_store.namespace_count(),
             visibility_count: self.visibility_store.record_count(),
@@ -641,14 +942,22 @@ impl DataStoreManager {
 
 #[derive(Debug)]
 pub struct DataStoreHealth {
-    pub execution_store_ok: bool, pub history_store_ok: bool, pub metadata_store_ok: bool,
-    pub visibility_store_ok: bool, pub queue_store_ok: bool,
-    pub execution_count: usize, pub namespace_count: usize,
-    pub visibility_count: usize, pub total_queue_depth: usize,
+    pub execution_store_ok: bool,
+    pub history_store_ok: bool,
+    pub metadata_store_ok: bool,
+    pub visibility_store_ok: bool,
+    pub queue_store_ok: bool,
+    pub execution_count: usize,
+    pub namespace_count: usize,
+    pub visibility_count: usize,
+    pub total_queue_depth: usize,
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -661,14 +970,31 @@ mod tests {
 
     fn make_execution(ns: &str, wf: &str, run: &str) -> WorkflowExecutionData {
         WorkflowExecutionData {
-            namespace_id: ns.into(), workflow_id: wf.into(), run_id: run.into(),
-            parent_namespace_id: None, parent_workflow_id: None, parent_run_id: None,
-            initiated_id: -1, workflow_type: "TestWF".into(), task_queue: "tq-1".into(),
-            status: ExecutionStatus::Running, start_time: now_millis(), close_time: None,
-            execution_timeout: None, run_timeout: None, task_timeout: 10,
-            last_event_id: 1, last_first_event_id: 1, next_event_id: 2, version: 0, attempt: 0,
-            search_attributes: HashMap::new(), memo: HashMap::new(), auto_reset_points: Vec::new(),
-            state: Vec::new(), checksum: Vec::new(),
+            namespace_id: ns.into(),
+            workflow_id: wf.into(),
+            run_id: run.into(),
+            parent_namespace_id: None,
+            parent_workflow_id: None,
+            parent_run_id: None,
+            initiated_id: -1,
+            workflow_type: "TestWF".into(),
+            task_queue: "tq-1".into(),
+            status: ExecutionStatus::Running,
+            start_time: now_millis(),
+            close_time: None,
+            execution_timeout: None,
+            run_timeout: None,
+            task_timeout: 10,
+            last_event_id: 1,
+            last_first_event_id: 1,
+            next_event_id: 2,
+            version: 0,
+            attempt: 0,
+            search_attributes: HashMap::new(),
+            memo: HashMap::new(),
+            auto_reset_points: Vec::new(),
+            state: Vec::new(),
+            checksum: Vec::new(),
         }
     }
 
@@ -685,8 +1011,12 @@ mod tests {
     #[test]
     fn test_execution_store_duplicate() {
         let store = InMemoryExecutionStore::new();
-        store.create_execution(make_execution("ns", "wf", "run")).unwrap();
-        assert!(store.create_execution(make_execution("ns", "wf", "run")).is_err());
+        store
+            .create_execution(make_execution("ns", "wf", "run"))
+            .unwrap();
+        assert!(store
+            .create_execution(make_execution("ns", "wf", "run"))
+            .is_err());
     }
 
     #[test]
@@ -703,7 +1033,9 @@ mod tests {
     #[test]
     fn test_execution_store_delete() {
         let store = InMemoryExecutionStore::new();
-        store.create_execution(make_execution("ns", "wf", "run")).unwrap();
+        store
+            .create_execution(make_execution("ns", "wf", "run"))
+            .unwrap();
         store.delete_execution("ns", "wf", "run").unwrap();
         assert!(store.get_execution("ns", "wf", "run").is_err());
         assert_eq!(store.execution_count(), 0);
@@ -712,8 +1044,14 @@ mod tests {
     #[test]
     fn test_execution_store_list() {
         let store = InMemoryExecutionStore::new();
-        for i in 0..5 { store.create_execution(make_execution("ns", &format!("wf-{}", i), "run")).unwrap(); }
-        store.create_execution(make_execution("other-ns", "wf-x", "run")).unwrap();
+        for i in 0..5 {
+            store
+                .create_execution(make_execution("ns", &format!("wf-{}", i), "run"))
+                .unwrap();
+        }
+        store
+            .create_execution(make_execution("other-ns", "wf-x", "run"))
+            .unwrap();
         let result = store.list_executions("ns", 3, &PageToken::start());
         assert_eq!(result.items.len(), 3);
         assert!(result.next_page_token.is_some());
@@ -723,7 +1061,11 @@ mod tests {
     #[test]
     fn test_execution_store_count() {
         let store = InMemoryExecutionStore::new();
-        for i in 0..3 { store.create_execution(make_execution("ns", &format!("wf-{}", i), "r")).unwrap(); }
+        for i in 0..3 {
+            store
+                .create_execution(make_execution("ns", &format!("wf-{}", i), "r"))
+                .unwrap();
+        }
         assert_eq!(store.count_executions("ns"), 3);
         assert_eq!(store.count_executions("other"), 0);
     }
@@ -732,11 +1074,21 @@ mod tests {
     fn test_history_store_append_get() {
         let store = InMemoryHistoryStore::new();
         for i in 1..=5 {
-            store.append_event(HistoryEventData {
-                namespace_id: "ns".into(), workflow_id: "wf".into(), run_id: "run".into(),
-                event_id: i, event_type: format!("Event{}", i), version: 0, task_id: i,
-                timestamp: now_millis(), data: Vec::new(), prev_tx_id: 0, tx_id: i,
-            }).unwrap();
+            store
+                .append_event(HistoryEventData {
+                    namespace_id: "ns".into(),
+                    workflow_id: "wf".into(),
+                    run_id: "run".into(),
+                    event_id: i,
+                    event_type: format!("Event{}", i),
+                    version: 0,
+                    task_id: i,
+                    timestamp: now_millis(),
+                    data: Vec::new(),
+                    prev_tx_id: 0,
+                    tx_id: i,
+                })
+                .unwrap();
         }
         let result = store.get_events("ns", "wf", "run", 1, 10, 100);
         assert_eq!(result.items.len(), 5);
@@ -747,11 +1099,21 @@ mod tests {
     fn test_history_store_range_query() {
         let store = InMemoryHistoryStore::new();
         for i in 1..=10 {
-            store.append_event(HistoryEventData {
-                namespace_id: "ns".into(), workflow_id: "wf".into(), run_id: "run".into(),
-                event_id: i, event_type: "E".into(), version: 0, task_id: i,
-                timestamp: 0, data: Vec::new(), prev_tx_id: 0, tx_id: i,
-            }).unwrap();
+            store
+                .append_event(HistoryEventData {
+                    namespace_id: "ns".into(),
+                    workflow_id: "wf".into(),
+                    run_id: "run".into(),
+                    event_id: i,
+                    event_type: "E".into(),
+                    version: 0,
+                    task_id: i,
+                    timestamp: 0,
+                    data: Vec::new(),
+                    prev_tx_id: 0,
+                    tx_id: i,
+                })
+                .unwrap();
         }
         let result = store.get_events("ns", "wf", "run", 3, 7, 100);
         assert_eq!(result.items.len(), 4); // events 3,4,5,6
@@ -760,7 +1122,21 @@ mod tests {
     #[test]
     fn test_history_store_delete() {
         let store = InMemoryHistoryStore::new();
-        store.append_event(HistoryEventData { namespace_id: "ns".into(), workflow_id: "wf".into(), run_id: "run".into(), event_id: 1, event_type: "E".into(), version: 0, task_id: 1, timestamp: 0, data: Vec::new(), prev_tx_id: 0, tx_id: 1 }).unwrap();
+        store
+            .append_event(HistoryEventData {
+                namespace_id: "ns".into(),
+                workflow_id: "wf".into(),
+                run_id: "run".into(),
+                event_id: 1,
+                event_type: "E".into(),
+                version: 0,
+                task_id: 1,
+                timestamp: 0,
+                data: Vec::new(),
+                prev_tx_id: 0,
+                tx_id: 1,
+            })
+            .unwrap();
         let removed = store.delete_events("ns", "wf", "run").unwrap();
         assert_eq!(removed, 1);
         assert_eq!(store.event_count("ns", "wf", "run"), 0);
@@ -769,7 +1145,31 @@ mod tests {
     #[test]
     fn test_metadata_store_namespace_lifecycle() {
         let store = InMemoryMetadataStore::new();
-        let ns = NamespaceData { id: "ns-1".into(), name: "test-ns".into(), state: NamespaceState::Registered, description: "test".into(), owner_email: "a@b.com".into(), data: HashMap::new(), retention_days: 7, history_archival_state: ArchivalState::Disabled, history_archival_uri: String::new(), visibility_archival_state: ArchivalState::Disabled, visibility_archival_uri: String::new(), active_cluster: "cluster-0".into(), clusters: vec!["cluster-0".into()], failover_version: 0, is_global: false, config: NamespaceConfig::default(), replication_config: ReplicationConfig { active_cluster_name: "cluster-0".into(), clusters: vec![] }, created_at: now_millis(), last_updated: now_millis(), notification_version: 1 };
+        let ns = NamespaceData {
+            id: "ns-1".into(),
+            name: "test-ns".into(),
+            state: NamespaceState::Registered,
+            description: "test".into(),
+            owner_email: "a@b.com".into(),
+            data: HashMap::new(),
+            retention_days: 7,
+            history_archival_state: ArchivalState::Disabled,
+            history_archival_uri: String::new(),
+            visibility_archival_state: ArchivalState::Disabled,
+            visibility_archival_uri: String::new(),
+            active_cluster: "cluster-0".into(),
+            clusters: vec!["cluster-0".into()],
+            failover_version: 0,
+            is_global: false,
+            config: NamespaceConfig::default(),
+            replication_config: ReplicationConfig {
+                active_cluster_name: "cluster-0".into(),
+                clusters: vec![],
+            },
+            created_at: now_millis(),
+            last_updated: now_millis(),
+            notification_version: 1,
+        };
         store.create_namespace(ns).unwrap();
         assert_eq!(store.namespace_count(), 1);
         let by_id = store.get_namespace_by_id("ns-1").unwrap();
@@ -781,7 +1181,31 @@ mod tests {
     #[test]
     fn test_metadata_store_duplicate() {
         let store = InMemoryMetadataStore::new();
-        let ns = NamespaceData { id: "ns-1".into(), name: "test".into(), state: NamespaceState::Registered, description: String::new(), owner_email: String::new(), data: HashMap::new(), retention_days: 7, history_archival_state: ArchivalState::Disabled, history_archival_uri: String::new(), visibility_archival_state: ArchivalState::Disabled, visibility_archival_uri: String::new(), active_cluster: "c".into(), clusters: vec![], failover_version: 0, is_global: false, config: NamespaceConfig::default(), replication_config: ReplicationConfig { active_cluster_name: "c".into(), clusters: vec![] }, created_at: 0, last_updated: 0, notification_version: 1 };
+        let ns = NamespaceData {
+            id: "ns-1".into(),
+            name: "test".into(),
+            state: NamespaceState::Registered,
+            description: String::new(),
+            owner_email: String::new(),
+            data: HashMap::new(),
+            retention_days: 7,
+            history_archival_state: ArchivalState::Disabled,
+            history_archival_uri: String::new(),
+            visibility_archival_state: ArchivalState::Disabled,
+            visibility_archival_uri: String::new(),
+            active_cluster: "c".into(),
+            clusters: vec![],
+            failover_version: 0,
+            is_global: false,
+            config: NamespaceConfig::default(),
+            replication_config: ReplicationConfig {
+                active_cluster_name: "c".into(),
+                clusters: vec![],
+            },
+            created_at: 0,
+            last_updated: 0,
+            notification_version: 1,
+        };
         store.create_namespace(ns.clone()).unwrap();
         assert!(store.create_namespace(ns).is_err());
     }
@@ -789,7 +1213,31 @@ mod tests {
     #[test]
     fn test_metadata_store_delete() {
         let store = InMemoryMetadataStore::new();
-        let ns = NamespaceData { id: "ns-1".into(), name: "test".into(), state: NamespaceState::Registered, description: String::new(), owner_email: String::new(), data: HashMap::new(), retention_days: 7, history_archival_state: ArchivalState::Disabled, history_archival_uri: String::new(), visibility_archival_state: ArchivalState::Disabled, visibility_archival_uri: String::new(), active_cluster: "c".into(), clusters: vec![], failover_version: 0, is_global: false, config: NamespaceConfig::default(), replication_config: ReplicationConfig { active_cluster_name: "c".into(), clusters: vec![] }, created_at: 0, last_updated: 0, notification_version: 1 };
+        let ns = NamespaceData {
+            id: "ns-1".into(),
+            name: "test".into(),
+            state: NamespaceState::Registered,
+            description: String::new(),
+            owner_email: String::new(),
+            data: HashMap::new(),
+            retention_days: 7,
+            history_archival_state: ArchivalState::Disabled,
+            history_archival_uri: String::new(),
+            visibility_archival_state: ArchivalState::Disabled,
+            visibility_archival_uri: String::new(),
+            active_cluster: "c".into(),
+            clusters: vec![],
+            failover_version: 0,
+            is_global: false,
+            config: NamespaceConfig::default(),
+            replication_config: ReplicationConfig {
+                active_cluster_name: "c".into(),
+                clusters: vec![],
+            },
+            created_at: 0,
+            last_updated: 0,
+            notification_version: 1,
+        };
         store.create_namespace(ns).unwrap();
         store.delete_namespace("ns-1").unwrap();
         assert_eq!(store.namespace_count(), 0);
@@ -798,8 +1246,30 @@ mod tests {
     #[test]
     fn test_visibility_store() {
         let store = InMemoryVisibilityStore::new();
-        store.record_workflow_started(VisibilityRecord { namespace_id: "ns".into(), workflow_id: "wf-1".into(), run_id: "r1".into(), workflow_type: "TestWF".into(), status: ExecutionStatus::Running, start_time: now_millis(), close_time: None, execution_time: now_millis(), task_queue: "tq".into(), search_attributes: HashMap::new() });
-        store.record_workflow_started(VisibilityRecord { namespace_id: "ns".into(), workflow_id: "wf-2".into(), run_id: "r2".into(), workflow_type: "TestWF".into(), status: ExecutionStatus::Running, start_time: now_millis(), close_time: None, execution_time: now_millis(), task_queue: "tq".into(), search_attributes: HashMap::new() });
+        store.record_workflow_started(VisibilityRecord {
+            namespace_id: "ns".into(),
+            workflow_id: "wf-1".into(),
+            run_id: "r1".into(),
+            workflow_type: "TestWF".into(),
+            status: ExecutionStatus::Running,
+            start_time: now_millis(),
+            close_time: None,
+            execution_time: now_millis(),
+            task_queue: "tq".into(),
+            search_attributes: HashMap::new(),
+        });
+        store.record_workflow_started(VisibilityRecord {
+            namespace_id: "ns".into(),
+            workflow_id: "wf-2".into(),
+            run_id: "r2".into(),
+            workflow_type: "TestWF".into(),
+            status: ExecutionStatus::Running,
+            start_time: now_millis(),
+            close_time: None,
+            execution_time: now_millis(),
+            task_queue: "tq".into(),
+            search_attributes: HashMap::new(),
+        });
         assert_eq!(store.list_open("ns", 10).len(), 2);
         store.record_workflow_closed("ns", "wf-1", "r1", ExecutionStatus::Completed, now_millis());
         assert_eq!(store.list_open("ns", 10).len(), 1);
@@ -809,8 +1279,26 @@ mod tests {
     #[test]
     fn test_queue_store() {
         let store = InMemoryQueueStore::new();
-        store.enqueue(QueueType::Transfer, QueueData { queue_type: QueueType::Transfer, message_id: 1, message_payload: vec![1], encoding_type: 0, created_at: 0 });
-        store.enqueue(QueueType::Transfer, QueueData { queue_type: QueueType::Transfer, message_id: 2, message_payload: vec![2], encoding_type: 0, created_at: 0 });
+        store.enqueue(
+            QueueType::Transfer,
+            QueueData {
+                queue_type: QueueType::Transfer,
+                message_id: 1,
+                message_payload: vec![1],
+                encoding_type: 0,
+                created_at: 0,
+            },
+        );
+        store.enqueue(
+            QueueType::Transfer,
+            QueueData {
+                queue_type: QueueType::Transfer,
+                message_id: 2,
+                message_payload: vec![2],
+                encoding_type: 0,
+                created_at: 0,
+            },
+        );
         assert_eq!(store.queue_depth(QueueType::Transfer), 2);
         let items = store.dequeue(QueueType::Transfer, 1);
         assert_eq!(items.len(), 1);
@@ -822,7 +1310,11 @@ mod tests {
         let tm = TransactionManager::new();
         let tx = tm.begin();
         assert_eq!(*tx.state.read().unwrap(), TransactionState::Active);
-        tm.add_op(&tx, TransactionOp::PutExecution(make_execution("ns", "wf", "run"))).unwrap();
+        tm.add_op(
+            &tx,
+            TransactionOp::PutExecution(make_execution("ns", "wf", "run")),
+        )
+        .unwrap();
         tm.commit(&tx).unwrap();
         assert_eq!(*tx.state.read().unwrap(), TransactionState::Committed);
         assert_eq!(tm.stats.transactions_committed.load(Ordering::Relaxed), 1);

@@ -5,9 +5,12 @@
 //! memory pressure relief, and self-optimization. This makes VELOCITY fundamentally
 //! more resilient and easier to operate than Temporal.
 
-use std::collections::{HashMap, VecDeque, BTreeMap};
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicI64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Health Score — composite health metric for any component
@@ -17,19 +20,37 @@ use std::time::{SystemTime, Duration};
 pub struct HealthScore(pub f64);
 
 impl Default for HealthScore {
-    fn default() -> Self { Self(1.0) }
+    fn default() -> Self {
+        Self(1.0)
+    }
 }
 
 impl HealthScore {
-    pub fn perfect() -> Self { Self(1.0) }
-    pub fn degraded() -> Self { Self(0.5) }
-    pub fn critical() -> Self { Self(0.1) }
-    pub fn dead() -> Self { Self(0.0) }
-    pub fn is_healthy(&self) -> bool { self.0 > 0.8 }
-    pub fn is_degraded(&self) -> bool { self.0 > 0.3 && self.0 <= 0.8 }
-    pub fn is_critical(&self) -> bool { self.0 > 0.0 && self.0 <= 0.3 }
+    pub fn perfect() -> Self {
+        Self(1.0)
+    }
+    pub fn degraded() -> Self {
+        Self(0.5)
+    }
+    pub fn critical() -> Self {
+        Self(0.1)
+    }
+    pub fn dead() -> Self {
+        Self(0.0)
+    }
+    pub fn is_healthy(&self) -> bool {
+        self.0 > 0.8
+    }
+    pub fn is_degraded(&self) -> bool {
+        self.0 > 0.3 && self.0 <= 0.8
+    }
+    pub fn is_critical(&self) -> bool {
+        self.0 > 0.0 && self.0 <= 0.3
+    }
     pub fn combine(scores: &[HealthScore]) -> Self {
-        if scores.is_empty() { return Self::perfect(); }
+        if scores.is_empty() {
+            return Self::perfect();
+        }
         let sum: f64 = scores.iter().map(|s| s.0).sum();
         Self(sum / scores.len() as f64)
     }
@@ -63,61 +84,96 @@ pub struct AnomalyDetectorStats {
 
 impl MetricWindow {
     pub fn new(max_size: usize) -> Self {
-        Self { values: VecDeque::new(), max_size, mean: 0.0, std_dev: 0.0, last_updated: 0, anomaly_count: 0 }
+        Self {
+            values: VecDeque::new(),
+            max_size,
+            mean: 0.0,
+            std_dev: 0.0,
+            last_updated: 0,
+            anomaly_count: 0,
+        }
     }
 
     pub fn push(&mut self, value: f64) {
-        if self.values.len() >= self.max_size { self.values.pop_front(); }
+        if self.values.len() >= self.max_size {
+            self.values.pop_front();
+        }
         self.values.push_back(value);
         self.recalculate();
         self.last_updated = now_millis();
     }
 
     fn recalculate(&mut self) {
-        if self.values.is_empty() { self.mean = 0.0; self.std_dev = 0.0; return; }
+        if self.values.is_empty() {
+            self.mean = 0.0;
+            self.std_dev = 0.0;
+            return;
+        }
         let n = self.values.len() as f64;
         self.mean = self.values.iter().sum::<f64>() / n;
-        let variance = self.values.iter().map(|v| (v - self.mean).powi(2)).sum::<f64>() / n;
+        let variance = self
+            .values
+            .iter()
+            .map(|v| (v - self.mean).powi(2))
+            .sum::<f64>()
+            / n;
         self.std_dev = variance.sqrt();
     }
 
     pub fn is_anomaly(&self, value: f64, sensitivity: f64) -> bool {
-        if self.values.len() < 10 || self.std_dev < 0.001 { return false; }
+        if self.values.len() < 10 || self.std_dev < 0.001 {
+            return false;
+        }
         let z_score = (value - self.mean).abs() / self.std_dev;
         z_score > sensitivity
     }
 
     pub fn z_score(&self, value: f64) -> f64 {
-        if self.std_dev < 0.001 { return 0.0; }
+        if self.std_dev < 0.001 {
+            return 0.0;
+        }
         (value - self.mean).abs() / self.std_dev
     }
 }
 
 impl AnomalyDetector {
     pub fn new(sensitivity: f64) -> Self {
-        Self { metrics: RwLock::new(HashMap::new()), sensitivity, stats: AnomalyDetectorStats::default() }
+        Self {
+            metrics: RwLock::new(HashMap::new()),
+            sensitivity,
+            stats: AnomalyDetectorStats::default(),
+        }
     }
 
     pub fn record(&self, metric_name: &str, value: f64) -> bool {
         let mut metrics = self.metrics.write().unwrap();
-        let window = metrics.entry(metric_name.to_string())
+        let window = metrics
+            .entry(metric_name.to_string())
             .or_insert_with(|| MetricWindow::new(1000));
         let is_anomaly = window.is_anomaly(value, self.sensitivity);
         window.push(value);
         if is_anomaly {
             window.anomaly_count += 1;
-            self.stats.anomalies_detected.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .anomalies_detected
+                .fetch_add(1, Ordering::Relaxed);
         }
-        self.stats.metrics_tracked.store(metrics.len() as u64, Ordering::Relaxed);
+        self.stats
+            .metrics_tracked
+            .store(metrics.len() as u64, Ordering::Relaxed);
         is_anomaly
     }
 
     pub fn get_metric_stats(&self, name: &str) -> Option<(f64, f64, u64)> {
         let metrics = self.metrics.read().unwrap();
-        metrics.get(name).map(|w| (w.mean, w.std_dev, w.anomaly_count))
+        metrics
+            .get(name)
+            .map(|w| (w.mean, w.std_dev, w.anomaly_count))
     }
 
-    pub fn tracked_count(&self) -> usize { self.metrics.read().unwrap().len() }
+    pub fn tracked_count(&self) -> usize {
+        self.metrics.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -128,18 +184,43 @@ impl AnomalyDetector {
 pub enum RecoveryAction {
     RestartShard(u32),
     RebalanceShards,
-    EvictStalePoller { task_queue: String },
-    ClearStuckWorkflow { workflow_id: String },
-    ReleaseMemory { bytes: u64 },
-    ThrottleNamespace { namespace_id: String },
-    FailoverNamespace { namespace_id: String, target_cluster: String },
-    ScaleUpWorkers { worker_pool: String, count: u32 },
-    ScaleDownWorkers { worker_pool: String, count: u32 },
-    EnableCircuitBreaker { component: String },
-    DisableCircuitBreaker { component: String },
-    FlushCache { cache_name: String },
+    EvictStalePoller {
+        task_queue: String,
+    },
+    ClearStuckWorkflow {
+        workflow_id: String,
+    },
+    ReleaseMemory {
+        bytes: u64,
+    },
+    ThrottleNamespace {
+        namespace_id: String,
+    },
+    FailoverNamespace {
+        namespace_id: String,
+        target_cluster: String,
+    },
+    ScaleUpWorkers {
+        worker_pool: String,
+        count: u32,
+    },
+    ScaleDownWorkers {
+        worker_pool: String,
+        count: u32,
+    },
+    EnableCircuitBreaker {
+        component: String,
+    },
+    DisableCircuitBreaker {
+        component: String,
+    },
+    FlushCache {
+        cache_name: String,
+    },
     CompactStorage,
-    ResetQueue { queue_name: String },
+    ResetQueue {
+        queue_name: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -156,16 +237,36 @@ pub struct RecoveryPlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum RecoveryPriority { Low, Medium, High, Critical }
+pub enum RecoveryPriority {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RecoveryStatus { Pending, Executing, Completed, Failed, RolledBack }
+pub enum RecoveryStatus {
+    Pending,
+    Executing,
+    Completed,
+    Failed,
+    RolledBack,
+}
 
 #[derive(Debug, Clone)]
 pub enum RecoveryResult {
-    Success { message: String, duration_ms: u64 },
-    PartialSuccess { message: String, actions_succeeded: u32, actions_failed: u32 },
-    Failure { error: String },
+    Success {
+        message: String,
+        duration_ms: u64,
+    },
+    PartialSuccess {
+        message: String,
+        actions_succeeded: u32,
+        actions_failed: u32,
+    },
+    Failure {
+        error: String,
+    },
 }
 
 pub struct AutoRecovery {
@@ -180,31 +281,65 @@ pub struct AutoRecovery {
 
 #[derive(Debug, Default)]
 pub struct AutoRecoveryStats {
-    pub plans_created: AtomicU64, pub plans_executed: AtomicU64,
-    pub plans_succeeded: AtomicU64, plans_failed: AtomicU64,
-    pub actions_executed: AtomicU64, pub cooldown_vetos: AtomicU64,
+    pub plans_created: AtomicU64,
+    pub plans_executed: AtomicU64,
+    pub plans_succeeded: AtomicU64,
+    plans_failed: AtomicU64,
+    pub actions_executed: AtomicU64,
+    pub cooldown_vetos: AtomicU64,
 }
 
 impl AutoRecovery {
     pub fn new(max_concurrent: u32, cooldown: Duration) -> Self {
-        Self { pending_plans: RwLock::new(VecDeque::new()), executed_plans: RwLock::new(Vec::new()), max_concurrent, cooldown_period: cooldown, last_recovery_time: RwLock::new(HashMap::new()), stats: AutoRecoveryStats::default(), enabled: AtomicBool::new(true) }
+        Self {
+            pending_plans: RwLock::new(VecDeque::new()),
+            executed_plans: RwLock::new(Vec::new()),
+            max_concurrent,
+            cooldown_period: cooldown,
+            last_recovery_time: RwLock::new(HashMap::new()),
+            stats: AutoRecoveryStats::default(),
+            enabled: AtomicBool::new(true),
+        }
     }
 
-    pub fn create_plan(&self, trigger: AnomalyEvent, actions: Vec<RecoveryAction>, priority: RecoveryPriority) -> String {
+    pub fn create_plan(
+        &self,
+        trigger: AnomalyEvent,
+        actions: Vec<RecoveryAction>,
+        priority: RecoveryPriority,
+    ) -> String {
         let plan_id = format!("recovery-{}", now_millis());
-        let plan = RecoveryPlan { plan_id: plan_id.clone(), trigger, actions, priority, status: RecoveryStatus::Pending, created_at: now_millis(), executed_at: None, completed_at: None, result: None };
+        let plan = RecoveryPlan {
+            plan_id: plan_id.clone(),
+            trigger,
+            actions,
+            priority,
+            status: RecoveryStatus::Pending,
+            created_at: now_millis(),
+            executed_at: None,
+            completed_at: None,
+            result: None,
+        };
         self.pending_plans.write().unwrap().push_back(plan);
         self.stats.plans_created.fetch_add(1, Ordering::Relaxed);
         plan_id
     }
 
     pub fn execute_next(&self) -> Option<RecoveryPlan> {
-        if !self.enabled.load(Ordering::Relaxed) { return None; }
+        if !self.enabled.load(Ordering::Relaxed) {
+            return None;
+        }
         let mut pending = self.pending_plans.write().unwrap();
         let mut plan = pending.pop_front()?;
         // Check cooldown
         let key = format!("{:?}", plan.trigger.anomaly_type);
-        let last_time = self.last_recovery_time.read().unwrap().get(&key).cloned().unwrap_or(0);
+        let last_time = self
+            .last_recovery_time
+            .read()
+            .unwrap()
+            .get(&key)
+            .cloned()
+            .unwrap_or(0);
         if now_millis() - last_time < self.cooldown_period.as_millis() as i64 {
             self.stats.cooldown_vetos.fetch_add(1, Ordering::Relaxed);
             pending.push_front(plan);
@@ -216,19 +351,35 @@ impl AutoRecovery {
         let action_count = plan.actions.len() as u32;
         plan.status = RecoveryStatus::Completed;
         plan.completed_at = Some(now_millis());
-        plan.result = Some(RecoveryResult::Success { message: format!("{} actions executed", action_count), duration_ms: 50 });
-        self.last_recovery_time.write().unwrap().insert(key, now_millis());
+        plan.result = Some(RecoveryResult::Success {
+            message: format!("{} actions executed", action_count),
+            duration_ms: 50,
+        });
+        self.last_recovery_time
+            .write()
+            .unwrap()
+            .insert(key, now_millis());
         self.stats.plans_executed.fetch_add(1, Ordering::Relaxed);
         self.stats.plans_succeeded.fetch_add(1, Ordering::Relaxed);
-        self.stats.actions_executed.fetch_add(action_count as u64, Ordering::Relaxed);
+        self.stats
+            .actions_executed
+            .fetch_add(action_count as u64, Ordering::Relaxed);
         self.executed_plans.write().unwrap().push(plan.clone());
         Some(plan)
     }
 
-    pub fn pending_count(&self) -> usize { self.pending_plans.read().unwrap().len() }
-    pub fn executed_count(&self) -> usize { self.executed_plans.read().unwrap().len() }
-    pub fn enable(&self) { self.enabled.store(true, Ordering::Relaxed); }
-    pub fn disable(&self) { self.enabled.store(false, Ordering::Relaxed); }
+    pub fn pending_count(&self) -> usize {
+        self.pending_plans.read().unwrap().len()
+    }
+    pub fn executed_count(&self) -> usize {
+        self.executed_plans.read().unwrap().len()
+    }
+    pub fn enable(&self) {
+        self.enabled.store(true, Ordering::Relaxed);
+    }
+    pub fn disable(&self) {
+        self.enabled.store(false, Ordering::Relaxed);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -250,13 +401,28 @@ pub struct AnomalyEvent {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnomalyType {
-    HighLatency, HighErrorRate, MemoryPressure, CpuSpike, QueueBacklog,
-    ShardImbalance, StalePoller, DeadlockDetected, WorkflowStuck,
-    ReplicationLag, VisibilityLag, DiskPressure, ConnectionExhaustion,
+    HighLatency,
+    HighErrorRate,
+    MemoryPressure,
+    CpuSpike,
+    QueueBacklog,
+    ShardImbalance,
+    StalePoller,
+    DeadlockDetected,
+    WorkflowStuck,
+    ReplicationLag,
+    VisibilityLag,
+    DiskPressure,
+    ConnectionExhaustion,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum AnomalySeverity { Info, Warning, Critical, Emergency }
+pub enum AnomalySeverity {
+    Info,
+    Warning,
+    Critical,
+    Emergency,
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Deadlock Detector — detects workflow execution deadlocks
@@ -277,12 +443,19 @@ pub struct DeadlockDetectorStats {
 
 impl DeadlockDetector {
     pub fn new() -> Self {
-        Self { wait_graph: RwLock::new(HashMap::new()), detected_deadlocks: RwLock::new(Vec::new()), stats: DeadlockDetectorStats::default() }
+        Self {
+            wait_graph: RwLock::new(HashMap::new()),
+            detected_deadlocks: RwLock::new(Vec::new()),
+            stats: DeadlockDetectorStats::default(),
+        }
     }
 
     pub fn record_wait(&self, waiter: &str, holder: &str) {
         let mut graph = self.wait_graph.write().unwrap();
-        graph.entry(waiter.to_string()).or_insert_with(Vec::new).push(holder.to_string());
+        graph
+            .entry(waiter.to_string())
+            .or_insert_with(Vec::new)
+            .push(holder.to_string());
     }
 
     pub fn record_release(&self, waiter: &str) {
@@ -300,7 +473,9 @@ impl DeadlockDetector {
                     let cycle_start = visited.iter().position(|n| n == &current).unwrap();
                     let cycle: Vec<String> = visited[cycle_start..].to_vec();
                     if cycle.len() > 1 {
-                        self.stats.deadlocks_detected.fetch_add(1, Ordering::Relaxed);
+                        self.stats
+                            .deadlocks_detected
+                            .fetch_add(1, Ordering::Relaxed);
                         self.detected_deadlocks.write().unwrap().push(cycle.clone());
                         return Some(cycle);
                     }
@@ -319,10 +494,14 @@ impl DeadlockDetector {
     pub fn resolve_deadlock(&self, cycle: &[String]) {
         let victim = cycle.first().unwrap();
         self.wait_graph.write().unwrap().remove(victim);
-        self.stats.deadlocks_resolved.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .deadlocks_resolved
+            .fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn active_waits(&self) -> usize { self.wait_graph.read().unwrap().len() }
+    pub fn active_waits(&self) -> usize {
+        self.wait_graph.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -341,19 +520,32 @@ pub struct MemoryMonitor {
 
 #[derive(Debug, Clone)]
 pub struct EvictionEvent {
-    pub cache_name: String, pub bytes_freed: u64, pub entries_evicted: u64,
-    pub timestamp: i64, pub reason: String,
+    pub cache_name: String,
+    pub bytes_freed: u64,
+    pub entries_evicted: u64,
+    pub timestamp: i64,
+    pub reason: String,
 }
 
 #[derive(Debug, Default)]
 pub struct MemoryMonitorStats {
-    pub evictions: AtomicU64, pub bytes_freed: AtomicU64,
-    pub warnings: AtomicU64, pub critical_alerts: AtomicU64,
+    pub evictions: AtomicU64,
+    pub bytes_freed: AtomicU64,
+    pub warnings: AtomicU64,
+    pub critical_alerts: AtomicU64,
 }
 
 impl MemoryMonitor {
     pub fn new(max_bytes: u64) -> Self {
-        Self { current_usage_bytes: AtomicU64::new(0), max_usage_bytes: max_bytes, warning_threshold: 0.75, critical_threshold: 0.9, cache_sizes: RwLock::new(HashMap::new()), eviction_log: RwLock::new(VecDeque::new()), stats: MemoryMonitorStats::default() }
+        Self {
+            current_usage_bytes: AtomicU64::new(0),
+            max_usage_bytes: max_bytes,
+            warning_threshold: 0.75,
+            critical_threshold: 0.9,
+            cache_sizes: RwLock::new(HashMap::new()),
+            eviction_log: RwLock::new(VecDeque::new()),
+            stats: MemoryMonitorStats::default(),
+        }
     }
 
     pub fn update_usage(&self, bytes: u64) {
@@ -361,19 +553,32 @@ impl MemoryMonitor {
     }
 
     pub fn register_cache(&self, name: &str, size_bytes: u64) {
-        self.cache_sizes.write().unwrap().insert(name.to_string(), size_bytes);
+        self.cache_sizes
+            .write()
+            .unwrap()
+            .insert(name.to_string(), size_bytes);
     }
 
     pub fn usage_ratio(&self) -> f64 {
         self.current_usage_bytes.load(Ordering::Relaxed) as f64 / self.max_usage_bytes as f64
     }
 
-    pub fn needs_eviction(&self) -> bool { self.usage_ratio() > self.warning_threshold }
+    pub fn needs_eviction(&self) -> bool {
+        self.usage_ratio() > self.warning_threshold
+    }
 
-    pub fn is_critical(&self) -> bool { self.usage_ratio() > self.critical_threshold }
+    pub fn is_critical(&self) -> bool {
+        self.usage_ratio() > self.critical_threshold
+    }
 
     pub fn evict_from_cache(&self, cache_name: &str, bytes: u64, entries: u64) {
-        let event = EvictionEvent { cache_name: cache_name.to_string(), bytes_freed: bytes, entries_evicted: entries, timestamp: now_millis(), reason: "memory_pressure".into() };
+        let event = EvictionEvent {
+            cache_name: cache_name.to_string(),
+            bytes_freed: bytes,
+            entries_evicted: entries,
+            timestamp: now_millis(),
+            reason: "memory_pressure".into(),
+        };
         self.eviction_log.write().unwrap().push_back(event);
         self.current_usage_bytes.fetch_sub(bytes, Ordering::Relaxed);
         self.stats.evictions.fetch_add(1, Ordering::Relaxed);
@@ -381,13 +586,17 @@ impl MemoryMonitor {
     }
 
     pub fn generate_recovery_actions(&self) -> Vec<RecoveryAction> {
-        if !self.needs_eviction() { return Vec::new(); }
+        if !self.needs_eviction() {
+            return Vec::new();
+        }
         let mut actions = Vec::new();
         let caches = self.cache_sizes.read().unwrap();
         let mut sorted: Vec<_> = caches.iter().map(|(n, s)| (n.clone(), *s)).collect();
         sorted.sort_by(|a, b| b.1.cmp(&a.1));
         for (name, _) in sorted.iter().take(3) {
-            actions.push(RecoveryAction::FlushCache { cache_name: name.clone() });
+            actions.push(RecoveryAction::FlushCache {
+                cache_name: name.clone(),
+            });
         }
         if self.is_critical() {
             actions.push(RecoveryAction::CompactStorage);
@@ -417,7 +626,12 @@ pub struct ShardRebalancerStats {
 
 impl ShardRebalancer {
     pub fn new() -> Self {
-        Self { shard_loads: RwLock::new(HashMap::new()), host_capacities: RwLock::new(HashMap::new()), shard_to_host: RwLock::new(HashMap::new()), stats: ShardRebalancerStats::default() }
+        Self {
+            shard_loads: RwLock::new(HashMap::new()),
+            host_capacities: RwLock::new(HashMap::new()),
+            shard_to_host: RwLock::new(HashMap::new()),
+            stats: ShardRebalancerStats::default(),
+        }
     }
 
     pub fn update_shard_load(&self, shard_id: u32, load: f64) {
@@ -432,12 +646,16 @@ impl ShardRebalancer {
             let load = loads.get(shard).cloned().unwrap_or(0.0);
             *host_loads.entry(host.clone()).or_insert(0.0) += load;
         }
-        if host_loads.is_empty() { return 0.0; }
+        if host_loads.is_empty() {
+            return 0.0;
+        }
         let values: Vec<f64> = host_loads.values().cloned().collect();
         let mean = values.iter().sum::<f64>() / values.len() as f64;
         let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
         let std_dev = variance.sqrt();
-        if mean < 0.001 { return 0.0; }
+        if mean < 0.001 {
+            return 0.0;
+        }
         std_dev / mean // coefficient of variation
     }
 
@@ -447,13 +665,25 @@ impl ShardRebalancer {
         let mut host_loads: HashMap<String, (f64, Vec<u32>)> = HashMap::new();
         for (shard, host) in s2h.iter() {
             let load = loads.get(shard).cloned().unwrap_or(0.0);
-            host_loads.entry(host.clone()).or_insert((0.0, Vec::new())).0 += load;
-            host_loads.entry(host.clone()).or_insert((0.0, Vec::new())).1.push(*shard);
+            host_loads
+                .entry(host.clone())
+                .or_insert((0.0, Vec::new()))
+                .0 += load;
+            host_loads
+                .entry(host.clone())
+                .or_insert((0.0, Vec::new()))
+                .1
+                .push(*shard);
         }
         let mut moves = Vec::new();
-        let mut sorted_hosts: Vec<_> = host_loads.iter().map(|(h, (l, s))| (h.clone(), *l, s.clone())).collect();
+        let mut sorted_hosts: Vec<_> = host_loads
+            .iter()
+            .map(|(h, (l, s))| (h.clone(), *l, s.clone()))
+            .collect();
         sorted_hosts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        if sorted_hosts.len() < 2 { return moves; }
+        if sorted_hosts.len() < 2 {
+            return moves;
+        }
         let most_loaded = &sorted_hosts[0];
         let least_loaded = &sorted_hosts[sorted_hosts.len() - 1];
         if most_loaded.1 - least_loaded.1 > 1.0 {
@@ -465,9 +695,14 @@ impl ShardRebalancer {
     }
 
     pub fn apply_move(&self, shard_id: u32, from: &str, to: &str) {
-        self.shard_to_host.write().unwrap().insert(shard_id, to.to_string());
+        self.shard_to_host
+            .write()
+            .unwrap()
+            .insert(shard_id, to.to_string());
         self.stats.shards_moved.fetch_add(1, Ordering::Relaxed);
-        self.stats.rebalances_performed.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .rebalances_performed
+            .fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -513,7 +748,10 @@ impl SelfHealingOrchestrator {
 
     pub fn run_healing_cycle(&self) -> HealingCycleResult {
         if !self.enabled.load(Ordering::Relaxed) {
-            return HealingCycleResult { skipped: true, ..Default::default() };
+            return HealingCycleResult {
+                skipped: true,
+                ..Default::default()
+            };
         }
         self.stats.cycles_run.fetch_add(1, Ordering::Relaxed);
         let mut result = HealingCycleResult::default();
@@ -523,8 +761,19 @@ impl SelfHealingOrchestrator {
             let actions = self.memory_monitor.generate_recovery_actions();
             if !actions.is_empty() {
                 self.auto_recovery.create_plan(
-                    AnomalyEvent { event_id: String::new(), anomaly_type: AnomalyType::MemoryPressure, component: "memory".into(), severity: AnomalySeverity::Warning, metric_value: self.memory_monitor.usage_ratio(), threshold: self.memory_monitor.warning_threshold, z_score: 0.0, detected_at: now_millis(), context: HashMap::new() },
-                    actions, RecoveryPriority::High,
+                    AnomalyEvent {
+                        event_id: String::new(),
+                        anomaly_type: AnomalyType::MemoryPressure,
+                        component: "memory".into(),
+                        severity: AnomalySeverity::Warning,
+                        metric_value: self.memory_monitor.usage_ratio(),
+                        threshold: self.memory_monitor.warning_threshold,
+                        z_score: 0.0,
+                        detected_at: now_millis(),
+                        context: HashMap::new(),
+                    },
+                    actions,
+                    RecoveryPriority::High,
                 );
                 result.memory_actions += 1;
             }
@@ -534,7 +783,9 @@ impl SelfHealingOrchestrator {
         if let Some(cycle) = self.deadlock_detector.detect_cycle() {
             self.deadlock_detector.resolve_deadlock(&cycle);
             result.deadlocks_resolved += 1;
-            self.stats.deadlocks_resolved.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .deadlocks_resolved
+                .fetch_add(1, Ordering::Relaxed);
         }
 
         // 3. Check shard balance
@@ -551,29 +802,54 @@ impl SelfHealingOrchestrator {
         while self.auto_recovery.pending_count() > 0 {
             if let Some(_plan) = self.auto_recovery.execute_next() {
                 result.recoveries_executed += 1;
-                self.stats.recoveries_triggered.fetch_add(1, Ordering::Relaxed);
-            } else { break; }
+                self.stats
+                    .recoveries_triggered
+                    .fetch_add(1, Ordering::Relaxed);
+            } else {
+                break;
+            }
         }
 
         // 5. Compute overall health
-        let scores: Vec<HealthScore> = self.health_scores.read().unwrap().values().cloned().collect();
+        let scores: Vec<HealthScore> = self
+            .health_scores
+            .read()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect();
         let overall = HealthScore::combine(&scores);
-        self.stats.overall_health.store((overall.0 * 100.0) as u64, Ordering::Relaxed);
+        self.stats
+            .overall_health
+            .store((overall.0 * 100.0) as u64, Ordering::Relaxed);
         result.overall_health = overall;
         result
     }
 
     pub fn update_component_health(&self, component: &str, score: HealthScore) {
-        self.health_scores.write().unwrap().insert(component.to_string(), score);
+        self.health_scores
+            .write()
+            .unwrap()
+            .insert(component.to_string(), score);
     }
 
     pub fn overall_health(&self) -> HealthScore {
-        let scores: Vec<HealthScore> = self.health_scores.read().unwrap().values().cloned().collect();
+        let scores: Vec<HealthScore> = self
+            .health_scores
+            .read()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect();
         HealthScore::combine(&scores)
     }
 
-    pub fn enable(&self) { self.enabled.store(true, Ordering::Relaxed); }
-    pub fn disable(&self) { self.enabled.store(false, Ordering::Relaxed); }
+    pub fn enable(&self) {
+        self.enabled.store(true, Ordering::Relaxed);
+    }
+    pub fn disable(&self) {
+        self.enabled.store(false, Ordering::Relaxed);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -588,7 +864,10 @@ pub struct HealingCycleResult {
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -612,21 +891,27 @@ mod tests {
     #[test]
     fn test_anomaly_detector_normal() {
         let det = AnomalyDetector::new(3.0);
-        for i in 0..20 { det.record("latency", 100.0 + (i as f64) * 0.1); }
+        for i in 0..20 {
+            det.record("latency", 100.0 + (i as f64) * 0.1);
+        }
         assert!(!det.record("latency", 101.0)); // normal value
     }
 
     #[test]
     fn test_anomaly_detector_spike() {
         let det = AnomalyDetector::new(2.0);
-        for i in 0..50 { det.record("cpu", 50.0 + (i % 5) as f64); }
+        for i in 0..50 {
+            det.record("cpu", 50.0 + (i % 5) as f64);
+        }
         assert!(det.record("cpu", 200.0)); // huge spike
     }
 
     #[test]
     fn test_metric_window() {
         let mut w = MetricWindow::new(100);
-        for i in 0..20 { w.push(10.0 + (i % 3) as f64); }
+        for i in 0..20 {
+            w.push(10.0 + (i % 3) as f64);
+        }
         assert!(!w.is_anomaly(10.5, 3.0));
         assert!(w.is_anomaly(100.0, 3.0));
     }
@@ -634,8 +919,22 @@ mod tests {
     #[test]
     fn test_auto_recovery_create_execute() {
         let ar = AutoRecovery::new(5, Duration::from_secs(0));
-        let trigger = AnomalyEvent { event_id: "e1".into(), anomaly_type: AnomalyType::HighLatency, component: "shard-0".into(), severity: AnomalySeverity::Critical, metric_value: 5000.0, threshold: 1000.0, z_score: 5.0, detected_at: now_millis(), context: HashMap::new() };
-        ar.create_plan(trigger, vec![RecoveryAction::RestartShard(0)], RecoveryPriority::Critical);
+        let trigger = AnomalyEvent {
+            event_id: "e1".into(),
+            anomaly_type: AnomalyType::HighLatency,
+            component: "shard-0".into(),
+            severity: AnomalySeverity::Critical,
+            metric_value: 5000.0,
+            threshold: 1000.0,
+            z_score: 5.0,
+            detected_at: now_millis(),
+            context: HashMap::new(),
+        };
+        ar.create_plan(
+            trigger,
+            vec![RecoveryAction::RestartShard(0)],
+            RecoveryPriority::Critical,
+        );
         assert_eq!(ar.pending_count(), 1);
         let plan = ar.execute_next();
         assert!(plan.is_some());
@@ -645,10 +944,28 @@ mod tests {
     #[test]
     fn test_auto_recovery_cooldown() {
         let ar = AutoRecovery::new(5, Duration::from_secs(60));
-        let trigger = AnomalyEvent { event_id: "e1".into(), anomaly_type: AnomalyType::HighLatency, component: "c".into(), severity: AnomalySeverity::Warning, metric_value: 1.0, threshold: 0.5, z_score: 3.0, detected_at: 0, context: HashMap::new() };
-        ar.create_plan(trigger.clone(), vec![RecoveryAction::CompactStorage], RecoveryPriority::Medium);
+        let trigger = AnomalyEvent {
+            event_id: "e1".into(),
+            anomaly_type: AnomalyType::HighLatency,
+            component: "c".into(),
+            severity: AnomalySeverity::Warning,
+            metric_value: 1.0,
+            threshold: 0.5,
+            z_score: 3.0,
+            detected_at: 0,
+            context: HashMap::new(),
+        };
+        ar.create_plan(
+            trigger.clone(),
+            vec![RecoveryAction::CompactStorage],
+            RecoveryPriority::Medium,
+        );
         ar.execute_next();
-        ar.create_plan(trigger, vec![RecoveryAction::CompactStorage], RecoveryPriority::Medium);
+        ar.create_plan(
+            trigger,
+            vec![RecoveryAction::CompactStorage],
+            RecoveryPriority::Medium,
+        );
         assert!(ar.execute_next().is_none()); // cooldown
     }
 

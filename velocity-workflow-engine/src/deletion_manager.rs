@@ -7,8 +7,11 @@
 //! 4. Track deletion progress and completion
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Deletion Pipeline
@@ -28,13 +31,19 @@ pub enum DeletionStage {
 }
 
 impl DeletionStage {
-    pub fn is_terminal(&self) -> bool { matches!(self, DeletionStage::CleanupComplete | DeletionStage::Failed) }
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, DeletionStage::CleanupComplete | DeletionStage::Failed)
+    }
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Pending => "Pending", Self::DeletingHistory => "DeletingHistory",
-            Self::DeletingVisibility => "DeletingVisibility", Self::DeletingReplication => "DeletingReplication",
-            Self::DeletingArchival => "DeletingArchival", Self::DeletingSearchAttributes => "DeletingSearchAttributes",
-            Self::DeletingMemo => "DeletingMemo", Self::CleanupComplete => "CleanupComplete",
+            Self::Pending => "Pending",
+            Self::DeletingHistory => "DeletingHistory",
+            Self::DeletingVisibility => "DeletingVisibility",
+            Self::DeletingReplication => "DeletingReplication",
+            Self::DeletingArchival => "DeletingArchival",
+            Self::DeletingSearchAttributes => "DeletingSearchAttributes",
+            Self::DeletingMemo => "DeletingMemo",
+            Self::CleanupComplete => "CleanupComplete",
             Self::Failed => "Failed",
         }
     }
@@ -88,8 +97,10 @@ pub struct DeletionManagerConfig {
 impl Default for DeletionManagerConfig {
     fn default() -> Self {
         Self {
-            max_concurrent_deletions: 10, max_attempts_per_stage: 5,
-            stage_timeout: Duration::from_secs(30), batch_size: 100,
+            max_concurrent_deletions: 10,
+            max_attempts_per_stage: 5,
+            stage_timeout: Duration::from_secs(30),
+            batch_size: 100,
             retry_backoff: Duration::from_secs(1),
         }
     }
@@ -108,20 +119,32 @@ pub struct DeletionManagerStats {
 impl DeletionManager {
     pub fn new() -> Self {
         Self {
-            records: RwLock::new(HashMap::new()), next_id: AtomicU64::new(1),
+            records: RwLock::new(HashMap::new()),
+            next_id: AtomicU64::new(1),
             config: DeletionManagerConfig::default(),
-            stats: DeletionManagerStats::default(), running: AtomicBool::new(true),
+            stats: DeletionManagerStats::default(),
+            running: AtomicBool::new(true),
         }
     }
 
-    pub fn start_deletion(&self, namespace_id: &str, workflow_id: &str, run_id: &str) -> Result<String, String> {
+    pub fn start_deletion(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<String, String> {
         let id = format!("del-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
         let record = DeletionRecord {
-            record_id: id.clone(), namespace_id: namespace_id.to_string(),
-            workflow_id: workflow_id.to_string(), run_id: run_id.to_string(),
-            stage: DeletionStage::Pending, attempt: 0,
+            record_id: id.clone(),
+            namespace_id: namespace_id.to_string(),
+            workflow_id: workflow_id.to_string(),
+            run_id: run_id.to_string(),
+            stage: DeletionStage::Pending,
+            attempt: 0,
             max_attempts: self.config.max_attempts_per_stage,
-            started_at: now_millis(), completed_at: None, last_error: None,
+            started_at: now_millis(),
+            completed_at: None,
+            last_error: None,
             step_results: HashMap::new(),
         };
         self.records.write().unwrap().insert(id.clone(), record);
@@ -147,17 +170,28 @@ impl DeletionManager {
         };
         // Simulate stage execution
         let result = StepResult {
-            stage: next_stage, success: true, items_deleted: 1,
-            duration_ms: 10, error: None,
+            stage: next_stage,
+            success: true,
+            items_deleted: 1,
+            duration_ms: 10,
+            error: None,
         };
-        record.step_results.insert(next_stage.as_str().to_string(), result);
+        record
+            .step_results
+            .insert(next_stage.as_str().to_string(), result);
         record.stage = next_stage;
         record.attempt = 0;
-        self.stats.total_stages_executed.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_items_deleted.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_stages_executed
+            .fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_items_deleted
+            .fetch_add(1, Ordering::Relaxed);
         if next_stage == DeletionStage::CleanupComplete {
             record.completed_at = Some(now_millis());
-            self.stats.deletions_completed.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .deletions_completed
+                .fetch_add(1, Ordering::Relaxed);
         }
         Ok(next_stage)
     }
@@ -183,44 +217,77 @@ impl DeletionManager {
     }
 
     pub fn pending_deletions(&self) -> Vec<DeletionRecord> {
-        self.records.read().unwrap().values()
+        self.records
+            .read()
+            .unwrap()
+            .values()
             .filter(|r| !r.stage.is_terminal())
-            .cloned().collect()
+            .cloned()
+            .collect()
     }
 
     pub fn completed_deletions(&self) -> Vec<DeletionRecord> {
-        self.records.read().unwrap().values()
+        self.records
+            .read()
+            .unwrap()
+            .values()
             .filter(|r| r.stage == DeletionStage::CleanupComplete)
-            .cloned().collect()
+            .cloned()
+            .collect()
     }
 
     pub fn failed_deletions(&self) -> Vec<DeletionRecord> {
-        self.records.read().unwrap().values()
+        self.records
+            .read()
+            .unwrap()
+            .values()
             .filter(|r| r.stage == DeletionStage::Failed)
-            .cloned().collect()
+            .cloned()
+            .collect()
     }
 
-    pub fn execute_full_pipeline(&self, namespace_id: &str, workflow_id: &str, run_id: &str) -> Result<DeletionRecord, String> {
+    pub fn execute_full_pipeline(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<DeletionRecord, String> {
         let id = self.start_deletion(namespace_id, workflow_id, run_id)?;
         loop {
             let stage = self.execute_next_stage(&id)?;
-            if stage.is_terminal() { break; }
+            if stage.is_terminal() {
+                break;
+            }
         }
         self.get_record(&id).ok_or("Record lost".into())
     }
 
     pub fn active_count(&self) -> usize {
-        self.records.read().unwrap().values().filter(|r| !r.stage.is_terminal()).count()
+        self.records
+            .read()
+            .unwrap()
+            .values()
+            .filter(|r| !r.stage.is_terminal())
+            .count()
     }
 
-    pub fn total_count(&self) -> usize { self.records.read().unwrap().len() }
+    pub fn total_count(&self) -> usize {
+        self.records.read().unwrap().len()
+    }
 
-    pub fn shutdown(&self) { self.running.store(false, Ordering::Relaxed); }
-    pub fn is_running(&self) -> bool { self.running.load(Ordering::Relaxed) }
+    pub fn shutdown(&self) {
+        self.running.store(false, Ordering::Relaxed);
+    }
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::Relaxed)
+    }
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -296,7 +363,9 @@ mod tests {
         let mgr = DeletionManager::new();
         let id = mgr.start_deletion("ns", "wf", "run").unwrap();
         mgr.execute_next_stage(&id).unwrap();
-        for _ in 0..5 { mgr.fail_stage(&id, "error").unwrap(); }
+        for _ in 0..5 {
+            mgr.fail_stage(&id, "error").unwrap();
+        }
         let record = mgr.get_record(&id).unwrap();
         assert_eq!(record.stage, DeletionStage::Failed);
         assert_eq!(mgr.failed_deletions().len(), 1);
@@ -319,7 +388,8 @@ mod tests {
         mgr.execute_full_pipeline("ns", "wf2", "r2").unwrap();
         assert_eq!(mgr.stats.deletions_started.load(Ordering::Relaxed), 2);
         assert_eq!(mgr.stats.deletions_completed.load(Ordering::Relaxed), 2);
-        assert_eq!(mgr.stats.total_stages_executed.load(Ordering::Relaxed), 14); // 7 stages * 2
+        assert_eq!(mgr.stats.total_stages_executed.load(Ordering::Relaxed), 14);
+        // 7 stages * 2
     }
 
     #[test]
@@ -338,7 +408,9 @@ mod tests {
         // Run id1 through all stages to completion
         loop {
             let stage = mgr.execute_next_stage(&id1).unwrap();
-            if stage.is_terminal() { break; }
+            if stage.is_terminal() {
+                break;
+            }
         }
         assert_eq!(mgr.pending_deletions().len(), 1);
         assert_eq!(mgr.completed_deletions().len(), 1);

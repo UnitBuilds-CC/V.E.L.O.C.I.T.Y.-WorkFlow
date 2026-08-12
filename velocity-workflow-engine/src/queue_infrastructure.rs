@@ -5,8 +5,11 @@
 //! This is the core task processing pipeline that drives all queue-based operations.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, AtomicI64, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Task Predicate
@@ -40,7 +43,9 @@ impl TaskPredicate {
         }
     }
 
-    pub fn is_universal(&self) -> bool { matches!(self, TaskPredicate::Universal) }
+    pub fn is_universal(&self) -> bool {
+        matches!(self, TaskPredicate::Universal)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -54,9 +59,21 @@ pub struct TaskKey {
 }
 
 impl TaskKey {
-    pub fn new(fire_time: i64, task_id: i64) -> Self { Self { fire_time, task_id } }
-    pub fn min() -> Self { Self { fire_time: i64::MIN, task_id: i64::MIN } }
-    pub fn max() -> Self { Self { fire_time: i64::MAX, task_id: i64::MAX } }
+    pub fn new(fire_time: i64, task_id: i64) -> Self {
+        Self { fire_time, task_id }
+    }
+    pub fn min() -> Self {
+        Self {
+            fire_time: i64::MIN,
+            task_id: i64::MIN,
+        }
+    }
+    pub fn max() -> Self {
+        Self {
+            fire_time: i64::MAX,
+            task_id: i64::MAX,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -92,7 +109,12 @@ pub enum ExecutableState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutablePriority { Low, Medium, High, Critical }
+pub enum ExecutablePriority {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
 
 pub struct ExecutableTask {
     pub descriptor: QueueTaskDescriptor,
@@ -113,10 +135,19 @@ pub struct ExecutableTask {
 impl ExecutableTask {
     pub fn new(descriptor: QueueTaskDescriptor) -> Self {
         Self {
-            descriptor, state: ExecutableState::Initialized, priority: ExecutablePriority::Medium,
-            attempt: 0, max_attempts: 10, last_error: None,
-            loaded_at: None, scheduled_at: None, started_at: None, completed_at: None,
-            latency_histogram: Vec::new(), user_latency_histogram: Vec::new(), segment_id: 0,
+            descriptor,
+            state: ExecutableState::Initialized,
+            priority: ExecutablePriority::Medium,
+            attempt: 0,
+            max_attempts: 10,
+            last_error: None,
+            loaded_at: None,
+            scheduled_at: None,
+            started_at: None,
+            completed_at: None,
+            latency_histogram: Vec::new(),
+            user_latency_histogram: Vec::new(),
+            segment_id: 0,
         }
     }
 
@@ -153,7 +184,10 @@ impl ExecutableTask {
     }
 
     pub fn is_terminal(&self) -> bool {
-        matches!(self.state, ExecutableState::Completed | ExecutableState::Nackd)
+        matches!(
+            self.state,
+            ExecutableState::Completed | ExecutableState::Nackd
+        )
     }
 
     pub fn should_retry(&self) -> bool {
@@ -201,7 +235,13 @@ pub struct QueueSliceStats {
 
 impl QueueSlice {
     pub fn new(slice_id: u64, predicate: TaskPredicate, reader: QueueReader) -> Self {
-        Self { slice_id, predicate, reader, pending_tasks: RwLock::new(VecDeque::new()), stats: QueueSliceStats::default() }
+        Self {
+            slice_id,
+            predicate,
+            reader,
+            pending_tasks: RwLock::new(VecDeque::new()),
+            stats: QueueSliceStats::default(),
+        }
     }
 
     pub fn enqueue_task(&self, task: ExecutableTask) {
@@ -227,10 +267,19 @@ impl QueueSlice {
         task.mark_completed();
         self.stats.tasks_completed.fetch_add(1, Ordering::Relaxed);
         let latency = task.compute_latency_ms();
-        self.stats.total_latency_ms.fetch_add(latency, Ordering::Relaxed);
+        self.stats
+            .total_latency_ms
+            .fetch_add(latency, Ordering::Relaxed);
         let mut max = self.stats.max_latency_ms.load(Ordering::Relaxed);
-        if latency > max { self.stats.max_latency_ms.store(latency, Ordering::Relaxed); }
-        Some((task.descriptor.key, task.descriptor.workflow_id.clone(), task.state, task.attempt))
+        if latency > max {
+            self.stats.max_latency_ms.store(latency, Ordering::Relaxed);
+        }
+        Some((
+            task.descriptor.key,
+            task.descriptor.workflow_id.clone(),
+            task.state,
+            task.attempt,
+        ))
     }
 }
 
@@ -253,11 +302,17 @@ pub struct QueueRange {
 
 impl QueueRange {
     pub fn universal() -> Self {
-        Self { inclusive_min: TaskKey::min(), exclusive_max: TaskKey::max() }
+        Self {
+            inclusive_min: TaskKey::min(),
+            exclusive_max: TaskKey::max(),
+        }
     }
 
     pub fn new(min_fire: i64, min_id: i64, max_fire: i64, max_id: i64) -> Self {
-        Self { inclusive_min: TaskKey::new(min_fire, min_id), exclusive_max: TaskKey::new(max_fire, max_id) }
+        Self {
+            inclusive_min: TaskKey::new(min_fire, min_id),
+            exclusive_max: TaskKey::new(max_fire, max_id),
+        }
     }
 
     pub fn contains(&self, key: &TaskKey) -> bool {
@@ -278,7 +333,12 @@ pub struct QueueReaderStats {
 
 impl QueueReader {
     pub fn new(reader_id: &str, range: QueueRange) -> Self {
-        Self { reader_id: reader_id.to_string(), range, buffer: RwLock::new(VecDeque::new()), stats: QueueReaderStats::default() }
+        Self {
+            reader_id: reader_id.to_string(),
+            range,
+            buffer: RwLock::new(VecDeque::new()),
+            stats: QueueReaderStats::default(),
+        }
     }
 
     pub fn read_batch(&self, batch_size: usize) -> Vec<QueueTaskDescriptor> {
@@ -294,12 +354,18 @@ impl QueueReader {
         let mut buffer = self.buffer.write().unwrap();
         let count = tasks.len() as u64;
         buffer.extend(tasks);
-        self.stats.tasks_buffered.fetch_add(count, Ordering::Relaxed);
+        self.stats
+            .tasks_buffered
+            .fetch_add(count, Ordering::Relaxed);
     }
 
-    pub fn buffer_size(&self) -> usize { self.buffer.read().unwrap().len() }
+    pub fn buffer_size(&self) -> usize {
+        self.buffer.read().unwrap().len()
+    }
 
-    pub fn update_range(&mut self, new_range: QueueRange) { self.range = new_range; }
+    pub fn update_range(&mut self, new_range: QueueRange) {
+        self.range = new_range;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -334,7 +400,12 @@ pub struct DlqWriterStats {
 
 impl DlqWriter {
     pub fn new(queue_name: &str) -> Self {
-        Self { queue_name: queue_name.to_string(), records: RwLock::new(VecDeque::new()), next_id: AtomicU64::new(1), stats: DlqWriterStats::default() }
+        Self {
+            queue_name: queue_name.to_string(),
+            records: RwLock::new(VecDeque::new()),
+            next_id: AtomicU64::new(1),
+            stats: DlqWriterStats::default(),
+        }
     }
 
     pub fn write(&self, task: &ExecutableTask) -> String {
@@ -357,7 +428,9 @@ impl DlqWriter {
         let records = self.records.read().unwrap();
         let count = max_count.min(records.len());
         let result: Vec<_> = records.iter().take(count).cloned().collect();
-        self.stats.records_read.fetch_add(count as u64, Ordering::Relaxed);
+        self.stats
+            .records_read
+            .fetch_add(count as u64, Ordering::Relaxed);
         result
     }
 
@@ -365,11 +438,18 @@ impl DlqWriter {
         let mut records = self.records.write().unwrap();
         let before = records.len();
         records.retain(|r| {
-            let id_num: u64 = r.record_id.strip_prefix("dlq-").unwrap_or("0").parse().unwrap_or(0);
+            let id_num: u64 = r
+                .record_id
+                .strip_prefix("dlq-")
+                .unwrap_or("0")
+                .parse()
+                .unwrap_or(0);
             id_num > max_message_id
         });
         let removed = before - records.len();
-        self.stats.records_merged.fetch_add(removed as u64, Ordering::Relaxed);
+        self.stats
+            .records_merged
+            .fetch_add(removed as u64, Ordering::Relaxed);
         removed
     }
 
@@ -377,11 +457,15 @@ impl DlqWriter {
         let mut records = self.records.write().unwrap();
         let count = records.len();
         records.clear();
-        self.stats.records_merged.fetch_add(count as u64, Ordering::Relaxed);
+        self.stats
+            .records_merged
+            .fetch_add(count as u64, Ordering::Relaxed);
         count
     }
 
-    pub fn pending_count(&self) -> usize { self.records.read().unwrap().len() }
+    pub fn pending_count(&self) -> usize {
+        self.records.read().unwrap().len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -389,7 +473,12 @@ impl DlqWriter {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum GroupBy { Namespace, TaskQueue, WorkflowType, Priority }
+pub enum GroupBy {
+    Namespace,
+    TaskQueue,
+    WorkflowType,
+    Priority,
+}
 
 pub struct QueueGrouper {
     pub group_by: GroupBy,
@@ -405,14 +494,24 @@ pub struct GrouperStats {
 
 impl QueueGrouper {
     pub fn new(group_by: GroupBy) -> Self {
-        Self { group_by, groups: RwLock::new(HashMap::new()), stats: GrouperStats::default() }
+        Self {
+            group_by,
+            groups: RwLock::new(HashMap::new()),
+            stats: GrouperStats::default(),
+        }
     }
 
     pub fn group_key(&self, task: &QueueTaskDescriptor) -> String {
         match self.group_by {
             GroupBy::Namespace => task.namespace_id.clone(),
-            GroupBy::TaskQueue => task.task_queue.clone().unwrap_or_else(|| "default".to_string()),
-            GroupBy::WorkflowType => task.workflow_type.clone().unwrap_or_else(|| "unknown".to_string()),
+            GroupBy::TaskQueue => task
+                .task_queue
+                .clone()
+                .unwrap_or_else(|| "default".to_string()),
+            GroupBy::WorkflowType => task
+                .workflow_type
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
             GroupBy::Priority => format!("p{}", task.priority),
         }
     }
@@ -420,19 +519,31 @@ impl QueueGrouper {
     pub fn add_task(&self, task: QueueTaskDescriptor) -> String {
         let key = self.group_key(&task);
         let mut groups = self.groups.write().unwrap();
-        groups.entry(key.clone()).or_insert_with(Vec::new).push(task);
+        groups
+            .entry(key.clone())
+            .or_insert_with(Vec::new)
+            .push(task);
         self.stats.tasks_grouped.fetch_add(1, Ordering::Relaxed);
         if groups.len() as u64 > self.stats.groups_created.load(Ordering::Relaxed) {
-            self.stats.groups_created.store(groups.len() as u64, Ordering::Relaxed);
+            self.stats
+                .groups_created
+                .store(groups.len() as u64, Ordering::Relaxed);
         }
         key
     }
 
     pub fn get_group(&self, key: &str) -> Vec<QueueTaskDescriptor> {
-        self.groups.read().unwrap().get(key).cloned().unwrap_or_default()
+        self.groups
+            .read()
+            .unwrap()
+            .get(key)
+            .cloned()
+            .unwrap_or_default()
     }
 
-    pub fn group_count(&self) -> usize { self.groups.read().unwrap().len() }
+    pub fn group_count(&self) -> usize {
+        self.groups.read().unwrap().len()
+    }
 
     pub fn drain_group(&self, key: &str) -> Vec<QueueTaskDescriptor> {
         self.groups.write().unwrap().remove(key).unwrap_or_default()
@@ -465,7 +576,14 @@ pub struct QueueIteratorStats {
 
 impl QueueIterator {
     pub fn new(range: QueueRange, page_size: usize) -> Self {
-        Self { range: range.clone(), current_key: range.inclusive_min, buffer: VecDeque::new(), page_size, exhausted: false, stats: QueueIteratorStats::default() }
+        Self {
+            range: range.clone(),
+            current_key: range.inclusive_min,
+            buffer: VecDeque::new(),
+            page_size,
+            exhausted: false,
+            stats: QueueIteratorStats::default(),
+        }
     }
 
     pub fn push_page(&mut self, tasks: Vec<QueueTaskDescriptor>) {
@@ -486,11 +604,17 @@ impl QueueIterator {
         }
     }
 
-    pub fn has_next(&self) -> bool { !self.buffer.is_empty() || !self.exhausted }
+    pub fn has_next(&self) -> bool {
+        !self.buffer.is_empty() || !self.exhausted
+    }
 
-    pub fn mark_exhausted(&mut self) { self.exhausted = true; }
+    pub fn mark_exhausted(&mut self) {
+        self.exhausted = true;
+    }
 
-    pub fn current_position(&self) -> TaskKey { self.current_key }
+    pub fn current_position(&self) -> TaskKey {
+        self.current_key
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -499,20 +623,49 @@ impl QueueIterator {
 
 #[derive(Debug, Clone)]
 pub enum QueueAction {
-    MoveTasks { source_range: QueueRange, destination_range: QueueRange, predicate: TaskPredicate },
-    ResetReader { reader_id: String, reset_to: TaskKey },
-    ResizeSlice { slice_id: u64, new_range: QueueRange },
-    MergeSlices { source_slices: Vec<u64>, target_slice: u64 },
-    PurgeDlq { queue_name: String, max_message_id: u64 },
-    PauseQueue { queue_name: String },
-    ResumeQueue { queue_name: String },
+    MoveTasks {
+        source_range: QueueRange,
+        destination_range: QueueRange,
+        predicate: TaskPredicate,
+    },
+    ResetReader {
+        reader_id: String,
+        reset_to: TaskKey,
+    },
+    ResizeSlice {
+        slice_id: u64,
+        new_range: QueueRange,
+    },
+    MergeSlices {
+        source_slices: Vec<u64>,
+        target_slice: u64,
+    },
+    PurgeDlq {
+        queue_name: String,
+        max_message_id: u64,
+    },
+    PauseQueue {
+        queue_name: String,
+    },
+    ResumeQueue {
+        queue_name: String,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum ActionResult {
-    Success { message: String, affected_tasks: u64 },
-    Failure { error: String },
-    PartialSuccess { message: String, affected_tasks: u64, errors: Vec<String> },
+    Success {
+        message: String,
+        affected_tasks: u64,
+    },
+    Failure {
+        error: String,
+    },
+    PartialSuccess {
+        message: String,
+        affected_tasks: u64,
+        errors: Vec<String>,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -520,7 +673,10 @@ pub enum ActionResult {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClusterRole { Active, Standby }
+pub enum ClusterRole {
+    Active,
+    Standby,
+}
 
 pub struct ActiveStandbyExecutor {
     pub role: RwLock<ClusterRole>,
@@ -568,7 +724,9 @@ impl ActiveStandbyExecutor {
     }
 
     pub fn execute_next(&self) -> Option<ActionResult> {
-        if self.paused.load(Ordering::Relaxed) { return None; }
+        if self.paused.load(Ordering::Relaxed) {
+            return None;
+        }
         let role = self.role.read().unwrap().clone();
         match role {
             ClusterRole::Active => {
@@ -576,7 +734,10 @@ impl ActiveStandbyExecutor {
                 for slice in slices.iter() {
                     if let Some((key, wf_id, state, attempt)) = slice.process_next() {
                         self.stats.active_executions.fetch_add(1, Ordering::Relaxed);
-                        return Some(ActionResult::Success { message: format!("Task {} completed", key.task_id), affected_tasks: 1 });
+                        return Some(ActionResult::Success {
+                            message: format!("Task {} completed", key.task_id),
+                            affected_tasks: 1,
+                        });
                     }
                 }
                 None
@@ -590,13 +751,21 @@ impl ActiveStandbyExecutor {
 
     pub fn nack_to_dlq(&self, task: &ExecutableTask) -> String {
         let id = self.dlq_writer.write(task);
-        self.stats.tasks_failed_to_dlq.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .tasks_failed_to_dlq
+            .fetch_add(1, Ordering::Relaxed);
         id
     }
 
-    pub fn pause(&self) { self.paused.store(true, Ordering::Relaxed); }
-    pub fn resume(&self) { self.paused.store(false, Ordering::Relaxed); }
-    pub fn is_paused(&self) -> bool { self.paused.load(Ordering::Relaxed) }
+    pub fn pause(&self) {
+        self.paused.store(true, Ordering::Relaxed);
+    }
+    pub fn resume(&self) {
+        self.paused.store(false, Ordering::Relaxed);
+    }
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Relaxed)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -604,7 +773,11 @@ impl ActiveStandbyExecutor {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AlertSeverity { Info, Warning, Critical }
+pub enum AlertSeverity {
+    Info,
+    Warning,
+    Critical,
+}
 
 #[derive(Debug, Clone)]
 pub struct QueueAlert {
@@ -635,7 +808,12 @@ pub struct AlertThresholds {
 
 impl Default for AlertThresholds {
     fn default() -> Self {
-        Self { max_pending_tasks: 100_000, max_latency_ms: 30_000, max_failures_per_minute: 100, max_dlq_depth: 10_000 }
+        Self {
+            max_pending_tasks: 100_000,
+            max_latency_ms: 30_000,
+            max_failures_per_minute: 100,
+            max_dlq_depth: 10_000,
+        }
     }
 }
 
@@ -650,42 +828,109 @@ pub struct AlertManagerStats {
 
 impl QueueAlertManager {
     pub fn new() -> Self {
-        Self { alerts: RwLock::new(VecDeque::new()), next_id: AtomicU64::new(1), thresholds: RwLock::new(AlertThresholds::default()), stats: AlertManagerStats::default() }
+        Self {
+            alerts: RwLock::new(VecDeque::new()),
+            next_id: AtomicU64::new(1),
+            thresholds: RwLock::new(AlertThresholds::default()),
+            stats: AlertManagerStats::default(),
+        }
     }
 
-    pub fn check_and_alert(&self, queue_name: &str, pending: u64, latency_ms: u64, failures: u64, dlq_depth: u64) -> Vec<QueueAlert> {
+    pub fn check_and_alert(
+        &self,
+        queue_name: &str,
+        pending: u64,
+        latency_ms: u64,
+        failures: u64,
+        dlq_depth: u64,
+    ) -> Vec<QueueAlert> {
         let thresholds = self.thresholds.read().unwrap();
         let mut new_alerts = Vec::new();
         if pending > thresholds.max_pending_tasks {
-            new_alerts.push(self.create_alert(queue_name, AlertSeverity::Critical, "Pending tasks exceeded", "pending_tasks", pending as f64, thresholds.max_pending_tasks as f64));
+            new_alerts.push(self.create_alert(
+                queue_name,
+                AlertSeverity::Critical,
+                "Pending tasks exceeded",
+                "pending_tasks",
+                pending as f64,
+                thresholds.max_pending_tasks as f64,
+            ));
         }
         if latency_ms > thresholds.max_latency_ms {
-            new_alerts.push(self.create_alert(queue_name, AlertSeverity::Warning, "Latency exceeded", "latency_ms", latency_ms as f64, thresholds.max_latency_ms as f64));
+            new_alerts.push(self.create_alert(
+                queue_name,
+                AlertSeverity::Warning,
+                "Latency exceeded",
+                "latency_ms",
+                latency_ms as f64,
+                thresholds.max_latency_ms as f64,
+            ));
         }
         if failures > thresholds.max_failures_per_minute {
-            new_alerts.push(self.create_alert(queue_name, AlertSeverity::Warning, "Failure rate exceeded", "failures_per_min", failures as f64, thresholds.max_failures_per_minute as f64));
+            new_alerts.push(self.create_alert(
+                queue_name,
+                AlertSeverity::Warning,
+                "Failure rate exceeded",
+                "failures_per_min",
+                failures as f64,
+                thresholds.max_failures_per_minute as f64,
+            ));
         }
         if dlq_depth > thresholds.max_dlq_depth {
-            new_alerts.push(self.create_alert(queue_name, AlertSeverity::Critical, "DLQ depth exceeded", "dlq_depth", dlq_depth as f64, thresholds.max_dlq_depth as f64));
+            new_alerts.push(self.create_alert(
+                queue_name,
+                AlertSeverity::Critical,
+                "DLQ depth exceeded",
+                "dlq_depth",
+                dlq_depth as f64,
+                thresholds.max_dlq_depth as f64,
+            ));
         }
         new_alerts
     }
 
-    fn create_alert(&self, queue_name: &str, severity: AlertSeverity, message: &str, metric: &str, value: f64, threshold: f64) -> QueueAlert {
+    fn create_alert(
+        &self,
+        queue_name: &str,
+        severity: AlertSeverity,
+        message: &str,
+        metric: &str,
+        value: f64,
+        threshold: f64,
+    ) -> QueueAlert {
         let id = format!("alert-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
-        let alert = QueueAlert { alert_id: id, severity, queue_name: queue_name.to_string(), message: message.to_string(), created_at: now_millis(), metric_name: metric.to_string(), metric_value: value, threshold };
+        let alert = QueueAlert {
+            alert_id: id,
+            severity,
+            queue_name: queue_name.to_string(),
+            message: message.to_string(),
+            created_at: now_millis(),
+            metric_name: metric.to_string(),
+            metric_value: value,
+            threshold,
+        };
         match severity {
-            AlertSeverity::Info => { self.stats.info_alerts.fetch_add(1, Ordering::Relaxed); }
-            AlertSeverity::Warning => { self.stats.warning_alerts.fetch_add(1, Ordering::Relaxed); }
-            AlertSeverity::Critical => { self.stats.critical_alerts.fetch_add(1, Ordering::Relaxed); }
+            AlertSeverity::Info => {
+                self.stats.info_alerts.fetch_add(1, Ordering::Relaxed);
+            }
+            AlertSeverity::Warning => {
+                self.stats.warning_alerts.fetch_add(1, Ordering::Relaxed);
+            }
+            AlertSeverity::Critical => {
+                self.stats.critical_alerts.fetch_add(1, Ordering::Relaxed);
+            }
         }
         self.stats.alerts_generated.fetch_add(1, Ordering::Relaxed);
         self.alerts.write().unwrap().push_back(alert.clone());
         alert
     }
 
-    pub fn active_alerts(&self) -> Vec<QueueAlert> { self.alerts.read().unwrap().iter().cloned().collect() }
-    pub fn update_thresholds(&self, thresholds: AlertThresholds) { *self.thresholds.write().unwrap() = thresholds; }
+    pub fn active_alerts(&self) -> Vec<QueueAlert> {
+        self.alerts.read().unwrap().iter().cloned().collect()
+    }
+    pub fn update_thresholds(&self, thresholds: AlertThresholds) {
+        *self.thresholds.write().unwrap() = thresholds;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -723,11 +968,23 @@ pub struct QueueHealthReport {
 }
 
 impl QueueMonitor {
-    pub fn new(queue_name: &str, dlq_writer: Arc<DlqWriter>, alert_manager: Arc<QueueAlertManager>) -> Self {
-        Self { queue_name: queue_name.to_string(), slices: RwLock::new(Vec::new()), dlq_writer, alert_manager, stats: QueueMonitorStats::default() }
+    pub fn new(
+        queue_name: &str,
+        dlq_writer: Arc<DlqWriter>,
+        alert_manager: Arc<QueueAlertManager>,
+    ) -> Self {
+        Self {
+            queue_name: queue_name.to_string(),
+            slices: RwLock::new(Vec::new()),
+            dlq_writer,
+            alert_manager,
+            stats: QueueMonitorStats::default(),
+        }
     }
 
-    pub fn add_slice(&self, slice: Arc<QueueSlice>) { self.slices.write().unwrap().push(slice); }
+    pub fn add_slice(&self, slice: Arc<QueueSlice>) {
+        self.slices.write().unwrap().push(slice);
+    }
 
     pub fn generate_health_report(&self) -> QueueHealthReport {
         let slices = self.slices.read().unwrap();
@@ -744,21 +1001,46 @@ impl QueueMonitor {
             total_nacked += slice.stats.tasks_nacked.load(Ordering::Relaxed);
             total_latency += slice.stats.total_latency_ms.load(Ordering::Relaxed);
             let slice_max = slice.stats.max_latency_ms.load(Ordering::Relaxed);
-            if slice_max > max_latency { max_latency = slice_max; }
+            if slice_max > max_latency {
+                max_latency = slice_max;
+            }
         }
-        let avg_latency = if total_processed > 0 { total_latency as f64 / total_processed as f64 } else { 0.0 };
+        let avg_latency = if total_processed > 0 {
+            total_latency as f64 / total_processed as f64
+        } else {
+            0.0
+        };
         let dlq_depth = self.dlq_writer.pending_count();
         let active_alerts = self.alert_manager.active_alerts().len();
         let healthy = total_pending < 100_000 && dlq_depth < 10_000 && active_alerts == 0;
         self.stats.health_checks.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_tasks_processed.store(total_processed, Ordering::Relaxed);
-        self.stats.total_latency_ms.store(total_latency, Ordering::Relaxed);
-        QueueHealthReport { queue_name: self.queue_name.clone(), total_pending, total_processed, total_failed, total_nacked, dlq_depth, avg_latency_ms: avg_latency, max_latency_ms: max_latency, slice_count: slices.len(), active_alerts, healthy }
+        self.stats
+            .total_tasks_processed
+            .store(total_processed, Ordering::Relaxed);
+        self.stats
+            .total_latency_ms
+            .store(total_latency, Ordering::Relaxed);
+        QueueHealthReport {
+            queue_name: self.queue_name.clone(),
+            total_pending,
+            total_processed,
+            total_failed,
+            total_nacked,
+            dlq_depth,
+            avg_latency_ms: avg_latency,
+            max_latency_ms: max_latency,
+            slice_count: slices.len(),
+            active_alerts,
+            healthy,
+        }
     }
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -771,11 +1053,17 @@ mod tests {
 
     fn make_descriptor(id: i64, ns: &str) -> QueueTaskDescriptor {
         QueueTaskDescriptor {
-            key: TaskKey::new(1000, id), namespace_id: ns.to_string(),
-            workflow_id: format!("wf-{}", id), run_id: format!("run-{}", id),
-            task_type: "transfer".to_string(), task_queue: Some("tq-1".to_string()),
-            workflow_type: Some("TestWorkflow".to_string()), priority: 5,
-            version: 1, visibility_time: 1000, created_at: 999,
+            key: TaskKey::new(1000, id),
+            namespace_id: ns.to_string(),
+            workflow_id: format!("wf-{}", id),
+            run_id: format!("run-{}", id),
+            task_type: "transfer".to_string(),
+            task_queue: Some("tq-1".to_string()),
+            workflow_type: Some("TestWorkflow".to_string()),
+            priority: 5,
+            version: 1,
+            visibility_time: 1000,
+            created_at: 999,
         }
     }
 
@@ -974,7 +1262,9 @@ mod tests {
         for i in 0..5 {
             slice.enqueue_task(ExecutableTask::new(make_descriptor(i, "ns")));
         }
-        for _ in 0..3 { slice.process_next(); }
+        for _ in 0..3 {
+            slice.process_next();
+        }
         monitor.add_slice(slice);
         let report = monitor.generate_health_report();
         assert_eq!(report.queue_name, "transfer");

@@ -4,7 +4,10 @@
 //! event-by-event replay, state comparison, and debugging tools.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
 use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -39,7 +42,13 @@ pub struct ReplaySession {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReplayStatus { Created, Running, Completed, Failed, Canceled }
+pub enum ReplayStatus {
+    Created,
+    Running,
+    Completed,
+    Failed,
+    Canceled,
+}
 
 #[derive(Debug, Clone)]
 pub struct ReplayError {
@@ -50,8 +59,12 @@ pub struct ReplayError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayErrorType {
-    NonDeterministicChange, MissingEvent, UnexpectedEvent,
-    StateMismatch, Timeout, CorruptedHistory,
+    NonDeterministicChange,
+    MissingEvent,
+    UnexpectedEvent,
+    StateMismatch,
+    Timeout,
+    CorruptedHistory,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -109,12 +122,20 @@ pub struct DeterminismViolation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeterminismViolationType {
-    CommandMismatch, StateMismatch, EventOrderMismatch,
-    SideEffectDetected, FloatingPointMismatch, IterationOrderMismatch,
+    CommandMismatch,
+    StateMismatch,
+    EventOrderMismatch,
+    SideEffectDetected,
+    FloatingPointMismatch,
+    IterationOrderMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ViolationSeverity { Warning, Error, Critical }
+pub enum ViolationSeverity {
+    Warning,
+    Error,
+    Critical,
+}
 
 #[derive(Debug, Default)]
 pub struct DeterminismCheckerStats {
@@ -124,29 +145,82 @@ pub struct DeterminismCheckerStats {
 
 impl DeterminismChecker {
     pub fn new() -> Self {
-        let checker = Self { checks: RwLock::new(Vec::new()), results: RwLock::new(Vec::new()), stats: DeterminismCheckerStats::default() };
+        let checker = Self {
+            checks: RwLock::new(Vec::new()),
+            results: RwLock::new(Vec::new()),
+            stats: DeterminismCheckerStats::default(),
+        };
         // Register default checks
-        checker.checks.write().unwrap().push(DeterminismCheck { check_id: "cmd-replay".into(), check_type: DeterminismCheckType::CommandReplay, description: "Verify command replay consistency".into(), enabled: true });
-        checker.checks.write().unwrap().push(DeterminismCheck { check_id: "side-effect".into(), check_type: DeterminismCheckType::SideEffectDetection, description: "Detect non-deterministic side effects".into(), enabled: true });
-        checker.checks.write().unwrap().push(DeterminismCheck { check_id: "state-consistency".into(), check_type: DeterminismCheckType::StateConsistency, description: "Verify state consistency".into(), enabled: true });
-        checker.checks.write().unwrap().push(DeterminismCheck { check_id: "event-ordering".into(), check_type: DeterminismCheckType::EventOrdering, description: "Verify event ordering".into(), enabled: true });
+        checker.checks.write().unwrap().push(DeterminismCheck {
+            check_id: "cmd-replay".into(),
+            check_type: DeterminismCheckType::CommandReplay,
+            description: "Verify command replay consistency".into(),
+            enabled: true,
+        });
+        checker.checks.write().unwrap().push(DeterminismCheck {
+            check_id: "side-effect".into(),
+            check_type: DeterminismCheckType::SideEffectDetection,
+            description: "Detect non-deterministic side effects".into(),
+            enabled: true,
+        });
+        checker.checks.write().unwrap().push(DeterminismCheck {
+            check_id: "state-consistency".into(),
+            check_type: DeterminismCheckType::StateConsistency,
+            description: "Verify state consistency".into(),
+            enabled: true,
+        });
+        checker.checks.write().unwrap().push(DeterminismCheck {
+            check_id: "event-ordering".into(),
+            check_type: DeterminismCheckType::EventOrdering,
+            description: "Verify event ordering".into(),
+            enabled: true,
+        });
         checker
     }
 
-    pub fn run_all_checks(&self, original_commands: &[String], replayed_commands: &[String]) -> Vec<DeterminismResult> {
+    pub fn run_all_checks(
+        &self,
+        original_commands: &[String],
+        replayed_commands: &[String],
+    ) -> Vec<DeterminismResult> {
         let checks = self.checks.read().unwrap().clone();
         let mut results = Vec::new();
         for check in &checks {
-            if !check.enabled { continue; }
+            if !check.enabled {
+                continue;
+            }
             self.stats.checks_executed.fetch_add(1, Ordering::Relaxed);
             let result = match check.check_type {
-                DeterminismCheckType::CommandReplay => self.check_command_replay(original_commands, replayed_commands),
-                DeterminismCheckType::SideEffectDetection => self.check_side_effects(original_commands),
-                DeterminismCheckType::StateConsistency => DeterminismResult { check_type: check.check_type.clone(), passed: true, details: "State consistent".into(), violations: Vec::new() },
-                DeterminismCheckType::EventOrdering => DeterminismResult { check_type: check.check_type.clone(), passed: true, details: "Event ordering preserved".into(), violations: Vec::new() },
-                _ => DeterminismResult { check_type: check.check_type.clone(), passed: true, details: "Check passed".into(), violations: Vec::new() },
+                DeterminismCheckType::CommandReplay => {
+                    self.check_command_replay(original_commands, replayed_commands)
+                }
+                DeterminismCheckType::SideEffectDetection => {
+                    self.check_side_effects(original_commands)
+                }
+                DeterminismCheckType::StateConsistency => DeterminismResult {
+                    check_type: check.check_type.clone(),
+                    passed: true,
+                    details: "State consistent".into(),
+                    violations: Vec::new(),
+                },
+                DeterminismCheckType::EventOrdering => DeterminismResult {
+                    check_type: check.check_type.clone(),
+                    passed: true,
+                    details: "Event ordering preserved".into(),
+                    violations: Vec::new(),
+                },
+                _ => DeterminismResult {
+                    check_type: check.check_type.clone(),
+                    passed: true,
+                    details: "Check passed".into(),
+                    violations: Vec::new(),
+                },
             };
-            if !result.passed { self.stats.violations_found.fetch_add(result.violations.len() as u64, Ordering::Relaxed); }
+            if !result.passed {
+                self.stats
+                    .violations_found
+                    .fetch_add(result.violations.len() as u64, Ordering::Relaxed);
+            }
             self.results.write().unwrap().push(result.clone());
             results.push(result);
         }
@@ -160,23 +234,60 @@ impl DeterminismChecker {
             let orig = original.get(i).map(|s| s.as_str()).unwrap_or("<missing>");
             let replay = replayed.get(i).map(|s| s.as_str()).unwrap_or("<missing>");
             if orig != replay {
-                violations.push(DeterminismViolation { violation_type: DeterminismViolationType::CommandMismatch, location: format!("command[{}]", i), expected: orig.to_string(), actual: replay.to_string(), severity: ViolationSeverity::Critical });
+                violations.push(DeterminismViolation {
+                    violation_type: DeterminismViolationType::CommandMismatch,
+                    location: format!("command[{}]", i),
+                    expected: orig.to_string(),
+                    actual: replay.to_string(),
+                    severity: ViolationSeverity::Critical,
+                });
             }
         }
-        DeterminismResult { check_type: DeterminismCheckType::CommandReplay, passed: violations.is_empty(), details: if violations.is_empty() { "All commands match".into() } else { format!("{} mismatches found", violations.len()) }, violations }
+        DeterminismResult {
+            check_type: DeterminismCheckType::CommandReplay,
+            passed: violations.is_empty(),
+            details: if violations.is_empty() {
+                "All commands match".into()
+            } else {
+                format!("{} mismatches found", violations.len())
+            },
+            violations,
+        }
     }
 
     fn check_side_effects(&self, commands: &[String]) -> DeterminismResult {
-        let side_effect_keywords = ["random", "uuid()", "now()", "time.now", "Math.random", "Date.now"];
+        let side_effect_keywords = [
+            "random",
+            "uuid()",
+            "now()",
+            "time.now",
+            "Math.random",
+            "Date.now",
+        ];
         let mut violations = Vec::new();
         for (i, cmd) in commands.iter().enumerate() {
             for keyword in &side_effect_keywords {
                 if cmd.contains(keyword) {
-                    violations.push(DeterminismViolation { violation_type: DeterminismViolationType::SideEffectDetected, location: format!("command[{}]", i), expected: "deterministic".into(), actual: format!("contains '{}'", keyword), severity: ViolationSeverity::Error });
+                    violations.push(DeterminismViolation {
+                        violation_type: DeterminismViolationType::SideEffectDetected,
+                        location: format!("command[{}]", i),
+                        expected: "deterministic".into(),
+                        actual: format!("contains '{}'", keyword),
+                        severity: ViolationSeverity::Error,
+                    });
                 }
             }
         }
-        DeterminismResult { check_type: DeterminismCheckType::SideEffectDetection, passed: violations.is_empty(), details: if violations.is_empty() { "No side effects detected".into() } else { format!("{} side effects found", violations.len()) }, violations }
+        DeterminismResult {
+            check_type: DeterminismCheckType::SideEffectDetection,
+            passed: violations.is_empty(),
+            details: if violations.is_empty() {
+                "No side effects detected".into()
+            } else {
+                format!("{} side effects found", violations.len())
+            },
+            violations,
+        }
     }
 
     pub fn is_deterministic(&self) -> bool {
@@ -222,12 +333,23 @@ pub struct ReplayDebuggerStats {
 
 impl ReplayDebugger {
     pub fn new() -> Self {
-        Self { breakpoints: RwLock::new(Vec::new()), current_position: RwLock::new(0), event_log: RwLock::new(Vec::new()), paused: RwLock::new(false), stats: ReplayDebuggerStats::default() }
+        Self {
+            breakpoints: RwLock::new(Vec::new()),
+            current_position: RwLock::new(0),
+            event_log: RwLock::new(Vec::new()),
+            paused: RwLock::new(false),
+            stats: ReplayDebuggerStats::default(),
+        }
     }
 
     pub fn set_breakpoint(&self, event_id: i64) -> String {
         let bp_id = format!("bp-{}", now_millis());
-        self.breakpoints.write().unwrap().push(ReplayBreakpoint { breakpoint_id: bp_id.clone(), event_id, condition: None, enabled: true });
+        self.breakpoints.write().unwrap().push(ReplayBreakpoint {
+            breakpoint_id: bp_id.clone(),
+            event_id,
+            condition: None,
+            enabled: true,
+        });
         bp_id
     }
 
@@ -242,39 +364,74 @@ impl ReplayDebugger {
             if bp.enabled && bp.event_id == event.event_id {
                 *self.paused.write().unwrap() = true;
                 self.stats.breakpoints_hit.fetch_add(1, Ordering::Relaxed);
-                return StepResult::BreakpointHit { breakpoint_id: bp.breakpoint_id.clone(), event_id: event.event_id };
+                return StepResult::BreakpointHit {
+                    breakpoint_id: bp.breakpoint_id.clone(),
+                    event_id: event.event_id,
+                };
             }
         }
-        StepResult::Advanced { event_id: event.event_id }
+        StepResult::Advanced {
+            event_id: event.event_id,
+        }
     }
 
-    pub fn resume(&self) { *self.paused.write().unwrap() = false; }
-    pub fn is_paused(&self) -> bool { *self.paused.read().unwrap() }
-    pub fn current_position(&self) -> u64 { *self.current_position.read().unwrap() }
-    pub fn event_count(&self) -> usize { self.event_log.read().unwrap().len() }
+    pub fn resume(&self) {
+        *self.paused.write().unwrap() = false;
+    }
+    pub fn is_paused(&self) -> bool {
+        *self.paused.read().unwrap()
+    }
+    pub fn current_position(&self) -> u64 {
+        *self.current_position.read().unwrap()
+    }
+    pub fn event_count(&self) -> usize {
+        self.event_log.read().unwrap().len()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum StepResult {
-    Advanced { event_id: i64 },
-    BreakpointHit { breakpoint_id: String, event_id: i64 },
+    Advanced {
+        event_id: i64,
+    },
+    BreakpointHit {
+        breakpoint_id: String,
+        event_id: i64,
+    },
     Completed,
 }
 
 impl ReplayEngine {
     pub fn new() -> Self {
-        Self { replay_sessions: RwLock::new(HashMap::new()), stats: ReplayEngineStats::default() }
+        Self {
+            replay_sessions: RwLock::new(HashMap::new()),
+            stats: ReplayEngineStats::default(),
+        }
     }
 
     pub fn start_replay(&self, workflow_id: &str, run_id: &str, total_events: u64) -> String {
         let session_id = format!("replay-{}", now_millis());
         let session = ReplaySession {
-            session_id: session_id.clone(), workflow_id: workflow_id.to_string(),
-            run_id: run_id.to_string(), status: ReplayStatus::Running,
-            events_replayed: 0, total_events, determinism_check: DeterminismResult { check_type: DeterminismCheckType::CommandReplay, passed: true, details: "In progress".into(), violations: Vec::new() },
-            started_at: now_millis(), completed_at: None, errors: Vec::new(),
+            session_id: session_id.clone(),
+            workflow_id: workflow_id.to_string(),
+            run_id: run_id.to_string(),
+            status: ReplayStatus::Running,
+            events_replayed: 0,
+            total_events,
+            determinism_check: DeterminismResult {
+                check_type: DeterminismCheckType::CommandReplay,
+                passed: true,
+                details: "In progress".into(),
+                violations: Vec::new(),
+            },
+            started_at: now_millis(),
+            completed_at: None,
+            errors: Vec::new(),
         };
-        self.replay_sessions.write().unwrap().insert(session_id.clone(), session);
+        self.replay_sessions
+            .write()
+            .unwrap()
+            .insert(session_id.clone(), session);
         self.stats.replays_started.fetch_add(1, Ordering::Relaxed);
         session_id
     }
@@ -282,16 +439,26 @@ impl ReplayEngine {
     pub fn complete_replay(&self, session_id: &str, success: bool) {
         let mut sessions = self.replay_sessions.write().unwrap();
         if let Some(session) = sessions.get_mut(session_id) {
-            session.status = if success { ReplayStatus::Completed } else { ReplayStatus::Failed };
+            session.status = if success {
+                ReplayStatus::Completed
+            } else {
+                ReplayStatus::Failed
+            };
             session.completed_at = Some(now_millis());
-            if success { self.stats.replays_completed.fetch_add(1, Ordering::Relaxed); }
-            else { self.stats.replays_failed.fetch_add(1, Ordering::Relaxed); }
+            if success {
+                self.stats.replays_completed.fetch_add(1, Ordering::Relaxed);
+            } else {
+                self.stats.replays_failed.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -307,7 +474,13 @@ mod tests {
         let engine = ReplayEngine::new();
         let id = engine.start_replay("wf-1", "run-1", 100);
         engine.complete_replay(&id, true);
-        let session = engine.replay_sessions.read().unwrap().get(&id).unwrap().clone();
+        let session = engine
+            .replay_sessions
+            .read()
+            .unwrap()
+            .get(&id)
+            .unwrap()
+            .clone();
         assert_eq!(session.status, ReplayStatus::Completed);
     }
 
@@ -340,7 +513,13 @@ mod tests {
     fn test_replay_debugger_breakpoint() {
         let debugger = ReplayDebugger::new();
         let bp = debugger.set_breakpoint(5);
-        let event = DebugEvent { event_id: 5, event_type: "TimerFired".into(), timestamp: 0, state_snapshot: "{}".into(), commands_produced: vec![] };
+        let event = DebugEvent {
+            event_id: 5,
+            event_type: "TimerFired".into(),
+            timestamp: 0,
+            state_snapshot: "{}".into(),
+            commands_produced: vec![],
+        };
         let result = debugger.step(event);
         assert!(matches!(result, StepResult::BreakpointHit { .. }));
         assert!(debugger.is_paused());
@@ -350,7 +529,13 @@ mod tests {
     fn test_replay_debugger_step_through() {
         let debugger = ReplayDebugger::new();
         for i in 1..=10 {
-            let event = DebugEvent { event_id: i, event_type: "Event".into(), timestamp: i, state_snapshot: "{}".into(), commands_produced: vec![] };
+            let event = DebugEvent {
+                event_id: i,
+                event_type: "Event".into(),
+                timestamp: i,
+                state_snapshot: "{}".into(),
+                commands_produced: vec![],
+            };
             debugger.step(event);
         }
         assert_eq!(debugger.event_count(), 10);
@@ -361,7 +546,13 @@ mod tests {
     fn test_replay_debugger_resume() {
         let debugger = ReplayDebugger::new();
         debugger.set_breakpoint(3);
-        debugger.step(DebugEvent { event_id: 3, event_type: "E".into(), timestamp: 0, state_snapshot: "{}".into(), commands_produced: vec![] });
+        debugger.step(DebugEvent {
+            event_id: 3,
+            event_type: "E".into(),
+            timestamp: 0,
+            state_snapshot: "{}".into(),
+            commands_produced: vec![],
+        });
         assert!(debugger.is_paused());
         debugger.resume();
         assert!(!debugger.is_paused());

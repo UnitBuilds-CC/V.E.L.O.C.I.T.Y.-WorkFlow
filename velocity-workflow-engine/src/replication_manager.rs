@@ -4,8 +4,11 @@
 //! conflict resolution, and replication lag monitoring.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Cluster Replication Config
@@ -50,12 +53,23 @@ pub struct ReplicationTask {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplicationTaskType {
-    SyncActivity, SyncWorkflowState, HistoryReplication, NamespaceReplication,
-    SyncHsmState, BackfillHistory, SyncVersionedTransition,
+    SyncActivity,
+    SyncWorkflowState,
+    HistoryReplication,
+    NamespaceReplication,
+    SyncHsmState,
+    BackfillHistory,
+    SyncVersionedTransition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReplicationTaskStatus { Pending, InProgress, Completed, Failed, Retrying }
+pub enum ReplicationTaskStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+    Retrying,
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Replication Stream — bidirectional replication between clusters
@@ -82,7 +96,14 @@ pub struct ReplicationStreamStats {
 
 impl ReplicationStream {
     pub fn new(source: &str, target: &str) -> Self {
-        Self { source_cluster: source.to_string(), target_cluster: target.to_string(), pending_tasks: RwLock::new(VecDeque::new()), completed_tasks: RwLock::new(Vec::new()), connected: AtomicBool::new(true), stats: ReplicationStreamStats::default() }
+        Self {
+            source_cluster: source.to_string(),
+            target_cluster: target.to_string(),
+            pending_tasks: RwLock::new(VecDeque::new()),
+            completed_tasks: RwLock::new(Vec::new()),
+            connected: AtomicBool::new(true),
+            stats: ReplicationStreamStats::default(),
+        }
     }
 
     pub fn enqueue_task(&self, task: ReplicationTask) {
@@ -98,10 +119,18 @@ impl ReplicationStream {
         Some(task)
     }
 
-    pub fn pending_count(&self) -> usize { self.pending_tasks.read().unwrap().len() }
-    pub fn is_connected(&self) -> bool { self.connected.load(Ordering::Relaxed) }
-    pub fn disconnect(&self) { self.connected.store(false, Ordering::Relaxed); }
-    pub fn reconnect(&self) { self.connected.store(true, Ordering::Relaxed); }
+    pub fn pending_count(&self) -> usize {
+        self.pending_tasks.read().unwrap().len()
+    }
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
+    }
+    pub fn disconnect(&self) {
+        self.connected.store(false, Ordering::Relaxed);
+    }
+    pub fn reconnect(&self) {
+        self.connected.store(true, Ordering::Relaxed);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -136,7 +165,12 @@ pub enum ConflictResolution {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConflictResolutionPolicy { LocalWins, RemoteWins, HighestVersionWins, Manual }
+pub enum ConflictResolutionPolicy {
+    LocalWins,
+    RemoteWins,
+    HighestVersionWins,
+    Manual,
+}
 
 #[derive(Debug, Default)]
 pub struct ConflictResolverStats {
@@ -147,47 +181,91 @@ pub struct ConflictResolverStats {
 
 impl ConflictResolver {
     pub fn new(policy: ConflictResolutionPolicy) -> Self {
-        Self { conflicts: RwLock::new(Vec::new()), resolution_policy: policy, stats: ConflictResolverStats::default() }
+        Self {
+            conflicts: RwLock::new(Vec::new()),
+            resolution_policy: policy,
+            stats: ConflictResolverStats::default(),
+        }
     }
 
-    pub fn detect_conflict(&self, namespace_id: &str, workflow_id: &str, local_version: i64, remote_version: i64) -> String {
+    pub fn detect_conflict(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        local_version: i64,
+        remote_version: i64,
+    ) -> String {
         let conflict_id = format!("conflict-{}", now_millis());
         let conflict = ReplicationConflict {
-            conflict_id: conflict_id.clone(), namespace_id: namespace_id.to_string(),
-            workflow_id: workflow_id.to_string(), local_version, remote_version,
-            local_state: "unknown".into(), remote_state: "unknown".into(),
-            detected_at: now_millis(), resolution: None,
+            conflict_id: conflict_id.clone(),
+            namespace_id: namespace_id.to_string(),
+            workflow_id: workflow_id.to_string(),
+            local_version,
+            remote_version,
+            local_state: "unknown".into(),
+            remote_state: "unknown".into(),
+            detected_at: now_millis(),
+            resolution: None,
         };
         self.conflicts.write().unwrap().push(conflict);
-        self.stats.conflicts_detected.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .conflicts_detected
+            .fetch_add(1, Ordering::Relaxed);
         conflict_id
     }
 
     pub fn resolve_conflict(&self, conflict_id: &str) -> Option<ConflictResolution> {
         let mut conflicts = self.conflicts.write().unwrap();
-        let conflict = conflicts.iter_mut().find(|c| c.conflict_id == conflict_id)?;
+        let conflict = conflicts
+            .iter_mut()
+            .find(|c| c.conflict_id == conflict_id)?;
         let resolution = match self.resolution_policy {
-            ConflictResolutionPolicy::LocalWins => ConflictResolution::LocalWins { reason: "Local cluster has priority".into() },
-            ConflictResolutionPolicy::RemoteWins => ConflictResolution::RemoteWins { reason: "Remote cluster has priority".into() },
+            ConflictResolutionPolicy::LocalWins => ConflictResolution::LocalWins {
+                reason: "Local cluster has priority".into(),
+            },
+            ConflictResolutionPolicy::RemoteWins => ConflictResolution::RemoteWins {
+                reason: "Remote cluster has priority".into(),
+            },
             ConflictResolutionPolicy::HighestVersionWins => {
                 if conflict.local_version >= conflict.remote_version {
-                    ConflictResolution::LocalWins { reason: format!("local v{} >= remote v{}", conflict.local_version, conflict.remote_version) }
+                    ConflictResolution::LocalWins {
+                        reason: format!(
+                            "local v{} >= remote v{}",
+                            conflict.local_version, conflict.remote_version
+                        ),
+                    }
                 } else {
-                    ConflictResolution::RemoteWins { reason: format!("remote v{} > local v{}", conflict.remote_version, conflict.local_version) }
+                    ConflictResolution::RemoteWins {
+                        reason: format!(
+                            "remote v{} > local v{}",
+                            conflict.remote_version, conflict.local_version
+                        ),
+                    }
                 }
             }
             ConflictResolutionPolicy::Manual => {
-                self.stats.manual_interventions.fetch_add(1, Ordering::Relaxed);
-                ConflictResolution::ManualIntervention { reason: "Requires manual resolution".into() }
+                self.stats
+                    .manual_interventions
+                    .fetch_add(1, Ordering::Relaxed);
+                ConflictResolution::ManualIntervention {
+                    reason: "Requires manual resolution".into(),
+                }
             }
         };
         conflict.resolution = Some(resolution.clone());
-        self.stats.conflicts_resolved.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .conflicts_resolved
+            .fetch_add(1, Ordering::Relaxed);
         Some(resolution)
     }
 
     pub fn unresolved_count(&self) -> usize {
-        self.conflicts.read().unwrap().iter().filter(|c| c.resolution.is_none()).count()
+        self.conflicts
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|c| c.resolution.is_none())
+            .count()
     }
 }
 
@@ -211,12 +289,24 @@ pub struct ReplicationManagerStats {
 
 impl ReplicationManager {
     pub fn new() -> Self {
-        Self { clusters: RwLock::new(HashMap::new()), streams: RwLock::new(HashMap::new()), conflict_resolver: Arc::new(ConflictResolver::new(ConflictResolutionPolicy::HighestVersionWins)), stats: ReplicationManagerStats::default() }
+        Self {
+            clusters: RwLock::new(HashMap::new()),
+            streams: RwLock::new(HashMap::new()),
+            conflict_resolver: Arc::new(ConflictResolver::new(
+                ConflictResolutionPolicy::HighestVersionWins,
+            )),
+            stats: ReplicationManagerStats::default(),
+        }
     }
 
     pub fn register_cluster(&self, config: ClusterReplicationConfig) {
-        self.clusters.write().unwrap().insert(config.cluster_name.clone(), config);
-        self.stats.clusters_registered.fetch_add(1, Ordering::Relaxed);
+        self.clusters
+            .write()
+            .unwrap()
+            .insert(config.cluster_name.clone(), config);
+        self.stats
+            .clusters_registered
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn create_stream(&self, source: &str, target: &str) -> Arc<ReplicationStream> {
@@ -238,26 +328,49 @@ impl ReplicationManager {
         let streams = self.streams.read().unwrap();
         let mut processed = 0u64;
         for stream in streams.values() {
-            while let Some(_task) = stream.process_next() { processed += 1; }
+            while let Some(_task) = stream.process_next() {
+                processed += 1;
+            }
         }
-        self.stats.total_tasks_replicated.fetch_add(processed, Ordering::Relaxed);
+        self.stats
+            .total_tasks_replicated
+            .fetch_add(processed, Ordering::Relaxed);
         processed
     }
 
     pub fn cluster_status(&self) -> Vec<ReplicationClusterStatus> {
         let clusters = self.clusters.read().unwrap();
         let streams = self.streams.read().unwrap();
-        clusters.values().map(|c| {
-            let stream_key = format!("{}->", c.cluster_name);
-            let connected = streams.values().any(|s| s.source_cluster == c.cluster_name && s.is_connected());
-            let lag = streams.values().filter(|s| s.source_cluster == c.cluster_name).map(|s| s.pending_count() as u64).sum();
-            ReplicationClusterStatus { cluster_name: c.cluster_name.clone(), connected, replication_lag: lag, last_replication_timestamp: now_millis(), tasks_pending: lag, tasks_per_second: 0.0 }
-        }).collect()
+        clusters
+            .values()
+            .map(|c| {
+                let stream_key = format!("{}->", c.cluster_name);
+                let connected = streams
+                    .values()
+                    .any(|s| s.source_cluster == c.cluster_name && s.is_connected());
+                let lag = streams
+                    .values()
+                    .filter(|s| s.source_cluster == c.cluster_name)
+                    .map(|s| s.pending_count() as u64)
+                    .sum();
+                ReplicationClusterStatus {
+                    cluster_name: c.cluster_name.clone(),
+                    connected,
+                    replication_lag: lag,
+                    last_replication_timestamp: now_millis(),
+                    tasks_pending: lag,
+                    tasks_per_second: 0.0,
+                }
+            })
+            .collect()
     }
 }
 
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -272,7 +385,18 @@ mod tests {
     fn test_replication_stream() {
         let stream = ReplicationStream::new("us-east", "eu-west");
         assert!(stream.is_connected());
-        let task = ReplicationTask { task_id: "t1".into(), task_type: ReplicationTaskType::HistoryReplication, source_cluster: "us-east".into(), target_cluster: "eu-west".into(), namespace_id: "ns1".into(), workflow_id: "wf1".into(), run_id: "r1".into(), version: 1, created_at: 0, status: ReplicationTaskStatus::Pending };
+        let task = ReplicationTask {
+            task_id: "t1".into(),
+            task_type: ReplicationTaskType::HistoryReplication,
+            source_cluster: "us-east".into(),
+            target_cluster: "eu-west".into(),
+            namespace_id: "ns1".into(),
+            workflow_id: "wf1".into(),
+            run_id: "r1".into(),
+            version: 1,
+            created_at: 0,
+            status: ReplicationTaskStatus::Pending,
+        };
         stream.enqueue_task(task);
         assert_eq!(stream.pending_count(), 1);
         let processed = stream.process_next();
@@ -310,16 +434,42 @@ mod tests {
         let resolver = ConflictResolver::new(ConflictResolutionPolicy::Manual);
         let id = resolver.detect_conflict("ns1", "wf1", 1, 1);
         let resolution = resolver.resolve_conflict(&id).unwrap();
-        assert!(matches!(resolution, ConflictResolution::ManualIntervention { .. }));
+        assert!(matches!(
+            resolution,
+            ConflictResolution::ManualIntervention { .. }
+        ));
     }
 
     #[test]
     fn test_replication_manager() {
         let mgr = ReplicationManager::new();
-        mgr.register_cluster(ClusterReplicationConfig { cluster_name: "us-east".into(), cluster_id: 1, initial_failover_version: 1, is_global_namespace_enabled: true, is_connection_enabled: true });
-        mgr.register_cluster(ClusterReplicationConfig { cluster_name: "eu-west".into(), cluster_id: 2, initial_failover_version: 2, is_global_namespace_enabled: true, is_connection_enabled: true });
+        mgr.register_cluster(ClusterReplicationConfig {
+            cluster_name: "us-east".into(),
+            cluster_id: 1,
+            initial_failover_version: 1,
+            is_global_namespace_enabled: true,
+            is_connection_enabled: true,
+        });
+        mgr.register_cluster(ClusterReplicationConfig {
+            cluster_name: "eu-west".into(),
+            cluster_id: 2,
+            initial_failover_version: 2,
+            is_global_namespace_enabled: true,
+            is_connection_enabled: true,
+        });
         let stream = mgr.create_stream("us-east", "eu-west");
-        let task = ReplicationTask { task_id: "t1".into(), task_type: ReplicationTaskType::SyncActivity, source_cluster: "us-east".into(), target_cluster: "eu-west".into(), namespace_id: "ns".into(), workflow_id: "wf".into(), run_id: "r".into(), version: 1, created_at: 0, status: ReplicationTaskStatus::Pending };
+        let task = ReplicationTask {
+            task_id: "t1".into(),
+            task_type: ReplicationTaskType::SyncActivity,
+            source_cluster: "us-east".into(),
+            target_cluster: "eu-west".into(),
+            namespace_id: "ns".into(),
+            workflow_id: "wf".into(),
+            run_id: "r".into(),
+            version: 1,
+            created_at: 0,
+            status: ReplicationTaskStatus::Pending,
+        };
         mgr.replicate_task(task);
         assert_eq!(stream.pending_count(), 1);
         let processed = mgr.process_replication();
@@ -329,7 +479,13 @@ mod tests {
     #[test]
     fn test_cluster_status() {
         let mgr = ReplicationManager::new();
-        mgr.register_cluster(ClusterReplicationConfig { cluster_name: "cluster-a".into(), cluster_id: 1, initial_failover_version: 1, is_global_namespace_enabled: true, is_connection_enabled: true });
+        mgr.register_cluster(ClusterReplicationConfig {
+            cluster_name: "cluster-a".into(),
+            cluster_id: 1,
+            initial_failover_version: 1,
+            is_global_namespace_enabled: true,
+            is_connection_enabled: true,
+        });
         let status = mgr.cluster_status();
         assert_eq!(status.len(), 1);
         assert_eq!(status[0].cluster_name, "cluster-a");
