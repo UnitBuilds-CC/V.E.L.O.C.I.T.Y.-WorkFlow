@@ -59,17 +59,31 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Start Real Temporal (Docker)
+        continue-on-error: true
         run: |
-          docker compose -f velocity-bench/docker-compose.temporal.yml up -d
+          echo "Starting Real Temporal via Docker..."
+          echo "Note: This may fail on memory-constrained runners."
+          echo "If it fails, the benchmark will use temporal-bridge instead."
+          docker compose -f velocity-bench/docker-compose.temporal.yml up -d 2>&1 || {
+            echo "WARNING: Docker compose failed. Will use temporal-bridge."
+            exit 0
+          }
           echo "Waiting for Temporal to be healthy..."
-          for i in $(seq 1 60); do
+          TEMPORAL_READY=false
+          for i in $(seq 1 45); do
             if nc -z localhost 7233 2>/dev/null; then
               echo "Temporal ready!"
+              TEMPORAL_READY=true
               break
             fi
             sleep 2
           done
-          docker compose -f velocity-bench/docker-compose.temporal.yml ps
+          if [ "$TEMPORAL_READY" = "false" ]; then
+            echo "WARNING: Temporal did not become ready. Will use temporal-bridge."
+            echo "Temporal logs:"
+            docker compose -f velocity-bench/docker-compose.temporal.yml logs --tail 20 2>&1 || true
+          fi
+          docker compose -f velocity-bench/docker-compose.temporal.yml ps 2>&1 || true
 
       - name: Build VELOCITY servers
         run: |
