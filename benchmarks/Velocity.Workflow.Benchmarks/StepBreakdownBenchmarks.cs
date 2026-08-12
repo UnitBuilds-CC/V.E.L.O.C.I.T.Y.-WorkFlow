@@ -107,7 +107,7 @@ public unsafe class StepBreakdownBenchmarks
     public int Step6_Tier2_Bump_Arena_Alloc()
     {
         nuint outOffset = 0;
-        fixed (byte* pPtr = _payload)
+        fixed (byte* pPtr = _payload!)
         {
             return NativeBridge.VelocityArenaAlloc(_arenaPtr, pPtr, (nuint)_payload!.Length, &outOffset);
         }

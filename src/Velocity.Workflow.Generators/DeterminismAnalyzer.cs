@@ -1,3 +1,4 @@
+#pragma warning disable RS1038 // This analyzer is in the same project as a code fix provider which requires Workspaces
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;

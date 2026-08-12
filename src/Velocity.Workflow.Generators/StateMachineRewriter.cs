@@ -234,7 +234,6 @@ public static class StateMachineRewriter
         sb.AppendLine($"        /// </summary>");
         sb.AppendLine($"        public static async Task<object?> {methodName}_GeneratedRunner(WorkflowContext ctx)");
         sb.AppendLine("        {");
-        sb.AppendLine($"            var totalSteps = {stepCount};");
         sb.AppendLine();
 
         for (int i = 0; i < stepCount; i++)

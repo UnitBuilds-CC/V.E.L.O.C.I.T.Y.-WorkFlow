@@ -1,3 +1,4 @@
+#pragma warning disable RS1038 // This generator is in the same project as a code fix provider which requires Workspaces
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
