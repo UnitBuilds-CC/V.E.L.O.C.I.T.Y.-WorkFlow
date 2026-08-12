@@ -19,6 +19,7 @@ x-resource-limits-pg:
 services:
   # ── Velocity Workflow Server ──────────────────────────────────────────────
   velocity-server:
+    image: ${VELOCITY_SERVER_IMAGE:-velocity-server:latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -207,7 +208,7 @@ services:
 
   # ── Velocity Web UI ───────────────────────────────────────────────────────
   velocity-web:
-    image: velocity-web:latest
+    image: ${VELOCITY_WEB_IMAGE:-velocity-web:latest}
     build:
       context: .
       dockerfile: Dockerfile.web

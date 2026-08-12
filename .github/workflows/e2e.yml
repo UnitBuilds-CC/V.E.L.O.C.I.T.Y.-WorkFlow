@@ -10,6 +10,8 @@ on:
       - "velocity-workflow-*/**"
       - "docker-compose.yml"
       - "Dockerfile"
+      - "Dockerfile.web"
+      - ".github/workflows/e2e.yml"
   schedule:
     - cron: "0 6 * * 1"  # Weekly on Monday at 6 AM UTC
   workflow_dispatch:
@@ -22,82 +24,110 @@ env:
   COMPOSE_PROJECT_NAME: velocity-e2e
   POSTGRES_PASSWORD: e2e_test_password
   GRAFANA_ADMIN_PASSWORD: e2e_admin
+  VELOCITY_SERVER_IMAGE: velocity-e2e-velocity-server:latest
+  VELOCITY_WEB_IMAGE: velocity-e2e-velocity-web:latest
 
 jobs:
   # ── End-to-End Tests ──────────────────────────────────────────────────────
   e2e:
     name: E2E Test Suite
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
-        run: docker build -t velocity-workflow-server:e2e .
+      # ── Build images (with GHA cache for speed) ─────────────────────────
+      - name: Build server Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: velocity-e2e-velocity-server:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build web image
-        run: docker build -f Dockerfile.web -t velocity-web:latest .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.web
+          push: false
+          load: true
+          tags: velocity-e2e-velocity-web:latest
 
+      # ── Start services ──────────────────────────────────────────────────
       - name: Start services
         run: |
-          docker compose up -d --wait --wait-timeout 180
+          echo "Starting docker compose services..."
+          docker compose up -d --wait --wait-timeout 240
         env:
           POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
           GRAFANA_ADMIN_PASSWORD: ${{ env.GRAFANA_ADMIN_PASSWORD }}
-        continue-on-error: true
 
-      - name: Wait for healthy services
+      - name: Dump service status
+        if: always()
         run: |
-          echo "Waiting for services to become healthy..."
-          for i in {1..30}; do
-            HEALTHY=$(docker compose ps --format json 2>/dev/null | jq -r 'select(.Health == "healthy") | .Name' 2>/dev/null | wc -l)
-            TOTAL=$(docker compose ps --format json 2>/dev/null | jq -r '.Name' 2>/dev/null | wc -l)
-            echo "Healthy: $HEALTHY / $TOTAL"
-            if [ "$HEALTHY" -ge 2 ]; then
-              echo "Required services are healthy"
-              break
-            fi
-            sleep 5
-          done
+          echo "=== Service Status ==="
+          docker compose ps -a
+          echo ""
+          echo "=== Service Health ==="
+          docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}"
 
+      # ── Health checks ───────────────────────────────────────────────────
       - name: Verify server health endpoint
         run: |
-          for i in {1..10}; do
-            if curl -sf http://localhost:5000/health; then
-              echo "Server health check passed"
-              break
+          echo "Checking velocity-server health..."
+          for i in $(seq 1 15); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✓ Server health check passed (attempt $i)"
+              curl -s http://localhost:5000/health | head -5
+              exit 0
             fi
-            echo "Waiting for server... ($i/10)"
-            sleep 3
+            echo "  Attempt $i: HTTP $STATUS — retrying in 5s..."
+            sleep 5
           done
-        continue-on-error: true
+          echo "✗ Server did not become healthy after 15 attempts"
+          echo "--- Server logs ---"
+          docker compose logs --tail=50 velocity-server
+          exit 1
 
       - name: Verify Prometheus is scraping
         run: |
-          for i in {1..10}; do
-            TARGETS=$(curl -sf http://localhost:9090/api/v1/targets 2>/dev/null)
+          for i in $(seq 1 10); do
+            TARGETS=$(curl -sf http://localhost:9090/api/v1/targets 2>/dev/null || echo "")
             if echo "$TARGETS" | jq -e '.data.activeTargets[] | select(.labels.job == "velocity-server")' > /dev/null 2>&1; then
-              echo "Prometheus is scraping velocity-server"
-              break
+              echo "✓ Prometheus is scraping velocity-server"
+              exit 0
             fi
-            echo "Waiting for Prometheus... ($i/10)"
+            echo "  Waiting for Prometheus... ($i/10)"
             sleep 3
           done
+          echo "⚠ Prometheus not scraping velocity-server (non-critical)"
         continue-on-error: true
 
+      # ── Smoke tests ─────────────────────────────────────────────────────
       - name: Run E2E test suite
         run: |
-          if [ -d "tests/e2e" ]; then
+          if [ -d "tests/e2e" ] && [ -f "tests/e2e/VelocityShare.E2ETest.csproj" ]; then
+            echo "Running .NET E2E tests..."
             dotnet test tests/e2e/ -c Release --verbosity normal
           else
             echo "Running API smoke tests..."
-            # Test health endpoint
-            curl -sf http://localhost:5000/health | jq . || echo "Health endpoint not available"
-            # Test metrics endpoint
-            curl -sf http://localhost:5000/metrics | head -20 || echo "Metrics endpoint not available"
+            echo ""
+            echo "--- Health endpoint ---"
+            curl -sf http://localhost:5000/health | jq . 2>/dev/null || echo "(not available)"
+            echo ""
+            echo "--- Metrics endpoint ---"
+            curl -sf http://localhost:5000/metrics 2>/dev/null | head -20 || echo "(not available)"
+            echo ""
+            echo "--- API: List namespaces ---"
+            curl -sf http://localhost:5000/api/v1/namespaces 2>/dev/null | jq . 2>/dev/null || echo "(not available)"
+            echo ""
             echo "Smoke tests completed"
           fi
         continue-on-error: true
@@ -111,22 +141,26 @@ jobs:
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "202" ]; then
-            echo "Workflow submission succeeded (HTTP $HTTP_CODE)"
+            echo "✓ Workflow submission succeeded (HTTP $HTTP_CODE)"
           elif [ "$HTTP_CODE" = "404" ] || [ "$HTTP_CODE" = "000" ]; then
-            echo "Workflow API endpoint not available (expected in smoke test mode)"
+            echo "⚠ Workflow API endpoint not available (expected in smoke test mode)"
           else
-            echo "Unexpected response: HTTP $HTTP_CODE"
+            echo "✗ Unexpected response: HTTP $HTTP_CODE"
             echo "$RESPONSE"
           fi
         continue-on-error: true
 
+      # ── Teardown & artifacts ────────────────────────────────────────────
       - name: Collect service logs
         if: always()
         run: |
           mkdir -p e2e-logs
-          docker compose logs > e2e-logs/all-services.log
-          docker compose logs velocity-server > e2e-logs/server.log
-          docker compose logs postgres > e2e-logs/postgres.log
+          docker compose logs > e2e-logs/all-services.log 2>&1 || true
+          docker compose logs velocity-server > e2e-logs/server.log 2>&1 || true
+          docker compose logs postgres > e2e-logs/postgres.log 2>&1 || true
+          docker compose logs prometheus > e2e-logs/prometheus.log 2>&1 || true
+          docker compose logs velocity-web > e2e-logs/web.log 2>&1 || true
+          docker compose ps -a > e2e-logs/service-status.txt 2>&1 || true
 
       - name: Upload E2E logs
         if: always()
