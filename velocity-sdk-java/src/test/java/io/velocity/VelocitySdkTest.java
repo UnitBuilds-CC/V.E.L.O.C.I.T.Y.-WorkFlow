@@ -164,7 +164,7 @@ public class VelocitySdkTest {
         assertEquals(WorkflowStatus.RUNNING, WorkflowStatus.valueOf("RUNNING"));
         assertEquals(WorkflowStatus.COMPLETED, WorkflowStatus.valueOf("COMPLETED"));
         assertEquals(WorkflowStatus.FAILED, WorkflowStatus.valueOf("FAILED"));
-        assertEquals(WorkflowStatus.CANCELLED, WorkflowStatus.valueOf("CANCELLED"));
+        assertEquals(WorkflowStatus.CANCELED, WorkflowStatus.valueOf("CANCELED"));
         assertEquals(WorkflowStatus.TERMINATED, WorkflowStatus.valueOf("TERMINATED"));
     }
 

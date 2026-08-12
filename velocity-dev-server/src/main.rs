@@ -3393,6 +3393,9 @@ mod tests {
             max_history_size: 50_000,
             rate_limiting: false,
             rate_limit_rps: 1000,
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            auth_token: String::new(),
         }
     }
 
