@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <IsRoslynComponent>true</IsRoslynComponent>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-    <NoWarn>$(NoWarn);RS2008;RS1032</NoWarn>
+    <NoWarn>$(NoWarn);RS2008;RS1032;RS1038</NoWarn>
     <RootNamespace>Velocity.Workflow.Generators</RootNamespace>
     <AssemblyName>Velocity.Workflow.Generators</AssemblyName>
   </PropertyGroup>
