@@ -22,6 +22,11 @@ require_relative 'velocity_sdk/testing'
 require_relative 'velocity_sdk/retry'
 require_relative 'velocity_sdk/payload_codec'
 require_relative 'velocity_sdk/workflow_stub'
+require_relative 'velocity_sdk/workflow_execution'
+require_relative 'velocity_sdk/workflow_options'
+require_relative 'velocity_sdk/activity_options'
+require_relative 'velocity_sdk/activity_stub'
+require_relative 'velocity_sdk/connection'
 
 module VelocitySdk
   # Gem version, kept in sync with the gemspec.
