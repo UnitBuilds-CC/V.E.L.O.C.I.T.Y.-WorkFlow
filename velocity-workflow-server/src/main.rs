@@ -631,7 +631,7 @@ impl RealEngineAdapter {
         let workflow_id_num = self.workflow_counter.fetch_add(1, Ordering::Relaxed);
         let workflow_type_id = workflow_type.len() as u64; // Simple hash
         let task_queue_hash = namespace.len() as u64;
-        
+
         let workflow_key = self.engine.start_workflow(
             workflow_id_num,
             workflow_type_id,
@@ -640,7 +640,7 @@ impl RealEngineAdapter {
             10, // total_steps
             None,
         );
-        
+
         // INLINE EXECUTION: Simulate worker processing all steps immediately
         // This is what a real worker would do, but inline for benchmark purposes
         let total_steps = self.engine.get_total_steps(workflow_key);
@@ -648,7 +648,7 @@ impl RealEngineAdapter {
             self.engine.complete_step(workflow_key, step, vec![]);
         }
         self.engine.complete_workflow(workflow_key, Some(vec![]));
-        
+
         let run_id = format!("run-{}", workflow_key);
         Ok((workflow_id.to_string(), run_id))
     }
@@ -685,11 +685,7 @@ impl RealEngineAdapter {
         Ok(true)
     }
 
-    async fn terminate_workflow(
-        &self,
-        namespace: &str,
-        workflow_id: &str,
-    ) -> Result<(), String> {
+    async fn terminate_workflow(&self, namespace: &str, workflow_id: &str) -> Result<(), String> {
         Ok(())
     }
 
@@ -725,8 +721,14 @@ impl EngineBackend {
         workflow_type: &str,
     ) -> Result<(String, String), String> {
         match self {
-            EngineBackend::Mock(e) => e.start_workflow(namespace, workflow_id, workflow_type).await,
-            EngineBackend::Real(e) => e.start_workflow(namespace, workflow_id, workflow_type).await,
+            EngineBackend::Mock(e) => {
+                e.start_workflow(namespace, workflow_id, workflow_type)
+                    .await
+            }
+            EngineBackend::Real(e) => {
+                e.start_workflow(namespace, workflow_id, workflow_type)
+                    .await
+            }
         }
     }
 
@@ -738,8 +740,14 @@ impl EngineBackend {
         payload: Vec<u8>,
     ) -> Result<(), String> {
         match self {
-            EngineBackend::Mock(e) => e.signal_workflow(namespace, workflow_id, signal_name, payload).await,
-            EngineBackend::Real(e) => e.signal_workflow(namespace, workflow_id, signal_name, payload).await,
+            EngineBackend::Mock(e) => {
+                e.signal_workflow(namespace, workflow_id, signal_name, payload)
+                    .await
+            }
+            EngineBackend::Real(e) => {
+                e.signal_workflow(namespace, workflow_id, signal_name, payload)
+                    .await
+            }
         }
     }
 
@@ -767,14 +775,17 @@ impl EngineBackend {
         }
     }
 
-    async fn get_workflow_status(
-        &self,
-        namespace: &str,
-        workflow_id: &str,
-    ) -> Option<String> {
+    async fn get_workflow_status(&self, namespace: &str, workflow_id: &str) -> Option<String> {
         match self {
-            EngineBackend::Mock(e) => e.get_workflow_status(namespace, workflow_id).await.map(|s| format!("{:?}", s)),
-            EngineBackend::Real(e) => e.describe_workflow(namespace, workflow_id).await.ok().map(|(s, _, _)| s),
+            EngineBackend::Mock(e) => e
+                .get_workflow_status(namespace, workflow_id)
+                .await
+                .map(|s| format!("{:?}", s)),
+            EngineBackend::Real(e) => e
+                .describe_workflow(namespace, workflow_id)
+                .await
+                .ok()
+                .map(|(s, _, _)| s),
         }
     }
 
@@ -792,21 +803,38 @@ impl EngineBackend {
         }
     }
 
-    async fn continue_as_new(&self, namespace: &str, workflow_id: &str, workflow_type: &str) -> Result<String, String> {
+    async fn continue_as_new(
+        &self,
+        namespace: &str,
+        workflow_id: &str,
+        workflow_type: &str,
+    ) -> Result<String, String> {
         match self {
-            EngineBackend::Mock(e) => e.continue_as_new(namespace, workflow_id, workflow_type).await,
+            EngineBackend::Mock(e) => {
+                e.continue_as_new(namespace, workflow_id, workflow_type)
+                    .await
+            }
             EngineBackend::Real(_) => Err("Not implemented in real engine mode".to_string()),
         }
     }
 
-    async fn set_memo(&self, namespace: &str, workflow_id: &str, memo: HashMap<String, String>) -> Result<(), String> {
+    async fn set_memo(
+        &self,
+        namespace: &str,
+        workflow_id: &str,
+        memo: HashMap<String, String>,
+    ) -> Result<(), String> {
         match self {
             EngineBackend::Mock(e) => e.set_memo(namespace, workflow_id, memo).await,
             EngineBackend::Real(_) => Ok(()), // TODO: implement for real engine
         }
     }
 
-    async fn replay_workflow(&self, namespace: &str, workflow_id: &str) -> Result<(u64, String), String> {
+    async fn replay_workflow(
+        &self,
+        namespace: &str,
+        workflow_id: &str,
+    ) -> Result<(u64, String), String> {
         match self {
             EngineBackend::Mock(e) => e.replay_workflow(namespace, workflow_id).await,
             EngineBackend::Real(_) => Err("Not implemented in real engine mode".to_string()),
@@ -921,7 +949,7 @@ impl BenchmarkService for BenchmarkServiceImpl {
         loop {
             if let Some(status) = self
                 .backend
-            .mock()
+                .mock()
                 .get_workflow_status(namespace, &req.workflow_id)
                 .await
             {
@@ -1764,7 +1792,12 @@ impl BenchmarkService for BenchmarkServiceImpl {
         } else {
             &r.namespace
         };
-        match self.backend.mock().get_workflow_history(ns, &r.workflow_id).await {
+        match self
+            .backend
+            .mock()
+            .get_workflow_history(ns, &r.workflow_id)
+            .await
+        {
             Ok(count) => Ok(Response::new(GetWorkflowHistoryResponse {
                 events: Vec::new(),
                 next_page_token: Vec::new(),
@@ -1882,8 +1915,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let addr: std::net::SocketAddr = format!("{}:{}", cli.ip, cli.grpc_port).parse()?;
-    
-    let engine_mode = if cli.real_engine { "Real (WorkflowEngine with WAL)" } else { "BenchmarkMock (structurally-identical to Temporal bridge)" };
+
+    let engine_mode = if cli.real_engine {
+        "Real (WorkflowEngine with WAL)"
+    } else {
+        "BenchmarkMock (structurally-identical to Temporal bridge)"
+    };
 
     println!("╦  ╦ ╔╗╔ ╦╔═ ╔═╗ ╦ ╦ ╔═╗ ╔╗╔ ╔═╗");
     println!("╚╗╔╝ ║║║ ╠╩╗ ╠═╣ ║ ║ ║╣  ║║║ ║ ║");
@@ -1926,16 +1963,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("Using MOCK engine (structurally identical to Temporal bridge)");
         EngineBackend::Mock(VelocityEngine::new())
     };
-    
-    let service = BenchmarkServiceImpl {
-        backend,
-    };
 
-    tracing::info!(
-        "BenchmarkService ({}) listening on {}",
-        engine_mode,
-        addr
-    );
+    let service = BenchmarkServiceImpl { backend };
+
+    tracing::info!("BenchmarkService ({}) listening on {}", engine_mode, addr);
 
     tonic::transport::Server::builder()
         .add_service(BenchmarkServiceServer::new(service))
