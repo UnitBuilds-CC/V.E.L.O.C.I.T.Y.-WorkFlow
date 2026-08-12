@@ -36,18 +36,14 @@ trap cleanup EXIT
 log "[1/6] Installing system packages..."
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq
-sudo apt-get install -y -qq \
+sudo apt-get install -y \
     build-essential pkg-config libssl-dev \
     protobuf-compiler \
     curl wget git unzip jq netcat-openbsd \
-    docker.io docker-compose-v2 \
-    > /dev/null 2>&1
+    docker.io docker-compose-v2
 
 sudo systemctl enable --now docker
-# Add ubuntu user to docker group
 sudo usermod -aG docker "$USER" 2>/dev/null || true
-# Use newgrp so docker commands work without re-login
-newgrp docker 2>/dev/null || true
 
 log "  System packages installed."
 
