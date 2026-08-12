@@ -24,8 +24,15 @@ internal class Program
             return;
         }
 
-        // Default run BenchmarkDotNet suite
-        Console.WriteLine("Running BenchmarkDotNet suite...");
-        BenchmarkRunner.Run<SlabVsReplayBenchmark>();
+        if (args.Length > 0 && args[0] == "--temporal-vs-velocity")
+        {
+            Console.WriteLine("Running Traditional Temporal vs V.E.L.O.C.I.T.Y.-WorkFlow Head-to-Head Benchmark...");
+            BenchmarkRunner.Run<TemporalVsVelocityBenchmark>();
+            return;
+        }
+
+        // Default run BenchmarkDotNet suite for Temporal vs Velocity comparison
+        Console.WriteLine("Running Head-to-Head BenchmarkDotNet Suite...");
+        BenchmarkRunner.Run<TemporalVsVelocityBenchmark>();
     }
 }
