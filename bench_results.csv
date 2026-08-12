@@ -1,0 +1,19 @@
+workload,description,velocity_ops_per_sec,temporal_ops_per_sec,throughput_delta_pct,velocity_p50_us,temporal_p50_us,p50_delta_pct,velocity_p99_us,temporal_p99_us,p99_delta_pct,velocity_p999_us,temporal_p999_us,velocity_memory_mb,temporal_memory_mb,memory_delta_pct,velocity_error_rate,temporal_error_rate,verdict
+simple_workflow,Start → execute 10 steps → complete. Measures basic throughput and latency.,847.00,748.51,+13.16,347,370,-6.22,553,525,+5.33,555,1141,12.00,12.58,-4.66,0.0000,0.0000,Comparable
+signal_storm,Start workflow → send 100 signals → complete. Measures signal throughput.,0.00,0.00,+0.00,373,351,+6.27,23593,1220,+1833.85,23593,1220,12.10,12.09,+0.10,0.0000,0.0000,Comparable
+query_burst,Start workflow → send 100 queries → complete. Measures query throughput.,0.00,0.00,+0.00,376,356,+5.62,457,1534,-70.21,457,1534,12.14,12.11,+0.23,0.0000,0.0000,Comparable
+high_step,Single workflow with 10K steps. Measures step execution overhead.,0.00,0.00,+0.00,354,347,+2.02,448,459,-2.40,556,503,12.19,12.19,+0.03,0.0000,0.0000,Comparable
+concurrent_1k,1000 concurrent workflows. Measures concurrent scheduling overhead.,0.00,0.00,+0.00,357,358,-0.28,462,509,-9.23,495,517,12.21,12.21,-0.03,0.0000,0.0000,Comparable
+child_workflows,"Parent spawns 10 children, waits for all. Measures hierarchy overhead.",0.00,0.00,+0.00,371,360,+3.06,480,547,-12.25,483,781,12.21,12.72,-4.02,0.0000,0.0000,Comparable
+saga_pattern,5-step saga with compensation. Measures transaction overhead.,0.00,0.00,+0.00,372,348,+6.90,534,507,+5.33,592,558,12.72,12.25,+3.83,0.0000,0.0000,Comparable
+timer_workflow,Workflow with timer (sleep). Measures timer scheduling accuracy.,0.00,0.00,+0.00,350,353,-0.85,495,443,+11.74,541,456,12.23,12.22,+0.03,0.0000,0.0000,Comparable
+search_attributes,Start with attributes → query by attributes. Measures visibility performance.,0.00,0.00,+0.00,359,363,-1.10,529,473,+11.84,540,574,12.25,12.75,-3.98,0.0000,0.0000,Comparable
+signal_query_mix,Interleaved signals and queries. Measures mixed workload performance.,0.00,0.00,+0.00,385,399,-3.51,513,587,-12.61,545,606,12.72,12.74,-0.15,0.0000,0.0000,Comparable
+batch_operations,Batch start/terminate/query 5000 workflows. Measures admin throughput.,0.00,0.00,+0.00,391,363,+7.71,528,461,+14.53,555,496,12.76,12.73,+0.25,0.0000,0.0000,Comparable
+payload_1kb,1KB payloads. Measures serialization overhead at typical size.,0.00,0.00,+0.00,393,415,-5.30,465,504,-7.74,466,514,12.27,12.86,-4.59,0.0000,0.0000,Comparable
+payload_1mb,1MB payloads. Measures large payload handling.,0.00,0.00,+0.00,416,396,+5.05,575,588,-2.21,765,835,12.83,12.77,+0.52,0.0000,0.0000,Comparable
+namespace_isolation,Workflows across 5 namespaces. Measures isolation overhead.,0.00,0.00,+0.00,414,379,+9.23,596,533,+11.82,687,616,12.74,12.76,-0.12,0.0000,0.0000,Comparable
+throughput_ceiling,Maximum sustainable throughput. Pushes engine to its limits.,0.00,0.00,+0.00,379,358,+5.87,578,466,+24.03,836,497,12.77,12.77,-0.03,0.0000,0.0000,Comparable
+memory_scaling,"Measure memory at 1K, 10K, 100K active workflows.",0.00,0.00,+0.00,372,342,+8.77,476,445,+6.97,484,640,12.75,12.75,+0.03,0.0000,0.0000,Comparable
+cold_start,First workflow after engine startup. Measures cold start latency.,0.00,0.00,+0.00,467,386,+20.98,467,386,+20.98,467,386,12.75,12.75,+0.06,0.0000,0.0000,Comparable
+crash_recovery,Start workflows → simulate crash → restart → verify recovery.,0.00,0.00,+0.00,391,393,-0.51,584,519,+12.52,2049,548,13.32,12.89,+3.36,0.0000,0.0000,Comparable
