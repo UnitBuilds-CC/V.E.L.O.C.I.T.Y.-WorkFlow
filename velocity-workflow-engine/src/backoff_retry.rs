@@ -3,9 +3,9 @@
 //! Covers: exponential backoff, jitter, retry policy calculation,
 //! backoff coordinator, and retry budget tracking.
 
-use std::time::Duration;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Backoff Calculator
@@ -43,8 +43,12 @@ impl BackoffCalculator {
     }
 
     pub fn calculate_backoff(&self, attempt: u32) -> Duration {
-        if attempt == 0 { return Duration::ZERO; }
-        if attempt > self.max_attempts { return Duration::MAX; }
+        if attempt == 0 {
+            return Duration::ZERO;
+        }
+        if attempt > self.max_attempts {
+            return Duration::MAX;
+        }
 
         let base_ms = self.initial_interval.as_millis() as f64;
         let raw = base_ms * self.backoff_coefficient.powi(attempt as i32 - 1);
@@ -78,7 +82,9 @@ impl BackoffCalculator {
         let mut total = Duration::ZERO;
         for i in 1..=self.max_attempts {
             let d = self.calculate_backoff(i);
-            if d == Duration::MAX { break; }
+            if d == Duration::MAX {
+                break;
+            }
             total += d;
         }
         total
@@ -156,7 +162,11 @@ impl RetryBudget {
     pub fn retry_ratio(&self) -> f64 {
         let req = self.total_requests.load(Ordering::Relaxed);
         let ret = self.total_retries.load(Ordering::Relaxed);
-        if req > 0 { ret as f64 / req as f64 } else { 0.0 }
+        if req > 0 {
+            ret as f64 / req as f64
+        } else {
+            0.0
+        }
     }
 }
 
@@ -172,7 +182,11 @@ pub struct BackoffCoordinator {
 
 impl BackoffCoordinator {
     pub fn new(calculator: BackoffCalculator) -> Self {
-        Self { calculator, budget: None, attempts: AtomicU64::new(0) }
+        Self {
+            calculator,
+            budget: None,
+            attempts: AtomicU64::new(0),
+        }
     }
 
     pub fn with_budget(mut self, budget: RetryBudget) -> Self {
@@ -203,7 +217,9 @@ impl BackoffCoordinator {
         self.attempts.load(Ordering::Relaxed)
     }
 
-    pub fn calculator(&self) -> &BackoffCalculator { &self.calculator }
+    pub fn calculator(&self) -> &BackoffCalculator {
+        &self.calculator
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -216,9 +232,9 @@ mod tests {
 
     #[test]
     fn test_backoff_exponential() {
-        let calc = BackoffCalculator::new(
-            Duration::from_millis(100), 2.0, Duration::from_secs(10), 5
-        ).with_jitter(JitterMode::None);
+        let calc =
+            BackoffCalculator::new(Duration::from_millis(100), 2.0, Duration::from_secs(10), 5)
+                .with_jitter(JitterMode::None);
 
         assert_eq!(calc.calculate_backoff(0), Duration::ZERO);
         assert_eq!(calc.calculate_backoff(1), Duration::from_millis(100));
@@ -230,8 +246,12 @@ mod tests {
     #[test]
     fn test_backoff_max_interval() {
         let calc = BackoffCalculator::new(
-            Duration::from_millis(100), 2.0, Duration::from_millis(500), 10
-        ).with_jitter(JitterMode::None);
+            Duration::from_millis(100),
+            2.0,
+            Duration::from_millis(500),
+            10,
+        )
+        .with_jitter(JitterMode::None);
 
         assert_eq!(calc.calculate_backoff(5), Duration::from_millis(500)); // capped
         assert_eq!(calc.calculate_backoff(10), Duration::from_millis(500)); // still capped
@@ -239,9 +259,9 @@ mod tests {
 
     #[test]
     fn test_backoff_max_attempts() {
-        let calc = BackoffCalculator::new(
-            Duration::from_millis(100), 2.0, Duration::from_secs(10), 3
-        ).with_jitter(JitterMode::None);
+        let calc =
+            BackoffCalculator::new(Duration::from_millis(100), 2.0, Duration::from_secs(10), 3)
+                .with_jitter(JitterMode::None);
         assert_eq!(calc.calculate_backoff(3), Duration::from_millis(400)); // last valid attempt
         assert_eq!(calc.calculate_backoff(4), Duration::MAX); // beyond max
         assert_eq!(calc.next_backoff(3), None);
@@ -249,9 +269,9 @@ mod tests {
 
     #[test]
     fn test_backoff_with_jitter() {
-        let calc = BackoffCalculator::new(
-            Duration::from_millis(1000), 2.0, Duration::from_secs(30), 5
-        ).with_jitter(JitterMode::Full);
+        let calc =
+            BackoffCalculator::new(Duration::from_millis(1000), 2.0, Duration::from_secs(30), 5)
+                .with_jitter(JitterMode::Full);
 
         let b1 = calc.calculate_backoff(1);
         let b2 = calc.calculate_backoff(2);
@@ -262,9 +282,9 @@ mod tests {
 
     #[test]
     fn test_next_backoff() {
-        let calc = BackoffCalculator::new(
-            Duration::from_millis(100), 2.0, Duration::from_secs(10), 3
-        ).with_jitter(JitterMode::None);
+        let calc =
+            BackoffCalculator::new(Duration::from_millis(100), 2.0, Duration::from_secs(10), 3)
+                .with_jitter(JitterMode::None);
 
         assert_eq!(calc.next_backoff(0), Some(Duration::from_millis(100)));
         assert_eq!(calc.next_backoff(1), Some(Duration::from_millis(200)));
@@ -274,9 +294,9 @@ mod tests {
 
     #[test]
     fn test_total_time_estimate() {
-        let calc = BackoffCalculator::new(
-            Duration::from_millis(100), 2.0, Duration::from_secs(10), 4
-        ).with_jitter(JitterMode::None);
+        let calc =
+            BackoffCalculator::new(Duration::from_millis(100), 2.0, Duration::from_secs(10), 4)
+                .with_jitter(JitterMode::None);
 
         let total = calc.total_time_estimate();
         // 100 + 200 + 400 + 800 = 1500ms
@@ -293,9 +313,9 @@ mod tests {
 
     #[test]
     fn test_backoff_coordinator() {
-        let calc = BackoffCalculator::new(
-            Duration::from_millis(100), 2.0, Duration::from_secs(10), 3
-        ).with_jitter(JitterMode::None);
+        let calc =
+            BackoffCalculator::new(Duration::from_millis(100), 2.0, Duration::from_secs(10), 3)
+                .with_jitter(JitterMode::None);
         let coord = BackoffCoordinator::new(calc);
 
         assert!(coord.should_retry().is_some());
@@ -307,9 +327,9 @@ mod tests {
 
     #[test]
     fn test_backoff_coordinator_reset() {
-        let calc = BackoffCalculator::new(
-            Duration::from_millis(100), 2.0, Duration::from_secs(10), 2
-        ).with_jitter(JitterMode::None);
+        let calc =
+            BackoffCalculator::new(Duration::from_millis(100), 2.0, Duration::from_secs(10), 2)
+                .with_jitter(JitterMode::None);
         let coord = BackoffCoordinator::new(calc);
 
         coord.should_retry();
@@ -323,9 +343,9 @@ mod tests {
 
     #[test]
     fn test_coefficient_one() {
-        let calc = BackoffCalculator::new(
-            Duration::from_millis(100), 1.0, Duration::from_secs(10), 5
-        ).with_jitter(JitterMode::None);
+        let calc =
+            BackoffCalculator::new(Duration::from_millis(100), 1.0, Duration::from_secs(10), 5)
+                .with_jitter(JitterMode::None);
 
         // With coefficient=1, all backoffs should be the same
         assert_eq!(calc.calculate_backoff(1), Duration::from_millis(100));

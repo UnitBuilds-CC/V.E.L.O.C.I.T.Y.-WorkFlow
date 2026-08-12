@@ -92,7 +92,11 @@ impl std::fmt::Display for MigrationError {
         match self {
             Self::Database(e) => write!(f, "database error: {}", e),
             Self::InvalidTargetVersion { current, target } => {
-                write!(f, "invalid target version {} (current: {})", target, current)
+                write!(
+                    f,
+                    "invalid target version {} (current: {})",
+                    target, current
+                )
             }
             Self::SqlError { version, message } => {
                 write!(f, "migration {} failed: {}", version, message)
@@ -416,9 +420,9 @@ mod tests {
 
         let status = runner.status();
         assert_eq!(status.len(), 6);
-        assert!(status[0].applied);  // v1
-        assert!(status[1].applied);  // v2
-        assert!(status[2].applied);  // v3
+        assert!(status[0].applied); // v1
+        assert!(status[1].applied); // v2
+        assert!(status[2].applied); // v3
         assert!(!status[3].applied); // v4
         assert!(!status[4].applied); // v5
         assert!(!status[5].applied); // v6
@@ -428,11 +432,31 @@ mod tests {
     fn test_migration_sql_is_embedded() {
         let migrations = all_migrations();
         for m in &migrations {
-            assert!(!m.up_sql.is_empty(), "migration {} up_sql is empty", m.version);
-            assert!(!m.down_sql.is_empty(), "migration {} down_sql is empty", m.version);
-            assert!(m.up_sql.contains("BEGIN;"), "migration {} up_sql missing BEGIN", m.version);
-            assert!(m.up_sql.contains("COMMIT;"), "migration {} up_sql missing COMMIT", m.version);
-            assert!(m.down_sql.contains("BEGIN;"), "migration {} down_sql missing BEGIN", m.version);
+            assert!(
+                !m.up_sql.is_empty(),
+                "migration {} up_sql is empty",
+                m.version
+            );
+            assert!(
+                !m.down_sql.is_empty(),
+                "migration {} down_sql is empty",
+                m.version
+            );
+            assert!(
+                m.up_sql.contains("BEGIN;"),
+                "migration {} up_sql missing BEGIN",
+                m.version
+            );
+            assert!(
+                m.up_sql.contains("COMMIT;"),
+                "migration {} up_sql missing COMMIT",
+                m.version
+            );
+            assert!(
+                m.down_sql.contains("BEGIN;"),
+                "migration {} down_sql missing BEGIN",
+                m.version
+            );
         }
     }
 

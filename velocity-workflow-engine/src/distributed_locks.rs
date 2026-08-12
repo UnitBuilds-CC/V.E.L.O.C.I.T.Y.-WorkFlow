@@ -4,8 +4,11 @@
 //! distributed mutex, read-write locks, and lock manager.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Mutex, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{Instant, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Duration, Instant};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Distributed Lock
@@ -39,7 +42,9 @@ impl DistributedLock {
     }
 
     pub fn remaining_ttl(&self) -> Duration {
-        self.ttl.checked_sub(self.acquired_at.elapsed()).unwrap_or(Duration::ZERO)
+        self.ttl
+            .checked_sub(self.acquired_at.elapsed())
+            .unwrap_or(Duration::ZERO)
     }
 }
 
@@ -71,7 +76,12 @@ impl LockManager {
         }
     }
 
-    pub fn acquire(&self, resource_id: &str, owner: &str, ttl: Duration) -> Result<DistributedLock, LockError> {
+    pub fn acquire(
+        &self,
+        resource_id: &str,
+        owner: &str,
+        ttl: Duration,
+    ) -> Result<DistributedLock, LockError> {
         let mut locks = self.locks.write().unwrap();
 
         // Check if lock exists and is not expired
@@ -101,7 +111,8 @@ impl LockManager {
     pub fn release(&self, resource_id: &str, owner: &str) -> Result<(), LockError> {
         let mut locks = self.locks.write().unwrap();
 
-        let lock = locks.get(resource_id)
+        let lock = locks
+            .get(resource_id)
             .ok_or_else(|| LockError::NotFound(resource_id.to_string()))?;
 
         if lock.owner != owner {
@@ -113,10 +124,16 @@ impl LockManager {
         Ok(())
     }
 
-    pub fn renew(&self, resource_id: &str, owner: &str, new_ttl: Duration) -> Result<u64, LockError> {
+    pub fn renew(
+        &self,
+        resource_id: &str,
+        owner: &str,
+        new_ttl: Duration,
+    ) -> Result<u64, LockError> {
         let mut locks = self.locks.write().unwrap();
 
-        let lock = locks.get_mut(resource_id)
+        let lock = locks
+            .get_mut(resource_id)
             .ok_or_else(|| LockError::NotFound(resource_id.to_string()))?;
 
         if lock.owner != owner {
@@ -133,12 +150,18 @@ impl LockManager {
 
     pub fn is_locked(&self, resource_id: &str) -> bool {
         let locks = self.locks.read().unwrap();
-        locks.get(resource_id).map(|l| !l.is_expired()).unwrap_or(false)
+        locks
+            .get(resource_id)
+            .map(|l| !l.is_expired())
+            .unwrap_or(false)
     }
 
     pub fn get_owner(&self, resource_id: &str) -> Option<String> {
         let locks = self.locks.read().unwrap();
-        locks.get(resource_id).filter(|l| !l.is_expired()).map(|l| l.owner.clone())
+        locks
+            .get(resource_id)
+            .filter(|l| !l.is_expired())
+            .map(|l| l.owner.clone())
     }
 
     pub fn cleanup_expired(&self) -> usize {
@@ -147,16 +170,25 @@ impl LockManager {
         locks.retain(|_, l| !l.is_expired());
         let expired = before - locks.len();
         if expired > 0 {
-            self.stats.lock_expirations.fetch_add(expired as u64, Ordering::Relaxed);
+            self.stats
+                .lock_expirations
+                .fetch_add(expired as u64, Ordering::Relaxed);
         }
         expired
     }
 
     pub fn active_lock_count(&self) -> usize {
-        self.locks.read().unwrap().values().filter(|l| !l.is_expired()).count()
+        self.locks
+            .read()
+            .unwrap()
+            .values()
+            .filter(|l| !l.is_expired())
+            .count()
     }
 
-    pub fn stats(&self) -> &LockManagerStats { &self.stats }
+    pub fn stats(&self) -> &LockManagerStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -187,9 +219,15 @@ impl ShardOwnershipManager {
         }
     }
 
-    pub fn acquire_shard(&self, shard_id: i32, range_id: i64) -> Result<ShardOwnershipInfo, LockError> {
+    pub fn acquire_shard(
+        &self,
+        shard_id: i32,
+        range_id: i64,
+    ) -> Result<ShardOwnershipInfo, LockError> {
         let resource = format!("shard-{}", shard_id);
-        let lock = self.lock_manager.acquire(&resource, &self.member_id, Duration::from_secs(60))?;
+        let lock =
+            self.lock_manager
+                .acquire(&resource, &self.member_id, Duration::from_secs(60))?;
 
         let info = ShardOwnershipInfo {
             shard_id,
@@ -199,7 +237,10 @@ impl ShardOwnershipManager {
             range_id,
         };
 
-        self.ownership.write().unwrap().insert(shard_id, info.clone());
+        self.ownership
+            .write()
+            .unwrap()
+            .insert(shard_id, info.clone());
         Ok(info)
     }
 
@@ -212,7 +253,8 @@ impl ShardOwnershipManager {
 
     pub fn assert_ownership(&self, shard_id: i32, fencing_token: u64) -> Result<(), LockError> {
         let ownership = self.ownership.read().unwrap();
-        let info = ownership.get(&shard_id)
+        let info = ownership
+            .get(&shard_id)
             .ok_or_else(|| LockError::NotOwner(format!("shard-{}", shard_id)))?;
 
         if info.fencing_token != fencing_token {
@@ -328,7 +370,9 @@ mod tests {
     #[test]
     fn test_lock_acquire_release() {
         let mgr = LockManager::new();
-        let lock = mgr.acquire("resource-1", "owner-1", Duration::from_secs(60)).unwrap();
+        let lock = mgr
+            .acquire("resource-1", "owner-1", Duration::from_secs(60))
+            .unwrap();
         assert_eq!(lock.owner, "owner-1");
         assert!(lock.fencing_token > 0);
 
@@ -342,15 +386,21 @@ mod tests {
     #[test]
     fn test_lock_contention() {
         let mgr = LockManager::new();
-        mgr.acquire("resource-1", "owner-1", Duration::from_secs(60)).unwrap();
-        assert!(mgr.acquire("resource-1", "owner-2", Duration::from_secs(60)).is_err());
+        mgr.acquire("resource-1", "owner-1", Duration::from_secs(60))
+            .unwrap();
+        assert!(mgr
+            .acquire("resource-1", "owner-2", Duration::from_secs(60))
+            .is_err());
     }
 
     #[test]
     fn test_lock_renew() {
         let mgr = LockManager::new();
-        mgr.acquire("resource-1", "owner-1", Duration::from_secs(10)).unwrap();
-        let token = mgr.renew("resource-1", "owner-1", Duration::from_secs(60)).unwrap();
+        mgr.acquire("resource-1", "owner-1", Duration::from_secs(10))
+            .unwrap();
+        let token = mgr
+            .renew("resource-1", "owner-1", Duration::from_secs(60))
+            .unwrap();
         assert!(token > 0);
         assert_eq!(mgr.stats().lock_renewals.load(Ordering::Relaxed), 1);
     }
@@ -358,7 +408,8 @@ mod tests {
     #[test]
     fn test_lock_wrong_owner() {
         let mgr = LockManager::new();
-        mgr.acquire("resource-1", "owner-1", Duration::from_secs(60)).unwrap();
+        mgr.acquire("resource-1", "owner-1", Duration::from_secs(60))
+            .unwrap();
         assert!(mgr.release("resource-1", "owner-2").is_err());
     }
 

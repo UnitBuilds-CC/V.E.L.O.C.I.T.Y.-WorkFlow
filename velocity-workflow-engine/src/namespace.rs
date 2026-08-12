@@ -3,7 +3,10 @@
 //! Workflows in different namespaces are completely isolated.
 
 use std::collections::HashMap;
-use std::sync::{RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    RwLock,
+};
 use std::time::Duration;
 
 // ─── Namespace Config ─────────────────────────────────────────────────────────
@@ -163,7 +166,9 @@ impl NamespaceRegistry {
     /// Get the current workflow count for a namespace.
     pub fn workflow_count(&self, namespace_id: u64) -> u64 {
         let counts = self.workflow_counts.read().unwrap();
-        counts.get(&namespace_id).map_or(0, |c| c.load(Ordering::Relaxed))
+        counts
+            .get(&namespace_id)
+            .map_or(0, |c| c.load(Ordering::Relaxed))
     }
 
     /// Deactivate a namespace (stop accepting new workflows).
@@ -243,7 +248,9 @@ impl std::fmt::Display for NamespaceError {
             Self::NotFound(id) => write!(f, "namespace {} not found", id),
             Self::CannotDeleteDefault => write!(f, "cannot delete the default namespace"),
             Self::Inactive(id) => write!(f, "namespace {} is not active", id),
-            Self::ConcurrencyLimitExceeded(id) => write!(f, "namespace {} concurrency limit exceeded", id),
+            Self::ConcurrencyLimitExceeded(id) => {
+                write!(f, "namespace {} concurrency limit exceeded", id)
+            }
         }
     }
 }
@@ -283,7 +290,9 @@ mod tests {
     #[test]
     fn test_register_duplicate_name() {
         let registry = NamespaceRegistry::new();
-        registry.register(NamespaceConfig::new(1, "staging")).unwrap();
+        registry
+            .register(NamespaceConfig::new(1, "staging"))
+            .unwrap();
         let result = registry.register(NamespaceConfig::new(2, "staging"));
         assert_eq!(result, Err(NamespaceError::AlreadyExists("staging".into())));
     }
@@ -291,7 +300,9 @@ mod tests {
     #[test]
     fn test_lookup_by_name() {
         let registry = NamespaceRegistry::new();
-        registry.register(NamespaceConfig::new(5, "test-ns")).unwrap();
+        registry
+            .register(NamespaceConfig::new(5, "test-ns"))
+            .unwrap();
         assert_eq!(registry.get_by_name("test-ns"), Some(5));
         assert_eq!(registry.get_by_name("nonexistent"), None);
     }
@@ -327,7 +338,9 @@ mod tests {
     #[test]
     fn test_delete_namespace() {
         let registry = NamespaceRegistry::new();
-        registry.register(NamespaceConfig::new(1, "to-delete")).unwrap();
+        registry
+            .register(NamespaceConfig::new(1, "to-delete"))
+            .unwrap();
         assert_eq!(registry.count(), 2); // default + to-delete
 
         registry.delete(1).unwrap();

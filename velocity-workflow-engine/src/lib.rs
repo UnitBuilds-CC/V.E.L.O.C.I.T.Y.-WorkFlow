@@ -8,569 +8,677 @@
 //!   [C# Developer Code] ──FFI──► [velocity-workflow-engine] ──► [velocity-workflow-core]
 //!   (thin bridge)                (runtime engine, zero-GC)      (slab, bitmask, Merkle)
 
+pub mod advanced_operations;
 pub mod advanced_scheduler;
 pub mod ai_context;
 pub mod archival;
+pub mod archival_engine;
+pub mod async_activity;
 pub mod auth;
 pub mod auth_v2;
+pub mod backoff_retry;
 pub mod batch;
 pub mod chaos_endurance;
+pub mod client_sdk;
+pub mod clock_abstraction;
 pub mod cluster;
+pub mod codec_server;
 pub mod cold_storage;
+pub mod common_utils;
+pub mod core_internals;
 pub mod cron;
 pub mod db_adapter;
+pub mod deployment_api;
+pub mod depth_operations;
+pub mod distributed_locks;
 pub mod durable_rpc;
 pub mod dynamic_config;
 pub mod engine;
 pub mod errors;
 pub mod event_history;
+pub mod failure_types;
 pub mod ffi;
+pub mod frontend_handlers;
+pub mod frontend_service;
 pub mod graceful_shutdown;
-pub mod hardware_traits;
 pub mod hardware_integration;
+pub mod hardware_traits;
+pub mod header_propagation;
 pub mod health_check;
 pub mod heartbeat;
+pub mod history_api;
+pub mod history_builder;
 pub mod history_compaction;
+pub mod history_engine;
 pub mod history_shard;
 pub mod hot_swap;
+pub mod hsm_framework;
+pub mod lru_cache;
+pub mod matching_deep;
+pub mod matching_engine;
 pub mod matching_service;
+pub mod matching_workers;
+pub mod membership;
 pub mod memo;
 pub mod metrics;
 pub mod metrics_export;
 pub mod migration_runner;
 pub mod multi_region;
 pub mod namespace;
+pub mod namespace_mgmt;
 pub mod ndc_replication;
+pub mod ndc_replication_deep;
 pub mod network_replication;
 pub mod nexus;
+pub mod nexus_deep;
 pub mod observability;
+pub mod operational_api;
 pub mod partition;
 pub mod patch;
 pub mod payload_codec;
+pub mod persistence_layer;
+pub mod persistence_serialization;
+pub mod persistence_sql;
+pub mod persistence_visibility;
 pub mod query_handler;
+pub mod queue_processing;
+pub mod quota_management;
 pub mod raft_consensus;
 pub mod rate_limiter;
-pub mod replication_daemon;
-pub mod replication_transport;
+pub mod reachability;
 pub mod replay;
+pub mod replication_daemon;
+pub mod replication_executor;
+pub mod replication_transport;
 pub mod resource_limits;
 pub mod retry;
+pub mod rpc_framework;
 pub mod saga;
 pub mod schedules;
+pub mod search_attributes;
 pub mod search_index;
+pub mod service_errors;
 pub mod sharding;
+pub mod system_workflows;
+pub mod task_framework;
 pub mod task_queue;
 pub mod timer_engine;
-pub mod codec_server;
-pub mod deployment_api;
-pub mod reachability;
+pub mod timer_queue_executor;
+pub mod transfer_queue_executor;
 pub mod update;
 pub mod validation;
 pub mod visibility;
 pub mod visibility_query;
 pub mod wal;
-pub mod worker_versioning;
+pub mod worker_deployment;
 pub mod worker_determinism;
 pub mod worker_registry;
-pub mod worker_sessions;
 pub mod worker_service;
-pub mod workflow_reset;
-pub mod failure_types;
-pub mod async_activity;
-pub mod advanced_operations;
-pub mod depth_operations;
-pub mod operational_api;
-pub mod core_internals;
-pub mod queue_processing;
-pub mod matching_engine;
-pub mod history_builder;
-pub mod system_workflows;
-pub mod workflow_context;
-pub mod hsm_framework;
-pub mod membership;
-pub mod persistence_layer;
-pub mod ndc_replication_deep;
-pub mod matching_deep;
 pub mod worker_services;
-pub mod frontend_service;
-pub mod namespace_mgmt;
-pub mod common_utils;
-pub mod persistence_sql;
-pub mod persistence_visibility;
-pub mod history_api;
-pub mod matching_workers;
-pub mod frontend_handlers;
-pub mod client_sdk;
-pub mod rpc_framework;
-pub mod distributed_locks;
-pub mod header_propagation;
-pub mod persistence_serialization;
-pub mod workflow_task_handler;
-pub mod nexus_deep;
-pub mod clock_abstraction;
-pub mod search_attributes;
-pub mod task_framework;
-pub mod quota_management;
-pub mod lru_cache;
-pub mod backoff_retry;
-pub mod service_errors;
+pub mod worker_sessions;
+pub mod worker_versioning;
+pub mod workflow_context;
+pub mod workflow_reset;
 pub mod workflow_state_machine;
+pub mod workflow_task_handler;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
 // Requires protoc to be installed for proto compilation.
 #[cfg(feature = "grpc")]
 pub mod grpc_server;
 
-pub use advanced_scheduler::{CronExpression as CronExpressionV2, CronError as CronErrorV2, WorkflowSchedule, ScheduleManager as AdvancedScheduleManager, ScheduleInfo, RateLimiterV2, StickyScheduler, WorkerVersioningV2};
-pub use multi_region::{RegionConfig, RegionState, RegionInfo, MultiRegionReplicator, ReplicationResult, SyncResult, ConflictResolutionStrategy, ReplicationConflict, ResolvedValue, FailoverController, FailoverResult, FailoverEvent, HealthStatus};
-pub use errors::{VelocityError, VelocityResult, ErrorCategory, ErrorCode, FfiErrorCode};
-pub use retry::{RetryPolicy, RetryExecutor, RetryStats, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerMetrics, CircuitState};
-pub use ai_context::{AiContextWindow, AiContextConfig, AiContextStats, MessageRole, ContextMessage, AgentToolCall, ToolCallStatus};
-pub use archival::{ArchiveStore, ArchiveRecord, ArchivePolicy};
-pub use auth::{AuthManager, Permission, Role, Claims};
-pub use auth_v2::{ApiKey, ApiKeyManager, ApiPermission, OAuth2Config, OAuth2Validator, Claims as V2Claims, AuthError, AuditLog, AuditLogger, AuditFilter, AuditResult, EncryptionAtRest, EncryptionConfig, EncryptionAlgorithm};
-pub use batch::{BatchExecutor, BatchResult, BatchOperationType, BatchStatus};
-pub use chaos_endurance::{SoakTestConfig, SoakTestMetrics, run_soak_test, run_crash_recovery_test};
-pub use cluster::{ClusterManager, ClusterInfo, ReplicationTask};
-pub use cold_storage::{FileColdStorage, ColdStorageRecord};
-pub use cron::{CronScheduler, CronExpression, CronError, CronFireEvent};
-pub use db_adapter::{DatabaseAdapter, DatabaseConfig, DatabaseError, DatabaseResult, PostgresAdapter, InMemoryAdapter, MysqlAdapter, CassandraAdapter, CassandraConsistency, SqliteAdapter, SqliteJournalMode, WorkflowRecord, WorkflowEventRecord, SearchAttributeValue as DbSearchAttributeValue, SearchAttributes, StatusFilter, SslMode};
-pub use durable_rpc::{DurableServiceMesh, DurableRpcConfig, DurableRpcStats, DurableRpcState, DurableRpcCall};
-pub use dynamic_config::{DynamicConfig, ConfigValue, Constraints, ConstrainedValue, ConfigKey, Precedence, ConfigClient, MemoryConfigClient, StaticConfigClient, ConfigCollection, GradualChange, ConfigRegistry};
-pub use engine::{WorkflowEngine, WorkflowContext, WorkflowStatus, WorkflowExecutionDescription, PendingActivityInfo, PendingActivityState, PendingChildInfo, PendingSignalInfo};
-pub use event_history::{HistoryStore, HistoryEvent, HistoryEventType};
-pub use hardware_traits::{SmartNicOffload, TeeEnclave, PeerToPeerReplication, SelfHealingEcc, HardwareError};
-pub use hardware_integration::{HardwareAbstractionLayer, EccParityStore, EccStats, MerkleEccResult, compute_simple_merkle_root};
-pub use heartbeat::HeartbeatTracker;
-pub use history_compaction::{HistoryCompactor, CompactionConfig, CompactionStats, CompactionLevel, CompactableEventType};
-pub use history_shard::{HistoryShardManager, ShardContext, MutableState, TransferTask, TransferTaskKind, ShardOwnership, ShardState, ShardStats};
-pub use hot_swap::{HotSwapRegistry, HotSwapPatch, HotSwapResult, HotSwapStats};
-pub use matching_service::{MatchingService, MatchTask, PollerInfo, TaskKindFilter, MatchingServiceConfig, MatchingServiceStats, TaskQueueDescription, PollerDescription, TaskQueuePartitionInfo};
-pub use memo::{MemoStore, MemoEntry, MemoStats, MemoSetResult};
-pub use metrics::MetricsRegistry;
-pub use migration_runner::{Migration, MigrationRunner, MigrationResult, MigrationStatus, MigrationError, MigrationAdapter};
-pub use namespace::{NamespaceRegistry, NamespaceConfig, NamespaceError};
-pub use ndc_replication::{ConflictResolver, ConflictResolution, ReplicationConflict as NdcReplicationConflict, TaskAckTracker, TaskAckState, TaskAckRecord, TaskAckTrackerStats, ReplicationDlq, DlqTask, DlqStats, NamespaceReplicationController, NamespaceReplicationConfig, HistoryGapDetector, HistoryGap, ConsistencyChecker, ConsistencyCheckResult};
-pub use network_replication::{TcpReplicationServer, TcpReplicationConfig, TcpReplicationStats, UdpReplicationTransport, UdpReplicationConfig, UdpReplicationStats, WireFrame, FrameType, encode_tasks, decode_tasks};
-pub use nexus::{NexusManager, NexusOperation, NexusOperationState};
-pub use observability::{ObservabilityConfig, ObservabilityContext, StructuredLogger, MetricsExporter, SpanTracker, LogLevel, SpanId, SpanStatus, init_global, global};
-pub use partition::{PartitionManager, PartitionInfo};
-pub use patch::{PatchRegistry, WorkflowPatch};
-pub use payload_codec::{PayloadCodec, CodecChain, CodecError, IdentityCodec, XorCodec, CompressionCodec, EncryptionCodec, SizeLimitCodec, CodecRegistry, Payload, PayloadMetadata, PayloadValidator, CodecChainStats};
-pub use query_handler::{QueryRegistry, QueryHandler, QueryDefinition, QueryRecord, QueryState, QueryConsistency, QueryStats, BufferedQuery, RejectionPolicy};
-pub use raft_consensus::{RaftNode, RaftCluster, RaftConfig, RaftStats, RaftState, RaftLogEntry};
-pub use rate_limiter::{RateLimiter, TokenBucket, ClockedRateLimiter, MultiRateLimiter, PriorityRateLimiter, RoutingRateLimiter, DelayedRateLimiter, NamespaceRateLimiter, QuotaTracker, QuotaUsage, RequestPriority, RateRequest, Reservation, MultiReservation};
-pub use replication_daemon::{ReplicationDaemon, ReplicationDaemonConfig, ReplicationDaemonStats, DeliveredTask};
-pub use replication_transport::{ReplicationTransport, ReplicationLinkStatus};
-pub use replay::{ReplayEngine, ReplayResult, ReplayActivityState, ReplayActivityStatus};
-pub use saga::{SagaOrchestrator, SagaStepDefinition, SagaStatus};
-pub use schedules::{ScheduleManager, ScheduleEntry, OverlapPolicy, CalendarSpec, ScheduleState, ScheduleAction};
-pub use search_index::{SearchAttributeIndex, SearchIndexStats, IndexedValue, IndexKey, SearchAttributeSchema, SearchAttributeType, SearchAttributeField, SchemaError, VisibilityQueryParser, QueryNode, QueryValue, BulkIndexer, BulkOperation, BulkIndexerStats, IndexLifecycleManager, IndexMetadata, IndexState};
-pub use sharding::ShardManager;
-pub use task_queue::{TaskQueue, TaskItem, TaskKind, QueueStats};
-pub use timer_engine::TimerEngine;
-pub use visibility::{VisibilityIndex, WorkflowExecutionInfo, SearchAttributeValue, VisibilityFilter, VisibilityQuery as AdvancedVisibilityQuery, PaginatedResult, PageToken, SortField, SortOrder, VisibilityAggregation};
-pub use visibility_query::{VisibilityQuery, QueryCondition, QueryField, QueryOp};
-pub use wal::{WalManager, WalWriter, WalRecord, WalEventType};
-pub use worker_versioning::{WorkerVersioning, BuildId, VersionSet, RoutingRule, DeploymentInfo};
-pub use worker_registry::{WorkerRegistry, WorkerInfo, WorkerStatus};
-pub use workflow_reset::{WorkflowResetter, ResetPoint, ResetSpec, ResetResult, ResetReason, HistoryBranch, PendingSignal, LastFailureResetPolicy};
-pub use graceful_shutdown::{ShutdownController, ShutdownStatus, GracefulShutdownConfig};
-pub use health_check::{HealthChecker, HealthStatus as ComponentHealthStatus, AggregateHealth};
-pub use metrics_export::MetricsSnapshot;
-pub use validation::{WorkflowValidator, ValidationError, StartWorkflowRequest, SignalRequest, QueryRequest};
-pub use resource_limits::{ResourceLimits, ResourceTracker, ResourceExceeded, ResourceUsage};
-pub use update::{UpdateController, UpdateHandler, UpdateStore, UpdateRequest, UpdateResult, UpdateStatus, UpdateWaitPolicy};
-pub use reachability::{ReachabilityTracker, ReachabilityQuery, ReachabilityResult, ReachabilityType};
-pub use deployment_api::{DeploymentManager, Deployment, DeploymentStatus, DrainageStatus};
-pub use codec_server::{CodecServer, CodecRequest, CodecResponse, PayloadCodec as ServerPayloadCodec, IdentityCodec as ServerIdentityCodec, Base64Codec, JsonPrettyCodec};
-pub use worker_sessions::{SessionManager, WorkerSession, SessionStatus, SessionConfig};
-pub use worker_service::{WorkerService, SystemWorkflowKind, SystemTask, WorkerPoolConfig, WorkerHealth, WorkerServiceStats};
-pub use worker_determinism::{DeterminismChecker, DeterminismResult, DeterminismViolation, ViolationSeverity, RecordedSideEffect, WorkflowOperation, OperationType};
-pub use failure_types::{FailureType, TimeoutType, RetryState, WorkflowFailure, FailureInfo, ApplicationFailureInfo, TimeoutFailureInfo, CanceledFailureInfo, ServerFailureInfo, ChildWorkflowExecutionFailureInfo, ResetWorkflowFailureInfo, ActivityTaskNotFoundInfo, WorkflowIdReusePolicy, WorkflowFinalStatus, FailureBuilder, FailureStats};
-pub use async_activity::{ActivityTaskToken, AsyncActivityRegistry, PendingAsyncActivity, AsyncActivityState};
 pub use advanced_operations::{
-    ActivityPauseState, PauseActivityRequest, UnpauseActivityRequest, ResetActivityRequest, ActivityControlResponse, ActivityPauseRegistry,
-    WorkflowPauseState, WorkflowPauseRegistry,
-    MultiOperationStep, MultiOperationStepResult, MultiOperationResult, MultiOperationExecutor,
-    ActivityRuntimeOptions, WorkflowRuntimeOptions, RuntimeOptionsRegistry,
-    TimeSkipController,
-    FairnessTracker, FairnessStats,
-    ManagedWorkerInfo, WorkerHealthStatus, ListWorkersRequest, ListWorkersResponse, WorkerManagementRegistry,
-    DlqAdminTask, DlqAdminController, DlqAdminStats,
+    ActivityControlResponse, ActivityPauseRegistry, ActivityPauseState, ActivityRuntimeOptions,
+    DlqAdminController, DlqAdminStats, DlqAdminTask, FairnessStats, FairnessTracker,
+    ListWorkersRequest, ListWorkersResponse, ManagedWorkerInfo, MultiOperationExecutor,
+    MultiOperationResult, MultiOperationStep, MultiOperationStepResult, PauseActivityRequest,
+    ResetActivityRequest, RuntimeOptionsRegistry, TimeSkipController, UnpauseActivityRequest,
+    WorkerHealthStatus, WorkerManagementRegistry, WorkflowPauseRegistry, WorkflowPauseState,
+    WorkflowRuntimeOptions,
 };
+pub use advanced_scheduler::{
+    CronError as CronErrorV2, CronExpression as CronExpressionV2, RateLimiterV2, ScheduleInfo,
+    ScheduleManager as AdvancedScheduleManager, StickyScheduler, WorkerVersioningV2,
+    WorkflowSchedule,
+};
+pub use ai_context::{
+    AgentToolCall, AiContextConfig, AiContextStats, AiContextWindow, ContextMessage, MessageRole,
+    ToolCallStatus,
+};
+pub use archival::{ArchivePolicy, ArchiveRecord, ArchiveStore};
+pub use async_activity::{
+    ActivityTaskToken, AsyncActivityRegistry, AsyncActivityState, PendingAsyncActivity,
+};
+pub use auth::{AuthManager, Claims, Permission, Role};
+pub use auth_v2::{
+    ApiKey, ApiKeyManager, ApiPermission, AuditFilter, AuditLog, AuditLogger, AuditResult,
+    AuthError, Claims as V2Claims, EncryptionAlgorithm, EncryptionAtRest, EncryptionConfig,
+    OAuth2Config, OAuth2Validator,
+};
+pub use batch::{BatchExecutor, BatchOperationType, BatchResult, BatchStatus};
+pub use chaos_endurance::{
+    run_crash_recovery_test, run_soak_test, SoakTestConfig, SoakTestMetrics,
+};
+pub use cluster::{ClusterInfo, ClusterManager, ReplicationTask};
+pub use codec_server::{
+    Base64Codec, CodecRequest, CodecResponse, CodecServer, IdentityCodec as ServerIdentityCodec,
+    JsonPrettyCodec, PayloadCodec as ServerPayloadCodec,
+};
+pub use cold_storage::{ColdStorageRecord, FileColdStorage};
+pub use cron::{CronError, CronExpression, CronFireEvent, CronScheduler};
+pub use db_adapter::{
+    CassandraAdapter, CassandraConsistency, DatabaseAdapter, DatabaseConfig, DatabaseError,
+    DatabaseResult, InMemoryAdapter, MysqlAdapter, PostgresAdapter,
+    SearchAttributeValue as DbSearchAttributeValue, SearchAttributes, SqliteAdapter,
+    SqliteJournalMode, SslMode, StatusFilter, WorkflowEventRecord, WorkflowRecord,
+};
+pub use deployment_api::{Deployment, DeploymentManager, DeploymentStatus, DrainageStatus};
 pub use depth_operations::{
-    ExtendedEventType, ExtendedHistoryEvent, ExtendedHistoryStore,
-    EngineStats, EngineStatistics,
-    SizeLimitConfig, SizeCheckResult, SizeLimitEnforcer,
-    PollContext, PollContextManager,
-    RetentionPolicy, NamespaceRetentionManager,
-    WorkflowTaskState, WorkflowTaskTracker,
+    EngineStatistics, EngineStats, ExtendedEventType, ExtendedHistoryEvent, ExtendedHistoryStore,
+    NamespaceRetentionManager, PollContext, PollContextManager, RetentionPolicy, SizeCheckResult,
+    SizeLimitConfig, SizeLimitEnforcer, WorkflowTaskState, WorkflowTaskTracker,
+};
+pub use durable_rpc::{
+    DurableRpcCall, DurableRpcConfig, DurableRpcState, DurableRpcStats, DurableServiceMesh,
+};
+pub use dynamic_config::{
+    ConfigClient, ConfigCollection, ConfigKey, ConfigRegistry, ConfigValue, ConstrainedValue,
+    Constraints, DynamicConfig, GradualChange, MemoryConfigClient, Precedence, StaticConfigClient,
+};
+pub use engine::{
+    PendingActivityInfo, PendingActivityState, PendingChildInfo, PendingSignalInfo,
+    WorkflowContext, WorkflowEngine, WorkflowExecutionDescription, WorkflowStatus,
+};
+pub use errors::{ErrorCategory, ErrorCode, FfiErrorCode, VelocityError, VelocityResult};
+pub use event_history::{HistoryEvent, HistoryEventType, HistoryStore};
+pub use failure_types::{
+    ActivityTaskNotFoundInfo, ApplicationFailureInfo, CanceledFailureInfo,
+    ChildWorkflowExecutionFailureInfo, FailureBuilder, FailureInfo, FailureStats, FailureType,
+    ResetWorkflowFailureInfo, RetryState, ServerFailureInfo, TimeoutFailureInfo, TimeoutType,
+    WorkflowFailure, WorkflowFinalStatus, WorkflowIdReusePolicy,
+};
+pub use graceful_shutdown::{GracefulShutdownConfig, ShutdownController, ShutdownStatus};
+pub use hardware_integration::{
+    compute_simple_merkle_root, EccParityStore, EccStats, HardwareAbstractionLayer, MerkleEccResult,
+};
+pub use hardware_traits::{
+    HardwareError, PeerToPeerReplication, SelfHealingEcc, SmartNicOffload, TeeEnclave,
+};
+pub use health_check::{AggregateHealth, HealthChecker, HealthStatus as ComponentHealthStatus};
+pub use heartbeat::HeartbeatTracker;
+pub use history_compaction::{
+    CompactableEventType, CompactionConfig, CompactionLevel, CompactionStats, HistoryCompactor,
+};
+pub use history_shard::{
+    HistoryShardManager, MutableState, ShardContext, ShardOwnership, ShardState, ShardStats,
+    TransferTask, TransferTaskKind,
+};
+pub use hot_swap::{HotSwapPatch, HotSwapRegistry, HotSwapResult, HotSwapStats};
+pub use matching_service::{
+    MatchTask, MatchingService, MatchingServiceConfig, MatchingServiceStats, PollerDescription,
+    PollerInfo, TaskKindFilter, TaskQueueDescription, TaskQueuePartitionInfo,
+};
+pub use memo::{MemoEntry, MemoSetResult, MemoStats, MemoStore};
+pub use metrics::MetricsRegistry;
+pub use metrics_export::MetricsSnapshot;
+pub use migration_runner::{
+    Migration, MigrationAdapter, MigrationError, MigrationResult, MigrationRunner, MigrationStatus,
+};
+pub use multi_region::{
+    ConflictResolutionStrategy, FailoverController, FailoverEvent, FailoverResult, HealthStatus,
+    MultiRegionReplicator, RegionConfig, RegionInfo, RegionState, ReplicationConflict,
+    ReplicationResult, ResolvedValue, SyncResult,
+};
+pub use namespace::{NamespaceConfig, NamespaceError, NamespaceRegistry};
+pub use ndc_replication::{
+    ConflictResolution, ConflictResolver, ConsistencyCheckResult, ConsistencyChecker, DlqStats,
+    DlqTask, HistoryGap, HistoryGapDetector, NamespaceReplicationConfig,
+    NamespaceReplicationController, ReplicationConflict as NdcReplicationConflict, ReplicationDlq,
+    TaskAckRecord, TaskAckState, TaskAckTracker, TaskAckTrackerStats,
+};
+pub use network_replication::{
+    decode_tasks, encode_tasks, FrameType, TcpReplicationConfig, TcpReplicationServer,
+    TcpReplicationStats, UdpReplicationConfig, UdpReplicationStats, UdpReplicationTransport,
+    WireFrame,
+};
+pub use nexus::{NexusManager, NexusOperation, NexusOperationState};
+pub use observability::{
+    global, init_global, LogLevel, MetricsExporter, ObservabilityConfig, ObservabilityContext,
+    SpanId, SpanStatus, SpanTracker, StructuredLogger,
 };
 pub use operational_api::{
-    ScheduleBackfillRequest, BackfillOverlapPolicy, BackfillResult, ScheduleBackfiller,
-    UpdateValidationResult, UpdateValidatorFn, UpdateValidatorRegistry, UpdateValidationLogEntry, UpdateValidationStats,
-    DeletionStatus, WorkflowDeletion, WorkflowDeletionPipeline,
-    RebuiltMutableState, MutableStateRebuilder, RebuildStats,
-    TaskValidationResult, TaskValidator, TaskValidationStats,
-    ScheduledWorkflowTask, ScheduledTaskType, WorkflowTaskScheduler,
-    BatchResetRequest, BatchResetResult, BatchResetItemResult, BatchResetter,
-    OpSearchAttributeType, OpSearchAttributeDefinition, OpSearchAttributeSchema,
-    NexusEndpointInfo, NexusEndpointManager,
-    DeploymentVersion, DeploymentVersionRamp,
+    BackfillOverlapPolicy, BackfillResult, BatchResetItemResult, BatchResetRequest,
+    BatchResetResult, BatchResetter, DeletionStatus, DeploymentVersion, DeploymentVersionRamp,
+    MutableStateRebuilder, NexusEndpointInfo, NexusEndpointManager, OpSearchAttributeDefinition,
+    OpSearchAttributeSchema, OpSearchAttributeType, RebuildStats, RebuiltMutableState,
+    ScheduleBackfillRequest, ScheduleBackfiller, ScheduledTaskType, ScheduledWorkflowTask,
+    TaskValidationResult, TaskValidationStats, TaskValidator, UpdateValidationLogEntry,
+    UpdateValidationResult, UpdateValidationStats, UpdateValidatorFn, UpdateValidatorRegistry,
+    WorkflowDeletion, WorkflowDeletionPipeline, WorkflowTaskScheduler,
+};
+pub use partition::{PartitionInfo, PartitionManager};
+pub use patch::{PatchRegistry, WorkflowPatch};
+pub use payload_codec::{
+    CodecChain, CodecChainStats, CodecError, CodecRegistry, CompressionCodec, EncryptionCodec,
+    IdentityCodec, Payload, PayloadCodec, PayloadMetadata, PayloadValidator, SizeLimitCodec,
+    XorCodec,
+};
+pub use query_handler::{
+    BufferedQuery, QueryConsistency, QueryDefinition, QueryHandler, QueryRecord, QueryRegistry,
+    QueryState, QueryStats, RejectionPolicy,
+};
+pub use raft_consensus::{RaftCluster, RaftConfig, RaftLogEntry, RaftNode, RaftState, RaftStats};
+pub use rate_limiter::{
+    ClockedRateLimiter, DelayedRateLimiter, MultiRateLimiter, MultiReservation,
+    NamespaceRateLimiter, PriorityRateLimiter, QuotaTracker, QuotaUsage, RateLimiter, RateRequest,
+    RequestPriority, Reservation, RoutingRateLimiter, TokenBucket,
+};
+pub use reachability::{
+    ReachabilityQuery, ReachabilityResult, ReachabilityTracker, ReachabilityType,
+};
+pub use replay::{ReplayActivityState, ReplayActivityStatus, ReplayEngine, ReplayResult};
+pub use replication_daemon::{
+    DeliveredTask, ReplicationDaemon, ReplicationDaemonConfig, ReplicationDaemonStats,
+};
+pub use replication_transport::{ReplicationLinkStatus, ReplicationTransport};
+pub use resource_limits::{ResourceExceeded, ResourceLimits, ResourceTracker, ResourceUsage};
+pub use retry::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerMetrics, CircuitState, RetryExecutor,
+    RetryPolicy, RetryStats,
+};
+pub use saga::{SagaOrchestrator, SagaStatus, SagaStepDefinition};
+pub use schedules::{
+    CalendarSpec, OverlapPolicy, ScheduleAction, ScheduleEntry, ScheduleManager, ScheduleState,
+};
+pub use search_index::{
+    BulkIndexer, BulkIndexerStats, BulkOperation, IndexKey, IndexLifecycleManager, IndexMetadata,
+    IndexState, IndexedValue, QueryNode, QueryValue, SchemaError, SearchAttributeField,
+    SearchAttributeIndex, SearchAttributeSchema, SearchAttributeType, SearchIndexStats,
+    VisibilityQueryParser,
+};
+pub use sharding::ShardManager;
+pub use task_queue::{QueueStats, TaskItem, TaskKind, TaskQueue};
+pub use timer_engine::TimerEngine;
+pub use update::{
+    UpdateController, UpdateHandler, UpdateRequest, UpdateResult, UpdateStatus, UpdateStore,
+    UpdateWaitPolicy,
+};
+pub use validation::{
+    QueryRequest, SignalRequest, StartWorkflowRequest, ValidationError, WorkflowValidator,
+};
+pub use visibility::{
+    PageToken, PaginatedResult, SearchAttributeValue, SortField, SortOrder, VisibilityAggregation,
+    VisibilityFilter, VisibilityIndex, VisibilityQuery as AdvancedVisibilityQuery,
+    WorkflowExecutionInfo,
+};
+pub use visibility_query::{QueryCondition, QueryField, QueryOp, VisibilityQuery};
+pub use wal::{WalEventType, WalManager, WalRecord, WalWriter};
+pub use worker_determinism::{
+    DeterminismChecker, DeterminismResult, DeterminismViolation, OperationType, RecordedSideEffect,
+    ViolationSeverity, WorkflowOperation,
+};
+pub use worker_registry::{WorkerInfo, WorkerRegistry, WorkerStatus};
+pub use worker_service::{
+    SystemTask, SystemWorkflowKind, WorkerHealth, WorkerPoolConfig, WorkerService,
+    WorkerServiceStats,
+};
+pub use worker_sessions::{SessionConfig, SessionManager, SessionStatus, WorkerSession};
+pub use worker_versioning::{BuildId, DeploymentInfo, RoutingRule, VersionSet, WorkerVersioning};
+pub use workflow_reset::{
+    HistoryBranch, LastFailureResetPolicy, PendingSignal, ResetPoint, ResetReason, ResetResult,
+    ResetSpec, WorkflowResetter,
 };
 // core_internals: mutable state machine, command processing, task generation, transactions.
 // Note: TransferTask, ReplicationTask, WorkflowTaskState are NOT re-exported here due to
 // name conflicts with history_shard::TransferTask, cluster::ReplicationTask, depth_operations::WorkflowTaskState.
 // Access them via velocity_workflow_engine::core_internals::* if needed.
 pub use core_internals::{
-    ActivityMutableState, ActivityMutableInfo, ActivityRetryPolicyState,
-    TimerMutableState, TimerMutableInfo,
-    ChildWorkflowMutableState, ChildWorkflowMutableInfo,
-    ParentClosePolicyKind, ExternalRequestInfo, ExternalRequestType,
-    WorkflowMutableState, MutableStateSummary,
-    WorkflowCommand, ScheduleActivityCommand, StartTimerCommand,
-    CompleteWorkflowCommand, FailWorkflowCommand, CancelWorkflowCommand,
-    StartChildWorkflowCommand, CancelChildWorkflowCommand,
-    SignalExternalCommand, CancelExternalCommand,
-    ContinueAsNewCommand, CancelTimerCommand, RequestCancelActivityCommand,
-    ProtocolMessageCommand, ModifyPropertiesCommand, RecordMarkerCommand,
-    CommandProcessor, ProcessedCommandRecord,
-    GeneratedTask, TransferTaskType, TimerTaskType, ReplicationTaskType, VisibilityTaskType,
-    TimerTask, VisibilityTask,
-    TaskGenerator,
-    TransactionState, MutableStateSnapshot, TransactionManager, TransactionInfo, TransactionStats,
-    WorkflowTaskStateMachine, WorkflowTaskInfo, WorkflowTaskStats,
-    TaskRefresher,
-    TimerSequence, TimerSequenceEntry,
-    MutableStateChecksum,
+    ActivityMutableInfo, ActivityMutableState, ActivityRetryPolicyState,
+    CancelChildWorkflowCommand, CancelExternalCommand, CancelTimerCommand, CancelWorkflowCommand,
+    ChildWorkflowMutableInfo, ChildWorkflowMutableState, CommandProcessor, CompleteWorkflowCommand,
+    ContinueAsNewCommand, ExternalRequestInfo, ExternalRequestType, FailWorkflowCommand,
+    GeneratedTask, ModifyPropertiesCommand, MutableStateChecksum, MutableStateSnapshot,
+    MutableStateSummary, ParentClosePolicyKind, ProcessedCommandRecord, ProtocolMessageCommand,
+    RecordMarkerCommand, ReplicationTaskType, RequestCancelActivityCommand,
+    ScheduleActivityCommand, SignalExternalCommand, StartChildWorkflowCommand, StartTimerCommand,
+    TaskGenerator, TaskRefresher, TimerMutableInfo, TimerMutableState, TimerSequence,
+    TimerSequenceEntry, TimerTask, TimerTaskType, TransactionInfo, TransactionManager,
+    TransactionState, TransactionStats, TransferTaskType, VisibilityTask, VisibilityTaskType,
+    WorkflowCommand, WorkflowMutableState, WorkflowTaskInfo, WorkflowTaskStateMachine,
+    WorkflowTaskStats,
 };
 // queue_processing: timer, transfer, visibility, replication, archival queue processors.
 pub use queue_processing::{
-    QueueProcessorStatus, QueueProcessorConfig, QueueProcessorStats, TaskExecutionResult,
-    TransferQueueTask, TransferQueueTaskType, TransferQueueProcessor,
-    TimerQueueTask, TimerQueueTaskType, TimerQueueProcessor,
-    VisibilityQueueTask, VisibilityQueueTaskType, VisibilityQueueProcessor,
-    ReplicationQueueTask, ReplicationQueueTaskType, ReplicationQueueProcessor,
-    ArchivalQueueTask, ArchivalQueueTaskType, ArchivalQueueProcessor,
-    QueueTaskScheduler, AllQueueStats,
+    AllQueueStats, ArchivalQueueProcessor, ArchivalQueueTask, ArchivalQueueTaskType,
+    QueueProcessorConfig, QueueProcessorStats, QueueProcessorStatus, QueueTaskScheduler,
+    ReplicationQueueProcessor, ReplicationQueueTask, ReplicationQueueTaskType, TaskExecutionResult,
+    TimerQueueProcessor, TimerQueueTask, TimerQueueTaskType, TransferQueueProcessor,
+    TransferQueueTask, TransferQueueTaskType, VisibilityQueueProcessor, VisibilityQueueTask,
+    VisibilityQueueTaskType,
 };
 // matching_engine: task queue partitioning, matching algorithm, poller management.
 pub use matching_engine::{
-    PartitionConfig, TaskQueuePartition, PartitionManager as MatchingPartitionManager,
-    PhysicalTask, PartitionRedirect, PhysicalTaskQueue, PhysicalQueueStats,
-    LogicalTaskQueue, TaskQueueType,
-    MatchingEngineCore, MatchingEngineConfig, MatchingEngineStats, MatchResult,
-    Poller, PollerRegistry, PollerInfo as MatchingPollerInfo,
-    FairTaskReader, TaskReaderStats,
-    TaskQueueUserData, VersioningData, RedirectRule, UserDataManager,
-    PriorityMatcher,
+    FairTaskReader, LogicalTaskQueue, MatchResult, MatchingEngineConfig, MatchingEngineCore,
+    MatchingEngineStats, PartitionConfig, PartitionManager as MatchingPartitionManager,
+    PartitionRedirect, PhysicalQueueStats, PhysicalTask, PhysicalTaskQueue, Poller,
+    PollerInfo as MatchingPollerInfo, PollerRegistry, PriorityMatcher, RedirectRule,
+    TaskQueuePartition, TaskQueueType, TaskQueueUserData, TaskReaderStats, UserDataManager,
+    VersioningData,
 };
 // history_builder: event construction, branch tokens, serialization.
 pub use history_builder::{
-    HBEventType, HBHistoryEvent,
-    HistoryBuilder, HistoryBranch as HBHistoryBranch, BranchAncestor, HistoryBranchManager,
-    HistorySerializer, HistoryTree,
+    BranchAncestor, HBEventType, HBHistoryEvent, HistoryBranch as HBHistoryBranch,
+    HistoryBranchManager, HistoryBuilder, HistorySerializer, HistoryTree,
 };
 // system_workflows: parent close, namespace delete, scanner, batcher, archival.
 pub use system_workflows::{
-    ParentCloseAction, ChildWorkflowRef, ParentClosePolicyExecutor, ExecutedAction,
-    NamespaceDeletionStep, NamespaceDeletionStatus, NamespaceDeletionWorkflow,
-    ScanTarget, ScanResult, WorkflowScanner,
-    SystemBatchOp, BatchOpItem, BatchItemStatus, SystemBatchOperation, BatchOperationProcessor,
-    ArchivalWorkflowState, ArchivalStatus, HistoryArchivalWorkflow,
-    QueueCleanupTarget, QueueCleanupRecord, QueueCleanupWorkflow,
-    ReplicationRepairTask, RepairStatus, ReplicationRepairWorkflow,
+    ArchivalStatus, ArchivalWorkflowState, BatchItemStatus, BatchOpItem, BatchOperationProcessor,
+    ChildWorkflowRef, ExecutedAction, HistoryArchivalWorkflow, NamespaceDeletionStatus,
+    NamespaceDeletionStep, NamespaceDeletionWorkflow, ParentCloseAction, ParentClosePolicyExecutor,
+    QueueCleanupRecord, QueueCleanupTarget, QueueCleanupWorkflow, RepairStatus,
+    ReplicationRepairTask, ReplicationRepairWorkflow, ScanResult, ScanTarget, SystemBatchOp,
+    SystemBatchOperation, WorkflowScanner,
 };
 // workflow_context: execution context tying mutable state, history, shards together.
 pub use workflow_context::{
-    ContextState, WorkflowExecutionContext,
-    ShardContext as WorkflowShardContext, ShardStats as WorkflowShardStats,
-    ContextManager, ExecutionStats,
+    ContextManager, ContextState, ExecutionStats, ShardContext as WorkflowShardContext,
+    ShardStats as WorkflowShardStats, WorkflowExecutionContext,
 };
 // hsm_framework: hierarchical state machine for complex workflow state management.
 pub use hsm_framework::{
-    HSMState, HSMStateType, HSMTransition,
-    HSMStateMachine, EventRecord, TransitionResult,
-    HierarchicalStateMachine,
-    HSMRegistry,
+    EventRecord, HSMRegistry, HSMState, HSMStateMachine, HSMStateType, HSMTransition,
+    HierarchicalStateMachine, TransitionResult,
 };
 // membership: cluster membership, consistent hash ring, health checking.
 pub use membership::{
-    ClusterMember, MemberRole, MemberStatus,
-    MembershipRing,
-    ClusterHealthChecker, HealthCheckResult,
-    ShardOwnershipManager,
+    ClusterHealthChecker, ClusterMember, HealthCheckResult, MemberRole, MemberStatus,
+    MembershipRing, ShardOwnershipManager,
 };
 // persistence_layer: deep persistence data models, store interfaces, managers.
 pub use persistence_layer::{
-    CreateWorkflowMode, UpdateWorkflowMode, ConflictResolveMode, QueueType,
-    WorkflowExecutionInfo as PersistedWorkflowInfo, WorkflowExecutionStatus as PersistedExecStatus,
-    ExecutionStatsPersisted,
-    UpdateInfo as PersistedUpdateInfo, UpdateStatus as PersistedUpdateStatus,
-    StateMachineInfo, QueueMetadata,
-    WorkflowExecutionState, VersionHistory, VersionHistoryItem, VersionHistories,
-    PersistentTask, PersistentTaskType, TaskKey, TaskRange,
-    ShardInfo as PersistedShardInfo, FailoverLevel,
-    HistoryBranch as PersistedHistoryBranch, HistoryBranchAncestor, HistoryTreeInfo,
-    DataBlob, EncodingType, SerializedEventBatch, EventBatchRow,
-    PageToken as PersistedPageToken, HistoryPagingToken,
-    ExecutionStore, HistoryStore as PersistedHistoryStore, TaskStore, ShardStore, VisibilityStore, NamespaceStore, QueueStore,
-    CreateWorkflowRequest, CreateWorkflowResponse, GetWorkflowRequest, GetWorkflowResponse,
-    UpdateWorkflowRequest, UpdateWorkflowResponse, DeleteWorkflowRequest,
-    GetCurrentRequest, GetCurrentResponse, ListWorkflowsRequest, ListWorkflowsResponse,
-    AppendHistoryRequest, AppendHistoryResponse, ReadHistoryRequest, ReadHistoryResponse,
-    DeleteHistoryRequest, ListOpenRequest, ListClosedRequest, ListVisibilityResponse,
-    NamespaceDetail, NamespaceState, ArchivalState as PersistedArchivalState,
-    NamespaceReplicationConfig as PersistedNsReplicationConfig,
-    QueueMessage, PersistenceError,
-    OperationModeValidator,
-    XDCCache, XDCCacheEntry, XDCCacheStats,
-    ExecutionManager as PersistedExecutionManager, ExecutionManagerStats,
-    HistoryManager as PersistedHistoryManager, HistoryManagerStats,
-    InMemoryExecutionStore, InMemoryHistoryStore, InMemoryShardStore,
-    InMemoryVisibilityStore, InMemoryNamespaceStore, InMemoryQueueStore,
-    PersistenceFactory, PersistenceStack,
+    AppendHistoryRequest, AppendHistoryResponse, ArchivalState as PersistedArchivalState,
+    ConflictResolveMode, CreateWorkflowMode, CreateWorkflowRequest, CreateWorkflowResponse,
+    DataBlob, DeleteHistoryRequest, DeleteWorkflowRequest, EncodingType, EventBatchRow,
+    ExecutionManager as PersistedExecutionManager, ExecutionManagerStats, ExecutionStatsPersisted,
+    ExecutionStore, FailoverLevel, GetCurrentRequest, GetCurrentResponse, GetWorkflowRequest,
+    GetWorkflowResponse, HistoryBranch as PersistedHistoryBranch, HistoryBranchAncestor,
+    HistoryManager as PersistedHistoryManager, HistoryManagerStats, HistoryPagingToken,
+    HistoryStore as PersistedHistoryStore, HistoryTreeInfo, InMemoryExecutionStore,
+    InMemoryHistoryStore, InMemoryNamespaceStore, InMemoryQueueStore, InMemoryShardStore,
+    InMemoryVisibilityStore, ListClosedRequest, ListOpenRequest, ListVisibilityResponse,
+    ListWorkflowsRequest, ListWorkflowsResponse, NamespaceDetail,
+    NamespaceReplicationConfig as PersistedNsReplicationConfig, NamespaceState, NamespaceStore,
+    OperationModeValidator, PageToken as PersistedPageToken, PersistenceError, PersistenceFactory,
+    PersistenceStack, PersistentTask, PersistentTaskType, QueueMessage, QueueMetadata, QueueStore,
+    QueueType, ReadHistoryRequest, ReadHistoryResponse, SerializedEventBatch,
+    ShardInfo as PersistedShardInfo, ShardStore, StateMachineInfo, TaskKey, TaskRange, TaskStore,
+    UpdateInfo as PersistedUpdateInfo, UpdateStatus as PersistedUpdateStatus, UpdateWorkflowMode,
+    UpdateWorkflowRequest, UpdateWorkflowResponse, VersionHistories, VersionHistory,
+    VersionHistoryItem, VisibilityStore, WorkflowExecutionInfo as PersistedWorkflowInfo,
+    WorkflowExecutionState, WorkflowExecutionStatus as PersistedExecStatus, XDCCache,
+    XDCCacheEntry, XDCCacheStats,
 };
 // ndc_replication_deep: deep NDC replication subsystem.
 pub use ndc_replication_deep::{
-    ReplicationTaskKind, ReplicationTask as NdcReplicationTask, ReplicationTaskStatus,
-    VersionedTransition,
-    WorkflowStateReplicator, ReplicatorStats, ApplyResult,
-    ActivityStateReplicator, ActivityReplicatorStats, SyncActivityInfo, ReplicatedActivityState,
-    HsmStateReplicator, HsmReplicatorStats, SyncHsmState,
-    ConflictResolver as NdcConflictResolver, ReplicationConflict as NdcConflict, ConflictType, ConflictResolution as NdcConflictResolution,
-    ReplicatedWorkflowState, ReplicatedEvent,
-    StateRebuilder,
-    TransactionManager as NdcTransactionManager, TransactionManagerStats, TransactionResult, PendingReplicationTask,
-    NewWorkflowTransaction, ExistingWorkflowTransaction,
-    HistoryReplicator, HistoryReplicatorStats, HistoryReplicationBatch, NewRunInfo,
-    HistoryImporter, ImporterStats, ImportHistoryRequest,
-    BranchManager, ReplicationBranch, BranchAncestorInfo,
-    EventsReapplier,
-    ReplicationWorkflowResetter, ResetterStats, ReplicationResetSpec,
-    MutableStateInitializer, MutableStateMapper, MappedState,
-    BufferEventFlusher,
-    ReplicationError,
+    ActivityReplicatorStats, ActivityStateReplicator, ApplyResult, BranchAncestorInfo,
+    BranchManager, BufferEventFlusher, ConflictResolution as NdcConflictResolution,
+    ConflictResolver as NdcConflictResolver, ConflictType, EventsReapplier,
+    ExistingWorkflowTransaction, HistoryImporter, HistoryReplicationBatch, HistoryReplicator,
+    HistoryReplicatorStats, HsmReplicatorStats, HsmStateReplicator, ImportHistoryRequest,
+    ImporterStats, MappedState, MutableStateInitializer, MutableStateMapper, NewRunInfo,
+    NewWorkflowTransaction, PendingReplicationTask, ReplicatedActivityState, ReplicatedEvent,
+    ReplicatedWorkflowState, ReplicationBranch, ReplicationConflict as NdcConflict,
+    ReplicationError, ReplicationResetSpec, ReplicationTask as NdcReplicationTask,
+    ReplicationTaskKind, ReplicationTaskStatus, ReplicationWorkflowResetter, ReplicatorStats,
+    ResetterStats, StateRebuilder, SyncActivityInfo, SyncHsmState,
+    TransactionManager as NdcTransactionManager, TransactionManagerStats, TransactionResult,
+    VersionedTransition, WorkflowStateReplicator,
 };
 // matching_deep: deep matching subsystem.
 pub use matching_deep::{
-    TaskQueueGroup, DeepTaskQueueType, TaskQueueVersion, BuildIdRedirectRule, BuildIdAssignmentRule, Ramp,
-    SyncMatchProtocol, PendingMatch, DeepPhysicalTask, SyncMatchStats, SyncMatchResult,
-    TaskQueueCounter, CounterPartition,
-    MatchingWorker, MatchingWorkerManager, MatchingWorkerManagerStats,
-    TaskForwarder, ForwardTaskRequest, ForwardResult,
-    StickyMatcher, StickyAssignment, StickyMatchStats,
-    RateLimitedDispatcher, DispatchRate, DispatchStats,
+    BuildIdAssignmentRule, BuildIdRedirectRule, CounterPartition, DeepPhysicalTask,
+    DeepTaskQueueType, DispatchRate, DispatchStats, ForwardResult, ForwardTaskRequest,
+    MatchingWorker, MatchingWorkerManager, MatchingWorkerManagerStats, PendingMatch, Ramp,
+    RateLimitedDispatcher, StickyAssignment, StickyMatchStats, StickyMatcher, SyncMatchProtocol,
+    SyncMatchResult, SyncMatchStats, TaskForwarder, TaskQueueCounter, TaskQueueGroup,
+    TaskQueueVersion,
 };
 // worker_services: deep worker service subsystem.
 pub use worker_services::{
-    WorkerDeploymentManager, DeploymentManagerStats, WorkerDeployment, DeploymentVersion as WorkerDeploymentVersion,
-    DeploymentState, VersionState, DrainageInfo, DrainageStatus as WorkerDrainageStatus,
-    SchedulerService, SchedulerStats, SchedulerSchedule, SchedulerSpec, CalendarSpec as SchedulerCalendarSpec,
-    SchedulerPolicy, SchedulerOverlapPolicy, SchedulerState, SchedulerInfo, SchedulerActionResult,
-    ScannerService, ScannerStats, ScanExecution, ScanType, ScanStatus,
-    MigrationService, MigrationStats, MigrationExecution, MigrationExecStatus,
-    DlqManagementService, DlqStats as WorkerDlqStats, DlqQueue, DlqMessage,
-    BatcherService, BatcherStats, BatcherJob, BatcherOperation, BatcherJobStatus,
-    DeploymentError, SchedulerError, ScannerError, MigrationError as WorkerMigrationError, DlqError, BatcherError,
+    BatcherError, BatcherJob, BatcherJobStatus, BatcherOperation, BatcherService, BatcherStats,
+    CalendarSpec as SchedulerCalendarSpec, DeploymentError, DeploymentManagerStats,
+    DeploymentState, DeploymentVersion as WorkerDeploymentVersion, DlqError, DlqManagementService,
+    DlqMessage, DlqQueue, DlqStats as WorkerDlqStats, DrainageInfo,
+    DrainageStatus as WorkerDrainageStatus, MigrationError as WorkerMigrationError,
+    MigrationExecStatus, MigrationExecution, MigrationService, MigrationStats, ScanExecution,
+    ScanStatus, ScanType, ScannerError, ScannerService, ScannerStats, SchedulerActionResult,
+    SchedulerError, SchedulerInfo, SchedulerOverlapPolicy, SchedulerPolicy, SchedulerSchedule,
+    SchedulerService, SchedulerSpec, SchedulerState, SchedulerStats, VersionState,
+    WorkerDeployment, WorkerDeploymentManager,
 };
 // frontend_service: deep frontend service.
 pub use frontend_service::{
-    FrontendService, FrontendConfig, FrontendStats,
-    ApiRequest, ApiResponse, ApiStatus,
-    RequestInterceptor, InterceptorError,
-    AuthInterceptor, RateLimitInterceptor, ValidationInterceptor, TelemetryInterceptor,
-    ApiHandler, HandlerError,
+    ApiHandler, ApiRequest, ApiResponse, ApiStatus, AuthInterceptor, FrontendConfig,
+    FrontendService, FrontendStats, HandlerError, InterceptorError, RateLimitInterceptor,
+    RequestInterceptor, TelemetryInterceptor, ValidationInterceptor,
 };
 // namespace_mgmt: deep namespace management.
 pub use namespace_mgmt::{
-    NamespaceRegistry as DeepNamespaceRegistry, RegistryStats, NamespaceEntry, NamespaceLifecycleState,
-    ArchivalState as NsArchivalState, ClusterReplicationConfig,
-    NamespaceWatcher, NamespaceChangeEvent, NamespaceChangeType,
-    NamespaceReplicationQueue, ReplicationQueueStats, ReplicationQueueMessage,
-    FailoverManager, FailoverStats, FailoverRecord, FailoverState,
-    ClusterMetadata,
-    RegistryError,
+    ArchivalState as NsArchivalState, ClusterMetadata, ClusterReplicationConfig, FailoverManager,
+    FailoverRecord, FailoverState, FailoverStats, NamespaceChangeEvent, NamespaceChangeType,
+    NamespaceEntry, NamespaceLifecycleState, NamespaceRegistry as DeepNamespaceRegistry,
+    NamespaceReplicationQueue, NamespaceWatcher, RegistryError, RegistryStats,
+    ReplicationQueueMessage, ReplicationQueueStats,
 };
 // common_utils: deep common utilities.
 pub use common_utils::{
-    QuotaManager, QuotaStats, QuotaPolicy,
-    SearchAttributeManager, SearchAttributeStats, SearchAttributeDefinition,
-    SearchAttributeFieldType, SearchAttributeValue as UtilSearchAttributeValue, SearchAttributeError,
-    MetricsFramework, MetricsFrameworkStats, MetricsScope, MetricDefinition, MetricType,
-    TaskFramework, TaskFrameworkStats, TaskExecutor, FrameworkTask, TaskResult, TaskError,
-    VersioningManager, VersioningStats, VersionSet as DeepVersionSet, VersionRedirectRule,
+    FrameworkTask, MetricDefinition, MetricType, MetricsFramework, MetricsFrameworkStats,
+    MetricsScope, QuotaManager, QuotaPolicy, QuotaStats, SearchAttributeDefinition,
+    SearchAttributeError, SearchAttributeFieldType, SearchAttributeManager, SearchAttributeStats,
+    SearchAttributeValue as UtilSearchAttributeValue, TaskError, TaskExecutor, TaskFramework,
+    TaskFrameworkStats, TaskResult, VersionRedirectRule, VersionSet as DeepVersionSet,
+    VersioningManager, VersioningStats,
 };
 // persistence_sql: SQL query builder, schema management, connection pooling, transaction handling.
 pub use persistence_sql::{
-    SqlQueryBuilder, SqlDialect, SqlValue, ComparisonOp,
-    SelectBuilder, InsertBuilder, UpdateBuilder, DeleteBuilder,
-    Condition, OrderByClause, JoinClause, JoinType, Assignment,
-    SchemaManager, SchemaMigration, SchemaError as SqlSchemaError,
-    ConnectionPool, PoolConfig, PoolConnection, PoolStats, PoolError,
-    SqlTransactionManager, SqlTransaction, IsolationLevel, TransactionStats as SqlTransactionStats, TransactionError,
+    Assignment, ComparisonOp, Condition, ConnectionPool, DeleteBuilder, InsertBuilder,
+    IsolationLevel, JoinClause, JoinType, OrderByClause, PoolConfig, PoolConnection, PoolError,
+    PoolStats, SchemaError as SqlSchemaError, SchemaManager, SchemaMigration, SelectBuilder,
+    SqlDialect, SqlQueryBuilder, SqlTransaction, SqlTransactionManager, SqlValue, TransactionError,
+    TransactionStats as SqlTransactionStats, UpdateBuilder,
 };
 // persistence_visibility: deep visibility store with query parsing, indexing, aggregation.
 pub use persistence_visibility::{
-    VisibilityRecord, WorkflowExecutionStatus as VisExecStatus, SearchAttribute as VisSearchAttribute,
-    QueryParser, VisibilityQuery as DeepVisibilityQuery, QueryValue as DeepQueryValue, QueryParseError,
-    QueryEvaluator,
-    VisibilityIndex as DeepVisibilityIndex,
-    DeepVisibilityStore, VisibilityStats, VisibilityError,
+    DeepVisibilityStore, QueryEvaluator, QueryParseError, QueryParser,
+    QueryValue as DeepQueryValue, SearchAttribute as VisSearchAttribute, VisibilityError,
+    VisibilityIndex as DeepVisibilityIndex, VisibilityQuery as DeepVisibilityQuery,
+    VisibilityRecord, VisibilityStats, WorkflowExecutionStatus as VisExecStatus,
 };
 // history_api: full history API handler implementations.
 pub use history_api::{
-    HistoryApiContext,
-    StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
-    RecordActivityTaskHeartbeatRequest, RecordActivityTaskHeartbeatResponse,
-    PollActivityTaskQueueRequest, PollActivityTaskQueueResponse,
-    RespondActivityTaskCompletedRequest, RespondActivityTaskFailedRequest, RespondActivityTaskCanceledRequest,
-    SignalWorkflowExecutionRequest, QueryWorkflowRequest, QueryWorkflowResponse,
-    RequestCancelWorkflowExecutionRequest, TerminateWorkflowExecutionRequest,
-    GetWorkflowExecutionHistoryRequest, GetWorkflowExecutionHistoryResponse,
-    HistoryApiHandler, HistoryApiServiceImpl, HistoryApiError, HistoryApiStats,
+    EventType as ApiEventType, Failure as ApiFailure, FailureType as ApiFailureType,
+    GetWorkflowExecutionHistoryRequest, GetWorkflowExecutionHistoryResponse, History as ApiHistory,
+    HistoryApiContext, HistoryApiError, HistoryApiHandler, HistoryApiServiceImpl, HistoryApiStats,
+    HistoryEvent as ApiHistoryEvent, PollActivityTaskQueueRequest, PollActivityTaskQueueResponse,
+    QueryWorkflowRequest, QueryWorkflowResponse, RecordActivityTaskHeartbeatRequest,
+    RecordActivityTaskHeartbeatResponse, RequestCancelWorkflowExecutionRequest,
+    RespondActivityTaskCanceledRequest, RespondActivityTaskCompletedRequest,
+    RespondActivityTaskFailedRequest, RetryPolicy as HistRetryPolicy,
+    SignalWorkflowExecutionRequest, StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
+    TaskQueueMetadata, TerminateWorkflowExecutionRequest, TimeoutType as ApiTimeoutType,
     WorkflowExecution as HistWorkflowExecution, WorkflowExecutionStatus as HistExecStatus,
-    HistoryEvent as ApiHistoryEvent, EventType as ApiEventType, History as ApiHistory, Failure as ApiFailure, FailureType as ApiFailureType, TimeoutType as ApiTimeoutType,
-    RetryPolicy as HistRetryPolicy, TaskQueueMetadata,
 };
 // matching_workers: deep matching worker implementations.
 pub use matching_workers::{
-    TaskQueuePartition as WorkerTaskQueuePartition, TaskType as WorkerTaskType, InternalTask, RedirectInfo,
-    PhysicalTaskQueue as WorkerPhysicalTaskQueue, TaskQueueConfig, PollerInfo as WorkerPollerInfo,
-    RateLimiterState,
-    LogicalTaskQueue as WorkerLogicalTaskQueue, TaskQueueVersioning, VersionData, VersionRedirectRule as WorkerVersionRedirectRule, VersionAssignmentRule,
-    DispatchResult,
-    TaskQueueManager, TaskQueueManagerStats,
-    TaskForwarder as WorkerTaskForwarder, ForwardStats,
-    MatchingLoadBalancer, PartitionLoad,
+    DispatchResult, ForwardStats, InternalTask, LogicalTaskQueue as WorkerLogicalTaskQueue,
+    MatchingLoadBalancer, PartitionLoad, PhysicalTaskQueue as WorkerPhysicalTaskQueue,
+    PollerInfo as WorkerPollerInfo, RateLimiterState, RedirectInfo,
+    TaskForwarder as WorkerTaskForwarder, TaskQueueConfig, TaskQueueManager, TaskQueueManagerStats,
+    TaskQueuePartition as WorkerTaskQueuePartition, TaskQueueVersioning,
+    TaskType as WorkerTaskType, VersionAssignmentRule, VersionData,
+    VersionRedirectRule as WorkerVersionRedirectRule,
 };
 // frontend_handlers: expanded frontend API handlers.
 pub use frontend_handlers::{
-    RegisterNamespaceRequest, RegisterNamespaceResponse,
-    DescribeNamespaceRequest, DescribeNamespaceResponse,
-    UpdateNamespaceRequest, UpdateNamespaceResponse,
-    DeprecateNamespaceRequest,
-    ListNamespacesRequest, ListNamespacesResponse, NamespaceFilter,
-    NamespaceInfo, NamespaceConfig as FrontendNamespaceConfig, NamespaceReplicationConfig as FrontendNsReplicationConfig,
-    NamespaceState as FrontendNamespaceState, ArchivalState as FrontendArchivalState,
-    BadBinaries, BadBinaryInfo,
-    ListWorkflowExecutionsRequest, ListWorkflowExecutionsResponse,
-    CountWorkflowExecutionsRequest, CountWorkflowExecutionsResponse,
-    WorkflowExecutionInfo as FrontendWorkflowInfo,
-    GetSearchAttributesRequest, GetSearchAttributesResponse, SearchAttributeType as FrontendSearchAttributeType,
-    DescribeWorkflowExecutionRequest, DescribeWorkflowExecutionResponse,
-    PendingActivityInfo as FrontendPendingActivity, PendingActivityState as FrontendPendingActivityState,
-    PendingWorkflowTaskInfo, WorkflowTaskType,
-    ResetWorkflowExecutionRequest, ResetWorkflowExecutionResponse,
-    FrontendServiceImpl, FrontendError, FrontendStats as HandlerFrontendStats,
+    ArchivalState as FrontendArchivalState, BadBinaries, BadBinaryInfo,
+    CountWorkflowExecutionsRequest, CountWorkflowExecutionsResponse, DeprecateNamespaceRequest,
+    DescribeNamespaceRequest, DescribeNamespaceResponse, DescribeWorkflowExecutionRequest,
+    DescribeWorkflowExecutionResponse, FrontendError, FrontendServiceImpl,
+    FrontendStats as HandlerFrontendStats, GetSearchAttributesRequest, GetSearchAttributesResponse,
+    ListNamespacesRequest, ListNamespacesResponse, ListWorkflowExecutionsRequest,
+    ListWorkflowExecutionsResponse, NamespaceConfig as FrontendNamespaceConfig, NamespaceFilter,
+    NamespaceInfo, NamespaceReplicationConfig as FrontendNsReplicationConfig,
+    NamespaceState as FrontendNamespaceState, PendingActivityInfo as FrontendPendingActivity,
+    PendingActivityState as FrontendPendingActivityState, PendingWorkflowTaskInfo,
+    RegisterNamespaceRequest, RegisterNamespaceResponse, ResetWorkflowExecutionRequest,
+    ResetWorkflowExecutionResponse, SearchAttributeType as FrontendSearchAttributeType,
+    UpdateNamespaceRequest, UpdateNamespaceResponse, WorkflowExecutionInfo as FrontendWorkflowInfo,
+    WorkflowTaskType,
 };
 // client_sdk: workflow client, handle, schedule/namespace/search attribute clients.
 pub use client_sdk::{
-    WorkflowClient, ClientConfig, ClientStats, ClientError,
-    WorkflowHandle, StartWorkflowOptions, WorkflowStatus as ClientWorkflowStatus, WorkflowDescription,
-    WorkflowHistory, WorkflowResult, WorkflowFailure as ClientWorkflowFailure, WorkflowListResult, ResetPointSelector,
-    WorkflowRetryPolicy, HistoryEventEntry,
-    ClientConnection, TlsConfig, ClientRetryConfig, GrpcClientConfig,
-    ScheduleClient, ScheduleHandle, CreateScheduleOptions, ScheduleSpec, ScheduleAction as ClientScheduleAction,
-    ScheduleOverlapPolicy, ScheduleDescription, ScheduleInterval, ScheduleCalendarSpec,
-    NamespaceClient, NamespaceOptions, NamespaceDescription,
+    AuthInterceptor as ClientAuthInterceptor, ClientConfig, ClientConnection, ClientError,
+    ClientInterceptor, ClientRetryConfig, ClientStats, CreateScheduleOptions, GrpcClientConfig,
+    HistoryEventEntry, LoggingInterceptor, MetricsInterceptor, NamespaceClient,
+    NamespaceDescription, NamespaceOptions, ResetPointSelector,
+    ScheduleAction as ClientScheduleAction, ScheduleCalendarSpec, ScheduleClient,
+    ScheduleDescription, ScheduleHandle, ScheduleInterval, ScheduleOverlapPolicy, ScheduleSpec,
     SearchAttributeClient, SearchAttributeList, SearchAttributeType as ClientSearchAttributeType,
-    ClientInterceptor, LoggingInterceptor, TracingInterceptor, MetricsInterceptor, AuthInterceptor as ClientAuthInterceptor,
+    StartWorkflowOptions, TlsConfig, TracingInterceptor, WorkflowClient, WorkflowDescription,
+    WorkflowFailure as ClientWorkflowFailure, WorkflowHandle, WorkflowHistory, WorkflowListResult,
+    WorkflowResult, WorkflowRetryPolicy, WorkflowStatus as ClientWorkflowStatus,
 };
 // rpc_framework: gRPC interceptors, connection management, load balancing.
 pub use rpc_framework::{
-    RpcServerConfig, RpcTlsConfig, TlsVersion, KeepAliveConfig,
-    RpcInterceptor, RpcRequest, RpcResponse, RpcStatus, RpcError,
-    InterceptorChain,
-    AuthInterceptor as RpcAuthInterceptor, RateLimitInterceptor as RpcRateLimitInterceptor, TelemetryInterceptor as RpcTelemetryInterceptor,
-    ValidationInterceptor as RpcValidationInterceptor, RetryInterceptor, TimeoutInterceptor,
-    NamespaceValidationInterceptor, RedirectionInterceptor,
-    ServiceRegistry, ServiceDescriptor, MethodDescriptor, RegistryStats as RpcRegistryStats,
-    ConnectionManager, ConnectionManagerConfig, ConnectionState, ConnectionManagerStats,
-    RpcLoadBalancer, BackendInfo, LoadBalanceStrategy,
+    AuthInterceptor as RpcAuthInterceptor, BackendInfo, ConnectionManager, ConnectionManagerConfig,
+    ConnectionManagerStats, ConnectionState, InterceptorChain, KeepAliveConfig,
+    LoadBalanceStrategy, MethodDescriptor, NamespaceValidationInterceptor,
+    RateLimitInterceptor as RpcRateLimitInterceptor, RedirectionInterceptor,
+    RegistryStats as RpcRegistryStats, RetryInterceptor, RpcError, RpcInterceptor, RpcLoadBalancer,
+    RpcRequest, RpcResponse, RpcServerConfig, RpcStatus, RpcTlsConfig, ServiceDescriptor,
+    ServiceRegistry, TelemetryInterceptor as RpcTelemetryInterceptor, TimeoutInterceptor,
+    TlsVersion, ValidationInterceptor as RpcValidationInterceptor,
 };
 // distributed_locks: shard ownership, leader election, fencing tokens.
 pub use distributed_locks::{
-    DistributedLock, LockManager, LockManagerStats, LockError,
-    ShardOwnershipManager as LockShardOwnershipManager, ShardOwnershipInfo,
-    LeaderElection,
+    DistributedLock, LeaderElection, LockError, LockManager, LockManagerStats, ShardOwnershipInfo,
+    ShardOwnershipManager as LockShardOwnershipManager,
 };
 // header_propagation: context propagation, header encoding/decoding.
 pub use header_propagation::{
-    Header, ContextPropagator, PropagationContext,
-    PropagationChain, PropagationStats,
-    HeaderCodec, BinaryHeaderCodec, JsonHeaderCodec,
-    HeaderError,
+    BinaryHeaderCodec, ContextPropagator, Header, HeaderCodec, HeaderError, JsonHeaderCodec,
+    PropagationChain, PropagationContext, PropagationStats,
 };
 // persistence_serialization: event serialization, batch serialization, schema registry.
 pub use persistence_serialization::{
-    EncodingType as SerializationEncoding, SerializedData,
-    EventSerializer, SerializableEvent, SerializerStats,
-    BatchSerializer,
-    SchemaRegistry, SchemaEntry, SchemaField, FieldType,
-    SerializationError,
+    BatchSerializer, EncodingType as SerializationEncoding, EventSerializer, FieldType,
+    SchemaEntry, SchemaField, SchemaRegistry, SerializableEvent, SerializationError,
+    SerializedData, SerializerStats,
 };
 // workflow_task_handler: deep RespondWorkflowTaskCompleted handler.
 pub use workflow_task_handler::{
-    WorkflowTaskCompletion, StickyAttributes, SdkMetadata, MeteringMetadata, ProtocolMessage,
-    WorkflowCommand as TaskWorkflowCommand, ScheduleActivityCommand as TaskScheduleActivityCommand, StartTimerCommand as TaskStartTimerCommand,
-    CompleteWorkflowCommand as TaskCompleteWorkflowCommand, FailWorkflowCommand as TaskFailWorkflowCommand, CancelWorkflowCommand as TaskCancelWorkflowCommand,
-    RequestCancelActivityCommand as TaskRequestCancelActivityCommand, CancelTimerCommand as TaskCancelTimerCommand,
-    StartChildWorkflowCommand as TaskStartChildWorkflowCommand, RequestCancelChildWorkflowCommand,
-    SignalExternalWorkflowCommand, CancelExternalWorkflowCommand,
-    RecordMarkerCommand as TaskRecordMarkerCommand, ContinueAsNewCommand as TaskContinueAsNewCommand,
-    UpsertSearchAttributesCommand, ModifyWorkflowPropertiesCommand,
-    ScheduleNexusOperationCommand, CancelNexusOperationCommand, ProtocolMessageCommand as TaskProtocolMessageCommand,
-    CommandRetryPolicy,
-    WorkflowTaskHandler, ProcessedCommand, HandlerStats, HandlerError as TaskHandlerError,
-    CommandValidator, ValidationError as TaskValidationError,
-    CompletionResult, GeneratedEvent, TransferTaskEntry, TimerTask as HandlerTimerTask,
-    VisibilityTask as HandlerVisibilityTask, ActivityTask as HandlerActivityTask,
+    ActivityTask as HandlerActivityTask, CancelExternalWorkflowCommand,
+    CancelNexusOperationCommand, CancelTimerCommand as TaskCancelTimerCommand,
+    CancelWorkflowCommand as TaskCancelWorkflowCommand, CommandRetryPolicy, CommandValidator,
+    CompleteWorkflowCommand as TaskCompleteWorkflowCommand, CompletionResult,
+    ContinueAsNewCommand as TaskContinueAsNewCommand,
+    FailWorkflowCommand as TaskFailWorkflowCommand, GeneratedEvent,
+    HandlerError as TaskHandlerError, HandlerStats, MeteringMetadata,
+    ModifyWorkflowPropertiesCommand, ProcessedCommand, ProtocolMessage,
+    ProtocolMessageCommand as TaskProtocolMessageCommand,
+    RecordMarkerCommand as TaskRecordMarkerCommand,
+    RequestCancelActivityCommand as TaskRequestCancelActivityCommand,
+    RequestCancelChildWorkflowCommand, ScheduleActivityCommand as TaskScheduleActivityCommand,
+    ScheduleNexusOperationCommand, SdkMetadata, SignalExternalWorkflowCommand,
+    StartChildWorkflowCommand as TaskStartChildWorkflowCommand,
+    StartTimerCommand as TaskStartTimerCommand, StickyAttributes, TimerTask as HandlerTimerTask,
+    TransferTaskEntry, UpsertSearchAttributesCommand, ValidationError as TaskValidationError,
+    VisibilityTask as HandlerVisibilityTask, WorkflowCommand as TaskWorkflowCommand,
+    WorkflowTaskCompletion, WorkflowTaskHandler,
 };
 // nexus_deep: deep nexus operations, endpoints, callbacks.
 pub use nexus_deep::{
-    NexusEndpoint, EndpointTarget, AuthMethod as NexusAuthMethod,
-    NexusEndpointManager as DeepNexusEndpointManager, EndpointManagerStats,
-    NexusOperation as DeepNexusOperation, NexusOperationState as DeepNexusOperationState, NexusFailure, NexusLink,
-    NexusOperationManager, CallbackResult,
-    NexusError,
+    AuthMethod as NexusAuthMethod, CallbackResult, EndpointManagerStats, EndpointTarget,
+    NexusEndpoint, NexusEndpointManager as DeepNexusEndpointManager, NexusError, NexusFailure,
+    NexusLink, NexusOperation as DeepNexusOperation, NexusOperationManager,
+    NexusOperationState as DeepNexusOperationState,
 };
 // clock_abstraction: time source, mock time, hybrid logical clock.
 pub use clock_abstraction::{
-    TimeSource, RealTimeSource, MockTimeSource, TimeSkippingTimeSource,
-    HybridLogicalClock, TimerHandle, ClockStats,
+    ClockStats, HybridLogicalClock, MockTimeSource, RealTimeSource, TimeSkippingTimeSource,
+    TimeSource, TimerHandle,
 };
 // search_attributes: search attribute type system, validation, mapping.
 pub use search_attributes::{
-    SearchAttributeType as SaType, SearchAttributeValue as SaValue, SearchAttributeField as SaField,
-    SearchAttributeDefinition as SaDefinition, SearchAttributeMapper, SearchAttributeError as SaError, SearchAttributeStats as SaStats,
+    SearchAttributeDefinition as SaDefinition, SearchAttributeError as SaError,
+    SearchAttributeField as SaField, SearchAttributeMapper, SearchAttributeStats as SaStats,
+    SearchAttributeType as SaType, SearchAttributeValue as SaValue,
 };
 // task_framework: task executor, scheduler, priority queue.
 pub use task_framework::{
-    Task as FwTask, TaskCategory, TaskState as FrameworkTaskState, TaskPriority,
-    PriorityTaskQueue, TaskQueueStats as FrameworkQueueStats,
-    TaskExecutor as FwTaskExecutor, TaskExecutionResult as FwTaskExecutionResult, TaskExecutionError,
-    TaskScheduler, SchedulerStats as FrameworkSchedulerStats,
+    PriorityTaskQueue, SchedulerStats as FrameworkSchedulerStats, Task as FwTask, TaskCategory,
+    TaskExecutionError, TaskExecutionResult as FwTaskExecutionResult,
+    TaskExecutor as FwTaskExecutor, TaskPriority, TaskQueueStats as FrameworkQueueStats,
+    TaskScheduler, TaskState as FrameworkTaskState,
 };
 // quota_management: quota policies, namespace quotas, quota calculator.
 pub use quota_management::{
-    QuotaPolicy as QuotaPolicyV2, QuotaPriority, QuotaBucket, BucketStats,
-    NamespaceQuotaTracker, NamespaceQuotaStats, QuotaCalculator, OperationQuotaTracker,
+    BucketStats, NamespaceQuotaStats, NamespaceQuotaTracker, OperationQuotaTracker, QuotaBucket,
+    QuotaCalculator, QuotaPolicy as QuotaPolicyV2, QuotaPriority,
 };
 // lru_cache: LRU cache with TTL, pinning, metrics.
-pub use lru_cache::{LruCache, CacheStats as LruCacheStats};
+pub use lru_cache::{CacheStats as LruCacheStats, LruCache};
 // backoff_retry: exponential backoff, jitter, retry budget.
-pub use backoff_retry::{
-    BackoffCalculator, JitterMode, RetryBudget, BackoffCoordinator,
-};
+pub use backoff_retry::{BackoffCalculator, BackoffCoordinator, JitterMode, RetryBudget};
 // service_errors: typed gRPC service error hierarchy.
-pub use service_errors::{
-    ServiceErrorStatus, ServiceError, ErrorCounter,
-};
+pub use service_errors::{ErrorCounter, ServiceError, ServiceErrorStatus};
 // workflow_state_machine: mutable state, activity/timer/child/signal/query state.
 pub use workflow_state_machine::{
-    MutableState as WfMutableState, WorkflowExecutionState as WfExecutionState, ActivityState, ActivityExecutionState,
-    TimerState, TimerExecutionState, ChildWorkflowState, ChildWorkflowExecutionState, ParentClosePolicy,
-    SignalState, QueryState as WfQueryState, QueryExecutionState, StateError, ActivityRetryPolicy,
+    ActivityExecutionState, ActivityRetryPolicy, ActivityState, ChildWorkflowExecutionState,
+    ChildWorkflowState, MutableState as WfMutableState, ParentClosePolicy, QueryExecutionState,
+    QueryState as WfQueryState, SignalState, StateError, TimerExecutionState, TimerState,
+    WorkflowExecutionState as WfExecutionState,
+};
+// history_engine: main workflow orchestrator, execution management, task scheduling.
+pub use history_engine::{
+    ActivityCompletionInfo, BufferedSignal, HistoryEngine, HistoryEngineConfig, HistoryEngineStats,
+    PendingActivityInfo as HistPendingActivityInfo,
+    PendingActivityState as HistPendingActivityState, PendingChildInfo as HistPendingChildInfo,
+    PendingChildState as HistPendingChildState, PendingQuery,
+    PendingSignalInfo as HistPendingSignalInfo, PendingTimerInfo as HistPendingTimerInfo,
+    WorkflowExecState, WorkflowExecution as HEWorkflowExecution,
+    WorkflowTaskInfo as HistWorkflowTaskInfo,
+};
+// replication_executor: replication task generation, execution, DLQ, stream management.
+pub use replication_executor::{
+    ReplicationExecError, ReplicationExecResult, ReplicationExecutorStats,
+    ReplicationGeneratorStats, ReplicationPriority, ReplicationStream, ReplicationStreamManager,
+    ReplicationTask as ReplTask, ReplicationTaskExecutor, ReplicationTaskGenerator,
+    ReplicationTaskKind as ReplTaskKind, ReplicationTaskState as ReplTaskState, StreamManagerStats,
+    StreamState as ReplStreamState,
+};
+// timer_queue_executor: timer task scheduling, timeout detection, backoff timers.
+pub use timer_queue_executor::{
+    BackoffEntry, BackoffTimerManager, TimeoutDetector, TimeoutDetectorStats, TimeoutInfo,
+    TimeoutType as TimerTimeoutType, TimerQueueProcessor as TqeTimerQueueProcessor,
+    TimerQueueStats, TimerTask as TqeTimerTask, TimerTaskKind, TimerTaskState,
+};
+// transfer_queue_executor: transfer task processing, visibility processing.
+pub use transfer_queue_executor::{
+    TransferProcessResult, TransferQueueProcessor as TqeTransferQueueProcessor, TransferQueueStats,
+    TransferTask as TqeTransferTask, TransferTaskKind as TqeTransferTaskKind,
+    TransferTaskState as TqeTransferTaskState, VisibilityProcessor, VisibilityProcessorStats,
+    VisibilityTask as TqeVisibilityTask, VisibilityTaskKind,
+};
+// archival_engine: archival queue, history/visibility archival, namespace configs.
+pub use archival_engine::{
+    ArchivalKind, ArchivalManager, ArchivalManagerStats, ArchivalQueue, ArchivalQueueStats,
+    ArchivalRecord, ArchivalState as ArchivalRecordState, ArchivalStoreKind,
+    NamespaceArchivalConfig,
+};
+// worker_deployment: deployment registration, traffic routing, drain, rollback.
+pub use worker_deployment::{
+    DeploymentError as WdDeploymentError, DeploymentManager as WdDeploymentManager,
+    DeploymentManagerStats as WdDeploymentManagerStats, DeploymentState as WdDeploymentState,
+    WorkerDeployment as WdWorkerDeployment,
 };

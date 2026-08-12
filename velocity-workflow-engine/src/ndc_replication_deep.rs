@@ -6,8 +6,11 @@
 //! mutable state initializer, mutable state mapper, buffer event flusher.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ─── Replication Task Types ──────────────────────────────────────────────────
 
@@ -62,12 +65,19 @@ pub struct VersionedTransition {
 
 impl VersionedTransition {
     pub fn new(version: i64, count: i64) -> Self {
-        Self { namespace_failover_version: version, state_transition_count: count }
+        Self {
+            namespace_failover_version: version,
+            state_transition_count: count,
+        }
     }
 
     pub fn compare(&self, other: &VersionedTransition) -> std::cmp::Ordering {
-        self.namespace_failover_version.cmp(&other.namespace_failover_version)
-            .then(self.state_transition_count.cmp(&other.state_transition_count))
+        self.namespace_failover_version
+            .cmp(&other.namespace_failover_version)
+            .then(
+                self.state_transition_count
+                    .cmp(&other.state_transition_count),
+            )
     }
 }
 
@@ -92,20 +102,35 @@ pub struct ReplicatorStats {
 }
 
 impl WorkflowStateReplicator {
-    pub fn new(conflict_resolver: Arc<ConflictResolver>, state_rebuilder: Arc<StateRebuilder>) -> Self {
-        Self { stats: ReplicatorStats::default(), conflict_resolver, state_rebuilder }
+    pub fn new(
+        conflict_resolver: Arc<ConflictResolver>,
+        state_rebuilder: Arc<StateRebuilder>,
+    ) -> Self {
+        Self {
+            stats: ReplicatorStats::default(),
+            conflict_resolver,
+            state_rebuilder,
+        }
     }
 
-    pub fn apply_workflow_state(&self, task: &ReplicationTask, target_state: &mut ReplicatedWorkflowState) -> Result<ApplyResult, ReplicationError> {
+    pub fn apply_workflow_state(
+        &self,
+        task: &ReplicationTask,
+        target_state: &mut ReplicatedWorkflowState,
+    ) -> Result<ApplyResult, ReplicationError> {
         self.stats.tasks_received.fetch_add(1, Ordering::Relaxed);
 
         // Check for conflicts
         if target_state.exists {
             let conflict = self.conflict_resolver.detect_conf(target_state, task)?;
             if let Some(c) = conflict {
-                self.stats.conflicts_detected.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .conflicts_detected
+                    .fetch_add(1, Ordering::Relaxed);
                 let resolution = self.conflict_resolver.resolve(&c)?;
-                self.stats.conflicts_resolved.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .conflicts_resolved
+                    .fetch_add(1, Ordering::Relaxed);
                 match resolution {
                     ConflictResolution::DropTask => {
                         return Ok(ApplyResult::Dropped);
@@ -132,13 +157,17 @@ impl WorkflowStateReplicator {
         target_state.next_event_id = task.next_event_id;
         target_state.exists = true;
         target_state.last_update_ms = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
 
         self.stats.tasks_applied.fetch_add(1, Ordering::Relaxed);
         Ok(ApplyResult::Applied)
     }
 
-    pub fn stats(&self) -> &ReplicatorStats { &self.stats }
+    pub fn stats(&self) -> &ReplicatorStats {
+        &self.stats
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,10 +206,16 @@ pub struct SyncActivityInfo {
 
 impl ActivityStateReplicator {
     pub fn new() -> Self {
-        Self { stats: ActivityReplicatorStats::default() }
+        Self {
+            stats: ActivityReplicatorStats::default(),
+        }
     }
 
-    pub fn apply_sync_activity(&self, state: &mut ReplicatedWorkflowState, activity: &SyncActivityInfo) -> Result<(), ReplicationError> {
+    pub fn apply_sync_activity(
+        &self,
+        state: &mut ReplicatedWorkflowState,
+        activity: &SyncActivityInfo,
+    ) -> Result<(), ReplicationError> {
         if let Some(existing) = state.activities.get_mut(&activity.activity_id) {
             if activity.version < existing.version {
                 return Ok(()); // Stale activity, skip
@@ -194,24 +229,29 @@ impl ActivityStateReplicator {
                 existing.started_id = activity.started_id;
             }
         } else {
-            state.activities.insert(activity.activity_id.clone(), ReplicatedActivityState {
-                activity_id: activity.activity_id.clone(),
-                scheduled_event_id: activity.scheduled_event_id,
-                scheduled_time_ms: activity.scheduled_time_ms,
-                started_time_ms: activity.started_time_ms,
-                last_heartbeat_ms: activity.last_heartbeat_time_ms,
-                heartbeat_details: activity.heartbeat_details.clone(),
-                attempt: activity.attempt,
-                version: activity.version,
-                started_id: activity.started_id,
-            });
+            state.activities.insert(
+                activity.activity_id.clone(),
+                ReplicatedActivityState {
+                    activity_id: activity.activity_id.clone(),
+                    scheduled_event_id: activity.scheduled_event_id,
+                    scheduled_time_ms: activity.scheduled_time_ms,
+                    started_time_ms: activity.started_time_ms,
+                    last_heartbeat_ms: activity.last_heartbeat_time_ms,
+                    heartbeat_details: activity.heartbeat_details.clone(),
+                    attempt: activity.attempt,
+                    version: activity.version,
+                    started_id: activity.started_id,
+                },
+            );
         }
 
         self.stats.activities_synced.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn stats(&self) -> &ActivityReplicatorStats { &self.stats }
+    pub fn stats(&self) -> &ActivityReplicatorStats {
+        &self.stats
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -249,10 +289,16 @@ pub struct SyncHsmState {
 
 impl HsmStateReplicator {
     pub fn new() -> Self {
-        Self { stats: HsmReplicatorStats::default() }
+        Self {
+            stats: HsmReplicatorStats::default(),
+        }
     }
 
-    pub fn apply_sync_hsm(&self, state: &mut ReplicatedWorkflowState, hsm: &SyncHsmState) -> Result<(), ReplicationError> {
+    pub fn apply_sync_hsm(
+        &self,
+        state: &mut ReplicatedWorkflowState,
+        hsm: &SyncHsmState,
+    ) -> Result<(), ReplicationError> {
         let key = format!("{}:{}", hsm.state_machine_type, hsm.state_machine_id);
         if let Some(existing) = state.hsm_states.get(&key) {
             if hsm.version < existing.version {
@@ -264,7 +310,9 @@ impl HsmStateReplicator {
         Ok(())
     }
 
-    pub fn stats(&self) -> &HsmReplicatorStats { &self.stats }
+    pub fn stats(&self) -> &HsmReplicatorStats {
+        &self.stats
+    }
 }
 
 // ─── Conflict Resolver ───────────────────────────────────────────────────────
@@ -318,10 +366,19 @@ pub struct ReplicatedWorkflowState {
 impl ReplicatedWorkflowState {
     pub fn new(ns: &str, wf: &str, run: &str) -> Self {
         Self {
-            namespace_id: ns.to_string(), workflow_id: wf.to_string(), run_id: run.to_string(),
-            version: 0, last_event_id: 0, next_event_id: 1, exists: false, is_running: false,
-            last_update_ms: 0, activities: HashMap::new(), hsm_states: HashMap::new(),
-            buffered_events: VecDeque::new(), branch_token: vec![],
+            namespace_id: ns.to_string(),
+            workflow_id: wf.to_string(),
+            run_id: run.to_string(),
+            version: 0,
+            last_event_id: 0,
+            next_event_id: 1,
+            exists: false,
+            is_running: false,
+            last_update_ms: 0,
+            activities: HashMap::new(),
+            hsm_states: HashMap::new(),
+            buffered_events: VecDeque::new(),
+            branch_token: vec![],
         }
     }
 }
@@ -336,10 +393,18 @@ pub struct ReplicatedEvent {
 }
 
 impl ConflictResolver {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
-    pub fn detect_conf(&self, state: &ReplicatedWorkflowState, task: &ReplicationTask) -> Result<Option<ReplicationConflict>, ReplicationError> {
-        if !state.exists { return Ok(None); }
+    pub fn detect_conf(
+        &self,
+        state: &ReplicatedWorkflowState,
+        task: &ReplicationTask,
+    ) -> Result<Option<ReplicationConflict>, ReplicationError> {
+        if !state.exists {
+            return Ok(None);
+        }
 
         // Version conflict: remote version is less than local
         if task.version < state.version {
@@ -372,7 +437,10 @@ impl ConflictResolver {
         Ok(None)
     }
 
-    pub fn resolve(&self, conflict: &ReplicationConflict) -> Result<ConflictResolution, ReplicationError> {
+    pub fn resolve(
+        &self,
+        conflict: &ReplicationConflict,
+    ) -> Result<ConflictResolution, ReplicationError> {
         match conflict.conflict_type {
             ConflictType::VersionConflict => {
                 if conflict.remote_version < conflict.local_version {
@@ -381,15 +449,9 @@ impl ConflictResolver {
                     Ok(ConflictResolution::ApplyOnTop)
                 }
             }
-            ConflictType::EventIdConflict => {
-                Ok(ConflictResolution::RebuildState)
-            }
-            ConflictType::StateConflict => {
-                Ok(ConflictResolution::RebuildState)
-            }
-            ConflictType::BranchConflict => {
-                Ok(ConflictResolution::RebuildState)
-            }
+            ConflictType::EventIdConflict => Ok(ConflictResolution::RebuildState),
+            ConflictType::StateConflict => Ok(ConflictResolution::RebuildState),
+            ConflictType::BranchConflict => Ok(ConflictResolution::RebuildState),
         }
     }
 }
@@ -399,17 +461,26 @@ impl ConflictResolver {
 pub struct StateRebuilder;
 
 impl StateRebuilder {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
-    pub fn rebuild(&self, current: &ReplicatedWorkflowState, task: &ReplicationTask) -> Result<ReplicatedWorkflowState, ReplicationError> {
-        let mut rebuilt = ReplicatedWorkflowState::new(&task.namespace_id, &task.workflow_id, &task.run_id);
+    pub fn rebuild(
+        &self,
+        current: &ReplicatedWorkflowState,
+        task: &ReplicationTask,
+    ) -> Result<ReplicatedWorkflowState, ReplicationError> {
+        let mut rebuilt =
+            ReplicatedWorkflowState::new(&task.namespace_id, &task.workflow_id, &task.run_id);
         rebuilt.version = task.version;
         rebuilt.next_event_id = task.next_event_id;
         rebuilt.last_event_id = task.next_event_id - 1;
         rebuilt.exists = true;
         rebuilt.is_running = true;
         rebuilt.last_update_ms = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
 
         // Carry over activities from current state
         rebuilt.activities = current.activities.clone();
@@ -456,7 +527,9 @@ pub struct PendingReplicationTask {
 pub struct NewWorkflowTransaction;
 
 impl NewWorkflowTransaction {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     pub fn create_as_brand_new(
         &self,
@@ -464,7 +537,9 @@ impl NewWorkflowTransaction {
         events: &[ReplicatedEvent],
     ) -> Result<TransactionResult, ReplicationError> {
         if state.exists {
-            return Err(ReplicationError::WorkflowAlreadyExists(state.workflow_id.clone()));
+            return Err(ReplicationError::WorkflowAlreadyExists(
+                state.workflow_id.clone(),
+            ));
         }
 
         let mut max_event_id = state.next_event_id - 1;
@@ -516,7 +591,9 @@ impl NewWorkflowTransaction {
 pub struct ExistingWorkflowTransaction;
 
 impl ExistingWorkflowTransaction {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     pub fn update_as_current(
         &self,
@@ -524,7 +601,9 @@ impl ExistingWorkflowTransaction {
         events: &[ReplicatedEvent],
     ) -> Result<TransactionResult, ReplicationError> {
         if !state.exists {
-            return Err(ReplicationError::WorkflowNotFound(state.workflow_id.clone()));
+            return Err(ReplicationError::WorkflowNotFound(
+                state.workflow_id.clone(),
+            ));
         }
 
         let mut applied = 0i64;
@@ -595,7 +674,8 @@ impl TransactionManager {
             Err(ReplicationError::WorkflowAlreadyExists(_)) => {
                 // Fall back to create as current
                 let run_id = state.run_id.clone();
-                self.new_workflow_txn.create_as_current(state, events, &run_id)
+                self.new_workflow_txn
+                    .create_as_current(state, events, &run_id)
             }
             Err(e) => {
                 self.stats.failures.fetch_add(1, Ordering::Relaxed);
@@ -609,11 +689,15 @@ impl TransactionManager {
         state: &mut ReplicatedWorkflowState,
         events: &[ReplicatedEvent],
     ) -> Result<TransactionResult, ReplicationError> {
-        self.stats.existing_workflow_txns.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .existing_workflow_txns
+            .fetch_add(1, Ordering::Relaxed);
         self.existing_workflow_txn.update_as_current(state, events)
     }
 
-    pub fn stats(&self) -> &TransactionManagerStats { &self.stats }
+    pub fn stats(&self) -> &TransactionManagerStats {
+        &self.stats
+    }
 }
 
 // ─── History Replicator ──────────────────────────────────────────────────────
@@ -649,10 +733,16 @@ pub struct NewRunInfo {
 
 impl HistoryReplicator {
     pub fn new() -> Self {
-        Self { stats: HistoryReplicatorStats::default() }
+        Self {
+            stats: HistoryReplicatorStats::default(),
+        }
     }
 
-    pub fn apply_batch(&self, state: &mut ReplicatedWorkflowState, batch: &HistoryReplicationBatch) -> Result<TransactionResult, ReplicationError> {
+    pub fn apply_batch(
+        &self,
+        state: &mut ReplicatedWorkflowState,
+        batch: &HistoryReplicationBatch,
+    ) -> Result<TransactionResult, ReplicationError> {
         self.stats.batches_applied.fetch_add(1, Ordering::Relaxed);
 
         // Check for gaps
@@ -678,7 +768,9 @@ impl HistoryReplicator {
         }
 
         state.version = batch.version;
-        self.stats.events_replicated.fetch_add(applied as u64, Ordering::Relaxed);
+        self.stats
+            .events_replicated
+            .fetch_add(applied as u64, Ordering::Relaxed);
 
         Ok(TransactionResult {
             success: true,
@@ -690,7 +782,9 @@ impl HistoryReplicator {
         })
     }
 
-    pub fn stats(&self) -> &HistoryReplicatorStats { &self.stats }
+    pub fn stats(&self) -> &HistoryReplicatorStats {
+        &self.stats
+    }
 }
 
 // ─── History Importer ─────────────────────────────────────────────────────────
@@ -718,10 +812,16 @@ pub struct ImportHistoryRequest {
 
 impl HistoryImporter {
     pub fn new() -> Self {
-        Self { stats: ImporterStats::default() }
+        Self {
+            stats: ImporterStats::default(),
+        }
     }
 
-    pub fn import_history(&self, state: &mut ReplicatedWorkflowState, req: &ImportHistoryRequest) -> Result<(), ReplicationError> {
+    pub fn import_history(
+        &self,
+        state: &mut ReplicatedWorkflowState,
+        req: &ImportHistoryRequest,
+    ) -> Result<(), ReplicationError> {
         self.stats.imports_started.fetch_add(1, Ordering::Relaxed);
 
         for event in &req.events {
@@ -738,11 +838,15 @@ impl HistoryImporter {
         state.exists = true;
 
         self.stats.imports_completed.fetch_add(1, Ordering::Relaxed);
-        self.stats.events_imported.fetch_add(req.events.len() as u64, Ordering::Relaxed);
+        self.stats
+            .events_imported
+            .fetch_add(req.events.len() as u64, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn stats(&self) -> &ImporterStats { &self.stats }
+    pub fn stats(&self) -> &ImporterStats {
+        &self.stats
+    }
 }
 
 // ─── Branch Manager ──────────────────────────────────────────────────────────
@@ -767,17 +871,28 @@ pub struct BranchAncestorInfo {
 
 impl BranchManager {
     pub fn new() -> Self {
-        Self { branches: RwLock::new(HashMap::new()) }
+        Self {
+            branches: RwLock::new(HashMap::new()),
+        }
     }
 
-    pub fn create_branch(&self, tree_id: &str, branch_id: &str, ancestors: Vec<BranchAncestorInfo>, version: i64) -> ReplicationBranch {
+    pub fn create_branch(
+        &self,
+        tree_id: &str,
+        branch_id: &str,
+        ancestors: Vec<BranchAncestorInfo>,
+        version: i64,
+    ) -> ReplicationBranch {
         let branch = ReplicationBranch {
             tree_id: tree_id.to_string(),
             branch_id: branch_id.to_string(),
             ancestors,
             version,
         };
-        self.branches.write().unwrap().insert(branch_id.to_string(), branch.clone());
+        self.branches
+            .write()
+            .unwrap()
+            .insert(branch_id.to_string(), branch.clone());
         branch
     }
 
@@ -789,8 +904,18 @@ impl BranchManager {
         self.branches.write().unwrap().remove(branch_id);
     }
 
-    pub fn fork_branch(&self, parent_branch_id: &str, new_branch_id: &str, fork_event_id: i64) -> Result<ReplicationBranch, ReplicationError> {
-        let parent = self.branches.read().unwrap().get(parent_branch_id).cloned()
+    pub fn fork_branch(
+        &self,
+        parent_branch_id: &str,
+        new_branch_id: &str,
+        fork_event_id: i64,
+    ) -> Result<ReplicationBranch, ReplicationError> {
+        let parent = self
+            .branches
+            .read()
+            .unwrap()
+            .get(parent_branch_id)
+            .cloned()
             .ok_or_else(|| ReplicationError::BranchNotFound(parent_branch_id.to_string()))?;
 
         let mut ancestors = parent.ancestors.clone();
@@ -812,9 +937,15 @@ impl BranchManager {
 pub struct EventsReapplier;
 
 impl EventsReapplier {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
-    pub fn reapply(&self, state: &mut ReplicatedWorkflowState, events: &[ReplicatedEvent]) -> Vec<ReplicatedEvent> {
+    pub fn reapply(
+        &self,
+        state: &mut ReplicatedWorkflowState,
+        events: &[ReplicatedEvent],
+    ) -> Vec<ReplicatedEvent> {
         let mut reapplied = Vec::new();
         for event in events {
             if event.event_id >= state.next_event_id {
@@ -846,16 +977,24 @@ pub struct ReplicationResetSpec {
 
 impl ReplicationWorkflowResetter {
     pub fn new() -> Self {
-        Self { stats: ResetterStats::default() }
+        Self {
+            stats: ResetterStats::default(),
+        }
     }
 
-    pub fn reset_workflow(&self, state: &mut ReplicatedWorkflowState, spec: &ReplicationResetSpec) -> Result<(), ReplicationError> {
+    pub fn reset_workflow(
+        &self,
+        state: &mut ReplicatedWorkflowState,
+        spec: &ReplicationResetSpec,
+    ) -> Result<(), ReplicationError> {
         if spec.target_event_id >= state.next_event_id {
             return Err(ReplicationError::InvalidResetTarget(spec.target_event_id));
         }
 
         // Discard events after target
-        state.buffered_events.retain(|e| e.event_id <= spec.target_event_id);
+        state
+            .buffered_events
+            .retain(|e| e.event_id <= spec.target_event_id);
         let discarded = state.next_event_id - spec.target_event_id - 1;
 
         state.next_event_id = spec.target_event_id + 1;
@@ -863,11 +1002,15 @@ impl ReplicationWorkflowResetter {
         state.is_running = true;
 
         self.stats.resets_performed.fetch_add(1, Ordering::Relaxed);
-        self.stats.events_discarded.fetch_add(discarded as u64, Ordering::Relaxed);
+        self.stats
+            .events_discarded
+            .fetch_add(discarded as u64, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn stats(&self) -> &ResetterStats { &self.stats }
+    pub fn stats(&self) -> &ResetterStats {
+        &self.stats
+    }
 }
 
 // ─── Mutable State Initializer ───────────────────────────────────────────────
@@ -875,7 +1018,9 @@ impl ReplicationWorkflowResetter {
 pub struct MutableStateInitializer;
 
 impl MutableStateInitializer {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     pub fn init_from_events(
         &self,
@@ -937,7 +1082,9 @@ pub struct MappedState {
 }
 
 impl MutableStateMapper {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     pub fn to_mapped(&self, state: &ReplicatedWorkflowState) -> MappedState {
         MappedState {
@@ -955,7 +1102,8 @@ impl MutableStateMapper {
     }
 
     pub fn from_mapped(&self, mapped: &MappedState) -> ReplicatedWorkflowState {
-        let mut state = ReplicatedWorkflowState::new(&mapped.namespace_id, &mapped.workflow_id, &mapped.run_id);
+        let mut state =
+            ReplicatedWorkflowState::new(&mapped.namespace_id, &mapped.workflow_id, &mapped.run_id);
         state.version = mapped.version;
         state.last_event_id = mapped.last_event_id;
         state.next_event_id = mapped.next_event_id;
@@ -970,7 +1118,9 @@ impl MutableStateMapper {
 pub struct BufferEventFlusher;
 
 impl BufferEventFlusher {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     pub fn flush(&self, state: &mut ReplicatedWorkflowState) -> Vec<ReplicatedEvent> {
         let mut flushed = Vec::new();
@@ -980,7 +1130,11 @@ impl BufferEventFlusher {
         flushed
     }
 
-    pub fn flush_up_to(&self, state: &mut ReplicatedWorkflowState, max_event_id: i64) -> Vec<ReplicatedEvent> {
+    pub fn flush_up_to(
+        &self,
+        state: &mut ReplicatedWorkflowState,
+        max_event_id: i64,
+    ) -> Vec<ReplicatedEvent> {
         let mut flushed = Vec::new();
         while let Some(event) = state.buffered_events.front() {
             if event.event_id <= max_event_id {
@@ -1012,9 +1166,13 @@ impl std::fmt::Display for ReplicationError {
             Self::WorkflowAlreadyExists(id) => write!(f, "workflow already exists: {}", id),
             Self::WorkflowNotFound(id) => write!(f, "workflow not found: {}", id),
             Self::BranchNotFound(id) => write!(f, "branch not found: {}", id),
-            Self::HistoryGap { expected, got } => write!(f, "history gap: expected {}, got {}", expected, got),
+            Self::HistoryGap { expected, got } => {
+                write!(f, "history gap: expected {}, got {}", expected, got)
+            }
             Self::InvalidResetTarget(id) => write!(f, "invalid reset target event id: {}", id),
-            Self::VersionMismatch { local, remote } => write!(f, "version mismatch: local={}, remote={}", local, remote),
+            Self::VersionMismatch { local, remote } => {
+                write!(f, "version mismatch: local={}, remote={}", local, remote)
+            }
             Self::Internal(msg) => write!(f, "internal replication error: {}", msg),
         }
     }
@@ -1027,13 +1185,15 @@ mod tests {
     use super::*;
 
     fn make_events(start: i64, count: i64, version: i64) -> Vec<ReplicatedEvent> {
-        (start..start + count).map(|id| ReplicatedEvent {
-            event_id: id,
-            event_type: "WorkflowExecutionStarted".to_string(),
-            version,
-            data: vec![id as u8],
-            timestamp_ms: 1000 + id,
-        }).collect()
+        (start..start + count)
+            .map(|id| ReplicatedEvent {
+                event_id: id,
+                event_type: "WorkflowExecutionStarted".to_string(),
+                version,
+                data: vec![id as u8],
+                timestamp_ms: 1000 + id,
+            })
+            .collect()
     }
 
     #[test]
@@ -1044,11 +1204,20 @@ mod tests {
 
         let mut state = ReplicatedWorkflowState::new("ns1", "wf1", "run1");
         let task = ReplicationTask {
-            task_id: 1, kind: ReplicationTaskKind::SyncWorkflowStateTask,
-            source_cluster: "cluster-a".to_string(), target_cluster: "cluster-b".to_string(),
-            namespace_id: "ns1".to_string(), workflow_id: "wf1".to_string(), run_id: "run1".to_string(),
-            version: 1, first_event_id: 1, next_event_id: 5,
-            scheduled_time_ms: 0, payload: vec![], priority: 0, created_at_ms: 0,
+            task_id: 1,
+            kind: ReplicationTaskKind::SyncWorkflowStateTask,
+            source_cluster: "cluster-a".to_string(),
+            target_cluster: "cluster-b".to_string(),
+            namespace_id: "ns1".to_string(),
+            workflow_id: "wf1".to_string(),
+            run_id: "run1".to_string(),
+            version: 1,
+            first_event_id: 1,
+            next_event_id: 5,
+            scheduled_time_ms: 0,
+            payload: vec![],
+            priority: 0,
+            created_at_ms: 0,
             status: ReplicationTaskStatus::Pending,
         };
 
@@ -1070,11 +1239,20 @@ mod tests {
         state.version = 5; // Local version is higher
 
         let task = ReplicationTask {
-            task_id: 1, kind: ReplicationTaskKind::SyncWorkflowStateTask,
-            source_cluster: "cluster-a".to_string(), target_cluster: "cluster-b".to_string(),
-            namespace_id: "ns1".to_string(), workflow_id: "wf1".to_string(), run_id: "run1".to_string(),
-            version: 2, first_event_id: 1, next_event_id: 5,
-            scheduled_time_ms: 0, payload: vec![], priority: 0, created_at_ms: 0,
+            task_id: 1,
+            kind: ReplicationTaskKind::SyncWorkflowStateTask,
+            source_cluster: "cluster-a".to_string(),
+            target_cluster: "cluster-b".to_string(),
+            namespace_id: "ns1".to_string(),
+            workflow_id: "wf1".to_string(),
+            run_id: "run1".to_string(),
+            version: 2,
+            first_event_id: 1,
+            next_event_id: 5,
+            scheduled_time_ms: 0,
+            payload: vec![],
+            priority: 0,
+            created_at_ms: 0,
             status: ReplicationTaskStatus::Pending,
         };
 
@@ -1100,7 +1278,9 @@ mod tests {
             started_id: 6,
         };
 
-        replicator.apply_sync_activity(&mut state, &activity).unwrap();
+        replicator
+            .apply_sync_activity(&mut state, &activity)
+            .unwrap();
         assert_eq!(state.activities.len(), 1);
         assert_eq!(state.activities["act-1"].attempt, 1);
 
@@ -1112,7 +1292,9 @@ mod tests {
             version: 2,
             ..activity.clone()
         };
-        replicator.apply_sync_activity(&mut state, &updated).unwrap();
+        replicator
+            .apply_sync_activity(&mut state, &updated)
+            .unwrap();
         assert_eq!(state.activities["act-1"].attempt, 2);
 
         // Stale update should be ignored
@@ -1143,7 +1325,11 @@ mod tests {
         assert_eq!(state.hsm_states.len(), 1);
 
         // Higher version should update
-        let hsm2 = SyncHsmState { version: 2, current_state: "COMPLETED".to_string(), ..hsm.clone() };
+        let hsm2 = SyncHsmState {
+            version: 2,
+            current_state: "COMPLETED".to_string(),
+            ..hsm.clone()
+        };
         replicator.apply_sync_hsm(&mut state, &hsm2).unwrap();
         let key = "nexus_operation:op-1".to_string();
         assert_eq!(state.hsm_states[&key].current_state, "COMPLETED");
@@ -1239,8 +1425,11 @@ mod tests {
         state.last_event_id = 19;
         for i in 1..20 {
             state.buffered_events.push_back(ReplicatedEvent {
-                event_id: i, event_type: "test".to_string(), version: 1,
-                data: vec![], timestamp_ms: i * 100,
+                event_id: i,
+                event_type: "test".to_string(),
+                version: 1,
+                data: vec![],
+                timestamp_ms: i * 100,
             });
         }
 
@@ -1293,8 +1482,11 @@ mod tests {
         let mut state = ReplicatedWorkflowState::new("ns1", "wf1", "run1");
         for i in 1..=10 {
             state.buffered_events.push_back(ReplicatedEvent {
-                event_id: i, event_type: "test".to_string(), version: 1,
-                data: vec![], timestamp_ms: i * 100,
+                event_id: i,
+                event_type: "test".to_string(),
+                version: 1,
+                data: vec![],
+                timestamp_ms: i * 100,
             });
         }
 
@@ -1315,11 +1507,20 @@ mod tests {
         state.version = 5;
 
         let task = ReplicationTask {
-            task_id: 1, kind: ReplicationTaskKind::SyncWorkflowStateTask,
-            source_cluster: "a".to_string(), target_cluster: "b".to_string(),
-            namespace_id: "ns1".to_string(), workflow_id: "wf1".to_string(), run_id: "run1".to_string(),
-            version: 2, first_event_id: 1, next_event_id: 5,
-            scheduled_time_ms: 0, payload: vec![], priority: 0, created_at_ms: 0,
+            task_id: 1,
+            kind: ReplicationTaskKind::SyncWorkflowStateTask,
+            source_cluster: "a".to_string(),
+            target_cluster: "b".to_string(),
+            namespace_id: "ns1".to_string(),
+            workflow_id: "wf1".to_string(),
+            run_id: "run1".to_string(),
+            version: 2,
+            first_event_id: 1,
+            next_event_id: 5,
+            scheduled_time_ms: 0,
+            payload: vec![],
+            priority: 0,
+            created_at_ms: 0,
             status: ReplicationTaskStatus::Pending,
         };
 

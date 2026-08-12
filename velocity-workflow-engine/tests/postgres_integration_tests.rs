@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::thread;
 
 use velocity_workflow_engine::db_adapter::{
-    DatabaseAdapter, DatabaseError, InMemoryAdapter, SearchAttributes, SearchAttributeValue,
+    DatabaseAdapter, DatabaseError, InMemoryAdapter, SearchAttributeValue, SearchAttributes,
     StatusFilter, WorkflowRecord,
 };
 use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
@@ -85,8 +85,8 @@ fn test_migration_runner_rollback() {
 
     // Verify status
     let status = runner.status();
-    assert!(status[0].applied);  // v1
-    assert!(status[1].applied);  // v2
+    assert!(status[0].applied); // v1
+    assert!(status[1].applied); // v2
     assert!(!status[2].applied); // v3
     assert!(!status[3].applied); // v4
     assert!(!status[4].applied); // v5
@@ -141,10 +141,18 @@ fn test_event_history_persistence() {
     adapter.save_workflow(2001, &record).unwrap();
 
     // Save events in sequence
-    let id1 = adapter.save_event(2001, 1, "WorkflowStarted", 0, b"start".to_vec()).unwrap();
-    let id2 = adapter.save_event(2001, 2, "StepCompleted", 1, b"step0".to_vec()).unwrap();
-    let id3 = adapter.save_event(2001, 2, "StepCompleted", 2, b"step1".to_vec()).unwrap();
-    let id4 = adapter.save_event(2001, 3, "WorkflowCompleted", 3, b"done".to_vec()).unwrap();
+    let id1 = adapter
+        .save_event(2001, 1, "WorkflowStarted", 0, b"start".to_vec())
+        .unwrap();
+    let id2 = adapter
+        .save_event(2001, 2, "StepCompleted", 1, b"step0".to_vec())
+        .unwrap();
+    let id3 = adapter
+        .save_event(2001, 2, "StepCompleted", 2, b"step1".to_vec())
+        .unwrap();
+    let id4 = adapter
+        .save_event(2001, 3, "WorkflowCompleted", 3, b"done".to_vec())
+        .unwrap();
 
     assert!(id1 < id2 && id2 < id3 && id3 < id4);
 
@@ -167,11 +175,17 @@ fn test_search_attribute_persistence() {
     adapter.save_workflow(3001, &record).unwrap();
 
     let mut attrs = SearchAttributes::new();
-    attrs.insert("environment".into(), SearchAttributeValue::Text("production".into()));
+    attrs.insert(
+        "environment".into(),
+        SearchAttributeValue::Text("production".into()),
+    );
     attrs.insert("priority".into(), SearchAttributeValue::Integer(5));
     attrs.insert("score".into(), SearchAttributeValue::Float(9.95));
     attrs.insert("active".into(), SearchAttributeValue::Bool(true));
-    attrs.insert("tags".into(), SearchAttributeValue::TextArray(vec!["critical".into(), "finance".into()]));
+    attrs.insert(
+        "tags".into(),
+        SearchAttributeValue::TextArray(vec!["critical".into(), "finance".into()]),
+    );
 
     adapter.save_search_attributes(3001, &attrs).unwrap();
 
@@ -199,17 +213,23 @@ fn test_workflow_status_update() {
     adapter.save_workflow(4001, &record).unwrap();
 
     // Update to Completed
-    adapter.update_workflow_status(4001, WorkflowStatus::Completed).unwrap();
+    adapter
+        .update_workflow_status(4001, WorkflowStatus::Completed)
+        .unwrap();
     let loaded = adapter.load_workflow(4001).unwrap();
     assert_eq!(loaded.status, WorkflowStatus::Completed);
 
     // Update to Failed
-    adapter.update_workflow_status(4001, WorkflowStatus::Failed).unwrap();
+    adapter
+        .update_workflow_status(4001, WorkflowStatus::Failed)
+        .unwrap();
     let loaded = adapter.load_workflow(4001).unwrap();
     assert_eq!(loaded.status, WorkflowStatus::Failed);
 
     // Update non-existent should error
-    let err = adapter.update_workflow_status(9999, WorkflowStatus::Completed).unwrap_err();
+    let err = adapter
+        .update_workflow_status(9999, WorkflowStatus::Completed)
+        .unwrap_err();
     assert!(matches!(err, DatabaseError::NotFound(9999)));
 }
 
@@ -236,7 +256,10 @@ fn test_concurrent_workflow_persistence() {
         handle.join().unwrap();
     }
 
-    assert_eq!(adapter.workflow_count(), (num_threads * workflows_per_thread) as usize);
+    assert_eq!(
+        adapter.workflow_count(),
+        (num_threads * workflows_per_thread) as usize
+    );
 
     // Verify a sample
     let loaded = adapter.load_workflow(10000).unwrap();
@@ -250,7 +273,14 @@ fn test_workflow_list_with_filters() {
 
     // Create workflows with different statuses and namespaces
     for i in 0..10 {
-        let mut record = make_record(5000 + i, if i % 2 == 0 { WorkflowStatus::Running } else { WorkflowStatus::Completed });
+        let mut record = make_record(
+            5000 + i,
+            if i % 2 == 0 {
+                WorkflowStatus::Running
+            } else {
+                WorkflowStatus::Completed
+            },
+        );
         if i < 5 {
             record.namespace_name = "ns-alpha".into();
         } else {
@@ -260,29 +290,49 @@ fn test_workflow_list_with_filters() {
     }
 
     // Filter by namespace
-    let alpha = adapter.list_workflows(Some("ns-alpha"), StatusFilter::All, 100, 0).unwrap();
+    let alpha = adapter
+        .list_workflows(Some("ns-alpha"), StatusFilter::All, 100, 0)
+        .unwrap();
     assert_eq!(alpha.len(), 5);
 
     // Filter by status
-    let running = adapter.list_workflows(None, StatusFilter::Running, 100, 0).unwrap();
+    let running = adapter
+        .list_workflows(None, StatusFilter::Running, 100, 0)
+        .unwrap();
     assert_eq!(running.len(), 5); // even indices
 
-    let completed = adapter.list_workflows(None, StatusFilter::Completed, 100, 0).unwrap();
+    let completed = adapter
+        .list_workflows(None, StatusFilter::Completed, 100, 0)
+        .unwrap();
     assert_eq!(completed.len(), 5); // odd indices
 
     // Combined filter
-    let alpha_running = adapter.list_workflows(Some("ns-alpha"), StatusFilter::Running, 100, 0).unwrap();
+    let alpha_running = adapter
+        .list_workflows(Some("ns-alpha"), StatusFilter::Running, 100, 0)
+        .unwrap();
     assert_eq!(alpha_running.len(), 3); // i=0,2,4
 
     // Pagination
-    let page1 = adapter.list_workflows(None, StatusFilter::All, 3, 0).unwrap();
+    let page1 = adapter
+        .list_workflows(None, StatusFilter::All, 3, 0)
+        .unwrap();
     assert_eq!(page1.len(), 3);
-    let page2 = adapter.list_workflows(None, StatusFilter::All, 3, 3).unwrap();
+    let page2 = adapter
+        .list_workflows(None, StatusFilter::All, 3, 3)
+        .unwrap();
     assert_eq!(page2.len(), 3);
 
     // Count
-    assert_eq!(adapter.count_workflows(None, StatusFilter::All).unwrap(), 10);
-    assert_eq!(adapter.count_workflows(Some("ns-alpha"), StatusFilter::Running).unwrap(), 3);
+    assert_eq!(
+        adapter.count_workflows(None, StatusFilter::All).unwrap(),
+        10
+    );
+    assert_eq!(
+        adapter
+            .count_workflows(Some("ns-alpha"), StatusFilter::Running)
+            .unwrap(),
+        3
+    );
 }
 
 #[test]
@@ -293,7 +343,10 @@ fn test_checkpoint_save_and_load() {
 
     // Simulate checkpoint via search attributes (checkpoint data stored as attribute)
     let mut attrs = SearchAttributes::new();
-    attrs.insert("__checkpoint_data".into(), SearchAttributeValue::Bytes(b"snapshot-binary".to_vec()));
+    attrs.insert(
+        "__checkpoint_data".into(),
+        SearchAttributeValue::Bytes(b"snapshot-binary".to_vec()),
+    );
     attrs.insert("__checkpoint_step".into(), SearchAttributeValue::Integer(5));
     adapter.save_search_attributes(6001, &attrs).unwrap();
 
@@ -326,14 +379,23 @@ fn test_namespace_persistence() {
     adapter.save_workflow(7003, &ns3_record).unwrap();
 
     // Verify namespace filtering works
-    let prod = adapter.list_workflows(Some("production"), StatusFilter::All, 100, 0).unwrap();
+    let prod = adapter
+        .list_workflows(Some("production"), StatusFilter::All, 100, 0)
+        .unwrap();
     assert_eq!(prod.len(), 2);
 
-    let staging = adapter.list_workflows(Some("staging"), StatusFilter::All, 100, 0).unwrap();
+    let staging = adapter
+        .list_workflows(Some("staging"), StatusFilter::All, 100, 0)
+        .unwrap();
     assert_eq!(staging.len(), 1);
 
     // Verify count
-    assert_eq!(adapter.count_workflows(Some("production"), StatusFilter::All).unwrap(), 2);
+    assert_eq!(
+        adapter
+            .count_workflows(Some("production"), StatusFilter::All)
+            .unwrap(),
+        2
+    );
 }
 
 #[test]
@@ -347,9 +409,18 @@ fn test_schedule_persistence() {
 
     // Store schedule metadata as search attributes
     let mut attrs = SearchAttributes::new();
-    attrs.insert("__schedule_cron".into(), SearchAttributeValue::Text("*/5 * * * *".into()));
-    attrs.insert("__schedule_jitter_ms".into(), SearchAttributeValue::Integer(1000));
-    attrs.insert("__schedule_paused".into(), SearchAttributeValue::Bool(false));
+    attrs.insert(
+        "__schedule_cron".into(),
+        SearchAttributeValue::Text("*/5 * * * *".into()),
+    );
+    attrs.insert(
+        "__schedule_jitter_ms".into(),
+        SearchAttributeValue::Integer(1000),
+    );
+    attrs.insert(
+        "__schedule_paused".into(),
+        SearchAttributeValue::Bool(false),
+    );
     adapter.save_search_attributes(8001, &attrs).unwrap();
 
     let loaded_attrs = adapter.load_search_attributes(8001).unwrap();
@@ -376,9 +447,33 @@ fn test_replication_queue_persistence() {
     adapter.save_workflow(9001, &record).unwrap();
 
     // Enqueue replication events
-    let id1 = adapter.save_event(9001, 10, "ReplicationEnqueue", 0, b"region-a->region-b:wf-9001".to_vec()).unwrap();
-    let id2 = adapter.save_event(9001, 10, "ReplicationEnqueue", 1, b"region-a->region-c:wf-9001".to_vec()).unwrap();
-    let id3 = adapter.save_event(9001, 10, "ReplicationEnqueue", 2, b"region-b->region-c:wf-9001".to_vec()).unwrap();
+    let id1 = adapter
+        .save_event(
+            9001,
+            10,
+            "ReplicationEnqueue",
+            0,
+            b"region-a->region-b:wf-9001".to_vec(),
+        )
+        .unwrap();
+    let id2 = adapter
+        .save_event(
+            9001,
+            10,
+            "ReplicationEnqueue",
+            1,
+            b"region-a->region-c:wf-9001".to_vec(),
+        )
+        .unwrap();
+    let id3 = adapter
+        .save_event(
+            9001,
+            10,
+            "ReplicationEnqueue",
+            2,
+            b"region-b->region-c:wf-9001".to_vec(),
+        )
+        .unwrap();
 
     assert!(id1 < id2 && id2 < id3);
 
@@ -399,9 +494,33 @@ fn test_audit_log_persistence() {
     let record = make_record(audit_key, WorkflowStatus::Running);
     adapter.save_workflow(audit_key, &record).unwrap();
 
-    adapter.save_event(audit_key, 15, "AuditLog", 0, b"actor=admin action=create resource=workflow/1001".to_vec()).unwrap();
-    adapter.save_event(audit_key, 15, "AuditLog", 1, b"actor=user1 action=signal resource=workflow/1002".to_vec()).unwrap();
-    adapter.save_event(audit_key, 15, "AuditLog", 2, b"actor=admin action=terminate resource=workflow/1003".to_vec()).unwrap();
+    adapter
+        .save_event(
+            audit_key,
+            15,
+            "AuditLog",
+            0,
+            b"actor=admin action=create resource=workflow/1001".to_vec(),
+        )
+        .unwrap();
+    adapter
+        .save_event(
+            audit_key,
+            15,
+            "AuditLog",
+            1,
+            b"actor=user1 action=signal resource=workflow/1002".to_vec(),
+        )
+        .unwrap();
+    adapter
+        .save_event(
+            audit_key,
+            15,
+            "AuditLog",
+            2,
+            b"actor=admin action=terminate resource=workflow/1003".to_vec(),
+        )
+        .unwrap();
 
     let events = adapter.load_events(audit_key).unwrap();
     assert_eq!(events.len(), 3);
@@ -426,9 +545,18 @@ fn test_api_key_persistence() {
 
     // Store API key metadata
     let mut attrs = SearchAttributes::new();
-    attrs.insert("api_key_hash".into(), SearchAttributeValue::Text("sha256:abc123".into()));
-    attrs.insert("api_key_name".into(), SearchAttributeValue::Text("production-key".into()));
-    attrs.insert("api_key_namespace".into(), SearchAttributeValue::Text("default".into()));
+    attrs.insert(
+        "api_key_hash".into(),
+        SearchAttributeValue::Text("sha256:abc123".into()),
+    );
+    attrs.insert(
+        "api_key_name".into(),
+        SearchAttributeValue::Text("production-key".into()),
+    );
+    attrs.insert(
+        "api_key_namespace".into(),
+        SearchAttributeValue::Text("default".into()),
+    );
     attrs.insert("api_key_active".into(), SearchAttributeValue::Bool(true));
     adapter.save_search_attributes(sys_key, &attrs).unwrap();
 
@@ -545,7 +673,10 @@ fn test_engine_with_adapter_full_lifecycle() {
         current_step: 3,
         total_steps: 3,
         merkle_root: slab.merkle_root.to_vec(),
-        step_bitmask: slab.step_bitmask.bits.iter()
+        step_bitmask: slab
+            .step_bitmask
+            .bits
+            .iter()
             .flat_map(|w| w.to_le_bytes())
             .collect(),
         status: WorkflowStatus::Completed,
@@ -574,8 +705,12 @@ fn test_delete_cascades_related_data() {
     adapter.save_workflow(55001, &record).unwrap();
 
     // Add events
-    adapter.save_event(55001, 1, "Started", 0, b"data".to_vec()).unwrap();
-    adapter.save_event(55001, 2, "StepDone", 1, b"data".to_vec()).unwrap();
+    adapter
+        .save_event(55001, 1, "Started", 0, b"data".to_vec())
+        .unwrap();
+    adapter
+        .save_event(55001, 2, "StepDone", 1, b"data".to_vec())
+        .unwrap();
     assert_eq!(adapter.event_count(55001), 2);
 
     // Add search attributes

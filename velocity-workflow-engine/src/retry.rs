@@ -75,8 +75,8 @@ impl RetryPolicy {
     /// Compute the delay for a given attempt (0-based) with exponential backoff,
     /// optional cap, and ±25 % jitter.
     pub fn compute_delay(&self, attempt: u32) -> Duration {
-        let base_ms = self.initial_interval_ms as f64
-            * self.backoff_coefficient.powi(attempt as i32);
+        let base_ms =
+            self.initial_interval_ms as f64 * self.backoff_coefficient.powi(attempt as i32);
         let capped_ms = match self.max_interval_ms {
             Some(max) => base_ms.min(max as f64),
             None => base_ms,
@@ -90,8 +90,8 @@ impl RetryPolicy {
 
     /// Compute delay with an explicit random value in [0.0, 1.0) for jitter.
     pub fn compute_delay_with_jitter(&self, attempt: u32, random: f64) -> Duration {
-        let base_ms = self.initial_interval_ms as f64
-            * self.backoff_coefficient.powi(attempt as i32);
+        let base_ms =
+            self.initial_interval_ms as f64 * self.backoff_coefficient.powi(attempt as i32);
         let capped_ms = match self.max_interval_ms {
             Some(max) => base_ms.min(max as f64),
             None => base_ms,
@@ -110,7 +110,9 @@ impl RetryPolicy {
         if self.retryable_error_names.is_empty() {
             return true;
         }
-        self.retryable_error_names.iter().any(|n| n == err.error_name())
+        self.retryable_error_names
+            .iter()
+            .any(|n| n == err.error_name())
     }
 }
 
@@ -495,10 +497,14 @@ mod tests {
     fn test_retry_succeeds_first_attempt() {
         let policy = RetryPolicy::defaults();
         let mut call_count = 0u32;
-        let result = RetryExecutor::execute(&policy, || {
-            call_count += 1;
-            Ok::<u64, VelocityError>(42)
-        }, |_| {});
+        let result = RetryExecutor::execute(
+            &policy,
+            || {
+                call_count += 1;
+                Ok::<u64, VelocityError>(42)
+            },
+            |_| {},
+        );
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 42);
         assert_eq!(call_count, 1);
@@ -508,46 +514,61 @@ mod tests {
     fn test_retry_succeeds_after_failures() {
         let policy = RetryPolicy::defaults().with_max_attempts(3);
         let mut call_count = 0u32;
-        let result = RetryExecutor::execute(&policy, || {
-            call_count += 1;
-            if call_count < 3 {
-                Err(VelocityError::DatabaseError {
-                    operation: "read".to_string(),
-                    source: "timeout".to_string(),
-                })
-            } else {
-                Ok(99u64)
-            }
-        }, |_| {});
+        let result = RetryExecutor::execute(
+            &policy,
+            || {
+                call_count += 1;
+                if call_count < 3 {
+                    Err(VelocityError::DatabaseError {
+                        operation: "read".to_string(),
+                        source: "timeout".to_string(),
+                    })
+                } else {
+                    Ok(99u64)
+                }
+            },
+            |_| {},
+        );
         assert!(result.is_ok());
         assert_eq!(call_count, 3);
-        let (_, stats) = result.ok().map(|v| (v, RetryStats::default())).unwrap_or_default();
+        let (_, stats) = result
+            .ok()
+            .map(|v| (v, RetryStats::default()))
+            .unwrap_or_default();
         // Verify via the ok path — we need stats from the actual result.
         // Re-run to capture stats:
         let mut cc = 0u32;
-        let result2 = RetryExecutor::execute(&policy, || {
-            cc += 1;
-            if cc < 3 {
-                Err(VelocityError::DatabaseError {
-                    operation: "read".to_string(),
-                    source: "timeout".to_string(),
-                })
-            } else {
-                Ok(99u64)
-            }
-        }, |_| {});
+        let result2 = RetryExecutor::execute(
+            &policy,
+            || {
+                cc += 1;
+                if cc < 3 {
+                    Err(VelocityError::DatabaseError {
+                        operation: "read".to_string(),
+                        source: "timeout".to_string(),
+                    })
+                } else {
+                    Ok(99u64)
+                }
+            },
+            |_| {},
+        );
         assert_eq!(result2.unwrap(), 99);
     }
 
     #[test]
     fn test_retry_exhausted() {
         let policy = RetryPolicy::defaults().with_max_attempts(2);
-        let result = RetryExecutor::execute(&policy, || {
-            Err::<u64, VelocityError>(VelocityError::DatabaseError {
-                operation: "write".to_string(),
-                source: "connection refused".to_string(),
-            })
-        }, |_| {});
+        let result = RetryExecutor::execute(
+            &policy,
+            || {
+                Err::<u64, VelocityError>(VelocityError::DatabaseError {
+                    operation: "write".to_string(),
+                    source: "connection refused".to_string(),
+                })
+            },
+            |_| {},
+        );
         assert!(result.is_err());
         let (err, stats) = result.unwrap_err();
         assert_eq!(stats.attempts, 2);
@@ -559,12 +580,14 @@ mod tests {
     fn test_retry_non_retryable_error_stops_immediately() {
         let policy = RetryPolicy::defaults().with_max_attempts(5);
         let mut call_count = 0u32;
-        let result = RetryExecutor::execute(&policy, || {
-            call_count += 1;
-            Err::<u64, VelocityError>(VelocityError::WorkflowNotFound {
-                workflow_key: 1,
-            })
-        }, |_| {});
+        let result = RetryExecutor::execute(
+            &policy,
+            || {
+                call_count += 1;
+                Err::<u64, VelocityError>(VelocityError::WorkflowNotFound { workflow_key: 1 })
+            },
+            |_| {},
+        );
         assert!(result.is_err());
         assert_eq!(call_count, 1); // Should not retry
     }
@@ -577,12 +600,16 @@ mod tests {
 
         // ReplicationFailed is retryable by default but not in the filter.
         let mut call_count = 0u32;
-        let result = RetryExecutor::execute(&policy, || {
-            call_count += 1;
-            Err::<u64, VelocityError>(VelocityError::ReplicationFailed {
-                reason: "network".to_string(),
-            })
-        }, |_| {});
+        let result = RetryExecutor::execute(
+            &policy,
+            || {
+                call_count += 1;
+                Err::<u64, VelocityError>(VelocityError::ReplicationFailed {
+                    reason: "network".to_string(),
+                })
+            },
+            |_| {},
+        );
         assert!(result.is_err());
         assert_eq!(call_count, 1); // Not in filter, so no retry
     }
@@ -594,17 +621,21 @@ mod tests {
             .with_initial_interval_ms(50);
         let mut delays = Vec::new();
         let mut cc = 0u32;
-        let _ = RetryExecutor::execute(&policy, || {
-            cc += 1;
-            if cc < 3 {
-                Err(VelocityError::DatabaseError {
-                    operation: "x".to_string(),
-                    source: "y".to_string(),
-                })
-            } else {
-                Ok(())
-            }
-        }, |d| delays.push(d));
+        let _ = RetryExecutor::execute(
+            &policy,
+            || {
+                cc += 1;
+                if cc < 3 {
+                    Err(VelocityError::DatabaseError {
+                        operation: "x".to_string(),
+                        source: "y".to_string(),
+                    })
+                } else {
+                    Ok(())
+                }
+            },
+            |d| delays.push(d),
+        );
         assert_eq!(delays.len(), 2); // sleep called between attempts 1→2 and 2→3
     }
 
@@ -727,7 +758,10 @@ mod tests {
 
         let result = cb.execute(|| Ok::<u64, VelocityError>(42));
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), VelocityError::InternalError { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            VelocityError::InternalError { .. }
+        ));
     }
 
     #[test]

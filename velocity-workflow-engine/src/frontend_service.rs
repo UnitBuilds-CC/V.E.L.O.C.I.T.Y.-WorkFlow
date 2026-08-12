@@ -5,8 +5,11 @@
 //! workflow operations, visibility operations, schedule operations.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Frontend Service Core
@@ -107,7 +110,9 @@ pub struct AuthInterceptor {
 }
 
 impl RequestInterceptor for AuthInterceptor {
-    fn name(&self) -> &str { "auth" }
+    fn name(&self) -> &str {
+        "auth"
+    }
     fn intercept(&self, request: &ApiRequest) -> Result<Option<ApiResponse>, InterceptorError> {
         if request.caller_identity.is_empty() {
             return Ok(Some(ApiResponse {
@@ -143,15 +148,19 @@ impl RateLimitInterceptor {
 }
 
 impl RequestInterceptor for RateLimitInterceptor {
-    fn name(&self) -> &str { "rate_limit" }
+    fn name(&self) -> &str {
+        "rate_limit"
+    }
     fn intercept(&self, request: &ApiRequest) -> Result<Option<ApiResponse>, InterceptorError> {
         let mut limits = self.limits.write().unwrap();
-        let state = limits.entry(request.namespace.clone()).or_insert_with(|| RateLimitState {
-            tokens: self.default_rate,
-            max_tokens: self.default_rate,
-            last_refill: Instant::now(),
-            rate_per_second: self.default_rate,
-        });
+        let state = limits
+            .entry(request.namespace.clone())
+            .or_insert_with(|| RateLimitState {
+                tokens: self.default_rate,
+                max_tokens: self.default_rate,
+                last_refill: Instant::now(),
+                rate_per_second: self.default_rate,
+            });
 
         let now = Instant::now();
         let elapsed = now.duration_since(state.last_refill).as_secs_f64();
@@ -177,7 +186,9 @@ pub struct ValidationInterceptor {
 }
 
 impl RequestInterceptor for ValidationInterceptor {
-    fn name(&self) -> &str { "validation" }
+    fn name(&self) -> &str {
+        "validation"
+    }
     fn intercept(&self, request: &ApiRequest) -> Result<Option<ApiResponse>, InterceptorError> {
         if request.namespace.is_empty() {
             return Ok(Some(ApiResponse {
@@ -190,7 +201,11 @@ impl RequestInterceptor for ValidationInterceptor {
         if request.size_bytes > self.config.max_request_size_bytes {
             return Ok(Some(ApiResponse {
                 status: ApiStatus::InvalidArgument,
-                payload: format!("request size {} exceeds limit {}", request.size_bytes, self.config.max_request_size_bytes).into_bytes(),
+                payload: format!(
+                    "request size {} exceeds limit {}",
+                    request.size_bytes, self.config.max_request_size_bytes
+                )
+                .into_bytes(),
                 headers: HashMap::new(),
                 processing_time_us: 0,
             }));
@@ -202,7 +217,9 @@ impl RequestInterceptor for ValidationInterceptor {
 pub struct TelemetryInterceptor;
 
 impl RequestInterceptor for TelemetryInterceptor {
-    fn name(&self) -> &str { "telemetry" }
+    fn name(&self) -> &str {
+        "telemetry"
+    }
     fn intercept(&self, _request: &ApiRequest) -> Result<Option<ApiResponse>, InterceptorError> {
         Ok(None) // Always pass through, just records metrics
     }
@@ -227,10 +244,14 @@ pub enum HandlerError {
 pub struct StartWorkflowHandler;
 
 impl ApiHandler for StartWorkflowHandler {
-    fn method_name(&self) -> &str { "StartWorkflowExecution" }
+    fn method_name(&self) -> &str {
+        "StartWorkflowExecution"
+    }
     fn handle(&self, request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         if request.payload.is_empty() {
-            return Err(HandlerError::InvalidArgument("missing workflow start request".to_string()));
+            return Err(HandlerError::InvalidArgument(
+                "missing workflow start request".to_string(),
+            ));
         }
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -244,7 +265,9 @@ impl ApiHandler for StartWorkflowHandler {
 pub struct SignalWorkflowHandler;
 
 impl ApiHandler for SignalWorkflowHandler {
-    fn method_name(&self) -> &str { "SignalWorkflowExecution" }
+    fn method_name(&self) -> &str {
+        "SignalWorkflowExecution"
+    }
     fn handle(&self, request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -258,7 +281,9 @@ impl ApiHandler for SignalWorkflowHandler {
 pub struct QueryWorkflowHandler;
 
 impl ApiHandler for QueryWorkflowHandler {
-    fn method_name(&self) -> &str { "QueryWorkflowExecution" }
+    fn method_name(&self) -> &str {
+        "QueryWorkflowExecution"
+    }
     fn handle(&self, request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -272,7 +297,9 @@ impl ApiHandler for QueryWorkflowHandler {
 pub struct DescribeWorkflowHandler;
 
 impl ApiHandler for DescribeWorkflowHandler {
-    fn method_name(&self) -> &str { "DescribeWorkflowExecution" }
+    fn method_name(&self) -> &str {
+        "DescribeWorkflowExecution"
+    }
     fn handle(&self, request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -286,7 +313,9 @@ impl ApiHandler for DescribeWorkflowHandler {
 pub struct TerminateWorkflowHandler;
 
 impl ApiHandler for TerminateWorkflowHandler {
-    fn method_name(&self) -> &str { "TerminateWorkflowExecution" }
+    fn method_name(&self) -> &str {
+        "TerminateWorkflowExecution"
+    }
     fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -300,7 +329,9 @@ impl ApiHandler for TerminateWorkflowHandler {
 pub struct CancelWorkflowHandler;
 
 impl ApiHandler for CancelWorkflowHandler {
-    fn method_name(&self) -> &str { "RequestCancelWorkflowExecution" }
+    fn method_name(&self) -> &str {
+        "RequestCancelWorkflowExecution"
+    }
     fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -314,7 +345,9 @@ impl ApiHandler for CancelWorkflowHandler {
 pub struct ListWorkflowsHandler;
 
 impl ApiHandler for ListWorkflowsHandler {
-    fn method_name(&self) -> &str { "ListWorkflowExecutions" }
+    fn method_name(&self) -> &str {
+        "ListWorkflowExecutions"
+    }
     fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -328,7 +361,9 @@ impl ApiHandler for ListWorkflowsHandler {
 pub struct ResetWorkflowHandler;
 
 impl ApiHandler for ResetWorkflowHandler {
-    fn method_name(&self) -> &str { "ResetWorkflowExecution" }
+    fn method_name(&self) -> &str {
+        "ResetWorkflowExecution"
+    }
     fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -344,10 +379,14 @@ impl ApiHandler for ResetWorkflowHandler {
 pub struct RegisterNamespaceHandler;
 
 impl ApiHandler for RegisterNamespaceHandler {
-    fn method_name(&self) -> &str { "RegisterNamespace" }
+    fn method_name(&self) -> &str {
+        "RegisterNamespace"
+    }
     fn handle(&self, request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         if request.payload.is_empty() {
-            return Err(HandlerError::InvalidArgument("missing namespace registration request".to_string()));
+            return Err(HandlerError::InvalidArgument(
+                "missing namespace registration request".to_string(),
+            ));
         }
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -361,7 +400,9 @@ impl ApiHandler for RegisterNamespaceHandler {
 pub struct DescribeNamespaceHandler;
 
 impl ApiHandler for DescribeNamespaceHandler {
-    fn method_name(&self) -> &str { "DescribeNamespace" }
+    fn method_name(&self) -> &str {
+        "DescribeNamespace"
+    }
     fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -377,7 +418,9 @@ impl ApiHandler for DescribeNamespaceHandler {
 pub struct AdminDescribeClusterHandler;
 
 impl ApiHandler for AdminDescribeClusterHandler {
-    fn method_name(&self) -> &str { "DescribeCluster" }
+    fn method_name(&self) -> &str {
+        "DescribeCluster"
+    }
     fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -391,7 +434,9 @@ impl ApiHandler for AdminDescribeClusterHandler {
 pub struct AdminListClustersHandler;
 
 impl ApiHandler for AdminListClustersHandler {
-    fn method_name(&self) -> &str { "ListClusters" }
+    fn method_name(&self) -> &str {
+        "ListClusters"
+    }
     fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
         Ok(ApiResponse {
             status: ApiStatus::Ok,
@@ -409,8 +454,12 @@ impl FrontendService {
         let svc = Self {
             interceptors: RwLock::new(vec![
                 Arc::new(TelemetryInterceptor),
-                Arc::new(AuthInterceptor { required_permissions: vec![] }),
-                Arc::new(ValidationInterceptor { config: config.clone() }),
+                Arc::new(AuthInterceptor {
+                    required_permissions: vec![],
+                }),
+                Arc::new(ValidationInterceptor {
+                    config: config.clone(),
+                }),
                 Arc::new(RateLimitInterceptor::new(100.0)),
             ]),
             handlers: RwLock::new(HashMap::new()),
@@ -436,7 +485,10 @@ impl FrontendService {
     }
 
     pub fn register_handler(&self, handler: Arc<dyn ApiHandler>) {
-        self.handlers.write().unwrap().insert(handler.method_name().to_string(), handler);
+        self.handlers
+            .write()
+            .unwrap()
+            .insert(handler.method_name().to_string(), handler);
     }
 
     pub fn add_interceptor(&self, interceptor: Arc<dyn RequestInterceptor>) {
@@ -454,11 +506,17 @@ impl FrontendService {
                 Ok(Some(response)) => {
                     // Interceptor rejected the request
                     if response.status == ApiStatus::PermissionDenied {
-                        self.stats.requests_rejected_auth.fetch_add(1, Ordering::Relaxed);
+                        self.stats
+                            .requests_rejected_auth
+                            .fetch_add(1, Ordering::Relaxed);
                     } else if response.status == ApiStatus::ResourceExhausted {
-                        self.stats.requests_rejected_rate.fetch_add(1, Ordering::Relaxed);
+                        self.stats
+                            .requests_rejected_rate
+                            .fetch_add(1, Ordering::Relaxed);
                     } else if response.status == ApiStatus::InvalidArgument {
-                        self.stats.requests_rejected_validation.fetch_add(1, Ordering::Relaxed);
+                        self.stats
+                            .requests_rejected_validation
+                            .fetch_add(1, Ordering::Relaxed);
                     }
                     self.stats.requests_failed.fetch_add(1, Ordering::Relaxed);
                     return response;
@@ -482,7 +540,9 @@ impl FrontendService {
             match handler.handle(&request) {
                 Ok(mut response) => {
                     response.processing_time_us = start.elapsed().as_micros() as i64;
-                    self.stats.requests_completed.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .requests_completed
+                        .fetch_add(1, Ordering::Relaxed);
                     response
                 }
                 Err(e) => {
@@ -515,7 +575,9 @@ impl FrontendService {
         self.handlers.read().unwrap().keys().cloned().collect()
     }
 
-    pub fn stats(&self) -> &FrontendStats { &self.stats }
+    pub fn stats(&self) -> &FrontendStats {
+        &self.stats
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -537,7 +599,10 @@ mod tests {
     }
 
     fn now_ms() -> i64 {
-        SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
     }
 
     #[test]
@@ -584,7 +649,10 @@ mod tests {
 
     #[test]
     fn test_validation_interceptor_rejects_oversized_request() {
-        let config = FrontendConfig { max_request_size_bytes: 10, ..Default::default() };
+        let config = FrontendConfig {
+            max_request_size_bytes: 10,
+            ..Default::default()
+        };
         let svc = FrontendService::new(config);
         let mut req = make_request("StartWorkflowExecution", "ns1");
         req.size_bytes = 100;
@@ -598,7 +666,10 @@ mod tests {
         let svc = FrontendService::new(config);
         // Replace rate limit interceptor with very low rate
         svc.interceptors.write().unwrap().clear();
-        svc.interceptors.write().unwrap().push(Arc::new(RateLimitInterceptor::new(1.0)));
+        svc.interceptors
+            .write()
+            .unwrap()
+            .push(Arc::new(RateLimitInterceptor::new(1.0)));
 
         // First request should succeed
         let req = make_request("StartWorkflowExecution", "ns1");
@@ -625,7 +696,9 @@ mod tests {
     fn test_custom_handler() {
         struct CustomHandler;
         impl ApiHandler for CustomHandler {
-            fn method_name(&self) -> &str { "CustomMethod" }
+            fn method_name(&self) -> &str {
+                "CustomMethod"
+            }
             fn handle(&self, _request: &ApiRequest) -> Result<ApiResponse, HandlerError> {
                 Ok(ApiResponse {
                     status: ApiStatus::Ok,
@@ -648,10 +721,14 @@ mod tests {
     fn test_all_workflow_handlers() {
         let svc = FrontendService::new(FrontendConfig::default());
         let methods = vec![
-            "StartWorkflowExecution", "SignalWorkflowExecution",
-            "QueryWorkflowExecution", "DescribeWorkflowExecution",
-            "TerminateWorkflowExecution", "RequestCancelWorkflowExecution",
-            "ListWorkflowExecutions", "ResetWorkflowExecution",
+            "StartWorkflowExecution",
+            "SignalWorkflowExecution",
+            "QueryWorkflowExecution",
+            "DescribeWorkflowExecution",
+            "TerminateWorkflowExecution",
+            "RequestCancelWorkflowExecution",
+            "ListWorkflowExecutions",
+            "ResetWorkflowExecution",
         ];
         for method in methods {
             let req = make_request(method, "ns1");

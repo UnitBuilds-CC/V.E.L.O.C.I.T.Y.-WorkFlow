@@ -10,8 +10,11 @@
 //! - Per-namespace and per-API limiting
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Mutex, Arc, Condvar, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{Instant, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Condvar, Mutex,
+};
+use std::time::{Duration, Instant};
 
 // ─── Priority Levels ─────────────────────────────────────────────────────────
 
@@ -67,9 +70,18 @@ impl RateRequest {
         }
     }
 
-    pub fn with_tokens(mut self, n: u32) -> Self { self.token_count = n; self }
-    pub fn with_priority(mut self, p: RequestPriority) -> Self { self.priority = p; self }
-    pub fn with_caller_type(mut self, ct: &str) -> Self { self.caller_type = ct.to_string(); self }
+    pub fn with_tokens(mut self, n: u32) -> Self {
+        self.token_count = n;
+        self
+    }
+    pub fn with_priority(mut self, p: RequestPriority) -> Self {
+        self.priority = p;
+        self
+    }
+    pub fn with_caller_type(mut self, ct: &str) -> Self {
+        self.caller_type = ct.to_string();
+        self
+    }
 }
 
 // ─── Reservation ─────────────────────────────────────────────────────────────
@@ -89,21 +101,37 @@ pub struct Reservation {
 
 impl Reservation {
     pub fn ok(ok: bool, delay: Duration) -> Self {
-        Self { ok, delay, limiter_id: 0, tokens: 0 }
+        Self {
+            ok,
+            delay,
+            limiter_id: 0,
+            tokens: 0,
+        }
     }
 
     pub fn rejected() -> Self {
-        Self { ok: false, delay: Duration::MAX, limiter_id: 0, tokens: 0 }
+        Self {
+            ok: false,
+            delay: Duration::MAX,
+            limiter_id: 0,
+            tokens: 0,
+        }
     }
 
     /// Whether this reservation permits the action.
-    pub fn is_ok(&self) -> bool { self.ok }
+    pub fn is_ok(&self) -> bool {
+        self.ok
+    }
 
     /// How long the caller must wait. Zero means act immediately.
-    pub fn delay(&self) -> Duration { self.delay }
+    pub fn delay(&self) -> Duration {
+        self.delay
+    }
 
     /// Cancel this reservation (return tokens to the bucket).
-    pub fn cancel(&self) -> bool { self.ok }
+    pub fn cancel(&self) -> bool {
+        self.ok
+    }
 }
 
 /// A multi-reservation spanning several limiter stages.
@@ -115,8 +143,12 @@ pub struct MultiReservation {
 }
 
 impl MultiReservation {
-    pub fn is_ok(&self) -> bool { self.ok }
-    pub fn delay(&self) -> Duration { self.max_delay }
+    pub fn is_ok(&self) -> bool {
+        self.ok
+    }
+    pub fn delay(&self) -> Duration {
+        self.max_delay
+    }
 }
 
 // ─── ClockedRateLimiter (Token Bucket) ───────────────────────────────────────
@@ -183,7 +215,12 @@ impl ClockedRateLimiter {
         let tokens = self.tokens.lock().unwrap();
         let available = *tokens;
         if available >= n as f64 {
-            Reservation { ok: true, delay: Duration::ZERO, limiter_id: self.id, tokens: n }
+            Reservation {
+                ok: true,
+                delay: Duration::ZERO,
+                limiter_id: self.id,
+                tokens: n,
+            }
         } else if self.rate_per_sec > 0.0 {
             let deficit = n as f64 - available;
             let wait_secs = deficit / self.rate_per_sec;
@@ -202,8 +239,12 @@ impl ClockedRateLimiter {
     pub fn wait_n(&self, n: u32, deadline: Duration) -> bool {
         let now = Instant::now();
         let res = self.reserve_n(now, n);
-        if !res.is_ok() { return false; }
-        if res.delay() == Duration::ZERO { return true; }
+        if !res.is_ok() {
+            return false;
+        }
+        if res.delay() == Duration::ZERO {
+            return true;
+        }
         if res.delay() > deadline {
             // Cancel the reservation
             self.recycle_token();
@@ -228,16 +269,24 @@ impl ClockedRateLimiter {
     }
 
     /// Configured rate (tokens/sec).
-    pub fn rate(&self) -> f64 { self.rate_per_sec }
+    pub fn rate(&self) -> f64 {
+        self.rate_per_sec
+    }
 
     /// Configured burst (max tokens).
-    pub fn burst(&self) -> u64 { self.burst }
+    pub fn burst(&self) -> u64 {
+        self.burst
+    }
 
     /// Update the rate dynamically.
-    pub fn set_rate(&mut self, new_rate: f64) { self.rate_per_sec = new_rate; }
+    pub fn set_rate(&mut self, new_rate: f64) {
+        self.rate_per_sec = new_rate;
+    }
 
     /// Update the burst dynamically.
-    pub fn set_burst(&mut self, new_burst: u64) { self.burst = new_burst; }
+    pub fn set_burst(&mut self, new_burst: u64) {
+        self.burst = new_burst;
+    }
 }
 
 // ─── TokenBucket (legacy compat) ────────────────────────────────────────────
@@ -252,15 +301,27 @@ pub struct TokenBucket {
 
 impl TokenBucket {
     pub fn new(rate_per_second: f64, capacity: u64) -> Self {
-        Self { capacity, tokens: Mutex::new(capacity as f64), last_refill: Mutex::new(Instant::now()), rate_per_second }
+        Self {
+            capacity,
+            tokens: Mutex::new(capacity as f64),
+            last_refill: Mutex::new(Instant::now()),
+            rate_per_second,
+        }
     }
     pub fn try_acquire(&self, count: u64) -> bool {
         let mut tokens = self.tokens.lock().unwrap();
         let now = Instant::now();
-        let elapsed = now.duration_since(*self.last_refill.lock().unwrap()).as_secs_f64();
+        let elapsed = now
+            .duration_since(*self.last_refill.lock().unwrap())
+            .as_secs_f64();
         *tokens = (*tokens + elapsed * self.rate_per_second).min(self.capacity as f64);
         *self.last_refill.lock().unwrap() = now;
-        if *tokens >= count as f64 { *tokens -= count as f64; true } else { false }
+        if *tokens >= count as f64 {
+            *tokens -= count as f64;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -276,8 +337,14 @@ pub struct MultiRateLimiter {
 
 impl MultiRateLimiter {
     pub fn new(stages: Vec<Arc<ClockedRateLimiter>>) -> Self {
-        assert!(!stages.is_empty(), "MultiRateLimiter requires at least one stage");
-        Self { stages, recycle_count: AtomicU64::new(0) }
+        assert!(
+            !stages.is_empty(),
+            "MultiRateLimiter requires at least one stage"
+        );
+        Self {
+            stages,
+            recycle_count: AtomicU64::new(0),
+        }
     }
 
     /// Allow a single request through all stages.
@@ -310,12 +377,22 @@ impl MultiRateLimiter {
         for stage in &self.stages {
             let res = stage.reserve_n(now, n);
             if !res.is_ok() {
-                return MultiReservation { ok: false, max_delay: Duration::MAX, sub_delays };
+                return MultiReservation {
+                    ok: false,
+                    max_delay: Duration::MAX,
+                    sub_delays,
+                };
             }
-            if res.delay() > max_delay { max_delay = res.delay(); }
+            if res.delay() > max_delay {
+                max_delay = res.delay();
+            }
             sub_delays.push(res.delay());
         }
-        MultiReservation { ok: true, max_delay, sub_delays }
+        MultiReservation {
+            ok: true,
+            max_delay,
+            sub_delays,
+        }
     }
 
     /// Recycle a token back to all stages.
@@ -328,19 +405,29 @@ impl MultiRateLimiter {
 
     /// Minimum rate across all stages.
     pub fn rate(&self) -> f64 {
-        self.stages.iter().map(|s| s.rate()).fold(f64::INFINITY, f64::min)
+        self.stages
+            .iter()
+            .map(|s| s.rate())
+            .fold(f64::INFINITY, f64::min)
     }
 
     /// Minimum burst across all stages.
     pub fn burst(&self) -> u64 {
-        self.stages.iter().map(|s| s.burst()).fold(u64::MAX, u64::min)
+        self.stages
+            .iter()
+            .map(|s| s.burst())
+            .fold(u64::MAX, u64::min)
     }
 
     /// Number of stages.
-    pub fn stage_count(&self) -> usize { self.stages.len() }
+    pub fn stage_count(&self) -> usize {
+        self.stages.len()
+    }
 
     /// Total tokens recycled.
-    pub fn recycled_tokens(&self) -> u64 { self.recycle_count.load(Ordering::Relaxed) }
+    pub fn recycled_tokens(&self) -> u64 {
+        self.recycle_count.load(Ordering::Relaxed)
+    }
 }
 
 // ─── PriorityRateLimiter ─────────────────────────────────────────────────────
@@ -362,28 +449,40 @@ impl PriorityRateLimiter {
 
     /// Set a dedicated limiter for a priority level.
     pub fn set_priority_limit(&mut self, priority: RequestPriority, rate: f64, burst: u64) {
-        self.per_priority.insert(priority, Arc::new(ClockedRateLimiter::new(rate, burst)));
+        self.per_priority
+            .insert(priority, Arc::new(ClockedRateLimiter::new(rate, burst)));
     }
 
     /// Try to allow a request based on its priority.
     pub fn allow(&self, priority: RequestPriority) -> bool {
-        let limiter = self.per_priority.get(&priority).unwrap_or(&self.default_limiter);
+        let limiter = self
+            .per_priority
+            .get(&priority)
+            .unwrap_or(&self.default_limiter);
         limiter.allow()
     }
 
     /// Allow N tokens for a given priority.
     pub fn allow_n(&self, priority: RequestPriority, n: u32) -> bool {
-        let limiter = self.per_priority.get(&priority).unwrap_or(&self.default_limiter);
+        let limiter = self
+            .per_priority
+            .get(&priority)
+            .unwrap_or(&self.default_limiter);
         limiter.allow_n(Instant::now(), n)
     }
 
     /// Reserve for a given priority.
     pub fn reserve(&self, priority: RequestPriority, n: u32) -> Reservation {
-        let limiter = self.per_priority.get(&priority).unwrap_or(&self.default_limiter);
+        let limiter = self
+            .per_priority
+            .get(&priority)
+            .unwrap_or(&self.default_limiter);
         limiter.reserve_n(Instant::now(), n)
     }
 
-    pub fn priority_count(&self) -> usize { self.per_priority.len() }
+    pub fn priority_count(&self) -> usize {
+        self.per_priority.len()
+    }
 }
 
 // ─── RoutingRateLimiter ──────────────────────────────────────────────────────
@@ -407,7 +506,10 @@ impl RoutingRateLimiter {
 
     /// Set rate limit for a specific API operation.
     pub fn set_api_limit(&self, api: &str, rate: f64, burst: u64) {
-        self.per_api.lock().unwrap().insert(api.to_string(), Arc::new(ClockedRateLimiter::new(rate, burst)));
+        self.per_api.lock().unwrap().insert(
+            api.to_string(),
+            Arc::new(ClockedRateLimiter::new(rate, burst)),
+        );
     }
 
     /// Remove API-specific limit (falls back to default).
@@ -435,7 +537,9 @@ impl RoutingRateLimiter {
     }
 
     /// Number of API-specific limits configured.
-    pub fn api_limit_count(&self) -> usize { self.per_api.lock().unwrap().len() }
+    pub fn api_limit_count(&self) -> usize {
+        self.per_api.lock().unwrap().len()
+    }
 
     /// List all configured API names.
     pub fn configured_apis(&self) -> Vec<String> {
@@ -493,7 +597,11 @@ impl DelayedRateLimiter {
             return false;
         }
 
-        queue.push_back(DelayedEntry { request, enqueued_at: Instant::now(), max_wait });
+        queue.push_back(DelayedEntry {
+            request,
+            enqueued_at: Instant::now(),
+            max_wait,
+        });
         self.queued.fetch_add(1, Ordering::Relaxed);
         true
     }
@@ -522,16 +630,24 @@ impl DelayedRateLimiter {
     }
 
     /// Current queue depth.
-    pub fn queue_depth(&self) -> usize { self.queue.lock().unwrap().len() }
+    pub fn queue_depth(&self) -> usize {
+        self.queue.lock().unwrap().len()
+    }
 
     /// Total requests admitted (immediate + from queue).
-    pub fn total_admitted(&self) -> u64 { self.admitted.load(Ordering::Relaxed) }
+    pub fn total_admitted(&self) -> u64 {
+        self.admitted.load(Ordering::Relaxed)
+    }
 
     /// Total requests rejected (queue full).
-    pub fn total_rejected(&self) -> u64 { self.rejected.load(Ordering::Relaxed) }
+    pub fn total_rejected(&self) -> u64 {
+        self.rejected.load(Ordering::Relaxed)
+    }
 
     /// Total requests queued.
-    pub fn total_queued(&self) -> u64 { self.queued.load(Ordering::Relaxed) }
+    pub fn total_queued(&self) -> u64 {
+        self.queued.load(Ordering::Relaxed)
+    }
 }
 
 // ─── NamespaceRateLimiter ────────────────────────────────────────────────────
@@ -546,7 +662,12 @@ pub struct NamespaceRateLimiter {
 }
 
 impl NamespaceRateLimiter {
-    pub fn new(global_rate: f64, global_burst: u64, default_ns_rate: f64, default_ns_burst: u64) -> Self {
+    pub fn new(
+        global_rate: f64,
+        global_burst: u64,
+        default_ns_rate: f64,
+        default_ns_burst: u64,
+    ) -> Self {
         Self {
             global: Arc::new(ClockedRateLimiter::new(global_rate, global_burst)),
             namespace_limiters: Mutex::new(HashMap::new()),
@@ -557,13 +678,19 @@ impl NamespaceRateLimiter {
 
     /// Set a specific rate limit for a namespace.
     pub fn set_namespace_limit(&self, namespace: &str, rate: f64, burst: u64) {
-        self.namespace_limiters.lock().unwrap()
-            .insert(namespace.to_string(), Arc::new(ClockedRateLimiter::new(rate, burst)));
+        self.namespace_limiters.lock().unwrap().insert(
+            namespace.to_string(),
+            Arc::new(ClockedRateLimiter::new(rate, burst)),
+        );
     }
 
     /// Remove a namespace-specific limit.
     pub fn remove_namespace_limit(&self, namespace: &str) -> bool {
-        self.namespace_limiters.lock().unwrap().remove(namespace).is_some()
+        self.namespace_limiters
+            .lock()
+            .unwrap()
+            .remove(namespace)
+            .is_some()
     }
 
     /// Allow a request from a namespace. Must pass both namespace and global limits.
@@ -579,7 +706,9 @@ impl NamespaceRateLimiter {
         };
         drop(ns_limiters);
 
-        if !ns_ok { return false; }
+        if !ns_ok {
+            return false;
+        }
 
         // Check global limit
         self.global.allow_n(now, tokens)
@@ -596,23 +725,39 @@ impl NamespaceRateLimiter {
         drop(ns_limiters);
 
         if !ns_res.is_ok() {
-            return MultiReservation { ok: false, max_delay: Duration::MAX, sub_delays: vec![] };
+            return MultiReservation {
+                ok: false,
+                max_delay: Duration::MAX,
+                sub_delays: vec![],
+            };
         }
 
         let global_res = self.global.reserve_n(now, tokens);
         if !global_res.is_ok() {
-            return MultiReservation { ok: false, max_delay: Duration::MAX, sub_delays: vec![] };
+            return MultiReservation {
+                ok: false,
+                max_delay: Duration::MAX,
+                sub_delays: vec![],
+            };
         }
 
         let max_delay = ns_res.delay().max(global_res.delay());
-        MultiReservation { ok: true, max_delay, sub_delays: vec![ns_res.delay(), global_res.delay()] }
+        MultiReservation {
+            ok: true,
+            max_delay,
+            sub_delays: vec![ns_res.delay(), global_res.delay()],
+        }
     }
 
     /// Number of namespace-specific limits configured.
-    pub fn namespace_count(&self) -> usize { self.namespace_limiters.lock().unwrap().len() }
+    pub fn namespace_count(&self) -> usize {
+        self.namespace_limiters.lock().unwrap().len()
+    }
 
     /// Recycle a token to the global limiter.
-    pub fn recycle_token(&self) { self.global.recycle_token(); }
+    pub fn recycle_token(&self) {
+        self.global.recycle_token();
+    }
 }
 
 // ─── RateLimiter (legacy compat) ────────────────────────────────────────────
@@ -635,14 +780,25 @@ impl RateLimiter {
         }
     }
     pub fn set_namespace_limit(&self, namespace_id: u64, rate: f64, capacity: u64) {
-        self.namespace_buckets.lock().unwrap().insert(namespace_id, TokenBucket::new(rate, capacity));
+        self.namespace_buckets
+            .lock()
+            .unwrap()
+            .insert(namespace_id, TokenBucket::new(rate, capacity));
     }
     pub fn try_acquire(&self, namespace_id: u64, count: u64) -> bool {
-        if !self.global_bucket.try_acquire(count) { return false; }
+        if !self.global_bucket.try_acquire(count) {
+            return false;
+        }
         let buckets = self.namespace_buckets.lock().unwrap();
-        if let Some(bucket) = buckets.get(&namespace_id) { bucket.try_acquire(count) } else { true }
+        if let Some(bucket) = buckets.get(&namespace_id) {
+            bucket.try_acquire(count)
+        } else {
+            true
+        }
     }
-    pub fn namespace_count(&self) -> usize { self.namespace_buckets.lock().unwrap().len() }
+    pub fn namespace_count(&self) -> usize {
+        self.namespace_buckets.lock().unwrap().len()
+    }
 }
 
 // ─── QuotaTracker ────────────────────────────────────────────────────────────
@@ -704,11 +860,21 @@ impl QuotaTracker {
     }
 
     pub fn namespace_usage(&self, namespace: &str) -> QuotaUsage {
-        self.per_namespace.lock().unwrap().get(namespace).cloned().unwrap_or_default()
+        self.per_namespace
+            .lock()
+            .unwrap()
+            .get(namespace)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn api_usage(&self, api: &str) -> QuotaUsage {
-        self.per_api.lock().unwrap().get(api).cloned().unwrap_or_default()
+        self.per_api
+            .lock()
+            .unwrap()
+            .get(api)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn total_usage(&self) -> QuotaUsage {
@@ -725,7 +891,9 @@ impl QuotaTracker {
 }
 
 impl Default for QuotaTracker {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -765,7 +933,9 @@ mod tests {
     fn test_clocked_exhaust() {
         // Use very low rate so no meaningful refill between assertions
         let rl = ClockedRateLimiter::new(0.001, 5);
-        for _ in 0..5 { assert!(rl.allow()); }
+        for _ in 0..5 {
+            assert!(rl.allow());
+        }
         assert!(!rl.allow()); // exhausted
     }
 
@@ -780,7 +950,7 @@ mod tests {
     #[test]
     fn test_clocked_reserve_delayed() {
         let rl = ClockedRateLimiter::new(0.001, 2); // Very low rate, burst 2
-        // Exhaust burst
+                                                    // Exhaust burst
         assert!(rl.allow_n(Instant::now(), 2));
         // Reserve should require waiting
         let res = rl.reserve_n(Instant::now(), 1);
@@ -902,7 +1072,7 @@ mod tests {
         let req = RateRequest::new("StartWorkflow", "ns-1");
         assert!(rl.allow(&req));
         assert!(!rl.allow(&req)); // exhausted
-        // Different API not limited
+                                  // Different API not limited
         let req2 = RateRequest::new("SignalWorkflow", "ns-1");
         assert!(rl.allow(&req2));
     }
@@ -941,7 +1111,7 @@ mod tests {
     #[test]
     fn test_delayed_queued() {
         let dl = DelayedRateLimiter::new(1.0, 1, 10); // Very low rate
-        // Exhaust capacity
+                                                      // Exhaust capacity
         let req1 = RateRequest::new("Test", "ns-1");
         assert!(dl.admit(req1, Duration::from_secs(5)));
         // Next should be queued
@@ -966,8 +1136,10 @@ mod tests {
     #[test]
     fn test_delayed_drain() {
         let dl = DelayedRateLimiter::new(1000.0, 100, 10); // High rate
-        // Exhaust the entire burst
-        for _ in 0..100 { dl.admit(RateRequest::new("Test", "ns-1"), Duration::from_secs(1)); }
+                                                           // Exhaust the entire burst
+        for _ in 0..100 {
+            dl.admit(RateRequest::new("Test", "ns-1"), Duration::from_secs(1));
+        }
         // Next should be queued (burst exhausted)
         let req = RateRequest::new("Test", "ns-1");
         assert!(dl.admit(req, Duration::from_secs(5)));
@@ -994,7 +1166,7 @@ mod tests {
         rl.set_namespace_limit("ns-1", 1.0, 1);
         assert!(rl.allow("ns-1", 1));
         assert!(!rl.allow("ns-1", 1)); // exhausted
-        // Other namespace not affected
+                                       // Other namespace not affected
         assert!(rl.allow("ns-2", 1));
     }
 

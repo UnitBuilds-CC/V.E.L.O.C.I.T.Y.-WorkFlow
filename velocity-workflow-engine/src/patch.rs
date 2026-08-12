@@ -23,23 +23,36 @@ pub struct PatchRegistry {
 
 impl PatchRegistry {
     pub fn new() -> Self {
-        Self { patches: Mutex::new(HashMap::new()), next_id: Mutex::new(1) }
+        Self {
+            patches: Mutex::new(HashMap::new()),
+            next_id: Mutex::new(1),
+        }
     }
 
-    pub fn register_patch(&self, workflow_type_id: u64, version_marker: &str, min_version: u64, max_version: u64, description: &str) -> u64 {
+    pub fn register_patch(
+        &self,
+        workflow_type_id: u64,
+        version_marker: &str,
+        min_version: u64,
+        max_version: u64,
+        description: &str,
+    ) -> u64 {
         let mut id_lock = self.next_id.lock().unwrap();
         let id = *id_lock;
         *id_lock += 1;
         drop(id_lock);
-        self.patches.lock().unwrap().insert(id, WorkflowPatch {
-            patch_id: id,
-            workflow_type_id,
-            version_marker: version_marker.to_string(),
-            min_version,
-            max_version,
-            description: description.to_string(),
-            is_active: true,
-        });
+        self.patches.lock().unwrap().insert(
+            id,
+            WorkflowPatch {
+                patch_id: id,
+                workflow_type_id,
+                version_marker: version_marker.to_string(),
+                min_version,
+                max_version,
+                description: description.to_string(),
+                is_active: true,
+            },
+        );
         id
     }
 
@@ -47,7 +60,9 @@ impl PatchRegistry {
         if let Some(p) = self.patches.lock().unwrap().get_mut(&patch_id) {
             p.is_active = false;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn get_patch(&self, patch_id: u64) -> Option<WorkflowPatch> {
@@ -56,18 +71,28 @@ impl PatchRegistry {
 
     /// Find the active patch for a given workflow type and version.
     pub fn find_patch(&self, workflow_type_id: u64, version: u64) -> Option<WorkflowPatch> {
-        self.patches.lock().unwrap().values().find(|p| {
-            p.workflow_type_id == workflow_type_id
-                && p.is_active
-                && version >= p.min_version
-                && version <= p.max_version
-        }).cloned()
+        self.patches
+            .lock()
+            .unwrap()
+            .values()
+            .find(|p| {
+                p.workflow_type_id == workflow_type_id
+                    && p.is_active
+                    && version >= p.min_version
+                    && version <= p.max_version
+            })
+            .cloned()
     }
 
-    pub fn patch_count(&self) -> usize { self.patches.lock().unwrap().len() }
+    pub fn patch_count(&self) -> usize {
+        self.patches.lock().unwrap().len()
+    }
 
     pub fn active_patches_for_type(&self, workflow_type_id: u64) -> Vec<WorkflowPatch> {
-        self.patches.lock().unwrap().values()
+        self.patches
+            .lock()
+            .unwrap()
+            .values()
             .filter(|p| p.workflow_type_id == workflow_type_id && p.is_active)
             .cloned()
             .collect()
@@ -75,7 +100,9 @@ impl PatchRegistry {
 }
 
 impl Default for PatchRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

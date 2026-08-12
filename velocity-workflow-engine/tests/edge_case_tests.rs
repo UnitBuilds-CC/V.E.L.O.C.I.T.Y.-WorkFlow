@@ -3,17 +3,23 @@
 //! These tests exercise boundary conditions, invalid inputs, concurrent access,
 //! and error paths that the happy-path integration tests do not cover.
 
-use velocity_workflow_engine::*;
+use velocity_workflow_engine::db_adapter::{
+    DatabaseAdapter, InMemoryAdapter, StatusFilter, WorkflowRecord,
+};
 use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
-use velocity_workflow_engine::namespace::{NamespaceRegistry, NamespaceConfig};
-use velocity_workflow_engine::task_queue::{TaskQueue, TaskItem, TaskKind};
-use velocity_workflow_engine::timer_engine::TimerEngine;
-use velocity_workflow_engine::search_index::SearchAttributeIndex;
-use velocity_workflow_engine::visibility::SearchAttributeValue;
 use velocity_workflow_engine::hot_swap::{HotSwapRegistry, HotSwapResult};
-use velocity_workflow_engine::db_adapter::{InMemoryAdapter, DatabaseAdapter, WorkflowRecord, StatusFilter};
-use velocity_workflow_engine::retry::{RetryPolicy, CircuitBreaker, CircuitBreakerConfig, CircuitState};
-use velocity_workflow_engine::observability::{StructuredLogger, MetricsExporter, SpanTracker, LogLevel};
+use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
+use velocity_workflow_engine::observability::{
+    LogLevel, MetricsExporter, SpanTracker, StructuredLogger,
+};
+use velocity_workflow_engine::retry::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitState, RetryPolicy,
+};
+use velocity_workflow_engine::search_index::SearchAttributeIndex;
+use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
+use velocity_workflow_engine::timer_engine::TimerEngine;
+use velocity_workflow_engine::visibility::SearchAttributeValue;
+use velocity_workflow_engine::*;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Barrier};
@@ -68,7 +74,9 @@ fn test_query_completed_workflow() {
     engine.complete_step(key, 0, b"s0".to_vec());
 
     // Register a query handler before completion
-    engine.query_registry().register_handler(key, 1, Box::new(|_input| b"state=done".to_vec()));
+    engine
+        .query_registry()
+        .register_handler(key, 1, Box::new(|_input| b"state=done".to_vec()));
     engine.complete_workflow(key, Some(b"done".to_vec()));
 
     // Query should still work on completed workflows (read-only)
@@ -222,14 +230,34 @@ fn test_poll_with_priority() {
     let hash = 42u64;
 
     // Enqueue low priority first, then high priority
-    tq.enqueue(hash, TaskItem {
-        task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1, task_queue_hash: hash,
-        step_index: 0, activity_name_id: 0, attempt: 1, priority: 1, deadline_ms: 0,
-    });
-    tq.enqueue(hash, TaskItem {
-        task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 2, task_queue_hash: hash,
-        step_index: 0, activity_name_id: 0, attempt: 1, priority: 10, deadline_ms: 0,
-    });
+    tq.enqueue(
+        hash,
+        TaskItem {
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 1,
+            task_queue_hash: hash,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 1,
+            deadline_ms: 0,
+        },
+    );
+    tq.enqueue(
+        hash,
+        TaskItem {
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 2,
+            task_queue_hash: hash,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 10,
+            deadline_ms: 0,
+        },
+    );
 
     // Higher priority (lower number) should be dispatched first
     let first = tq.try_poll(hash).unwrap();
@@ -242,10 +270,20 @@ fn test_concurrent_poll_same_queue() {
     let hash = 42u64;
 
     // Enqueue exactly one task
-    tq.enqueue(hash, TaskItem {
-        task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1, task_queue_hash: hash,
-        step_index: 0, activity_name_id: 0, attempt: 1, priority: 0, deadline_ms: 0,
-    });
+    tq.enqueue(
+        hash,
+        TaskItem {
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 1,
+            task_queue_hash: hash,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 0,
+            deadline_ms: 0,
+        },
+    );
 
     let barrier = Arc::new(Barrier::new(5));
     let received = Arc::new(std::sync::atomic::AtomicU32::new(0));
@@ -262,7 +300,9 @@ fn test_concurrent_poll_same_queue() {
             }
         }));
     }
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
 
     // Only one thread should have received the task
     assert_eq!(received.load(std::sync::atomic::Ordering::Relaxed), 1);
@@ -275,20 +315,36 @@ fn test_queue_with_thousand_tasks() {
     let start = std::time::Instant::now();
 
     for i in 0..1000 {
-        tq.enqueue(hash, TaskItem {
-            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: i, task_queue_hash: hash,
-            step_index: 0, activity_name_id: 0, attempt: 1, priority: 0, deadline_ms: 0,
-        });
+        tq.enqueue(
+            hash,
+            TaskItem {
+                task_id: 0,
+                kind: TaskKind::WorkflowTask,
+                workflow_key: i,
+                task_queue_hash: hash,
+                step_index: 0,
+                activity_name_id: 0,
+                attempt: 1,
+                priority: 0,
+                deadline_ms: 0,
+            },
+        );
     }
 
     assert_eq!(tq.pending_count(hash), 1000);
     let elapsed = start.elapsed();
     // Enqueuing 1000 tasks should be fast (< 1 second)
-    assert!(elapsed.as_secs() < 1, "enqueuing 1000 tasks took too long: {:?}", elapsed);
+    assert!(
+        elapsed.as_secs() < 1,
+        "enqueuing 1000 tasks took too long: {:?}",
+        elapsed
+    );
 
     // Drain all tasks
     let mut count = 0;
-    while tq.try_poll(hash).is_some() { count += 1; }
+    while tq.try_poll(hash).is_some() {
+        count += 1;
+    }
     assert_eq!(count, 1000);
 }
 
@@ -332,7 +388,9 @@ fn test_mass_timer_cancellation() {
     // Cancel all timers
     let mut cancelled = 0;
     for id in timer_ids {
-        if engine.cancel(id) { cancelled += 1; }
+        if engine.cancel(id) {
+            cancelled += 1;
+        }
     }
     assert_eq!(cancelled, 1000);
     assert_eq!(engine.pending_count(), 0);
@@ -384,7 +442,11 @@ fn test_rapid_signal_burst() {
 
     // All should be recorded
     for i in 0..100 {
-        assert!(engine.has_signal(key, i), "signal {} missing after burst", i);
+        assert!(
+            engine.has_signal(key, i),
+            "signal {} missing after burst",
+            i
+        );
     }
 }
 
@@ -490,7 +552,9 @@ fn test_delete_nonexistent_workflow() {
 #[test]
 fn test_list_empty_database() {
     let adapter = InMemoryAdapter::new();
-    let workflows = adapter.list_workflows(None, StatusFilter::All, 100, 0).unwrap();
+    let workflows = adapter
+        .list_workflows(None, StatusFilter::All, 100, 0)
+        .unwrap();
     assert!(workflows.is_empty());
     assert_eq!(adapter.workflow_count(), 0);
 }
@@ -524,7 +588,10 @@ fn test_save_and_load_special_characters() {
 
     let loaded = adapter.load_workflow(42).unwrap();
     assert_eq!(loaded.namespace_name, "tëst-ünïcödé");
-    assert_eq!(loaded.input_data.as_ref().unwrap(), "héllo wörld \0 null bytes 🚀".as_bytes());
+    assert_eq!(
+        loaded.input_data.as_ref().unwrap(),
+        "héllo wörld \0 null bytes 🚀".as_bytes()
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

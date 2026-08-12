@@ -9,7 +9,10 @@
 //! 5. **HistoryTree**: Manages the full history tree with branching support.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::Instant;
 
 // ─── 1. History Event Types ──────────────────────────────────────────────────
@@ -151,13 +154,32 @@ impl HistoryBuilder {
 
     // ─── Workflow Lifecycle Events ─────────────────────────────────────────
 
-    pub fn workflow_execution_started(&self, workflow_type: &str, task_queue: &str,
-        namespace_id: u64, run_id: u64, input: Option<Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionStarted, self.workflow_key);
-        event.attributes.insert("workflow_type".into(), workflow_type.as_bytes().to_vec());
-        event.attributes.insert("task_queue".into(), task_queue.as_bytes().to_vec());
-        event.attributes.insert("namespace_id".into(), namespace_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("run_id".into(), run_id.to_string().as_bytes().to_vec());
+    pub fn workflow_execution_started(
+        &self,
+        workflow_type: &str,
+        task_queue: &str,
+        namespace_id: u64,
+        run_id: u64,
+        input: Option<Vec<u8>>,
+    ) -> u64 {
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionStarted,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("workflow_type".into(), workflow_type.as_bytes().to_vec());
+        event
+            .attributes
+            .insert("task_queue".into(), task_queue.as_bytes().to_vec());
+        event.attributes.insert(
+            "namespace_id".into(),
+            namespace_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("run_id".into(), run_id.to_string().as_bytes().to_vec());
         if let Some(inp) = input {
             event.attributes.insert("input".into(), inp);
         }
@@ -167,7 +189,11 @@ impl HistoryBuilder {
     }
 
     pub fn workflow_execution_completed(&self, result: Option<Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionCompleted, self.workflow_key);
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionCompleted,
+            self.workflow_key,
+        );
         if let Some(r) = result {
             event.attributes.insert("result".into(), r);
         }
@@ -176,143 +202,318 @@ impl HistoryBuilder {
     }
 
     pub fn workflow_execution_failed(&self, failure: &str, retry_state: u8) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionFailed, self.workflow_key);
-        event.attributes.insert("failure".into(), failure.as_bytes().to_vec());
-        event.attributes.insert("retry_state".into(), vec![retry_state]);
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionFailed,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("failure".into(), failure.as_bytes().to_vec());
+        event
+            .attributes
+            .insert("retry_state".into(), vec![retry_state]);
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn workflow_execution_canceled(&self, details: Option<Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionCanceled, self.workflow_key);
-        if let Some(d) = details { event.attributes.insert("details".into(), d); }
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionCanceled,
+            self.workflow_key,
+        );
+        if let Some(d) = details {
+            event.attributes.insert("details".into(), d);
+        }
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn workflow_execution_terminated(&self, reason: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionTerminated, self.workflow_key);
-        event.attributes.insert("reason".into(), reason.as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionTerminated,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("reason".into(), reason.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn workflow_execution_timed_out(&self, retry_state: u8) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionTimedOut, self.workflow_key);
-        event.attributes.insert("retry_state".into(), vec![retry_state]);
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionTimedOut,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("retry_state".into(), vec![retry_state]);
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn workflow_execution_continued_as_new(&self, new_type: &str, new_run_id: u64) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionContinuedAsNew, self.workflow_key);
-        event.attributes.insert("new_workflow_type".into(), new_type.as_bytes().to_vec());
-        event.attributes.insert("new_run_id".into(), new_run_id.to_string().as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionContinuedAsNew,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("new_workflow_type".into(), new_type.as_bytes().to_vec());
+        event.attributes.insert(
+            "new_run_id".into(),
+            new_run_id.to_string().as_bytes().to_vec(),
+        );
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     // ─── Workflow Task Events ──────────────────────────────────────────────
 
-    pub fn workflow_task_scheduled(&self, task_queue: &str, schedule_to_start_timeout_ms: u64) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowTaskScheduled, self.workflow_key);
-        event.attributes.insert("task_queue".into(), task_queue.as_bytes().to_vec());
-        event.attributes.insert("timeout_ms".into(), schedule_to_start_timeout_ms.to_string().as_bytes().to_vec());
+    pub fn workflow_task_scheduled(
+        &self,
+        task_queue: &str,
+        schedule_to_start_timeout_ms: u64,
+    ) -> u64 {
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowTaskScheduled,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("task_queue".into(), task_queue.as_bytes().to_vec());
+        event.attributes.insert(
+            "timeout_ms".into(),
+            schedule_to_start_timeout_ms.to_string().as_bytes().to_vec(),
+        );
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn workflow_task_started(&self, scheduled_event_id: u64, identity: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowTaskStarted, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("identity".into(), identity.as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowTaskStarted,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("identity".into(), identity.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn workflow_task_completed(&self, scheduled_event_id: u64, started_event_id: u64) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowTaskCompleted, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("started_event_id".into(), started_event_id.to_string().as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowTaskCompleted,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        event.attributes.insert(
+            "started_event_id".into(),
+            started_event_id.to_string().as_bytes().to_vec(),
+        );
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn workflow_task_timed_out(&self, scheduled_event_id: u64, timeout_type: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowTaskTimedOut, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("timeout_type".into(), timeout_type.as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowTaskTimedOut,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("timeout_type".into(), timeout_type.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn workflow_task_failed(&self, scheduled_event_id: u64, failure: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowTaskFailed, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("failure".into(), failure.as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowTaskFailed,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("failure".into(), failure.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     // ─── Activity Events ───────────────────────────────────────────────────
 
-    pub fn activity_task_scheduled(&self, activity_id: u64, activity_type: &str, task_queue: &str,
-        input: Option<Vec<u8>>, schedule_to_close_ms: Option<u64>, start_to_close_ms: Option<u64>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ActivityTaskScheduled, self.workflow_key);
-        event.attributes.insert("activity_id".into(), activity_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("activity_type".into(), activity_type.as_bytes().to_vec());
-        event.attributes.insert("task_queue".into(), task_queue.as_bytes().to_vec());
-        if let Some(inp) = input { event.attributes.insert("input".into(), inp); }
-        if let Some(ms) = schedule_to_close_ms { event.attributes.insert("schedule_to_close_ms".into(), ms.to_string().as_bytes().to_vec()); }
-        if let Some(ms) = start_to_close_ms { event.attributes.insert("start_to_close_ms".into(), ms.to_string().as_bytes().to_vec()); }
+    pub fn activity_task_scheduled(
+        &self,
+        activity_id: u64,
+        activity_type: &str,
+        task_queue: &str,
+        input: Option<Vec<u8>>,
+        schedule_to_close_ms: Option<u64>,
+        start_to_close_ms: Option<u64>,
+    ) -> u64 {
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ActivityTaskScheduled,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "activity_id".into(),
+            activity_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("activity_type".into(), activity_type.as_bytes().to_vec());
+        event
+            .attributes
+            .insert("task_queue".into(), task_queue.as_bytes().to_vec());
+        if let Some(inp) = input {
+            event.attributes.insert("input".into(), inp);
+        }
+        if let Some(ms) = schedule_to_close_ms {
+            event.attributes.insert(
+                "schedule_to_close_ms".into(),
+                ms.to_string().as_bytes().to_vec(),
+            );
+        }
+        if let Some(ms) = start_to_close_ms {
+            event.attributes.insert(
+                "start_to_close_ms".into(),
+                ms.to_string().as_bytes().to_vec(),
+            );
+        }
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn activity_task_started(&self, scheduled_event_id: u64, identity: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ActivityTaskStarted, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("identity".into(), identity.as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ActivityTaskStarted,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("identity".into(), identity.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
-    pub fn activity_task_completed(&self, scheduled_event_id: u64, started_event_id: u64, result: Option<Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ActivityTaskCompleted, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("started_event_id".into(), started_event_id.to_string().as_bytes().to_vec());
-        if let Some(r) = result { event.attributes.insert("result".into(), r); }
+    pub fn activity_task_completed(
+        &self,
+        scheduled_event_id: u64,
+        started_event_id: u64,
+        result: Option<Vec<u8>>,
+    ) -> u64 {
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ActivityTaskCompleted,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        event.attributes.insert(
+            "started_event_id".into(),
+            started_event_id.to_string().as_bytes().to_vec(),
+        );
+        if let Some(r) = result {
+            event.attributes.insert("result".into(), r);
+        }
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn activity_task_failed(&self, scheduled_event_id: u64, failure: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ActivityTaskFailed, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("failure".into(), failure.as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ActivityTaskFailed,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("failure".into(), failure.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn activity_task_timed_out(&self, scheduled_event_id: u64, timeout_type: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ActivityTaskTimedOut, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("timeout_type".into(), timeout_type.as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ActivityTaskTimedOut,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("timeout_type".into(), timeout_type.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn activity_task_cancel_requested(&self, scheduled_event_id: u64) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ActivityTaskCancelRequested, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ActivityTaskCancelRequested,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn activity_task_canceled(&self, scheduled_event_id: u64, details: Option<Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ActivityTaskCanceled, self.workflow_key);
-        event.attributes.insert("scheduled_event_id".into(), scheduled_event_id.to_string().as_bytes().to_vec());
-        if let Some(d) = details { event.attributes.insert("details".into(), d); }
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ActivityTaskCanceled,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "scheduled_event_id".into(),
+            scheduled_event_id.to_string().as_bytes().to_vec(),
+        );
+        if let Some(d) = details {
+            event.attributes.insert("details".into(), d);
+        }
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
@@ -320,64 +521,143 @@ impl HistoryBuilder {
     // ─── Timer Events ──────────────────────────────────────────────────────
 
     pub fn timer_started(&self, timer_id: u64, start_to_fire_timeout_ms: u64) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::TimerStarted, self.workflow_key);
-        event.attributes.insert("timer_id".into(), timer_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("timeout_ms".into(), start_to_fire_timeout_ms.to_string().as_bytes().to_vec());
+        let mut event =
+            HBHistoryEvent::new(self.next_id(), HBEventType::TimerStarted, self.workflow_key);
+        event
+            .attributes
+            .insert("timer_id".into(), timer_id.to_string().as_bytes().to_vec());
+        event.attributes.insert(
+            "timeout_ms".into(),
+            start_to_fire_timeout_ms.to_string().as_bytes().to_vec(),
+        );
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn timer_fired(&self, timer_id: u64, started_event_id: u64) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::TimerFired, self.workflow_key);
-        event.attributes.insert("timer_id".into(), timer_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("started_event_id".into(), started_event_id.to_string().as_bytes().to_vec());
+        let mut event =
+            HBHistoryEvent::new(self.next_id(), HBEventType::TimerFired, self.workflow_key);
+        event
+            .attributes
+            .insert("timer_id".into(), timer_id.to_string().as_bytes().to_vec());
+        event.attributes.insert(
+            "started_event_id".into(),
+            started_event_id.to_string().as_bytes().to_vec(),
+        );
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn timer_canceled(&self, timer_id: u64, started_event_id: u64) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::TimerCanceled, self.workflow_key);
-        event.attributes.insert("timer_id".into(), timer_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("started_event_id".into(), started_event_id.to_string().as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::TimerCanceled,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("timer_id".into(), timer_id.to_string().as_bytes().to_vec());
+        event.attributes.insert(
+            "started_event_id".into(),
+            started_event_id.to_string().as_bytes().to_vec(),
+        );
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     // ─── Child Workflow Events ─────────────────────────────────────────────
 
-    pub fn child_workflow_initiated(&self, child_workflow_id: u64, workflow_type: &str, namespace: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::StartChildWorkflowExecutionInitiated, self.workflow_key);
-        event.attributes.insert("child_workflow_id".into(), child_workflow_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("workflow_type".into(), workflow_type.as_bytes().to_vec());
-        event.attributes.insert("namespace".into(), namespace.as_bytes().to_vec());
+    pub fn child_workflow_initiated(
+        &self,
+        child_workflow_id: u64,
+        workflow_type: &str,
+        namespace: &str,
+    ) -> u64 {
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::StartChildWorkflowExecutionInitiated,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "child_workflow_id".into(),
+            child_workflow_id.to_string().as_bytes().to_vec(),
+        );
+        event
+            .attributes
+            .insert("workflow_type".into(), workflow_type.as_bytes().to_vec());
+        event
+            .attributes
+            .insert("namespace".into(), namespace.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn child_workflow_started(&self, initiated_event_id: u64, child_run_id: u64) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ChildWorkflowExecutionStarted, self.workflow_key);
-        event.attributes.insert("initiated_event_id".into(), initiated_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("child_run_id".into(), child_run_id.to_string().as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ChildWorkflowExecutionStarted,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "initiated_event_id".into(),
+            initiated_event_id.to_string().as_bytes().to_vec(),
+        );
+        event.attributes.insert(
+            "child_run_id".into(),
+            child_run_id.to_string().as_bytes().to_vec(),
+        );
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
-    pub fn child_workflow_completed(&self, initiated_event_id: u64, started_event_id: u64, result: Option<Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::ChildWorkflowExecutionCompleted, self.workflow_key);
-        event.attributes.insert("initiated_event_id".into(), initiated_event_id.to_string().as_bytes().to_vec());
-        event.attributes.insert("started_event_id".into(), started_event_id.to_string().as_bytes().to_vec());
-        if let Some(r) = result { event.attributes.insert("result".into(), r); }
+    pub fn child_workflow_completed(
+        &self,
+        initiated_event_id: u64,
+        started_event_id: u64,
+        result: Option<Vec<u8>>,
+    ) -> u64 {
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::ChildWorkflowExecutionCompleted,
+            self.workflow_key,
+        );
+        event.attributes.insert(
+            "initiated_event_id".into(),
+            initiated_event_id.to_string().as_bytes().to_vec(),
+        );
+        event.attributes.insert(
+            "started_event_id".into(),
+            started_event_id.to_string().as_bytes().to_vec(),
+        );
+        if let Some(r) = result {
+            event.attributes.insert("result".into(), r);
+        }
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     // ─── Signal Events ─────────────────────────────────────────────────────
 
-    pub fn workflow_execution_signaled(&self, signal_name: &str, input: Option<Vec<u8>>, identity: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionSignaled, self.workflow_key);
-        event.attributes.insert("signal_name".into(), signal_name.as_bytes().to_vec());
-        if let Some(inp) = input { event.attributes.insert("input".into(), inp); }
-        event.attributes.insert("identity".into(), identity.as_bytes().to_vec());
+    pub fn workflow_execution_signaled(
+        &self,
+        signal_name: &str,
+        input: Option<Vec<u8>>,
+        identity: &str,
+    ) -> u64 {
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionSignaled,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("signal_name".into(), signal_name.as_bytes().to_vec());
+        if let Some(inp) = input {
+            event.attributes.insert("input".into(), inp);
+        }
+        event
+            .attributes
+            .insert("identity".into(), identity.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
@@ -385,15 +665,27 @@ impl HistoryBuilder {
     // ─── Marker & Search Attributes ────────────────────────────────────────
 
     pub fn marker_recorded(&self, marker_name: &str, details: Option<Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::MarkerRecorded, self.workflow_key);
-        event.attributes.insert("marker_name".into(), marker_name.as_bytes().to_vec());
-        if let Some(d) = details { event.attributes.insert("details".into(), d); }
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::MarkerRecorded,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("marker_name".into(), marker_name.as_bytes().to_vec());
+        if let Some(d) = details {
+            event.attributes.insert("details".into(), d);
+        }
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn upsert_search_attributes(&self, attributes: &HashMap<String, Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::UpsertWorkflowSearchAttributes, self.workflow_key);
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::UpsertWorkflowSearchAttributes,
+            self.workflow_key,
+        );
         for (k, v) in attributes {
             event.attributes.insert(format!("sa:{}", k), v.clone());
         }
@@ -404,18 +696,36 @@ impl HistoryBuilder {
     // ─── Query/Update Events ───────────────────────────────────────────────
 
     pub fn update_accepted(&self, update_id: &str, update_name: &str) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionUpdateAccepted, self.workflow_key);
-        event.attributes.insert("update_id".into(), update_id.as_bytes().to_vec());
-        event.attributes.insert("update_name".into(), update_name.as_bytes().to_vec());
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionUpdateAccepted,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("update_id".into(), update_id.as_bytes().to_vec());
+        event
+            .attributes
+            .insert("update_name".into(), update_name.as_bytes().to_vec());
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
 
     pub fn update_completed(&self, update_id: &str, success: bool, result: Option<Vec<u8>>) -> u64 {
-        let mut event = HBHistoryEvent::new(self.next_id(), HBEventType::WorkflowExecutionUpdateCompleted, self.workflow_key);
-        event.attributes.insert("update_id".into(), update_id.as_bytes().to_vec());
-        event.attributes.insert("success".into(), vec![success as u8]);
-        if let Some(r) = result { event.attributes.insert("result".into(), r); }
+        let mut event = HBHistoryEvent::new(
+            self.next_id(),
+            HBEventType::WorkflowExecutionUpdateCompleted,
+            self.workflow_key,
+        );
+        event
+            .attributes
+            .insert("update_id".into(), update_id.as_bytes().to_vec());
+        event
+            .attributes
+            .insert("success".into(), vec![success as u8]);
+        if let Some(r) = result {
+            event.attributes.insert("result".into(), r);
+        }
         event.branch_token = self.branch_token.clone();
         self.add_event(event)
     }
@@ -429,7 +739,10 @@ impl HistoryBuilder {
 
     /// Get events in a range.
     pub fn events_range(&self, start_id: u64, end_id: u64) -> Vec<HBHistoryEvent> {
-        self.events.lock().unwrap().iter()
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|e| e.event_id >= start_id && e.event_id < end_id)
             .cloned()
             .collect()
@@ -492,7 +805,12 @@ impl HistoryBranchManager {
     }
 
     /// Create a new branch (for workflow reset or fork).
-    pub fn create_branch(&self, tree_id: u64, parent_branch_id: Option<u64>, fork_event_id: u64) -> HistoryBranch {
+    pub fn create_branch(
+        &self,
+        tree_id: u64,
+        parent_branch_id: Option<u64>,
+        fork_event_id: u64,
+    ) -> HistoryBranch {
         let branch_id = self.next_branch_id.fetch_add(1, Ordering::Relaxed);
         let mut ancestor_branches = Vec::new();
 
@@ -515,8 +833,16 @@ impl HistoryBranchManager {
             ancestor_branches,
         };
 
-        self.branches.write().unwrap().insert(branch_id, branch.clone());
-        self.tree_branches.write().unwrap().entry(tree_id).or_default().push(branch_id);
+        self.branches
+            .write()
+            .unwrap()
+            .insert(branch_id, branch.clone());
+        self.tree_branches
+            .write()
+            .unwrap()
+            .entry(tree_id)
+            .or_default()
+            .push(branch_id);
         branch
     }
 
@@ -530,7 +856,11 @@ impl HistoryBranchManager {
         let ids = self.tree_branches.read().unwrap();
         let branches = self.branches.read().unwrap();
         ids.get(&tree_id)
-            .map(|ids| ids.iter().filter_map(|id| branches.get(id).cloned()).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| branches.get(id).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -550,7 +880,9 @@ impl HistoryBranchManager {
 }
 
 impl Default for HistoryBranchManager {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 4. History Serializer ────────────────────────────────────────────────────
@@ -591,51 +923,92 @@ impl HistorySerializer {
 
     /// Deserialize a history event from bytes.
     pub fn deserialize(data: &[u8]) -> Option<HBHistoryEvent> {
-        if data.len() < 48 { return None; }
+        if data.len() < 48 {
+            return None;
+        }
         let mut pos = 0;
 
-        let event_id = u64::from_le_bytes(data[pos..pos+8].try_into().ok()?); pos += 8;
-        let type_raw = u32::from_le_bytes(data[pos..pos+4].try_into().ok()?); pos += 4;
-        let timestamp_ms = u64::from_le_bytes(data[pos..pos+8].try_into().ok()?); pos += 8;
-        let task_id = u64::from_le_bytes(data[pos..pos+8].try_into().ok()?); pos += 8;
-        let workflow_key = u64::from_le_bytes(data[pos..pos+8].try_into().ok()?); pos += 8;
-        let version = i64::from_le_bytes(data[pos..pos+8].try_into().ok()?); pos += 8;
+        let event_id = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+        pos += 8;
+        let type_raw = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?);
+        pos += 4;
+        let timestamp_ms = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+        pos += 8;
+        let task_id = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+        pos += 8;
+        let workflow_key = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+        pos += 8;
+        let version = i64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+        pos += 8;
 
         let event_type = Self::type_from_u32(type_raw)?;
 
-        if pos + 4 > data.len() { return None; }
-        let attr_count = u32::from_le_bytes(data[pos..pos+4].try_into().ok()?) as usize; pos += 4;
+        if pos + 4 > data.len() {
+            return None;
+        }
+        let attr_count = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+        pos += 4;
 
         let mut attributes = HashMap::new();
         for _ in 0..attr_count {
-            if pos + 4 > data.len() { return None; }
-            let key_len = u32::from_le_bytes(data[pos..pos+4].try_into().ok()?) as usize; pos += 4;
-            if pos + key_len > data.len() { return None; }
-            let key = String::from_utf8_lossy(&data[pos..pos+key_len]).to_string(); pos += key_len;
-            if pos + 4 > data.len() { return None; }
-            let val_len = u32::from_le_bytes(data[pos..pos+4].try_into().ok()?) as usize; pos += 4;
-            if pos + val_len > data.len() { return None; }
-            attributes.insert(key, data[pos..pos+val_len].to_vec()); pos += val_len;
+            if pos + 4 > data.len() {
+                return None;
+            }
+            let key_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+            pos += 4;
+            if pos + key_len > data.len() {
+                return None;
+            }
+            let key = String::from_utf8_lossy(&data[pos..pos + key_len]).to_string();
+            pos += key_len;
+            if pos + 4 > data.len() {
+                return None;
+            }
+            let val_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+            pos += 4;
+            if pos + val_len > data.len() {
+                return None;
+            }
+            attributes.insert(key, data[pos..pos + val_len].to_vec());
+            pos += val_len;
         }
 
         let source = if pos + 4 <= data.len() {
-            let src_len = u32::from_le_bytes(data[pos..pos+4].try_into().ok()?) as usize; pos += 4;
+            let src_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+            pos += 4;
             if pos + src_len <= data.len() {
-                let s = String::from_utf8_lossy(&data[pos..pos+src_len]).to_string(); pos += src_len;
+                let s = String::from_utf8_lossy(&data[pos..pos + src_len]).to_string();
+                pos += src_len;
                 s
-            } else { String::new() }
-        } else { String::new() };
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
 
         let branch_token = if pos + 4 <= data.len() {
-            let tok_len = u32::from_le_bytes(data[pos..pos+4].try_into().ok()?) as usize; pos += 4;
+            let tok_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+            pos += 4;
             if pos + tok_len <= data.len() {
-                data[pos..pos+tok_len].to_vec()
-            } else { Vec::new() }
-        } else { Vec::new() };
+                data[pos..pos + tok_len].to_vec()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
 
         Some(HBHistoryEvent {
-            event_id, event_type, timestamp_ms, task_id, workflow_key, version,
-            attributes, source, branch_token,
+            event_id,
+            event_type,
+            timestamp_ms,
+            task_id,
+            workflow_key,
+            version,
+            attributes,
+            source,
+            branch_token,
         })
     }
 
@@ -687,15 +1060,22 @@ impl HistorySerializer {
 
     /// Deserialize a batch of events.
     pub fn deserialize_batch(data: &[u8]) -> Vec<HBHistoryEvent> {
-        if data.len() < 4 { return Vec::new(); }
+        if data.len() < 4 {
+            return Vec::new();
+        }
         let count = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
         let mut events = Vec::new();
         let mut pos = 4;
         for _ in 0..count {
-            if pos + 4 > data.len() { break; }
-            let len = u32::from_le_bytes(data[pos..pos+4].try_into().unwrap()) as usize; pos += 4;
-            if pos + len > data.len() { break; }
-            if let Some(event) = Self::deserialize(&data[pos..pos+len]) {
+            if pos + 4 > data.len() {
+                break;
+            }
+            let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+            pos += 4;
+            if pos + len > data.len() {
+                break;
+            }
+            if let Some(event) = Self::deserialize(&data[pos..pos + len]) {
                 events.push(event);
             }
             pos += len;
@@ -722,25 +1102,39 @@ impl HistoryTree {
         let builder = HistoryBuilder::new(workflow_key, token);
         let root_branch_id = root_branch.branch_id;
 
-        Self { tree_id, builder, branch_manager, root_branch_id }
+        Self {
+            tree_id,
+            builder,
+            branch_manager,
+            root_branch_id,
+        }
     }
 
     /// Get the history builder.
-    pub fn builder(&self) -> &HistoryBuilder { &self.builder }
+    pub fn builder(&self) -> &HistoryBuilder {
+        &self.builder
+    }
 
     /// Get the branch manager.
-    pub fn branch_manager(&self) -> &HistoryBranchManager { &self.branch_manager }
+    pub fn branch_manager(&self) -> &HistoryBranchManager {
+        &self.branch_manager
+    }
 
     /// Fork the history at a given event ID (for workflow reset).
     pub fn fork_at(&self, fork_event_id: u64) -> HistoryBranch {
-        self.branch_manager.create_branch(self.tree_id, Some(self.root_branch_id), fork_event_id)
+        self.branch_manager
+            .create_branch(self.tree_id, Some(self.root_branch_id), fork_event_id)
     }
 
     /// Get the total event count.
-    pub fn event_count(&self) -> u64 { self.builder.total_events() }
+    pub fn event_count(&self) -> u64 {
+        self.builder.total_events()
+    }
 
     /// Get all events.
-    pub fn all_events(&self) -> Vec<HBHistoryEvent> { self.builder.events() }
+    pub fn all_events(&self) -> Vec<HBHistoryEvent> {
+        self.builder.events()
+    }
 }
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
@@ -761,12 +1155,20 @@ mod tests {
     #[test]
     fn test_builder_workflow_lifecycle() {
         let builder = HistoryBuilder::new(1, vec![]);
-        let e1 = builder.workflow_execution_started("my-wf", "task-q", 1, 100, Some(b"input".to_vec()));
+        let e1 =
+            builder.workflow_execution_started("my-wf", "task-q", 1, 100, Some(b"input".to_vec()));
         assert_eq!(e1, 1);
         let e2 = builder.workflow_task_scheduled("task-q", 10000);
         let e3 = builder.workflow_task_started(e2, "worker-1");
         let e4 = builder.workflow_task_completed(e2, e3);
-        let e5 = builder.activity_task_scheduled(1, "greet", "activity-q", None, Some(30000), Some(10000));
+        let e5 = builder.activity_task_scheduled(
+            1,
+            "greet",
+            "activity-q",
+            None,
+            Some(30000),
+            Some(10000),
+        );
         let e6 = builder.activity_task_completed(e5, e5 + 1, Some(b"result".to_vec()));
         let e7 = builder.workflow_execution_completed(Some(b"done".to_vec()));
 
@@ -797,7 +1199,11 @@ mod tests {
     #[test]
     fn test_builder_signal() {
         let builder = HistoryBuilder::new(1, vec![]);
-        let e1 = builder.workflow_execution_signaled("my-signal", Some(b"sig-data".to_vec()), "external");
+        let e1 = builder.workflow_execution_signaled(
+            "my-signal",
+            Some(b"sig-data".to_vec()),
+            "external",
+        );
         assert_eq!(builder.total_events(), 1);
         let events = builder.events();
         assert_eq!(events[0].event_type, HBEventType::WorkflowExecutionSignaled);
@@ -850,11 +1256,17 @@ mod tests {
         let deserialized = HistorySerializer::deserialize(&serialized).unwrap();
 
         assert_eq!(deserialized.event_id, 1);
-        assert_eq!(deserialized.event_type, HBEventType::WorkflowExecutionStarted);
+        assert_eq!(
+            deserialized.event_type,
+            HBEventType::WorkflowExecutionStarted
+        );
         assert_eq!(deserialized.workflow_key, 100);
         assert_eq!(deserialized.version, 5);
         assert_eq!(deserialized.source, "test");
-        assert_eq!(deserialized.attributes.get("workflow_type").unwrap(), &b"test-wf".to_vec());
+        assert_eq!(
+            deserialized.attributes.get("workflow_type").unwrap(),
+            &b"test-wf".to_vec()
+        );
     }
 
     #[test]
@@ -875,7 +1287,8 @@ mod tests {
     #[test]
     fn test_history_tree() {
         let tree = HistoryTree::new(1, 100);
-        tree.builder().workflow_execution_started("wf", "q", 1, 100, None);
+        tree.builder()
+            .workflow_execution_started("wf", "q", 1, 100, None);
         tree.builder().workflow_task_scheduled("q", 10000);
         assert_eq!(tree.event_count(), 2);
 
@@ -893,7 +1306,10 @@ mod tests {
         let e1 = builder.upsert_search_attributes(&attrs);
         assert_eq!(builder.total_events(), 1);
         let events = builder.events();
-        assert_eq!(events[0].event_type, HBEventType::UpsertWorkflowSearchAttributes);
+        assert_eq!(
+            events[0].event_type,
+            HBEventType::UpsertWorkflowSearchAttributes
+        );
         assert!(events[0].attributes.contains_key("sa:env"));
     }
 

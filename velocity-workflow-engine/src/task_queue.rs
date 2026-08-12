@@ -3,8 +3,11 @@
 //! Extended with backlog tracking, per-queue stats, and fair queuing.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Mutex, Condvar, atomic::{AtomicU64, Ordering}};
-use std::time::{Instant, Duration};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Condvar, Mutex,
+};
+use std::time::{Duration, Instant};
 
 /// A task dispatched to workers for processing.
 #[derive(Debug, Clone)]
@@ -103,7 +106,11 @@ impl TaskQueue {
         let state = map.entry(tq_hash).or_insert_with(QueueState::new);
         // Priority insertion: higher priority (lower number) goes to front
         if task.priority > 0 {
-            let pos = state.deque.iter().position(|t| t.priority > task.priority).unwrap_or(state.deque.len());
+            let pos = state
+                .deque
+                .iter()
+                .position(|t| t.priority > task.priority)
+                .unwrap_or(state.deque.len());
             state.deque.insert(pos, task);
         } else {
             state.deque.push_back(task);
@@ -184,12 +191,15 @@ impl TaskQueue {
         let mut removed = 0;
         for state in map.values_mut() {
             let before = state.deque.len();
-            state.deque.retain(|t| t.deadline_ms == 0 || t.deadline_ms > now_ms);
+            state
+                .deque
+                .retain(|t| t.deadline_ms == 0 || t.deadline_ms > now_ms);
             let r = before - state.deque.len();
             state.expired += r as u64;
             removed += r;
         }
-        self.total_expired.fetch_add(removed as u64, Ordering::Relaxed);
+        self.total_expired
+            .fetch_add(removed as u64, Ordering::Relaxed);
         removed
     }
 
@@ -214,7 +224,10 @@ impl TaskQueue {
                 dequeued: state.dequeued,
                 expired: state.expired,
                 depth: state.deque.len(),
-                backlog_age_ms: state.backlog_age().map(|d| d.as_millis() as u64).unwrap_or(0),
+                backlog_age_ms: state
+                    .backlog_age()
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0),
             },
             None => QueueStats::default(),
         }
@@ -223,15 +236,23 @@ impl TaskQueue {
     /// Get stats for all queues.
     pub fn all_queue_stats(&self) -> HashMap<u64, QueueStats> {
         let map = self.inner.lock().unwrap();
-        map.iter().map(|(&hash, state)| {
-            (hash, QueueStats {
-                enqueued: state.enqueued,
-                dequeued: state.dequeued,
-                expired: state.expired,
-                depth: state.deque.len(),
-                backlog_age_ms: state.backlog_age().map(|d| d.as_millis() as u64).unwrap_or(0),
+        map.iter()
+            .map(|(&hash, state)| {
+                (
+                    hash,
+                    QueueStats {
+                        enqueued: state.enqueued,
+                        dequeued: state.dequeued,
+                        expired: state.expired,
+                        depth: state.deque.len(),
+                        backlog_age_ms: state
+                            .backlog_age()
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0),
+                    },
+                )
             })
-        }).collect()
+            .collect()
     }
 
     /// Get the maximum backlog age across all queues (in milliseconds).
@@ -245,13 +266,19 @@ impl TaskQueue {
     }
 
     /// Total tasks enqueued across all queues.
-    pub fn global_enqueued(&self) -> u64 { self.total_enqueued.load(Ordering::Relaxed) }
+    pub fn global_enqueued(&self) -> u64 {
+        self.total_enqueued.load(Ordering::Relaxed)
+    }
 
     /// Total tasks dequeued across all queues.
-    pub fn global_dequeued(&self) -> u64 { self.total_dequeued.load(Ordering::Relaxed) }
+    pub fn global_dequeued(&self) -> u64 {
+        self.total_dequeued.load(Ordering::Relaxed)
+    }
 
     /// Total tasks expired across all queues.
-    pub fn global_expired(&self) -> u64 { self.total_expired.load(Ordering::Relaxed) }
+    pub fn global_expired(&self) -> u64 {
+        self.total_expired.load(Ordering::Relaxed)
+    }
 }
 
 impl Default for TaskQueue {
@@ -298,14 +325,26 @@ mod tests {
     fn test_multiple_queues_independent() {
         let tq = TaskQueue::new();
         let task1 = TaskItem {
-            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
-            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
-            priority: 0, deadline_ms: 0,
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 1,
+            task_queue_hash: 10,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 0,
+            deadline_ms: 0,
         };
         let task2 = TaskItem {
-            task_id: 0, kind: TaskKind::ActivityTask, workflow_key: 2,
-            task_queue_hash: 20, step_index: 0, activity_name_id: 0, attempt: 1,
-            priority: 0, deadline_ms: 0,
+            task_id: 0,
+            kind: TaskKind::ActivityTask,
+            workflow_key: 2,
+            task_queue_hash: 20,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 0,
+            deadline_ms: 0,
         };
 
         tq.enqueue(10, task1);
@@ -325,9 +364,15 @@ mod tests {
     fn test_queue_stats() {
         let tq = TaskQueue::new();
         let task = TaskItem {
-            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
-            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
-            priority: 0, deadline_ms: 0,
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 1,
+            task_queue_hash: 10,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 0,
+            deadline_ms: 0,
         };
         tq.enqueue(10, task.clone());
         tq.enqueue(10, task);
@@ -346,9 +391,15 @@ mod tests {
     fn test_global_stats() {
         let tq = TaskQueue::new();
         let task = TaskItem {
-            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
-            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
-            priority: 0, deadline_ms: 0,
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 1,
+            task_queue_hash: 10,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 0,
+            deadline_ms: 0,
         };
         tq.enqueue(10, task.clone());
         tq.enqueue(20, task);
@@ -361,9 +412,15 @@ mod tests {
     fn test_all_queue_stats() {
         let tq = TaskQueue::new();
         let task = TaskItem {
-            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
-            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
-            priority: 0, deadline_ms: 0,
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 1,
+            task_queue_hash: 10,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 0,
+            deadline_ms: 0,
         };
         tq.enqueue(10, task);
         let all = tq.all_queue_stats();
@@ -381,9 +438,15 @@ mod tests {
     fn test_expired_tracking() {
         let tq = TaskQueue::new();
         let task = TaskItem {
-            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 1,
-            task_queue_hash: 10, step_index: 0, activity_name_id: 0, attempt: 1,
-            priority: 0, deadline_ms: 100, // expires at 100ms
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 1,
+            task_queue_hash: 10,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 0,
+            deadline_ms: 100, // expires at 100ms
         };
         tq.enqueue(10, task);
         let removed = tq.remove_expired(200); // now = 200ms, past deadline

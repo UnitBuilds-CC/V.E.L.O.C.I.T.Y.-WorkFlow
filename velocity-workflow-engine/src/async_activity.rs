@@ -5,8 +5,11 @@
 //! This module implements the token registry that maps tokens to pending async activities.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
-use std::time::{Instant, Duration};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
+use std::time::{Duration, Instant};
 
 /// A unique token identifying an in-flight activity task.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -30,28 +33,36 @@ impl ActivityTaskToken {
     pub fn workflow_key(&self) -> u64 {
         if self.raw.len() >= 8 {
             u64::from_le_bytes(self.raw[0..8].try_into().unwrap_or_default())
-        } else { 0 }
+        } else {
+            0
+        }
     }
 
     /// Decode the activity ID from the token.
     pub fn activity_id(&self) -> u64 {
         if self.raw.len() >= 16 {
             u64::from_le_bytes(self.raw[8..16].try_into().unwrap_or_default())
-        } else { 0 }
+        } else {
+            0
+        }
     }
 
     /// Decode the attempt number from the token.
     pub fn attempt(&self) -> u32 {
         if self.raw.len() >= 20 {
             u32::from_le_bytes(self.raw[16..20].try_into().unwrap_or_default())
-        } else { 0 }
+        } else {
+            0
+        }
     }
 
     /// Decode the schedule event ID from the token.
     pub fn schedule_event_id(&self) -> u64 {
         if self.raw.len() >= 28 {
             u64::from_le_bytes(self.raw[20..28].try_into().unwrap_or_default())
-        } else { 0 }
+        } else {
+            0
+        }
     }
 
     /// Create a token from raw bytes.
@@ -66,10 +77,12 @@ impl ActivityTaskToken {
 
     /// Decode from a hex string.
     pub fn from_hex(hex: &str) -> Option<Self> {
-        if hex.len() % 2 != 0 { return None; }
+        if hex.len() % 2 != 0 {
+            return None;
+        }
         let raw: Result<Vec<u8>, _> = (0..hex.len())
             .step_by(2)
-            .map(|i| u8::from_str_radix(&hex[i..i+2], 16))
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16))
             .collect();
         raw.ok().map(|r| Self { raw: r })
     }
@@ -102,7 +115,9 @@ pub struct PendingAsyncActivity {
 impl PendingAsyncActivity {
     /// How long this activity has been pending.
     pub fn pending_duration(&self) -> Duration {
-        self.completed_at.unwrap_or_else(Instant::now).duration_since(self.registered_at)
+        self.completed_at
+            .unwrap_or_else(Instant::now)
+            .duration_since(self.registered_at)
     }
 
     /// Whether this activity is still in-flight.
@@ -138,19 +153,28 @@ impl AsyncActivityRegistry {
     }
 
     /// Register a new async activity. Returns the task token.
-    pub fn register(&self, workflow_key: u64, activity_id: u64, attempt: u32, schedule_event_id: u64) -> ActivityTaskToken {
+    pub fn register(
+        &self,
+        workflow_key: u64,
+        activity_id: u64,
+        attempt: u32,
+        schedule_event_id: u64,
+    ) -> ActivityTaskToken {
         let token = ActivityTaskToken::new(workflow_key, activity_id, attempt, schedule_event_id);
         let hash = self.token_hash(&token);
 
         let mut map = self.pending.lock().unwrap();
-        map.insert(hash, PendingAsyncActivity {
-            token: token.clone(),
-            state: AsyncActivityState::InFlight,
-            registered_at: Instant::now(),
-            completed_at: None,
-            result: None,
-            failure_message: None,
-        });
+        map.insert(
+            hash,
+            PendingAsyncActivity {
+                token: token.clone(),
+                state: AsyncActivityState::InFlight,
+                registered_at: Instant::now(),
+                completed_at: None,
+                result: None,
+                failure_message: None,
+            },
+        );
         drop(map);
 
         self.total_registered.fetch_add(1, Ordering::Relaxed);
@@ -158,7 +182,11 @@ impl AsyncActivityRegistry {
     }
 
     /// Complete an async activity by token. Returns the workflow key and result if found.
-    pub fn complete_by_token(&self, token: &ActivityTaskToken, result: Vec<u8>) -> Option<(u64, u64)> {
+    pub fn complete_by_token(
+        &self,
+        token: &ActivityTaskToken,
+        result: Vec<u8>,
+    ) -> Option<(u64, u64)> {
         let hash = self.token_hash(token);
         let mut map = self.pending.lock().unwrap();
         if let Some(activity) = map.get_mut(&hash) {
@@ -312,7 +340,9 @@ impl AsyncActivityRegistry {
 }
 
 impl Default for AsyncActivityRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────

@@ -4,8 +4,8 @@
 //! consistency verification — matching Temporal's XDC replication layer.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::cluster::{ReplicationTask, ReplicationTaskType, VersionHistory, VersionHistoryStore};
 
@@ -59,7 +59,11 @@ impl ConflictResolver {
 
     /// Evaluate an incoming replication task against local state.
     /// Returns the resolution and whether the task should be applied.
-    pub fn resolve(&self, task: &ReplicationTask, remote_version_history: &VersionHistory) -> ConflictResolution {
+    pub fn resolve(
+        &self,
+        task: &ReplicationTask,
+        remote_version_history: &VersionHistory,
+    ) -> ConflictResolution {
         let local_history = self.version_store.get_or_create(task.workflow_key);
         let local_version = local_history.current_version();
         let local_event_id = local_history.current_event_id();
@@ -74,7 +78,9 @@ impl ConflictResolver {
             ConflictResolution::KeepLocal
         } else if remote_event_id > local_event_id {
             // Same version, remote has more events — accept if sequential
-            if remote_event_id == local_event_id + 1 || remote_version_history.contains(&local_history) {
+            if remote_event_id == local_event_id + 1
+                || remote_version_history.contains(&local_history)
+            {
                 ConflictResolution::Merge
             } else {
                 ConflictResolution::Unresolvable
@@ -113,7 +119,10 @@ impl ConflictResolver {
 
     /// Get conflicts for a specific workflow.
     pub fn get_conflicts_for_workflow(&self, workflow_key: u64) -> Vec<ReplicationConflict> {
-        self.conflicts.lock().unwrap().iter()
+        self.conflicts
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|c| c.workflow_key == workflow_key)
             .cloned()
             .collect()
@@ -197,12 +206,18 @@ impl TaskAckTracker {
             retry_count: 0,
         };
 
-        self.records.write().unwrap()
-            .entry(cluster_id).or_default()
+        self.records
+            .write()
+            .unwrap()
+            .entry(cluster_id)
+            .or_default()
             .insert(task_id, record);
 
-        self.pending_sequences.write().unwrap()
-            .entry(cluster_id).or_default()
+        self.pending_sequences
+            .write()
+            .unwrap()
+            .entry(cluster_id)
+            .or_default()
             .push_back(task_id);
 
         self.stats.write().unwrap().total_tracked += 1;
@@ -236,7 +251,8 @@ impl TaskAckTracker {
                     record.state = TaskAckState::Nacked;
                     self.stats.write().unwrap().total_nacked += 1;
                     // Remove from pending sequence
-                    if let Some(seq) = self.pending_sequences.write().unwrap().get_mut(&cluster_id) {
+                    if let Some(seq) = self.pending_sequences.write().unwrap().get_mut(&cluster_id)
+                    {
                         seq.retain(|&id| id != task_id);
                     }
                 } else {
@@ -252,27 +268,45 @@ impl TaskAckTracker {
     /// Returns task IDs that appear to be missing (sent but not acked).
     pub fn detect_gaps(&self, cluster_id: u64) -> Vec<u64> {
         let seqs = self.pending_sequences.read().unwrap();
-        seqs.get(&cluster_id).map(|s| s.iter().copied().collect()).unwrap_or_default()
+        seqs.get(&cluster_id)
+            .map(|s| s.iter().copied().collect())
+            .unwrap_or_default()
     }
 
     /// Get tasks that need redelivery (pending and exceeded retry threshold).
     pub fn get_redelivery_candidates(&self, cluster_id: u64) -> Vec<TaskAckRecord> {
         let records = self.records.read().unwrap();
-        records.get(&cluster_id).map(|m| {
-            m.values().filter(|r| r.state == TaskAckState::Pending && r.retry_count > 0).cloned().collect()
-        }).unwrap_or_default()
+        records
+            .get(&cluster_id)
+            .map(|m| {
+                m.values()
+                    .filter(|r| r.state == TaskAckState::Pending && r.retry_count > 0)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Get pending count for a cluster.
     pub fn pending_count(&self, cluster_id: u64) -> usize {
-        self.pending_sequences.read().unwrap()
-            .get(&cluster_id).map(|s| s.len()).unwrap_or(0)
+        self.pending_sequences
+            .read()
+            .unwrap()
+            .get(&cluster_id)
+            .map(|s| s.len())
+            .unwrap_or(0)
     }
 
     /// Get tracker statistics.
     pub fn stats(&self) -> TaskAckTrackerStats {
         let mut s = self.stats.read().unwrap().clone();
-        s.pending_count = self.pending_sequences.read().unwrap().values().map(|v| v.len() as u64).sum();
+        s.pending_count = self
+            .pending_sequences
+            .read()
+            .unwrap()
+            .values()
+            .map(|v| v.len() as u64)
+            .sum();
         s
     }
 }
@@ -316,7 +350,13 @@ impl ReplicationDlq {
     }
 
     /// Enqueue a failed task to the DLQ.
-    pub fn enqueue(&self, cluster_id: u64, task: ReplicationTask, reason: &str, failure_count: u32) {
+    pub fn enqueue(
+        &self,
+        cluster_id: u64,
+        task: ReplicationTask,
+        reason: &str,
+        failure_count: u32,
+    ) {
         let dlq_task = DlqTask {
             original_task: task,
             failure_reason: reason.to_string(),
@@ -340,7 +380,12 @@ impl ReplicationDlq {
 
     /// Peek at the next DLQ task for a cluster (without removing).
     pub fn peek(&self, cluster_id: u64) -> Option<DlqTask> {
-        self.queues.read().unwrap().get(&cluster_id)?.front().cloned()
+        self.queues
+            .read()
+            .unwrap()
+            .get(&cluster_id)?
+            .front()
+            .cloned()
     }
 
     /// Process (remove) the next DLQ task for a cluster.
@@ -355,7 +400,12 @@ impl ReplicationDlq {
 
     /// Get the number of DLQ tasks for a cluster.
     pub fn queue_size(&self, cluster_id: u64) -> usize {
-        self.queues.read().unwrap().get(&cluster_id).map(|q| q.len()).unwrap_or(0)
+        self.queues
+            .read()
+            .unwrap()
+            .get(&cluster_id)
+            .map(|q| q.len())
+            .unwrap_or(0)
     }
 
     /// Get total DLQ size across all clusters.
@@ -372,7 +422,10 @@ impl ReplicationDlq {
 
     /// List all cluster IDs that have DLQ entries.
     pub fn clusters_with_dlq(&self) -> Vec<u64> {
-        self.queues.read().unwrap().iter()
+        self.queues
+            .read()
+            .unwrap()
+            .iter()
             .filter(|(_, q)| !q.is_empty())
             .map(|(id, _)| *id)
             .collect()
@@ -408,11 +461,14 @@ impl NamespaceReplicationController {
     pub fn register_namespace(&self, name: &str, target_clusters: Vec<u64>, is_global: bool) {
         let mut targets: HashSet<u64> = target_clusters.into_iter().collect();
         targets.insert(self.local_cluster_id); // always include local
-        self.configs.write().unwrap().insert(name.to_string(), NamespaceReplicationConfig {
-            namespace_name: name.to_string(),
-            replicated_to: targets,
-            is_global,
-        });
+        self.configs.write().unwrap().insert(
+            name.to_string(),
+            NamespaceReplicationConfig {
+                namespace_name: name.to_string(),
+                replicated_to: targets,
+                is_global,
+            },
+        );
     }
 
     /// Add a cluster to a namespace's replication targets.
@@ -442,7 +498,10 @@ impl NamespaceReplicationController {
 
     /// Check if a namespace should be replicated to a specific cluster.
     pub fn should_replicate_to(&self, namespace: &str, cluster_id: u64) -> bool {
-        self.configs.read().unwrap().get(namespace)
+        self.configs
+            .read()
+            .unwrap()
+            .get(namespace)
             .map(|c| c.replicated_to.contains(&cluster_id))
             .unwrap_or(false)
     }
@@ -459,14 +518,22 @@ impl NamespaceReplicationController {
 
     /// Get the clusters that a namespace is replicated to.
     pub fn get_replication_targets(&self, namespace: &str) -> HashSet<u64> {
-        self.configs.read().unwrap().get(namespace)
+        self.configs
+            .read()
+            .unwrap()
+            .get(namespace)
             .map(|c| c.replicated_to.clone())
             .unwrap_or_default()
     }
 
     /// Get the count of global namespaces.
     pub fn global_namespace_count(&self) -> usize {
-        self.configs.read().unwrap().values().filter(|c| c.is_global).count()
+        self.configs
+            .read()
+            .unwrap()
+            .values()
+            .filter(|c| c.is_global)
+            .count()
     }
 }
 
@@ -501,7 +568,12 @@ impl HistoryGapDetector {
 
     /// Record receipt of an event from a remote cluster.
     /// Returns Some(gap) if a gap was detected.
-    pub fn record_event(&self, workflow_key: u64, cluster_id: u64, event_id: u64) -> Option<HistoryGap> {
+    pub fn record_event(
+        &self,
+        workflow_key: u64,
+        cluster_id: u64,
+        event_id: u64,
+    ) -> Option<HistoryGap> {
         let mut last_seen = self.last_seen.write().unwrap();
         let key = (workflow_key, cluster_id);
 
@@ -532,7 +604,10 @@ impl HistoryGapDetector {
 
     /// Get gaps for a specific workflow.
     pub fn get_gaps_for_workflow(&self, workflow_key: u64) -> Vec<HistoryGap> {
-        self.gaps.lock().unwrap().iter()
+        self.gaps
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|g| g.workflow_key == workflow_key)
             .cloned()
             .collect()
@@ -551,7 +626,9 @@ impl HistoryGapDetector {
 }
 
 impl Default for HistoryGapDetector {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Cross-Cluster Consistency Checker ───────────────────────────────────────
@@ -586,13 +663,25 @@ impl ConsistencyChecker {
     }
 
     /// Record a cluster's version history for a workflow.
-    pub fn record_cluster_state(&self, workflow_key: u64, cluster_id: u64, history: VersionHistory) {
-        self.cluster_histories.write().unwrap()
+    pub fn record_cluster_state(
+        &self,
+        workflow_key: u64,
+        cluster_id: u64,
+        history: VersionHistory,
+    ) {
+        self.cluster_histories
+            .write()
+            .unwrap()
             .insert((workflow_key, cluster_id), history);
     }
 
     /// Check consistency between two clusters for a workflow.
-    pub fn check_pair(&self, workflow_key: u64, cluster_a: u64, cluster_b: u64) -> ConsistencyCheckResult {
+    pub fn check_pair(
+        &self,
+        workflow_key: u64,
+        cluster_a: u64,
+        cluster_b: u64,
+    ) -> ConsistencyCheckResult {
         let histories = self.cluster_histories.read().unwrap();
         let ha = histories.get(&(workflow_key, cluster_a));
         let hb = histories.get(&(workflow_key, cluster_b));
@@ -629,7 +718,11 @@ impl ConsistencyChecker {
     }
 
     /// Check consistency of a workflow across all known clusters.
-    pub fn check_all_clusters(&self, workflow_key: u64, cluster_ids: &[u64]) -> Vec<ConsistencyCheckResult> {
+    pub fn check_all_clusters(
+        &self,
+        workflow_key: u64,
+        cluster_ids: &[u64],
+    ) -> Vec<ConsistencyCheckResult> {
         let mut results = Vec::new();
         for i in 0..cluster_ids.len() {
             for j in (i + 1)..cluster_ids.len() {

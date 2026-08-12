@@ -3,17 +3,22 @@
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct VctpPacketHeader {
-    pub magic: u32,             // 4 Bytes: "VCTP" (0x50544356)
-    pub sequence_number: u64,   // 8 Bytes: Monotonic packet sequence ID
-    pub workflow_id: u64,       // 8 Bytes: Associated workflow ID
-    pub slab_offset: u32,       // 4 Bytes: Byte offset in target slab
-    pub payload_length: u32,    // 4 Bytes: Length of bitmask or slab delta payload
+    pub magic: u32,           // 4 Bytes: "VCTP" (0x50544356)
+    pub sequence_number: u64, // 8 Bytes: Monotonic packet sequence ID
+    pub workflow_id: u64,     // 8 Bytes: Associated workflow ID
+    pub slab_offset: u32,     // 4 Bytes: Byte offset in target slab
+    pub payload_length: u32,  // 4 Bytes: Length of bitmask or slab delta payload
 }
 
 pub const VCTP_MAGIC: u32 = 0x50544356; // "VCTP"
 
 impl VctpPacketHeader {
-    pub fn new(sequence_number: u64, workflow_id: u64, slab_offset: u32, payload_length: u32) -> Self {
+    pub fn new(
+        sequence_number: u64,
+        workflow_id: u64,
+        slab_offset: u32,
+        payload_length: u32,
+    ) -> Self {
         Self {
             magic: VCTP_MAGIC,
             sequence_number,
@@ -39,7 +44,7 @@ pub struct AimdController {
 impl AimdController {
     pub fn new() -> Self {
         Self {
-            pacing_rate_mbps: 100, // Default 100 Mbps
+            pacing_rate_mbps: 100,     // Default 100 Mbps
             loss_threshold_percent: 2, // 2% loss threshold
         }
     }

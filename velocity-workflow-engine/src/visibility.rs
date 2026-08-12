@@ -2,7 +2,7 @@
 //! type, namespace, and time range. Supports custom search attributes, compound queries,
 //! pagination, sort ordering, and aggregation for advanced visibility.
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::RwLock;
 
 use crate::engine::WorkflowStatus;
@@ -74,9 +74,18 @@ pub enum VisibilityFilter {
     Status(WorkflowStatus),
     Namespace(u64),
     WorkflowType(u64),
-    TimeRange { start_ms: u64, end_ms: u64 },
-    CloseTimeRange { start_ms: u64, end_ms: u64 },
-    SearchAttribute { key: String, value: SearchAttributeValue },
+    TimeRange {
+        start_ms: u64,
+        end_ms: u64,
+    },
+    CloseTimeRange {
+        start_ms: u64,
+        end_ms: u64,
+    },
+    SearchAttribute {
+        key: String,
+        value: SearchAttributeValue,
+    },
     Prefix(String),
     /// AND: all filters must match.
     And(Vec<VisibilityFilter>),
@@ -98,10 +107,24 @@ pub struct VisibilityQuery {
 
 impl VisibilityQuery {
     pub fn new(filter: VisibilityFilter) -> Self {
-        Self { filter, sort_field: SortField::StartTime, sort_order: SortOrder::Descending, page_size: 100, page_token: None }
+        Self {
+            filter,
+            sort_field: SortField::StartTime,
+            sort_order: SortOrder::Descending,
+            page_size: 100,
+            page_token: None,
+        }
     }
-    pub fn with_sort(mut self, field: SortField, order: SortOrder) -> Self { self.sort_field = field; self.sort_order = order; self }
-    pub fn with_pagination(mut self, page_size: usize, token: Option<PageToken>) -> Self { self.page_size = page_size; self.page_token = token; self }
+    pub fn with_sort(mut self, field: SortField, order: SortOrder) -> Self {
+        self.sort_field = field;
+        self.sort_order = order;
+        self
+    }
+    pub fn with_pagination(mut self, page_size: usize, token: Option<PageToken>) -> Self {
+        self.page_size = page_size;
+        self.page_token = token;
+        self
+    }
 }
 
 /// Aggregate counts by various dimensions.
@@ -149,37 +172,55 @@ impl VisibilityIndex {
         self.executions.write().unwrap().insert(key, info.clone());
 
         // Status index
-        self.by_status.write().unwrap()
+        self.by_status
+            .write()
+            .unwrap()
             .entry(info.status as u8)
             .or_default()
             .push(key);
 
         // Namespace index
-        self.by_namespace.write().unwrap()
+        self.by_namespace
+            .write()
+            .unwrap()
             .entry(info.namespace_id)
             .or_default()
             .push(key);
 
         // Type index
-        self.by_type.write().unwrap()
+        self.by_type
+            .write()
+            .unwrap()
             .entry(info.workflow_type_id)
             .or_default()
             .push(key);
 
         // Time index
-        self.by_start_time.write().unwrap()
+        self.by_start_time
+            .write()
+            .unwrap()
             .entry(info.start_time_ms)
             .or_default()
             .push(key);
 
         // Close time index (if already closed)
         if let Some(ct) = info.close_time_ms {
-            self.by_close_time.write().unwrap().entry(ct).or_default().push(key);
+            self.by_close_time
+                .write()
+                .unwrap()
+                .entry(ct)
+                .or_default()
+                .push(key);
         }
     }
 
     /// Update the status of a workflow (e.g., Running -> Completed).
-    pub fn update_status(&self, workflow_key: u64, new_status: WorkflowStatus, close_time_ms: Option<u64>) {
+    pub fn update_status(
+        &self,
+        workflow_key: u64,
+        new_status: WorkflowStatus,
+        close_time_ms: Option<u64>,
+    ) {
         let mut executions = self.executions.write().unwrap();
         if let Some(info) = executions.get_mut(&workflow_key) {
             let old_status = info.status as u8;
@@ -188,7 +229,12 @@ impl VisibilityIndex {
 
             // Update close time index
             if let Some(ct) = close_time_ms {
-                self.by_close_time.write().unwrap().entry(ct).or_default().push(workflow_key);
+                self.by_close_time
+                    .write()
+                    .unwrap()
+                    .entry(ct)
+                    .or_default()
+                    .push(workflow_key);
             }
 
             // Update status index
@@ -196,12 +242,20 @@ impl VisibilityIndex {
             if let Some(keys) = by_status.get_mut(&old_status) {
                 keys.retain(|k| *k != workflow_key);
             }
-            by_status.entry(new_status as u8).or_default().push(workflow_key);
+            by_status
+                .entry(new_status as u8)
+                .or_default()
+                .push(workflow_key);
         }
     }
 
     /// Set a custom search attribute on a workflow.
-    pub fn set_search_attribute(&self, workflow_key: u64, key: String, value: SearchAttributeValue) {
+    pub fn set_search_attribute(
+        &self,
+        workflow_key: u64,
+        key: String,
+        value: SearchAttributeValue,
+    ) {
         let mut executions = self.executions.write().unwrap();
         if let Some(info) = executions.get_mut(&workflow_key) {
             info.search_attributes.insert(key, value);
@@ -214,8 +268,13 @@ impl VisibilityIndex {
     pub fn list_by_status(&self, status: WorkflowStatus) -> Vec<WorkflowExecutionInfo> {
         let by_status = self.by_status.read().unwrap();
         let executions = self.executions.read().unwrap();
-        by_status.get(&(status as u8))
-            .map(|keys| keys.iter().filter_map(|k| executions.get(k).cloned()).collect())
+        by_status
+            .get(&(status as u8))
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(|k| executions.get(k).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -223,8 +282,13 @@ impl VisibilityIndex {
     pub fn list_by_namespace(&self, namespace_id: u64) -> Vec<WorkflowExecutionInfo> {
         let by_ns = self.by_namespace.read().unwrap();
         let executions = self.executions.read().unwrap();
-        by_ns.get(&namespace_id)
-            .map(|keys| keys.iter().filter_map(|k| executions.get(k).cloned()).collect())
+        by_ns
+            .get(&namespace_id)
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(|k| executions.get(k).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -232,8 +296,13 @@ impl VisibilityIndex {
     pub fn list_by_type(&self, type_id: u64) -> Vec<WorkflowExecutionInfo> {
         let by_type = self.by_type.read().unwrap();
         let executions = self.executions.read().unwrap();
-        by_type.get(&type_id)
-            .map(|keys| keys.iter().filter_map(|k| executions.get(k).cloned()).collect())
+        by_type
+            .get(&type_id)
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(|k| executions.get(k).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -241,15 +310,21 @@ impl VisibilityIndex {
     pub fn list_by_time_range(&self, start_ms: u64, end_ms: u64) -> Vec<WorkflowExecutionInfo> {
         let by_time = self.by_start_time.read().unwrap();
         let executions = self.executions.read().unwrap();
-        by_time.range(start_ms..=end_ms)
+        by_time
+            .range(start_ms..=end_ms)
             .flat_map(|(_, keys)| keys.iter().filter_map(|k| executions.get(k).cloned()))
             .collect()
     }
 
     /// List workflows matching a custom search attribute.
-    pub fn list_by_search_attribute(&self, key: &str, value: &SearchAttributeValue) -> Vec<WorkflowExecutionInfo> {
+    pub fn list_by_search_attribute(
+        &self,
+        key: &str,
+        value: &SearchAttributeValue,
+    ) -> Vec<WorkflowExecutionInfo> {
         let executions = self.executions.read().unwrap();
-        executions.values()
+        executions
+            .values()
             .filter(|info| info.search_attributes.get(key) == Some(value))
             .cloned()
             .collect()
@@ -288,16 +363,26 @@ impl VisibilityIndex {
         let mut executions = self.executions.write().unwrap();
         if let Some(info) = executions.remove(&workflow_key) {
             let mut by_status = self.by_status.write().unwrap();
-            if let Some(keys) = by_status.get_mut(&(info.status as u8)) { keys.retain(|k| *k != workflow_key); }
+            if let Some(keys) = by_status.get_mut(&(info.status as u8)) {
+                keys.retain(|k| *k != workflow_key);
+            }
             let mut by_ns = self.by_namespace.write().unwrap();
-            if let Some(keys) = by_ns.get_mut(&info.namespace_id) { keys.retain(|k| *k != workflow_key); }
+            if let Some(keys) = by_ns.get_mut(&info.namespace_id) {
+                keys.retain(|k| *k != workflow_key);
+            }
             let mut by_type = self.by_type.write().unwrap();
-            if let Some(keys) = by_type.get_mut(&info.workflow_type_id) { keys.retain(|k| *k != workflow_key); }
+            if let Some(keys) = by_type.get_mut(&info.workflow_type_id) {
+                keys.retain(|k| *k != workflow_key);
+            }
             let mut by_time = self.by_start_time.write().unwrap();
-            if let Some(keys) = by_time.get_mut(&info.start_time_ms) { keys.retain(|k| *k != workflow_key); }
+            if let Some(keys) = by_time.get_mut(&info.start_time_ms) {
+                keys.retain(|k| *k != workflow_key);
+            }
             if let Some(ct) = info.close_time_ms {
                 let mut by_ct = self.by_close_time.write().unwrap();
-                if let Some(keys) = by_ct.get_mut(&ct) { keys.retain(|k| *k != workflow_key); }
+                if let Some(keys) = by_ct.get_mut(&ct) {
+                    keys.retain(|k| *k != workflow_key);
+                }
             }
         }
     }
@@ -307,7 +392,8 @@ impl VisibilityIndex {
     /// Execute a compound visibility query with filtering, sorting, and pagination.
     pub fn execute_query(&self, query: &VisibilityQuery) -> PaginatedResult {
         let executions = self.executions.read().unwrap();
-        let mut matched: Vec<WorkflowExecutionInfo> = executions.values()
+        let mut matched: Vec<WorkflowExecutionInfo> = executions
+            .values()
             .filter(|info| self.matches_filter(info, &query.filter))
             .cloned()
             .collect();
@@ -316,19 +402,40 @@ impl VisibilityIndex {
         matched.sort_by(|a, b| {
             let cmp = match query.sort_field {
                 SortField::StartTime => a.start_time_ms.cmp(&b.start_time_ms),
-                SortField::CloseTime => a.close_time_ms.unwrap_or(0).cmp(&b.close_time_ms.unwrap_or(0)),
+                SortField::CloseTime => a
+                    .close_time_ms
+                    .unwrap_or(0)
+                    .cmp(&b.close_time_ms.unwrap_or(0)),
                 SortField::WorkflowKey => a.workflow_key.cmp(&b.workflow_key),
             };
-            if query.sort_order == SortOrder::Descending { cmp.reverse() } else { cmp }
+            if query.sort_order == SortOrder::Descending {
+                cmp.reverse()
+            } else {
+                cmp
+            }
         });
 
         let total_count = matched.len();
         let offset = query.page_token.as_ref().map_or(0, |t| t.offset);
-        let page: Vec<_> = matched.into_iter().skip(offset).take(query.page_size).collect();
+        let page: Vec<_> = matched
+            .into_iter()
+            .skip(offset)
+            .take(query.page_size)
+            .collect();
         let next_offset = offset + page.len();
-        let next_token = if next_offset < total_count { Some(PageToken { offset: next_offset }) } else { None };
+        let next_token = if next_offset < total_count {
+            Some(PageToken {
+                offset: next_offset,
+            })
+        } else {
+            None
+        };
 
-        PaginatedResult { items: page, next_token, total_count }
+        PaginatedResult {
+            items: page,
+            next_token,
+            total_count,
+        }
     }
 
     /// Check if a workflow matches a filter.
@@ -337,11 +444,15 @@ impl VisibilityIndex {
             VisibilityFilter::Status(s) => info.status == *s,
             VisibilityFilter::Namespace(ns) => info.namespace_id == *ns,
             VisibilityFilter::WorkflowType(wt) => info.workflow_type_id == *wt,
-            VisibilityFilter::TimeRange { start_ms, end_ms } => info.start_time_ms >= *start_ms && info.start_time_ms <= *end_ms,
-            VisibilityFilter::CloseTimeRange { start_ms, end_ms } => {
-                info.close_time_ms.map_or(false, |ct| ct >= *start_ms && ct <= *end_ms)
+            VisibilityFilter::TimeRange { start_ms, end_ms } => {
+                info.start_time_ms >= *start_ms && info.start_time_ms <= *end_ms
             }
-            VisibilityFilter::SearchAttribute { key, value } => info.search_attributes.get(key) == Some(value),
+            VisibilityFilter::CloseTimeRange { start_ms, end_ms } => info
+                .close_time_ms
+                .map_or(false, |ct| ct >= *start_ms && ct <= *end_ms),
+            VisibilityFilter::SearchAttribute { key, value } => {
+                info.search_attributes.get(key) == Some(value)
+            }
             VisibilityFilter::Prefix(prefix) => {
                 // Match against workflow_id as string
                 let wid_str = info.workflow_id.to_string();
@@ -354,10 +465,15 @@ impl VisibilityIndex {
     }
 
     /// List workflows by close time range.
-    pub fn list_by_close_time_range(&self, start_ms: u64, end_ms: u64) -> Vec<WorkflowExecutionInfo> {
+    pub fn list_by_close_time_range(
+        &self,
+        start_ms: u64,
+        end_ms: u64,
+    ) -> Vec<WorkflowExecutionInfo> {
         let by_ct = self.by_close_time.read().unwrap();
         let executions = self.executions.read().unwrap();
-        by_ct.range(start_ms..=end_ms)
+        by_ct
+            .range(start_ms..=end_ms)
             .flat_map(|(_, keys)| keys.iter().filter_map(|k| executions.get(k).cloned()))
             .collect()
     }
@@ -365,7 +481,10 @@ impl VisibilityIndex {
     /// Get aggregate counts across all dimensions.
     pub fn aggregate(&self) -> VisibilityAggregation {
         let executions = self.executions.read().unwrap();
-        let mut agg = VisibilityAggregation { total: executions.len(), ..Default::default() };
+        let mut agg = VisibilityAggregation {
+            total: executions.len(),
+            ..Default::default()
+        };
         for info in executions.values() {
             *agg.by_status.entry(info.status as u8).or_insert(0) += 1;
             *agg.by_namespace.entry(info.namespace_id).or_insert(0) += 1;
@@ -385,7 +504,8 @@ impl VisibilityIndex {
     /// List workflows matching a prefix on their workflow ID.
     pub fn list_by_prefix(&self, prefix: &str) -> Vec<WorkflowExecutionInfo> {
         let executions = self.executions.read().unwrap();
-        executions.values()
+        executions
+            .values()
             .filter(|info| info.workflow_id.to_string().starts_with(prefix))
             .cloned()
             .collect()
@@ -481,9 +601,14 @@ mod tests {
         let index = VisibilityIndex::new();
         index.register(make_info(1, 0, 100, WorkflowStatus::Running));
 
-        index.set_search_attribute(1, "customer_id".into(), SearchAttributeValue::String("C123".into()));
+        index.set_search_attribute(
+            1,
+            "customer_id".into(),
+            SearchAttributeValue::String("C123".into()),
+        );
 
-        let results = index.list_by_search_attribute("customer_id", &SearchAttributeValue::String("C123".into()));
+        let results = index
+            .list_by_search_attribute("customer_id", &SearchAttributeValue::String("C123".into()));
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].workflow_key, 1);
     }
@@ -546,7 +671,9 @@ mod tests {
     #[test]
     fn test_pagination() {
         let index = VisibilityIndex::new();
-        for i in 0..10 { index.register(make_info(i, 0, 100, WorkflowStatus::Running)); }
+        for i in 0..10 {
+            index.register(make_info(i, 0, 100, WorkflowStatus::Running));
+        }
 
         let q = VisibilityQuery::new(VisibilityFilter::Status(WorkflowStatus::Running))
             .with_pagination(3, None);
@@ -614,7 +741,9 @@ mod tests {
         index.register(make_info(1, 0, 100, WorkflowStatus::Running));
         index.register(make_info(2, 0, 100, WorkflowStatus::Completed));
 
-        let q = VisibilityQuery::new(VisibilityFilter::Not(Box::new(VisibilityFilter::Status(WorkflowStatus::Running))));
+        let q = VisibilityQuery::new(VisibilityFilter::Not(Box::new(VisibilityFilter::Status(
+            WorkflowStatus::Running,
+        ))));
         let result = index.execute_query(&q);
         assert_eq!(result.items.len(), 1);
         assert_eq!(result.items[0].status, WorkflowStatus::Completed);

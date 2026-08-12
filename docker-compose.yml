@@ -5,15 +5,16 @@
 
 version: "3.9"
 
-x-common-env: &common-env
+# Common environment variables
+x-common-env:
   TZ: UTC
   LOG_LEVEL: information
 
-x-resource-limits: &server-limits
+x-resource-limits:
   cpus: "2.0"
   memory: 2G
 
-x-resource-limits-pg: &pg-limits
+x-resource-limits-pg:
   cpus: "1.0"
   memory: 1G
 
@@ -45,7 +46,8 @@ services:
     deploy:
       resources:
         limits:
-          <<: *server-limits
+          cpus: "2.0"
+          memory: 2G
         reservations:
           cpus: "0.5"
           memory: 512M
@@ -80,7 +82,8 @@ services:
     deploy:
       resources:
         limits:
-          <<: *pg-limits
+          cpus: "1.0"
+          memory: 1G
         reservations:
           cpus: "0.25"
           memory: 256M

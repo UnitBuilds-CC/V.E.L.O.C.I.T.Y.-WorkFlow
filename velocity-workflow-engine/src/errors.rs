@@ -151,14 +151,9 @@ impl FfiErrorCode {
 pub enum VelocityError {
     // ── Workflow errors ──────────────────────────────────────────────────
     /// The requested workflow was not found in the engine.
-    WorkflowNotFound {
-        workflow_key: u64,
-    },
+    WorkflowNotFound { workflow_key: u64 },
     /// The workflow has already reached a terminal state.
-    WorkflowAlreadyCompleted {
-        workflow_key: u64,
-        status: String,
-    },
+    WorkflowAlreadyCompleted { workflow_key: u64, status: String },
     /// The workflow is not in the expected state for this operation.
     InvalidWorkflowState {
         workflow_key: u64,
@@ -172,35 +167,21 @@ pub enum VelocityError {
         total_steps: u32,
     },
     /// The step has already been marked as completed.
-    StepAlreadyCompleted {
-        workflow_key: u64,
-        step: u32,
-    },
+    StepAlreadyCompleted { workflow_key: u64, step: u32 },
 
     // ── Namespace / task-queue errors ────────────────────────────────────
     /// The specified namespace does not exist.
-    NamespaceNotFound {
-        namespace: String,
-    },
+    NamespaceNotFound { namespace: String },
     /// A namespace with this name already exists.
-    NamespaceAlreadyExists {
-        namespace: String,
-    },
+    NamespaceAlreadyExists { namespace: String },
     /// The specified task queue does not exist.
-    TaskQueueNotFound {
-        task_queue: String,
-    },
+    TaskQueueNotFound { task_queue: String },
 
     // ── Security errors ──────────────────────────────────────────────────
     /// The caller has exceeded the rate limit.
-    RateLimitExceeded {
-        limit: f64,
-        current: f64,
-    },
+    RateLimitExceeded { limit: f64, current: f64 },
     /// Authentication failed.
-    AuthenticationFailed {
-        reason: String,
-    },
+    AuthenticationFailed { reason: String },
     /// The caller lacks permission for the requested action.
     PermissionDenied {
         action: String,
@@ -209,48 +190,27 @@ pub enum VelocityError {
 
     // ── Signal / Query / Timer errors ────────────────────────────────────
     /// The specified signal was not found.
-    SignalNotFound {
-        signal_id: u64,
-    },
+    SignalNotFound { signal_id: u64 },
     /// A query execution failed.
-    QueryFailed {
-        query_id: u64,
-        reason: String,
-    },
+    QueryFailed { query_id: u64, reason: String },
     /// Attempted to cancel a timer that was already cancelled.
-    TimerAlreadyCancelled {
-        timer_id: u64,
-    },
+    TimerAlreadyCancelled { timer_id: u64 },
 
     // ── Saga errors ──────────────────────────────────────────────────────
     /// A saga compensation step failed during rollback.
-    SagaCompensationFailed {
-        step: String,
-        reason: String,
-    },
+    SagaCompensationFailed { step: String, reason: String },
 
     // ── Infrastructure errors ────────────────────────────────────────────
     /// Replication to a peer cluster failed.
-    ReplicationFailed {
-        reason: String,
-    },
+    ReplicationFailed { reason: String },
     /// A database operation failed.
-    DatabaseError {
-        operation: String,
-        source: String,
-    },
+    DatabaseError { operation: String, source: String },
     /// Serialization or deserialization failed.
-    SerializationError {
-        context: String,
-        source: String,
-    },
+    SerializationError { context: String, source: String },
 
     // ── Internal errors ──────────────────────────────────────────────────
     /// An unexpected internal error occurred.
-    InternalError {
-        context: String,
-        source: String,
-    },
+    InternalError { context: String, source: String },
     /// The engine is shutting down; new operations are rejected.
     ShutdownInProgress,
 }
@@ -263,16 +223,30 @@ impl fmt::Display for VelocityError {
             VelocityError::WorkflowNotFound { workflow_key } => {
                 write!(f, "workflow not found: key={workflow_key}")
             }
-            VelocityError::WorkflowAlreadyCompleted { workflow_key, status } => {
-                write!(f, "workflow already completed: key={workflow_key}, status={status}")
+            VelocityError::WorkflowAlreadyCompleted {
+                workflow_key,
+                status,
+            } => {
+                write!(
+                    f,
+                    "workflow already completed: key={workflow_key}, status={status}"
+                )
             }
-            VelocityError::InvalidWorkflowState { workflow_key, expected, actual } => {
+            VelocityError::InvalidWorkflowState {
+                workflow_key,
+                expected,
+                actual,
+            } => {
                 write!(
                     f,
                     "invalid workflow state: key={workflow_key}, expected={expected}, actual={actual}"
                 )
             }
-            VelocityError::StepOutOfRange { workflow_key, step, total_steps } => {
+            VelocityError::StepOutOfRange {
+                workflow_key,
+                step,
+                total_steps,
+            } => {
                 write!(
                     f,
                     "step out of range: key={workflow_key}, step={step}, total_steps={total_steps}"
@@ -296,8 +270,14 @@ impl fmt::Display for VelocityError {
             VelocityError::AuthenticationFailed { reason } => {
                 write!(f, "authentication failed: {reason}")
             }
-            VelocityError::PermissionDenied { action, required_role } => {
-                write!(f, "permission denied: action={action}, required_role={required_role}")
+            VelocityError::PermissionDenied {
+                action,
+                required_role,
+            } => {
+                write!(
+                    f,
+                    "permission denied: action={action}, required_role={required_role}"
+                )
             }
             VelocityError::SignalNotFound { signal_id } => {
                 write!(f, "signal not found: id={signal_id}")
@@ -398,8 +378,9 @@ impl VelocityError {
             | VelocityError::DatabaseError { .. }
             | VelocityError::SerializationError { .. } => ErrorCategory::Infrastructure,
 
-            VelocityError::InternalError { .. }
-            | VelocityError::ShutdownInProgress => ErrorCategory::Internal,
+            VelocityError::InternalError { .. } | VelocityError::ShutdownInProgress => {
+                ErrorCategory::Internal
+            }
         }
     }
 
@@ -441,20 +422,34 @@ impl VelocityError {
     pub fn to_ffi_code(&self) -> i32 {
         match self {
             VelocityError::WorkflowNotFound { .. } => FfiErrorCode::WorkflowNotFound.to_i32(),
-            VelocityError::WorkflowAlreadyCompleted { .. } => FfiErrorCode::WorkflowAlreadyCompleted.to_i32(),
-            VelocityError::InvalidWorkflowState { .. } => FfiErrorCode::InvalidWorkflowState.to_i32(),
+            VelocityError::WorkflowAlreadyCompleted { .. } => {
+                FfiErrorCode::WorkflowAlreadyCompleted.to_i32()
+            }
+            VelocityError::InvalidWorkflowState { .. } => {
+                FfiErrorCode::InvalidWorkflowState.to_i32()
+            }
             VelocityError::StepOutOfRange { .. } => FfiErrorCode::StepOutOfRange.to_i32(),
-            VelocityError::StepAlreadyCompleted { .. } => FfiErrorCode::StepAlreadyCompleted.to_i32(),
+            VelocityError::StepAlreadyCompleted { .. } => {
+                FfiErrorCode::StepAlreadyCompleted.to_i32()
+            }
             VelocityError::NamespaceNotFound { .. } => FfiErrorCode::NamespaceNotFound.to_i32(),
-            VelocityError::NamespaceAlreadyExists { .. } => FfiErrorCode::NamespaceAlreadyExists.to_i32(),
+            VelocityError::NamespaceAlreadyExists { .. } => {
+                FfiErrorCode::NamespaceAlreadyExists.to_i32()
+            }
             VelocityError::TaskQueueNotFound { .. } => FfiErrorCode::TaskQueueNotFound.to_i32(),
             VelocityError::RateLimitExceeded { .. } => FfiErrorCode::RateLimitExceeded.to_i32(),
-            VelocityError::AuthenticationFailed { .. } => FfiErrorCode::AuthenticationFailed.to_i32(),
+            VelocityError::AuthenticationFailed { .. } => {
+                FfiErrorCode::AuthenticationFailed.to_i32()
+            }
             VelocityError::PermissionDenied { .. } => FfiErrorCode::PermissionDenied.to_i32(),
             VelocityError::SignalNotFound { .. } => FfiErrorCode::SignalNotFound.to_i32(),
             VelocityError::QueryFailed { .. } => FfiErrorCode::QueryFailed.to_i32(),
-            VelocityError::TimerAlreadyCancelled { .. } => FfiErrorCode::TimerAlreadyCancelled.to_i32(),
-            VelocityError::SagaCompensationFailed { .. } => FfiErrorCode::SagaCompensationFailed.to_i32(),
+            VelocityError::TimerAlreadyCancelled { .. } => {
+                FfiErrorCode::TimerAlreadyCancelled.to_i32()
+            }
+            VelocityError::SagaCompensationFailed { .. } => {
+                FfiErrorCode::SagaCompensationFailed.to_i32()
+            }
             VelocityError::ReplicationFailed { .. } => FfiErrorCode::ReplicationFailed.to_i32(),
             VelocityError::DatabaseError { .. } => FfiErrorCode::DatabaseError.to_i32(),
             VelocityError::SerializationError { .. } => FfiErrorCode::SerializationError.to_i32(),
@@ -587,7 +582,10 @@ mod tests {
             ErrorCode::NotFound
         );
         assert_eq!(
-            VelocityError::NamespaceNotFound { namespace: "ns".into() }.error_code(),
+            VelocityError::NamespaceNotFound {
+                namespace: "ns".into()
+            }
+            .error_code(),
             ErrorCode::NotFound
         );
         assert_eq!(
@@ -599,11 +597,18 @@ mod tests {
     #[test]
     fn test_error_code_already_exists() {
         assert_eq!(
-            VelocityError::NamespaceAlreadyExists { namespace: "ns".into() }.error_code(),
+            VelocityError::NamespaceAlreadyExists {
+                namespace: "ns".into()
+            }
+            .error_code(),
             ErrorCode::AlreadyExists
         );
         assert_eq!(
-            VelocityError::StepAlreadyCompleted { workflow_key: 1, step: 0 }.error_code(),
+            VelocityError::StepAlreadyCompleted {
+                workflow_key: 1,
+                step: 0
+            }
+            .error_code(),
             ErrorCode::AlreadyExists
         );
     }
@@ -611,24 +616,45 @@ mod tests {
     #[test]
     fn test_error_code_security() {
         assert_eq!(
-            VelocityError::AuthenticationFailed { reason: "bad token".into() }.error_code(),
+            VelocityError::AuthenticationFailed {
+                reason: "bad token".into()
+            }
+            .error_code(),
             ErrorCode::Unauthenticated
         );
         assert_eq!(
-            VelocityError::PermissionDenied { action: "x".into(), required_role: "y".into() }.error_code(),
+            VelocityError::PermissionDenied {
+                action: "x".into(),
+                required_role: "y".into()
+            }
+            .error_code(),
             ErrorCode::PermissionDenied
         );
         assert_eq!(
-            VelocityError::RateLimitExceeded { limit: 1.0, current: 2.0 }.error_code(),
+            VelocityError::RateLimitExceeded {
+                limit: 1.0,
+                current: 2.0
+            }
+            .error_code(),
             ErrorCode::ResourceExhausted
         );
     }
 
     #[test]
     fn test_grpc_status_code_values() {
-        assert_eq!(VelocityError::WorkflowNotFound { workflow_key: 0 }.to_grpc_status_code(), 5);
+        assert_eq!(
+            VelocityError::WorkflowNotFound { workflow_key: 0 }.to_grpc_status_code(),
+            5
+        );
         assert_eq!(VelocityError::ShutdownInProgress.to_grpc_status_code(), 14);
-        assert_eq!(VelocityError::InternalError { context: String::new(), source: String::new() }.to_grpc_status_code(), 13);
+        assert_eq!(
+            VelocityError::InternalError {
+                context: String::new(),
+                source: String::new()
+            }
+            .to_grpc_status_code(),
+            13
+        );
     }
 
     // ── Category ──────────────────────────────────────────────────────────
@@ -640,7 +666,12 @@ mod tests {
             ErrorCategory::Workflow
         );
         assert_eq!(
-            VelocityError::StepOutOfRange { workflow_key: 1, step: 0, total_steps: 5 }.category(),
+            VelocityError::StepOutOfRange {
+                workflow_key: 1,
+                step: 0,
+                total_steps: 5
+            }
+            .category(),
             ErrorCategory::Workflow
         );
     }
@@ -648,7 +679,10 @@ mod tests {
     #[test]
     fn test_category_namespace() {
         assert_eq!(
-            VelocityError::NamespaceNotFound { namespace: "x".into() }.category(),
+            VelocityError::NamespaceNotFound {
+                namespace: "x".into()
+            }
+            .category(),
             ErrorCategory::Namespace
         );
     }
@@ -656,7 +690,10 @@ mod tests {
     #[test]
     fn test_category_security() {
         assert_eq!(
-            VelocityError::AuthenticationFailed { reason: String::new() }.category(),
+            VelocityError::AuthenticationFailed {
+                reason: String::new()
+            }
+            .category(),
             ErrorCategory::Security
         );
     }
@@ -664,7 +701,11 @@ mod tests {
     #[test]
     fn test_category_infrastructure() {
         assert_eq!(
-            VelocityError::DatabaseError { operation: String::new(), source: String::new() }.category(),
+            VelocityError::DatabaseError {
+                operation: String::new(),
+                source: String::new()
+            }
+            .category(),
             ErrorCategory::Infrastructure
         );
     }
@@ -681,50 +722,161 @@ mod tests {
 
     #[test]
     fn test_retryable_transient_errors() {
-        assert!(VelocityError::DatabaseError { operation: "write".into(), source: "timeout".into() }.retryable());
-        assert!(VelocityError::ReplicationFailed { reason: "network".into() }.retryable());
-        assert!(VelocityError::RateLimitExceeded { limit: 10.0, current: 20.0 }.retryable());
-        assert!(VelocityError::InternalError { context: String::new(), source: String::new() }.retryable());
+        assert!(VelocityError::DatabaseError {
+            operation: "write".into(),
+            source: "timeout".into()
+        }
+        .retryable());
+        assert!(VelocityError::ReplicationFailed {
+            reason: "network".into()
+        }
+        .retryable());
+        assert!(VelocityError::RateLimitExceeded {
+            limit: 10.0,
+            current: 20.0
+        }
+        .retryable());
+        assert!(VelocityError::InternalError {
+            context: String::new(),
+            source: String::new()
+        }
+        .retryable());
     }
 
     #[test]
     fn test_not_retryable_deterministic_errors() {
         assert!(!VelocityError::WorkflowNotFound { workflow_key: 1 }.retryable());
-        assert!(!VelocityError::PermissionDenied { action: String::new(), required_role: String::new() }.retryable());
+        assert!(!VelocityError::PermissionDenied {
+            action: String::new(),
+            required_role: String::new()
+        }
+        .retryable());
         assert!(!VelocityError::ShutdownInProgress.retryable());
-        assert!(!VelocityError::SerializationError { context: String::new(), source: String::new() }.retryable());
-        assert!(!VelocityError::NamespaceAlreadyExists { namespace: String::new() }.retryable());
+        assert!(!VelocityError::SerializationError {
+            context: String::new(),
+            source: String::new()
+        }
+        .retryable());
+        assert!(!VelocityError::NamespaceAlreadyExists {
+            namespace: String::new()
+        }
+        .retryable());
     }
 
     // ── FFI code mapping ──────────────────────────────────────────────────
 
     #[test]
     fn test_ffi_code_workflow_errors() {
-        assert_eq!(VelocityError::WorkflowNotFound { workflow_key: 0 }.to_ffi_code(), -100);
-        assert_eq!(VelocityError::WorkflowAlreadyCompleted { workflow_key: 0, status: String::new() }.to_ffi_code(), -101);
-        assert_eq!(VelocityError::InvalidWorkflowState { workflow_key: 0, expected: String::new(), actual: String::new() }.to_ffi_code(), -102);
-        assert_eq!(VelocityError::StepOutOfRange { workflow_key: 0, step: 0, total_steps: 0 }.to_ffi_code(), -103);
-        assert_eq!(VelocityError::StepAlreadyCompleted { workflow_key: 0, step: 0 }.to_ffi_code(), -104);
+        assert_eq!(
+            VelocityError::WorkflowNotFound { workflow_key: 0 }.to_ffi_code(),
+            -100
+        );
+        assert_eq!(
+            VelocityError::WorkflowAlreadyCompleted {
+                workflow_key: 0,
+                status: String::new()
+            }
+            .to_ffi_code(),
+            -101
+        );
+        assert_eq!(
+            VelocityError::InvalidWorkflowState {
+                workflow_key: 0,
+                expected: String::new(),
+                actual: String::new()
+            }
+            .to_ffi_code(),
+            -102
+        );
+        assert_eq!(
+            VelocityError::StepOutOfRange {
+                workflow_key: 0,
+                step: 0,
+                total_steps: 0
+            }
+            .to_ffi_code(),
+            -103
+        );
+        assert_eq!(
+            VelocityError::StepAlreadyCompleted {
+                workflow_key: 0,
+                step: 0
+            }
+            .to_ffi_code(),
+            -104
+        );
     }
 
     #[test]
     fn test_ffi_code_namespace_errors() {
-        assert_eq!(VelocityError::NamespaceNotFound { namespace: String::new() }.to_ffi_code(), -200);
-        assert_eq!(VelocityError::NamespaceAlreadyExists { namespace: String::new() }.to_ffi_code(), -201);
-        assert_eq!(VelocityError::TaskQueueNotFound { task_queue: String::new() }.to_ffi_code(), -202);
+        assert_eq!(
+            VelocityError::NamespaceNotFound {
+                namespace: String::new()
+            }
+            .to_ffi_code(),
+            -200
+        );
+        assert_eq!(
+            VelocityError::NamespaceAlreadyExists {
+                namespace: String::new()
+            }
+            .to_ffi_code(),
+            -201
+        );
+        assert_eq!(
+            VelocityError::TaskQueueNotFound {
+                task_queue: String::new()
+            }
+            .to_ffi_code(),
+            -202
+        );
     }
 
     #[test]
     fn test_ffi_code_security_errors() {
-        assert_eq!(VelocityError::RateLimitExceeded { limit: 0.0, current: 0.0 }.to_ffi_code(), -300);
-        assert_eq!(VelocityError::AuthenticationFailed { reason: String::new() }.to_ffi_code(), -301);
-        assert_eq!(VelocityError::PermissionDenied { action: String::new(), required_role: String::new() }.to_ffi_code(), -302);
+        assert_eq!(
+            VelocityError::RateLimitExceeded {
+                limit: 0.0,
+                current: 0.0
+            }
+            .to_ffi_code(),
+            -300
+        );
+        assert_eq!(
+            VelocityError::AuthenticationFailed {
+                reason: String::new()
+            }
+            .to_ffi_code(),
+            -301
+        );
+        assert_eq!(
+            VelocityError::PermissionDenied {
+                action: String::new(),
+                required_role: String::new()
+            }
+            .to_ffi_code(),
+            -302
+        );
     }
 
     #[test]
     fn test_ffi_code_infra_and_internal() {
-        assert_eq!(VelocityError::DatabaseError { operation: String::new(), source: String::new() }.to_ffi_code(), -700);
-        assert_eq!(VelocityError::InternalError { context: String::new(), source: String::new() }.to_ffi_code(), -800);
+        assert_eq!(
+            VelocityError::DatabaseError {
+                operation: String::new(),
+                source: String::new()
+            }
+            .to_ffi_code(),
+            -700
+        );
+        assert_eq!(
+            VelocityError::InternalError {
+                context: String::new(),
+                source: String::new()
+            }
+            .to_ffi_code(),
+            -800
+        );
         assert_eq!(VelocityError::ShutdownInProgress.to_ffi_code(), -900);
     }
 
@@ -732,8 +884,14 @@ mod tests {
 
     #[test]
     fn test_error_name() {
-        assert_eq!(VelocityError::WorkflowNotFound { workflow_key: 0 }.error_name(), "WorkflowNotFound");
-        assert_eq!(VelocityError::ShutdownInProgress.error_name(), "ShutdownInProgress");
+        assert_eq!(
+            VelocityError::WorkflowNotFound { workflow_key: 0 }.error_name(),
+            "WorkflowNotFound"
+        );
+        assert_eq!(
+            VelocityError::ShutdownInProgress.error_name(),
+            "ShutdownInProgress"
+        );
     }
 
     // ── From conversions ──────────────────────────────────────────────────

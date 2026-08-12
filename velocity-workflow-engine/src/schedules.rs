@@ -8,8 +8,11 @@
 //! - Retention and cleanup
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // ─── Overlap Policy ──────────────────────────────────────────────────────────
 
@@ -72,8 +75,12 @@ impl CalendarSpec {
     /// Create a spec that fires every hour at minute 0.
     pub fn hourly() -> Self {
         Self {
-            second: "0".into(), minute: "0".into(), hour: "*".into(),
-            day_of_month: "*".into(), month: "*".into(), day_of_week: "*".into(),
+            second: "0".into(),
+            minute: "0".into(),
+            hour: "*".into(),
+            day_of_month: "*".into(),
+            month: "*".into(),
+            day_of_week: "*".into(),
             comment: "hourly".into(),
         }
     }
@@ -81,14 +88,26 @@ impl CalendarSpec {
     /// Create a spec that fires daily at a given hour (UTC).
     pub fn daily_at(hour: u32, minute: u32) -> Self {
         Self {
-            second: "0".into(), minute: minute.to_string(), hour: hour.to_string(),
-            day_of_month: "*".into(), month: "*".into(), day_of_week: "*".into(),
+            second: "0".into(),
+            minute: minute.to_string(),
+            hour: hour.to_string(),
+            day_of_month: "*".into(),
+            month: "*".into(),
+            day_of_week: "*".into(),
             comment: format!("daily at {:02}:{:02}", hour, minute),
         }
     }
 
     /// Check if a timestamp (as broken-down time) matches this calendar spec.
-    pub fn matches(&self, second: u32, minute: u32, hour: u32, day: u32, month: u32, dow: u32) -> bool {
+    pub fn matches(
+        &self,
+        second: u32,
+        minute: u32,
+        hour: u32,
+        day: u32,
+        month: u32,
+        dow: u32,
+    ) -> bool {
         matches_field(&self.second, second, 0, 59)
             && matches_field(&self.minute, minute, 0, 59)
             && matches_field(&self.hour, hour, 0, 23)
@@ -100,14 +119,20 @@ impl CalendarSpec {
 
 /// Parse and match a cron-like field expression against a value.
 fn matches_field(expr: &str, value: u32, min: u32, max: u32) -> bool {
-    if expr == "*" { return true; }
+    if expr == "*" {
+        return true;
+    }
     for part in expr.split(',') {
         let part = part.trim();
         if part.contains('/') {
             // Step: */N or M/N
             let segments: Vec<&str> = part.split('/').collect();
             let step: u32 = segments[1].parse().unwrap_or(1);
-            let start: u32 = if segments[0] == "*" { min } else { segments[0].parse().unwrap_or(min) };
+            let start: u32 = if segments[0] == "*" {
+                min
+            } else {
+                segments[0].parse().unwrap_or(min)
+            };
             if step > 0 && (value >= start) && (value - start) % step == 0 && value <= max {
                 return true;
             }
@@ -116,11 +141,15 @@ fn matches_field(expr: &str, value: u32, min: u32, max: u32) -> bool {
             let segments: Vec<&str> = part.split('-').collect();
             let lo: u32 = segments[0].parse().unwrap_or(min);
             let hi: u32 = segments[1].parse().unwrap_or(max);
-            if value >= lo && value <= hi { return true; }
+            if value >= lo && value <= hi {
+                return true;
+            }
         } else {
             // Exact value
             if let Ok(v) = part.parse::<u32>() {
-                if v == value { return true; }
+                if v == value {
+                    return true;
+                }
             }
         }
     }
@@ -200,26 +229,63 @@ impl ScheduleManager {
     // ─── CRUD ────────────────────────────────────────────────────────────
 
     /// Create a new schedule. Returns the schedule ID.
-    pub fn create_schedule(&self, spec: CalendarSpec, workflow_type_id: u64, namespace_id: u64,
-                           task_queue_hash: u64, overlap: OverlapPolicy, jitter: u64) -> u64 {
+    pub fn create_schedule(
+        &self,
+        spec: CalendarSpec,
+        workflow_type_id: u64,
+        namespace_id: u64,
+        task_queue_hash: u64,
+        overlap: OverlapPolicy,
+        jitter: u64,
+    ) -> u64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let now = now_ms();
-        self.schedules.lock().unwrap().insert(id, ScheduleEntry {
-            schedule_id: id, calendar_spec: spec, workflow_type_id, namespace_id, task_queue_hash,
-            overlap_policy: overlap, jitter_seconds: jitter, state: ScheduleState::Active,
-            remaining_actions: 0, start_time_ms: now, end_time_ms: None,
-            last_action_time_ms: 0, next_action_time_ms: 0, action_count: 0,
-            running_workflow_keys: Vec::new(), notes: String::new(),
-            search_attributes: HashMap::new(), created_at_ms: now,
-        });
+        self.schedules.lock().unwrap().insert(
+            id,
+            ScheduleEntry {
+                schedule_id: id,
+                calendar_spec: spec,
+                workflow_type_id,
+                namespace_id,
+                task_queue_hash,
+                overlap_policy: overlap,
+                jitter_seconds: jitter,
+                state: ScheduleState::Active,
+                remaining_actions: 0,
+                start_time_ms: now,
+                end_time_ms: None,
+                last_action_time_ms: 0,
+                next_action_time_ms: 0,
+                action_count: 0,
+                running_workflow_keys: Vec::new(),
+                notes: String::new(),
+                search_attributes: HashMap::new(),
+                created_at_ms: now,
+            },
+        );
         id
     }
 
     /// Create a schedule with notes and search attributes.
-    pub fn create_schedule_rich(&self, spec: CalendarSpec, workflow_type_id: u64, namespace_id: u64,
-                                task_queue_hash: u64, overlap: OverlapPolicy, jitter: u64,
-                                notes: &str, search_attrs: HashMap<String, String>) -> u64 {
-        let id = self.create_schedule(spec, workflow_type_id, namespace_id, task_queue_hash, overlap, jitter);
+    pub fn create_schedule_rich(
+        &self,
+        spec: CalendarSpec,
+        workflow_type_id: u64,
+        namespace_id: u64,
+        task_queue_hash: u64,
+        overlap: OverlapPolicy,
+        jitter: u64,
+        notes: &str,
+        search_attrs: HashMap<String, String>,
+    ) -> u64 {
+        let id = self.create_schedule(
+            spec,
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            overlap,
+            jitter,
+        );
         let mut schedules = self.schedules.lock().unwrap();
         if let Some(entry) = schedules.get_mut(&id) {
             entry.notes = notes.to_string();
@@ -230,16 +296,30 @@ impl ScheduleManager {
 
     pub fn pause(&self, schedule_id: u64) -> bool {
         let mut s = self.schedules.lock().unwrap();
-        if let Some(e) = s.get_mut(&schedule_id) { e.state = ScheduleState::Paused; true } else { false }
+        if let Some(e) = s.get_mut(&schedule_id) {
+            e.state = ScheduleState::Paused;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn unpause(&self, schedule_id: u64) -> bool {
         let mut s = self.schedules.lock().unwrap();
-        if let Some(e) = s.get_mut(&schedule_id) { e.state = ScheduleState::Active; true } else { false }
+        if let Some(e) = s.get_mut(&schedule_id) {
+            e.state = ScheduleState::Active;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn delete(&self, schedule_id: u64) -> bool {
-        self.schedules.lock().unwrap().remove(&schedule_id).is_some()
+        self.schedules
+            .lock()
+            .unwrap()
+            .remove(&schedule_id)
+            .is_some()
     }
 
     pub fn get(&self, schedule_id: u64) -> Option<ScheduleEntry> {
@@ -250,21 +330,38 @@ impl ScheduleManager {
         self.schedules.lock().unwrap().values().cloned().collect()
     }
 
-    pub fn count(&self) -> usize { self.schedules.lock().unwrap().len() }
+    pub fn count(&self) -> usize {
+        self.schedules.lock().unwrap().len()
+    }
 
     pub fn update_overlap_policy(&self, schedule_id: u64, policy: OverlapPolicy) -> bool {
         let mut s = self.schedules.lock().unwrap();
-        if let Some(e) = s.get_mut(&schedule_id) { e.overlap_policy = policy; true } else { false }
+        if let Some(e) = s.get_mut(&schedule_id) {
+            e.overlap_policy = policy;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn set_remaining_actions(&self, schedule_id: u64, count: u64) -> bool {
         let mut s = self.schedules.lock().unwrap();
-        if let Some(e) = s.get_mut(&schedule_id) { e.remaining_actions = count; true } else { false }
+        if let Some(e) = s.get_mut(&schedule_id) {
+            e.remaining_actions = count;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn update_notes(&self, schedule_id: u64, notes: &str) -> bool {
         let mut s = self.schedules.lock().unwrap();
-        if let Some(e) = s.get_mut(&schedule_id) { e.notes = notes.to_string(); true } else { false }
+        if let Some(e) = s.get_mut(&schedule_id) {
+            e.notes = notes.to_string();
+            true
+        } else {
+            false
+        }
     }
 
     // ─── Firing / Action Dispatch ────────────────────────────────────────
@@ -278,7 +375,8 @@ impl ScheduleManager {
 
         // Simple approach: scan forward minute by minute from after_ms
         let start_secs = after_ms / 1000;
-        for offset in 1..=86400u64 { // scan up to 24 hours
+        for offset in 1..=86400u64 {
+            // scan up to 24 hours
             let candidate_secs = start_secs + offset;
             let dt = epoch_secs_to_components(candidate_secs);
             if spec.matches(dt.second, dt.minute, dt.hour, dt.day, dt.month, dt.dow) {
@@ -294,7 +392,9 @@ impl ScheduleManager {
         let entry = schedules.get_mut(&schedule_id)?;
 
         // Check state
-        if entry.state != ScheduleState::Active { return None; }
+        if entry.state != ScheduleState::Active {
+            return None;
+        }
 
         // Check remaining actions
         if entry.remaining_actions > 0 && entry.action_count >= entry.remaining_actions {
@@ -305,7 +405,9 @@ impl ScheduleManager {
         // Check overlap policy
         match entry.overlap_policy {
             OverlapPolicy::Skip => {
-                if !entry.running_workflow_keys.is_empty() { return None; }
+                if !entry.running_workflow_keys.is_empty() {
+                    return None;
+                }
             }
             OverlapPolicy::TerminateOther => {
                 entry.running_workflow_keys.clear();
@@ -342,7 +444,11 @@ impl ScheduleManager {
         }
 
         let mut actions = self.actions.lock().unwrap();
-        if let Some(action) = actions.iter_mut().find(|a| a.schedule_id == schedule_id && a.workflow_key == workflow_key && a.completed_at_ms.is_none()) {
+        if let Some(action) = actions.iter_mut().find(|a| {
+            a.schedule_id == schedule_id
+                && a.workflow_key == workflow_key
+                && a.completed_at_ms.is_none()
+        }) {
             action.completed_at_ms = Some(now_ms());
             action.success = success;
         }
@@ -352,7 +458,10 @@ impl ScheduleManager {
 
     /// Search schedules by namespace.
     pub fn list_by_namespace(&self, namespace_id: u64) -> Vec<ScheduleEntry> {
-        self.schedules.lock().unwrap().values()
+        self.schedules
+            .lock()
+            .unwrap()
+            .values()
             .filter(|e| e.namespace_id == namespace_id)
             .cloned()
             .collect()
@@ -360,7 +469,10 @@ impl ScheduleManager {
 
     /// Search schedules by state.
     pub fn list_by_state(&self, state: ScheduleState) -> Vec<ScheduleEntry> {
-        self.schedules.lock().unwrap().values()
+        self.schedules
+            .lock()
+            .unwrap()
+            .values()
             .filter(|e| e.state == state)
             .cloned()
             .collect()
@@ -368,7 +480,10 @@ impl ScheduleManager {
 
     /// Search schedules by search attribute.
     pub fn search_by_attribute(&self, key: &str, value: &str) -> Vec<ScheduleEntry> {
-        self.schedules.lock().unwrap().values()
+        self.schedules
+            .lock()
+            .unwrap()
+            .values()
             .filter(|e| e.search_attributes.get(key).map_or(false, |v| v == value))
             .cloned()
             .collect()
@@ -376,7 +491,10 @@ impl ScheduleManager {
 
     /// Get action history for a schedule.
     pub fn get_actions(&self, schedule_id: u64) -> Vec<ScheduleAction> {
-        self.actions.lock().unwrap().iter()
+        self.actions
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|a| a.schedule_id == schedule_id)
             .cloned()
             .collect()
@@ -384,21 +502,38 @@ impl ScheduleManager {
 
     /// Count of completed actions for a schedule.
     pub fn action_count(&self, schedule_id: u64) -> u64 {
-        self.schedules.lock().unwrap().get(&schedule_id).map_or(0, |e| e.action_count)
+        self.schedules
+            .lock()
+            .unwrap()
+            .get(&schedule_id)
+            .map_or(0, |e| e.action_count)
     }
 
     /// Count of currently running workflows for a schedule.
     pub fn running_count(&self, schedule_id: u64) -> usize {
-        self.schedules.lock().unwrap().get(&schedule_id).map_or(0, |e| e.running_workflow_keys.len())
+        self.schedules
+            .lock()
+            .unwrap()
+            .get(&schedule_id)
+            .map_or(0, |e| e.running_workflow_keys.len())
     }
 }
 
-impl Default for ScheduleManager { fn default() -> Self { Self::new() } }
+impl Default for ScheduleManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── Time Helpers ────────────────────────────────────────────────────────────
 
 struct DateTimeComponents {
-    second: u32, minute: u32, hour: u32, day: u32, month: u32, dow: u32,
+    second: u32,
+    minute: u32,
+    hour: u32,
+    day: u32,
+    month: u32,
+    dow: u32,
 }
 
 /// Convert epoch seconds to broken-down time components (simplified UTC).
@@ -413,7 +548,14 @@ fn epoch_secs_to_components(secs: u64) -> DateTimeComponents {
     // Calculate year, month, day from days since epoch
     let (year, month, day) = days_to_ymd(days);
 
-    DateTimeComponents { second, minute, hour, day, month, dow }
+    DateTimeComponents {
+        second,
+        minute,
+        hour,
+        day,
+        month,
+        dow,
+    }
 }
 
 /// Convert days since epoch to (year, month, day).
@@ -424,7 +566,9 @@ fn days_to_ymd(days: u64) -> (u32, u32, u32) {
 
     loop {
         let days_in_year = if is_leap_year(year) { 366 } else { 365 };
-        if remaining < days_in_year { break; }
+        if remaining < days_in_year {
+            break;
+        }
         remaining -= days_in_year;
         year += 1;
     }
@@ -437,7 +581,9 @@ fn days_to_ymd(days: u64) -> (u32, u32, u32) {
 
     let mut month = 1u32;
     for &md in &month_days {
-        if remaining < md { break; }
+        if remaining < md {
+            break;
+        }
         remaining -= md;
         month += 1;
     }
@@ -450,7 +596,10 @@ fn is_leap_year(year: i64) -> bool {
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -460,8 +609,15 @@ mod tests {
     use super::*;
 
     fn default_spec() -> CalendarSpec {
-        CalendarSpec { second: "0".into(), minute: "*/5".into(), hour: "*".into(),
-            day_of_month: "*".into(), month: "*".into(), day_of_week: "*".into(), comment: "test".into() }
+        CalendarSpec {
+            second: "0".into(),
+            minute: "*/5".into(),
+            hour: "*".into(),
+            day_of_month: "*".into(),
+            month: "*".into(),
+            day_of_week: "*".into(),
+            comment: "test".into(),
+        }
     }
 
     // --- Calendar Spec Matching ---
@@ -505,8 +661,15 @@ mod tests {
 
     #[test]
     fn test_calendar_spec_matches() {
-        let spec = CalendarSpec { second: "0".into(), minute: "0".into(), hour: "12".into(),
-            day_of_month: "*".into(), month: "*".into(), day_of_week: "*".into(), comment: "".into() };
+        let spec = CalendarSpec {
+            second: "0".into(),
+            minute: "0".into(),
+            hour: "12".into(),
+            day_of_month: "*".into(),
+            month: "*".into(),
+            day_of_week: "*".into(),
+            comment: "".into(),
+        };
         assert!(spec.matches(0, 0, 12, 1, 1, 0));
         assert!(!spec.matches(0, 0, 13, 1, 1, 0));
     }
@@ -655,7 +818,16 @@ mod tests {
         let mgr = ScheduleManager::new();
         let mut attrs = HashMap::new();
         attrs.insert("env".to_string(), "prod".to_string());
-        mgr.create_schedule_rich(default_spec(), 100, 1, 42, OverlapPolicy::Skip, 0, "test", attrs);
+        mgr.create_schedule_rich(
+            default_spec(),
+            100,
+            1,
+            42,
+            OverlapPolicy::Skip,
+            0,
+            "test",
+            attrs,
+        );
         mgr.create_schedule(default_spec(), 200, 1, 43, OverlapPolicy::Skip, 0);
         assert_eq!(mgr.search_by_attribute("env", "prod").len(), 1);
     }

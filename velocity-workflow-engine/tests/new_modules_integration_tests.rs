@@ -1,8 +1,8 @@
 //! Integration tests for new modules: update, reachability, deployment, codec_server,
 //! worker_sessions, worker_determinism.
 
-use velocity_workflow_engine::*;
 use std::time::Duration;
+use velocity_workflow_engine::*;
 
 // === Update API Tests ===
 
@@ -316,13 +316,11 @@ fn test_determinism_side_effect_recording() {
 fn test_determinism_detects_random_number() {
     let checker = DeterminismChecker::new();
 
-    let ops = vec![
-        WorkflowOperation {
-            name: "generate-id".to_string(),
-            op_type: OperationType::RandomNumber,
-            step: 1,
-        },
-    ];
+    let ops = vec![WorkflowOperation {
+        name: "generate-id".to_string(),
+        op_type: OperationType::RandomNumber,
+        step: 1,
+    }];
 
     let violations = checker.validate_no_nondeterministic_ops(&ops);
     assert_eq!(violations.len(), 1);
@@ -335,12 +333,36 @@ fn test_determinism_allows_safe_operations() {
     let checker = DeterminismChecker::new();
 
     let ops = vec![
-        WorkflowOperation { name: "signal-handler".to_string(), op_type: OperationType::Signal, step: 1 },
-        WorkflowOperation { name: "query-handler".to_string(), op_type: OperationType::Query, step: 2 },
-        WorkflowOperation { name: "timer".to_string(), op_type: OperationType::Timer, step: 3 },
-        WorkflowOperation { name: "activity".to_string(), op_type: OperationType::Activity, step: 4 },
-        WorkflowOperation { name: "child-wf".to_string(), op_type: OperationType::ChildWorkflow, step: 5 },
-        WorkflowOperation { name: "side-effect".to_string(), op_type: OperationType::SideEffect, step: 6 },
+        WorkflowOperation {
+            name: "signal-handler".to_string(),
+            op_type: OperationType::Signal,
+            step: 1,
+        },
+        WorkflowOperation {
+            name: "query-handler".to_string(),
+            op_type: OperationType::Query,
+            step: 2,
+        },
+        WorkflowOperation {
+            name: "timer".to_string(),
+            op_type: OperationType::Timer,
+            step: 3,
+        },
+        WorkflowOperation {
+            name: "activity".to_string(),
+            op_type: OperationType::Activity,
+            step: 4,
+        },
+        WorkflowOperation {
+            name: "child-wf".to_string(),
+            op_type: OperationType::ChildWorkflow,
+            step: 5,
+        },
+        WorkflowOperation {
+            name: "side-effect".to_string(),
+            op_type: OperationType::SideEffect,
+            step: 6,
+        },
     ];
 
     let violations = checker.validate_no_nondeterministic_ops(&ops);
@@ -420,7 +442,10 @@ fn test_deployment_and_codec_combined() {
         payloads: encoded.payloads,
         namespace: None,
     });
-    assert_eq!(String::from_utf8(decoded.payloads[0].clone()).unwrap(), info);
+    assert_eq!(
+        String::from_utf8(decoded.payloads[0].clone()).unwrap(),
+        info
+    );
 }
 
 #[test]

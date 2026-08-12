@@ -5,8 +5,11 @@
 //! failover management, cluster metadata.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Namespace Registry
@@ -82,15 +85,22 @@ impl NamespaceCache {
         let mut entries = self.entries.write().unwrap();
         if entries.len() >= self.max_size {
             // Evict oldest
-            if let Some(oldest_key) = entries.iter().min_by_key(|(_, v)| v.cached_at).map(|(k, _)| k.clone()) {
+            if let Some(oldest_key) = entries
+                .iter()
+                .min_by_key(|(_, v)| v.cached_at)
+                .map(|(k, _)| k.clone())
+            {
                 entries.remove(&oldest_key);
             }
         }
-        entries.insert(entry.id.clone(), CachedEntry {
-            entry,
-            cached_at: Instant::now(),
-            ttl_ms,
-        });
+        entries.insert(
+            entry.id.clone(),
+            CachedEntry {
+                entry,
+                cached_at: Instant::now(),
+                ttl_ms,
+            },
+        );
     }
 
     fn invalidate(&self, id: &str) {
@@ -143,9 +153,15 @@ pub struct ClusterReplicationConfig {
 }
 
 impl NamespaceEntry {
-    pub fn is_active(&self) -> bool { self.state == NamespaceLifecycleState::Registered }
-    pub fn is_global(&self) -> bool { self.is_global }
-    pub fn active_cluster(&self) -> &str { &self.active_cluster }
+    pub fn is_active(&self) -> bool {
+        self.state == NamespaceLifecycleState::Registered
+    }
+    pub fn is_global(&self) -> bool {
+        self.is_global
+    }
+    pub fn active_cluster(&self) -> &str {
+        &self.active_cluster
+    }
 }
 
 // ─── Registry Implementation ─────────────────────────────────────────────────
@@ -195,7 +211,11 @@ impl NamespaceRegistry {
         }
         self.stats.cache_misses.fetch_add(1, Ordering::Relaxed);
 
-        self.namespaces.read().unwrap().get(id).cloned()
+        self.namespaces
+            .read()
+            .unwrap()
+            .get(id)
+            .cloned()
             .ok_or_else(|| RegistryError::NotFound(id.to_string()))
     }
 
@@ -230,7 +250,9 @@ impl NamespaceRegistry {
 
     pub fn delete_namespace(&self, id: &str) -> Result<(), RegistryError> {
         let mut namespaces = self.namespaces.write().unwrap();
-        let entry = namespaces.remove(id).ok_or_else(|| RegistryError::NotFound(id.to_string()))?;
+        let entry = namespaces
+            .remove(id)
+            .ok_or_else(|| RegistryError::NotFound(id.to_string()))?;
         self.by_name.write().unwrap().remove(&entry.name);
         self.cache.invalidate(id);
         self.stats.deletions.fetch_add(1, Ordering::Relaxed);
@@ -247,7 +269,9 @@ impl NamespaceRegistry {
 
     pub fn deprecate_namespace(&self, id: &str) -> Result<(), RegistryError> {
         let mut namespaces = self.namespaces.write().unwrap();
-        let entry = namespaces.get_mut(id).ok_or_else(|| RegistryError::NotFound(id.to_string()))?;
+        let entry = namespaces
+            .get_mut(id)
+            .ok_or_else(|| RegistryError::NotFound(id.to_string()))?;
         entry.state = NamespaceLifecycleState::Deprecated;
         entry.last_updated_ms = now_ms();
         let clone = entry.clone();
@@ -266,7 +290,10 @@ impl NamespaceRegistry {
     }
 
     pub fn list_namespaces(&self, page_size: usize) -> Vec<NamespaceEntry> {
-        self.namespaces.read().unwrap().values()
+        self.namespaces
+            .read()
+            .unwrap()
+            .values()
             .take(page_size)
             .cloned()
             .collect()
@@ -280,14 +307,18 @@ impl NamespaceRegistry {
         self.namespaces.read().unwrap().len()
     }
 
-    pub fn stats(&self) -> &RegistryStats { &self.stats }
+    pub fn stats(&self) -> &RegistryStats {
+        &self.stats
+    }
 
     fn notify_watchers(&self, event: NamespaceChangeEvent) {
         let watchers = self.watchers.read().unwrap();
         for watcher in watchers.iter() {
             watcher.on_namespace_change(event.clone());
         }
-        self.stats.notifications_sent.fetch_add(watchers.len() as u64, Ordering::Relaxed);
+        self.stats
+            .notifications_sent
+            .fetch_add(watchers.len() as u64, Ordering::Relaxed);
     }
 }
 
@@ -328,16 +359,22 @@ impl NamespaceReplicationQueue {
 
     pub fn publish(&self, data: Vec<u8>) -> i64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed) as i64;
-        self.messages.write().unwrap().push_back(ReplicationQueueMessage {
-            id, data, enqueue_time_ms: now_ms(),
-        });
+        self.messages
+            .write()
+            .unwrap()
+            .push_back(ReplicationQueueMessage {
+                id,
+                data,
+                enqueue_time_ms: now_ms(),
+            });
         self.stats.enqueued.fetch_add(1, Ordering::Relaxed);
         id
     }
 
     pub fn read(&self, last_message_id: i64, max_count: usize) -> Vec<ReplicationQueueMessage> {
         let messages = self.messages.read().unwrap();
-        messages.iter()
+        messages
+            .iter()
             .filter(|m| m.id > last_message_id)
             .take(max_count)
             .cloned()
@@ -345,7 +382,10 @@ impl NamespaceReplicationQueue {
     }
 
     pub fn update_ack(&self, cluster: &str, ack_level: i64) {
-        self.ack_levels.write().unwrap().insert(cluster.to_string(), ack_level);
+        self.ack_levels
+            .write()
+            .unwrap()
+            .insert(cluster.to_string(), ack_level);
         self.stats.acked.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -360,8 +400,12 @@ impl NamespaceReplicationQueue {
         before - messages.len() as i64
     }
 
-    pub fn size(&self) -> usize { self.messages.read().unwrap().len() }
-    pub fn stats(&self) -> &ReplicationQueueStats { &self.stats }
+    pub fn size(&self) -> usize {
+        self.messages.read().unwrap().len()
+    }
+    pub fn stats(&self) -> &ReplicationQueueStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -408,7 +452,13 @@ impl FailoverManager {
         }
     }
 
-    pub fn initiate_failover(&self, namespace_id: &str, from_cluster: &str, to_cluster: &str, version: i64) -> String {
+    pub fn initiate_failover(
+        &self,
+        namespace_id: &str,
+        from_cluster: &str,
+        to_cluster: &str,
+        version: i64,
+    ) -> String {
         let failover_id = format!("failover-{}", now_ms());
         let record = FailoverRecord {
             failover_id: failover_id.clone(),
@@ -420,18 +470,26 @@ impl FailoverManager {
             completed_at_ms: None,
             failover_version: version,
         };
-        self.failovers.write().unwrap().insert(failover_id.clone(), record);
-        self.stats.failovers_initiated.fetch_add(1, Ordering::Relaxed);
+        self.failovers
+            .write()
+            .unwrap()
+            .insert(failover_id.clone(), record);
+        self.stats
+            .failovers_initiated
+            .fetch_add(1, Ordering::Relaxed);
         failover_id
     }
 
     pub fn complete_failover(&self, failover_id: &str) -> Result<(), RegistryError> {
         let mut failovers = self.failovers.write().unwrap();
-        let record = failovers.get_mut(failover_id)
+        let record = failovers
+            .get_mut(failover_id)
             .ok_or_else(|| RegistryError::NotFound(failover_id.to_string()))?;
         record.state = FailoverState::Completed;
         record.completed_at_ms = Some(now_ms());
-        self.stats.failovers_completed.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .failovers_completed
+            .fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -439,7 +497,9 @@ impl FailoverManager {
         self.failovers.read().unwrap().get(failover_id).cloned()
     }
 
-    pub fn stats(&self) -> &FailoverStats { &self.stats }
+    pub fn stats(&self) -> &FailoverStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -482,7 +542,10 @@ pub enum RegistryError {
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -493,23 +556,35 @@ mod tests {
 
     fn make_entry(id: &str, name: &str) -> NamespaceEntry {
         NamespaceEntry {
-            id: id.to_string(), name: name.to_string(),
-            description: "Test".to_string(), owner_email: "test@test.com".to_string(),
-            state: NamespaceLifecycleState::Registered, retention_days: 7,
-            history_archival_state: ArchivalState::Disabled, history_archival_uri: String::new(),
-            visibility_archival_state: ArchivalState::Disabled, visibility_archival_uri: String::new(),
-            is_global: false, failover_version: 0, failover_notification_version: 0,
+            id: id.to_string(),
+            name: name.to_string(),
+            description: "Test".to_string(),
+            owner_email: "test@test.com".to_string(),
+            state: NamespaceLifecycleState::Registered,
+            retention_days: 7,
+            history_archival_state: ArchivalState::Disabled,
+            history_archival_uri: String::new(),
+            visibility_archival_state: ArchivalState::Disabled,
+            visibility_archival_uri: String::new(),
+            is_global: false,
+            failover_version: 0,
+            failover_notification_version: 0,
             active_cluster: "cluster1".to_string(),
-            clusters: vec![ClusterReplicationConfig { cluster_name: "cluster1".to_string() }],
-            config: HashMap::new(), data: HashMap::new(),
-            created_at_ms: now_ms(), last_updated_ms: now_ms(),
+            clusters: vec![ClusterReplicationConfig {
+                cluster_name: "cluster1".to_string(),
+            }],
+            config: HashMap::new(),
+            data: HashMap::new(),
+            created_at_ms: now_ms(),
+            last_updated_ms: now_ms(),
         }
     }
 
     #[test]
     fn test_register_and_get() {
         let reg = NamespaceRegistry::new();
-        reg.register_namespace(make_entry("ns-1", "test-ns")).unwrap();
+        reg.register_namespace(make_entry("ns-1", "test-ns"))
+            .unwrap();
 
         let ns = reg.get_namespace("ns-1").unwrap();
         assert_eq!(ns.name, "test-ns");
@@ -521,9 +596,14 @@ mod tests {
     #[test]
     fn test_register_duplicate() {
         let reg = NamespaceRegistry::new();
-        reg.register_namespace(make_entry("ns-1", "test-ns")).unwrap();
-        assert!(reg.register_namespace(make_entry("ns-1", "test-ns2")).is_err());
-        assert!(reg.register_namespace(make_entry("ns-2", "test-ns")).is_err());
+        reg.register_namespace(make_entry("ns-1", "test-ns"))
+            .unwrap();
+        assert!(reg
+            .register_namespace(make_entry("ns-1", "test-ns2"))
+            .is_err());
+        assert!(reg
+            .register_namespace(make_entry("ns-2", "test-ns"))
+            .is_err());
     }
 
     #[test]
@@ -542,7 +622,8 @@ mod tests {
     #[test]
     fn test_delete_namespace() {
         let reg = NamespaceRegistry::new();
-        reg.register_namespace(make_entry("ns-1", "test-ns")).unwrap();
+        reg.register_namespace(make_entry("ns-1", "test-ns"))
+            .unwrap();
         reg.delete_namespace("ns-1").unwrap();
 
         assert!(reg.get_namespace("ns-1").is_err());
@@ -552,7 +633,8 @@ mod tests {
     #[test]
     fn test_deprecate_namespace() {
         let reg = NamespaceRegistry::new();
-        reg.register_namespace(make_entry("ns-1", "test-ns")).unwrap();
+        reg.register_namespace(make_entry("ns-1", "test-ns"))
+            .unwrap();
         reg.deprecate_namespace("ns-1").unwrap();
 
         let ns = reg.get_namespace("ns-1").unwrap();
@@ -564,7 +646,8 @@ mod tests {
     fn test_list_namespaces() {
         let reg = NamespaceRegistry::new();
         for i in 0..5 {
-            reg.register_namespace(make_entry(&format!("ns-{}", i), &format!("test-ns-{}", i))).unwrap();
+            reg.register_namespace(make_entry(&format!("ns-{}", i), &format!("test-ns-{}", i)))
+                .unwrap();
         }
         assert_eq!(reg.list_namespaces(10).len(), 5);
         assert_eq!(reg.total_namespaces(), 5);
@@ -572,7 +655,9 @@ mod tests {
 
     #[test]
     fn test_namespace_watcher() {
-        struct TestWatcher { events: Arc<Mutex<Vec<NamespaceChangeEvent>>> }
+        struct TestWatcher {
+            events: Arc<Mutex<Vec<NamespaceChangeEvent>>>,
+        }
         impl NamespaceWatcher for TestWatcher {
             fn on_namespace_change(&self, event: NamespaceChangeEvent) {
                 self.events.lock().unwrap().push(event);
@@ -580,12 +665,15 @@ mod tests {
         }
 
         let events = Arc::new(Mutex::new(Vec::new()));
-        let watcher = Arc::new(TestWatcher { events: events.clone() });
+        let watcher = Arc::new(TestWatcher {
+            events: events.clone(),
+        });
 
         let reg = NamespaceRegistry::new();
         reg.register_watcher(watcher);
 
-        reg.register_namespace(make_entry("ns-1", "test-ns")).unwrap();
+        reg.register_namespace(make_entry("ns-1", "test-ns"))
+            .unwrap();
         reg.deprecate_namespace("ns-1").unwrap();
         reg.delete_namespace("ns-1").unwrap();
 
@@ -645,7 +733,8 @@ mod tests {
     #[test]
     fn test_cache() {
         let reg = NamespaceRegistry::new();
-        reg.register_namespace(make_entry("ns-1", "test-ns")).unwrap();
+        reg.register_namespace(make_entry("ns-1", "test-ns"))
+            .unwrap();
 
         // First get should be cache miss
         let _ = reg.get_namespace("ns-1").unwrap();

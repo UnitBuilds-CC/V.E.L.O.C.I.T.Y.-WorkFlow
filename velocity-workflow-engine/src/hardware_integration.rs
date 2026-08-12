@@ -20,10 +20,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use crate::hardware_traits::{
-    SelfHealingEcc, SmartNicOffload, TeeEnclave, PeerToPeerReplication,
-    SimulatedSmartNic, SimulatedTee, SimulatedEcc,
-    VerificationResult, HardwareError, EccAlgorithm,
-    TransferHandle, TransferStatus, EnclaveHandle, PeerHandle,
+    EccAlgorithm, EnclaveHandle, HardwareError, PeerHandle, PeerToPeerReplication, SelfHealingEcc,
+    SimulatedEcc, SimulatedSmartNic, SimulatedTee, SmartNicOffload, TeeEnclave, TransferHandle,
+    TransferStatus, VerificationResult,
 };
 
 // ─── ECC Parity Store ────────────────────────────────────────────────────────
@@ -75,15 +74,29 @@ impl EccParityStore {
         self.merkle_roots.remove(&workflow_key);
     }
 
-    pub fn total_verifications(&self) -> u64 { self.total_verifications }
-    pub fn total_repairs(&self) -> u64 { self.total_repairs }
-    pub fn total_unrecoverable(&self) -> u64 { self.total_unrecoverable }
+    pub fn total_verifications(&self) -> u64 {
+        self.total_verifications
+    }
+    pub fn total_repairs(&self) -> u64 {
+        self.total_repairs
+    }
+    pub fn total_unrecoverable(&self) -> u64 {
+        self.total_unrecoverable
+    }
 
-    pub fn inc_verification(&mut self) { self.total_verifications += 1; }
-    pub fn inc_repair(&mut self) { self.total_repairs += 1; }
-    pub fn inc_unrecoverable(&mut self) { self.total_unrecoverable += 1; }
+    pub fn inc_verification(&mut self) {
+        self.total_verifications += 1;
+    }
+    pub fn inc_repair(&mut self) {
+        self.total_repairs += 1;
+    }
+    pub fn inc_unrecoverable(&mut self) {
+        self.total_unrecoverable += 1;
+    }
 
-    pub fn entry_count(&self) -> usize { self.parity_map.len() }
+    pub fn entry_count(&self) -> usize {
+        self.parity_map.len()
+    }
 }
 
 // ─── Hardware Abstraction Layer ──────────────────────────────────────────────
@@ -168,14 +181,21 @@ impl HardwareAbstractionLayer {
     /// alongside the new Merkle root. Optionally offloads the delta to SmartNIC.
     ///
     /// Returns the ECC parity bytes computed.
-    pub fn on_slab_write(&mut self, workflow_key: u64, slab_data: &[u8], merkle_root: [u8; 32]) -> Vec<u8> {
+    pub fn on_slab_write(
+        &mut self,
+        workflow_key: u64,
+        slab_data: &[u8],
+        merkle_root: [u8; 32],
+    ) -> Vec<u8> {
         self.slab_writes += 1;
 
         // Compute ECC parity over the slab data
         let parity = self.ecc.compute_parity(slab_data);
 
         // Store parity + Merkle root for later verification
-        self.parity_store.write().unwrap()
+        self.parity_store
+            .write()
+            .unwrap()
             .store_parity(workflow_key, parity.clone(), merkle_root);
 
         // If SmartNIC is available and offload enabled, offload the slab transfer
@@ -205,7 +225,12 @@ impl HardwareAbstractionLayer {
     /// - `Valid`: Data is intact, safe to read
     /// - `Repaired`: Data was corrupted but ECC successfully repaired it
     /// - `Unrecoverable`: Data is corrupted beyond repair
-    pub fn on_slab_read(&mut self, workflow_key: u64, slab_data: &mut [u8], expected_merkle_root: &[u8; 32]) -> VerificationResult {
+    pub fn on_slab_read(
+        &mut self,
+        workflow_key: u64,
+        slab_data: &mut [u8],
+        expected_merkle_root: &[u8; 32],
+    ) -> VerificationResult {
         self.slab_reads += 1;
 
         if !self.ecc_verification_enabled {
@@ -222,7 +247,10 @@ impl HardwareAbstractionLayer {
         };
 
         // Verify and attempt repair if needed
-        match self.ecc.verify_and_repair(slab_data, &parity, expected_merkle_root) {
+        match self
+            .ecc
+            .verify_and_repair(slab_data, &parity, expected_merkle_root)
+        {
             Ok(VerificationResult::Valid) => VerificationResult::Valid,
             Ok(VerificationResult::Repaired) => {
                 store.inc_repair();
@@ -248,7 +276,11 @@ impl HardwareAbstractionLayer {
     ///   3. If mismatch → invoke ECC verify_and_repair
     ///   4. If repair succeeds → update stored parity + Merkle root
     ///   5. Return result
-    pub fn merkle_ecc_self_heal(&mut self, workflow_key: u64, slab_data: &mut [u8]) -> MerkleEccResult {
+    pub fn merkle_ecc_self_heal(
+        &mut self,
+        workflow_key: u64,
+        slab_data: &mut [u8],
+    ) -> MerkleEccResult {
         self.slab_reads += 1;
 
         // Compute current Merkle root from the slab data
@@ -315,7 +347,11 @@ impl HardwareAbstractionLayer {
     // ── TEE Integration ───────────────────────────────────────────────────
 
     /// Create a TEE enclave for a workflow slab. Returns the enclave handle.
-    pub fn create_slab_enclave(&mut self, workflow_key: u64, slab_size: usize) -> Result<u64, HardwareError> {
+    pub fn create_slab_enclave(
+        &mut self,
+        workflow_key: u64,
+        slab_size: usize,
+    ) -> Result<u64, HardwareError> {
         if !self.tee_protection_enabled {
             return Err(HardwareError::NotAvailable);
         }
@@ -330,7 +366,12 @@ impl HardwareAbstractionLayer {
     }
 
     /// Write slab data into a TEE enclave.
-    pub fn write_to_enclave(&self, enclave_handle: u64, offset: usize, data: &[u8]) -> Result<(), HardwareError> {
+    pub fn write_to_enclave(
+        &self,
+        enclave_handle: u64,
+        offset: usize,
+        data: &[u8],
+    ) -> Result<(), HardwareError> {
         if let Some(tee) = &self.tee {
             return tee.enclave_write(EnclaveHandle(enclave_handle), offset, data);
         }
@@ -338,7 +379,12 @@ impl HardwareAbstractionLayer {
     }
 
     /// Read slab data from a TEE enclave.
-    pub fn read_from_enclave(&self, enclave_handle: u64, offset: usize, buffer: &mut [u8]) -> Result<(), HardwareError> {
+    pub fn read_from_enclave(
+        &self,
+        enclave_handle: u64,
+        offset: usize,
+        buffer: &mut [u8],
+    ) -> Result<(), HardwareError> {
         if let Some(tee) = &self.tee {
             return tee.enclave_read(EnclaveHandle(enclave_handle), offset, buffer);
         }
@@ -377,10 +423,18 @@ impl HardwareAbstractionLayer {
 
     // ── Statistics ────────────────────────────────────────────────────────
 
-    pub fn slab_write_count(&self) -> u64 { self.slab_writes }
-    pub fn slab_read_count(&self) -> u64 { self.slab_reads }
-    pub fn nic_offload_count(&self) -> u64 { self.nic_offloads }
-    pub fn tee_enclave_count(&self) -> u64 { self.tee_enclave_count }
+    pub fn slab_write_count(&self) -> u64 {
+        self.slab_writes
+    }
+    pub fn slab_read_count(&self) -> u64 {
+        self.slab_reads
+    }
+    pub fn nic_offload_count(&self) -> u64 {
+        self.nic_offloads
+    }
+    pub fn tee_enclave_count(&self) -> u64 {
+        self.tee_enclave_count
+    }
 
     pub fn ecc_stats(&self) -> EccStats {
         let store = self.parity_store.read().unwrap();
@@ -393,17 +447,31 @@ impl HardwareAbstractionLayer {
         }
     }
 
-    pub fn ecc_algorithm(&self) -> EccAlgorithm { self.ecc.algorithm() }
-    pub fn is_ecc_enabled(&self) -> bool { self.ecc_verification_enabled }
-    pub fn is_nic_enabled(&self) -> bool { self.nic_offload_enabled && self.nic.as_ref().map_or(false, |n| n.is_available()) }
-    pub fn is_tee_enabled(&self) -> bool { self.tee_protection_enabled && self.tee.as_ref().map_or(false, |t| t.is_available()) }
+    pub fn ecc_algorithm(&self) -> EccAlgorithm {
+        self.ecc.algorithm()
+    }
+    pub fn is_ecc_enabled(&self) -> bool {
+        self.ecc_verification_enabled
+    }
+    pub fn is_nic_enabled(&self) -> bool {
+        self.nic_offload_enabled && self.nic.as_ref().map_or(false, |n| n.is_available())
+    }
+    pub fn is_tee_enabled(&self) -> bool {
+        self.tee_protection_enabled && self.tee.as_ref().map_or(false, |t| t.is_available())
+    }
 
     /// Enable or disable ECC verification on the read path.
-    pub fn set_ecc_verification(&mut self, enabled: bool) { self.ecc_verification_enabled = enabled; }
+    pub fn set_ecc_verification(&mut self, enabled: bool) {
+        self.ecc_verification_enabled = enabled;
+    }
     /// Enable or disable SmartNIC offload on the write path.
-    pub fn set_nic_offload(&mut self, enabled: bool) { self.nic_offload_enabled = enabled; }
+    pub fn set_nic_offload(&mut self, enabled: bool) {
+        self.nic_offload_enabled = enabled;
+    }
     /// Enable or disable TEE protection.
-    pub fn set_tee_protection(&mut self, enabled: bool) { self.tee_protection_enabled = enabled; }
+    pub fn set_tee_protection(&mut self, enabled: bool) {
+        self.tee_protection_enabled = enabled;
+    }
 }
 
 // ─── Result Types ────────────────────────────────────────────────────────────
@@ -542,7 +610,10 @@ mod tests {
         // In simulation mode, the ECC reports "Repaired" (simulated repair)
         let result = hal.merkle_ecc_self_heal(300, &mut slab_data);
         // SimulatedEcc always reports Repaired when parity mismatches
-        assert!(result == MerkleEccResult::Repaired || result == MerkleEccResult::MerkleMismatchUnrecoverable);
+        assert!(
+            result == MerkleEccResult::Repaired
+                || result == MerkleEccResult::MerkleMismatchUnrecoverable
+        );
     }
 
     #[test]

@@ -10,7 +10,10 @@
 //! 7. **ReplicationRepairWorkflow**: Repairs replication inconsistencies.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── 1. Parent Close Policy Executor ─────────────────────────────────────────
@@ -69,8 +72,14 @@ impl ParentClosePolicyExecutor {
 
     /// Execute parent close policy for all registered children of a parent.
     pub fn execute_for_parent(&self, parent_key: u64) -> Vec<ExecutedAction> {
-        let children: Vec<ChildWorkflowRef> = self.pending_children.lock().unwrap()
-            .iter().filter(|c| c.child_workflow_key > 0).cloned().collect();
+        let children: Vec<ChildWorkflowRef> = self
+            .pending_children
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.child_workflow_key > 0)
+            .cloned()
+            .collect();
 
         let mut results = Vec::new();
         for child in &children {
@@ -92,7 +101,10 @@ impl ParentClosePolicyExecutor {
         }
 
         // Remove processed children
-        self.pending_children.lock().unwrap().retain(|c| c.child_workflow_key == 0);
+        self.pending_children
+            .lock()
+            .unwrap()
+            .retain(|c| c.child_workflow_key == 0);
         results
     }
 
@@ -101,12 +113,22 @@ impl ParentClosePolicyExecutor {
         self.executed_actions.lock().unwrap().clone()
     }
 
-    pub fn total_executed(&self) -> u64 { self.total_executed.load(Ordering::Relaxed) }
-    pub fn total_failed(&self) -> u64 { self.total_failed.load(Ordering::Relaxed) }
-    pub fn pending_count(&self) -> usize { self.pending_children.lock().unwrap().len() }
+    pub fn total_executed(&self) -> u64 {
+        self.total_executed.load(Ordering::Relaxed)
+    }
+    pub fn total_failed(&self) -> u64 {
+        self.total_failed.load(Ordering::Relaxed)
+    }
+    pub fn pending_count(&self) -> usize {
+        self.pending_children.lock().unwrap().len()
+    }
 }
 
-impl Default for ParentClosePolicyExecutor { fn default() -> Self { Self::new() } }
+impl Default for ParentClosePolicyExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── 2. Namespace Deletion Workflow ──────────────────────────────────────────
 
@@ -157,7 +179,11 @@ impl NamespaceDeletionWorkflow {
     }
 
     /// Start namespace deletion.
-    pub fn start_deletion(&self, namespace_id: u64, namespace_name: &str) -> NamespaceDeletionStatus {
+    pub fn start_deletion(
+        &self,
+        namespace_id: u64,
+        namespace_name: &str,
+    ) -> NamespaceDeletionStatus {
         let status = NamespaceDeletionStatus {
             namespace_id,
             namespace_name: namespace_name.to_string(),
@@ -169,7 +195,10 @@ impl NamespaceDeletionWorkflow {
             completed_at: None,
             error: None,
         };
-        self.operations.write().unwrap().insert(namespace_id, status.clone());
+        self.operations
+            .write()
+            .unwrap()
+            .insert(namespace_id, status.clone());
         self.total_started.fetch_add(1, Ordering::Relaxed);
         status
     }
@@ -180,12 +209,20 @@ impl NamespaceDeletionWorkflow {
         let status = ops.get_mut(&namespace_id)?;
 
         let next_step = match status.current_step {
-            NamespaceDeletionStep::ValidateNamespace => NamespaceDeletionStep::MarkNamespaceDeleting,
+            NamespaceDeletionStep::ValidateNamespace => {
+                NamespaceDeletionStep::MarkNamespaceDeleting
+            }
             NamespaceDeletionStep::MarkNamespaceDeleting => NamespaceDeletionStep::ListWorkflows,
             NamespaceDeletionStep::ListWorkflows => NamespaceDeletionStep::TerminateWorkflows,
-            NamespaceDeletionStep::TerminateWorkflows => NamespaceDeletionStep::DeleteVisibilityRecords,
-            NamespaceDeletionStep::DeleteVisibilityRecords => NamespaceDeletionStep::DeleteHistoryRecords,
-            NamespaceDeletionStep::DeleteHistoryRecords => NamespaceDeletionStep::DeleteNamespaceMetadata,
+            NamespaceDeletionStep::TerminateWorkflows => {
+                NamespaceDeletionStep::DeleteVisibilityRecords
+            }
+            NamespaceDeletionStep::DeleteVisibilityRecords => {
+                NamespaceDeletionStep::DeleteHistoryRecords
+            }
+            NamespaceDeletionStep::DeleteHistoryRecords => {
+                NamespaceDeletionStep::DeleteNamespaceMetadata
+            }
             NamespaceDeletionStep::DeleteNamespaceMetadata => NamespaceDeletionStep::Complete,
             NamespaceDeletionStep::Complete | NamespaceDeletionStep::Failed => status.current_step,
         };
@@ -234,12 +271,22 @@ impl NamespaceDeletionWorkflow {
         self.operations.read().unwrap().get(&namespace_id).cloned()
     }
 
-    pub fn total_started(&self) -> u64 { self.total_started.load(Ordering::Relaxed) }
-    pub fn total_completed(&self) -> u64 { self.total_completed.load(Ordering::Relaxed) }
-    pub fn total_failed(&self) -> u64 { self.total_failed.load(Ordering::Relaxed) }
+    pub fn total_started(&self) -> u64 {
+        self.total_started.load(Ordering::Relaxed)
+    }
+    pub fn total_completed(&self) -> u64 {
+        self.total_completed.load(Ordering::Relaxed)
+    }
+    pub fn total_failed(&self) -> u64 {
+        self.total_failed.load(Ordering::Relaxed)
+    }
 }
 
-impl Default for NamespaceDeletionWorkflow { fn default() -> Self { Self::new() } }
+impl Default for NamespaceDeletionWorkflow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── 3. Workflow Scanner ─────────────────────────────────────────────────────
 
@@ -310,36 +357,50 @@ impl WorkflowScanner {
             ScanTarget::StuckWorkflows => {
                 result.items_found = workflow_keys.len() as u64;
                 result.items_repaired = result.items_found; // Simulate repair
-                result.details.push(format!("Found {} stuck workflows", result.items_found));
+                result
+                    .details
+                    .push(format!("Found {} stuck workflows", result.items_found));
             }
             ScanTarget::OrphanedTimers => {
                 result.items_found = workflow_keys.len() as u64 / 2;
                 result.items_repaired = result.items_found;
-                result.details.push(format!("Found {} orphaned timers", result.items_found));
+                result
+                    .details
+                    .push(format!("Found {} orphaned timers", result.items_found));
             }
             ScanTarget::ZombieExecutions => {
                 result.items_found = 0; // No zombies found
-                result.details.push("No zombie executions found".to_string());
+                result
+                    .details
+                    .push("No zombie executions found".to_string());
             }
             ScanTarget::CorruptedHistory => {
                 result.items_found = workflow_keys.len() as u64 / 3;
                 result.items_repaired = result.items_found;
-                result.details.push(format!("Found {} corrupted histories", result.items_found));
+                result
+                    .details
+                    .push(format!("Found {} corrupted histories", result.items_found));
             }
             ScanTarget::ExpiredVisibility => {
                 result.items_found = workflow_keys.len() as u64;
                 result.items_repaired = result.items_found;
-                result.details.push(format!("Cleaned {} expired visibility records", result.items_found));
+                result.details.push(format!(
+                    "Cleaned {} expired visibility records",
+                    result.items_found
+                ));
             }
             ScanTarget::StaleTaskQueues => {
                 result.items_found = 0;
-                result.details.push("No stale task queues found".to_string());
+                result
+                    .details
+                    .push("No stale task queues found".to_string());
             }
         }
 
         result.completed_at = Some(Instant::now());
         self.total_scans.fetch_add(1, Ordering::Relaxed);
-        self.total_repaired.fetch_add(result.items_repaired, Ordering::Relaxed);
+        self.total_repaired
+            .fetch_add(result.items_repaired, Ordering::Relaxed);
         *self.last_scan_time.lock().unwrap() = Some(Instant::now());
 
         self.scans.write().unwrap().push(result.clone());
@@ -360,12 +421,18 @@ impl WorkflowScanner {
         }
     }
 
-    pub fn total_scans(&self) -> u64 { self.total_scans.load(Ordering::Relaxed) }
-    pub fn total_repaired(&self) -> u64 { self.total_repaired.load(Ordering::Relaxed) }
+    pub fn total_scans(&self) -> u64 {
+        self.total_scans.load(Ordering::Relaxed)
+    }
+    pub fn total_repaired(&self) -> u64 {
+        self.total_repaired.load(Ordering::Relaxed)
+    }
 }
 
 impl Default for WorkflowScanner {
-    fn default() -> Self { Self::new(60000) }
+    fn default() -> Self {
+        Self::new(60000)
+    }
 }
 
 // ─── 4. Batch Operation Processor ────────────────────────────────────────────
@@ -434,33 +501,71 @@ impl BatchOperationProcessor {
 
     /// Start a batch terminate operation.
     pub fn start_terminate(&self, namespace_id: u64, workflow_keys: Vec<u64>) -> u64 {
-        self.start_operation(namespace_id, SystemBatchOp::Terminate, workflow_keys, None, None)
+        self.start_operation(
+            namespace_id,
+            SystemBatchOp::Terminate,
+            workflow_keys,
+            None,
+            None,
+        )
     }
 
     /// Start a batch cancel operation.
     pub fn start_cancel(&self, namespace_id: u64, workflow_keys: Vec<u64>) -> u64 {
-        self.start_operation(namespace_id, SystemBatchOp::Cancel, workflow_keys, None, None)
+        self.start_operation(
+            namespace_id,
+            SystemBatchOp::Cancel,
+            workflow_keys,
+            None,
+            None,
+        )
     }
 
     /// Start a batch signal operation.
-    pub fn start_signal(&self, namespace_id: u64, workflow_keys: Vec<u64>, signal_name: &str) -> u64 {
-        self.start_operation(namespace_id, SystemBatchOp::Signal, workflow_keys, Some(signal_name.to_string()), None)
+    pub fn start_signal(
+        &self,
+        namespace_id: u64,
+        workflow_keys: Vec<u64>,
+        signal_name: &str,
+    ) -> u64 {
+        self.start_operation(
+            namespace_id,
+            SystemBatchOp::Signal,
+            workflow_keys,
+            Some(signal_name.to_string()),
+            None,
+        )
     }
 
     /// Start a batch reset operation.
     pub fn start_reset(&self, namespace_id: u64, workflow_keys: Vec<u64>, reset_type: &str) -> u64 {
-        self.start_operation(namespace_id, SystemBatchOp::Reset, workflow_keys, None, Some(reset_type.to_string()))
+        self.start_operation(
+            namespace_id,
+            SystemBatchOp::Reset,
+            workflow_keys,
+            None,
+            Some(reset_type.to_string()),
+        )
     }
 
-    fn start_operation(&self, namespace_id: u64, op_type: SystemBatchOp, workflow_keys: Vec<u64>,
-        signal_name: Option<String>, reset_type: Option<String>) -> u64 {
+    fn start_operation(
+        &self,
+        namespace_id: u64,
+        op_type: SystemBatchOp,
+        workflow_keys: Vec<u64>,
+        signal_name: Option<String>,
+        reset_type: Option<String>,
+    ) -> u64 {
         let op_id = self.next_op_id.fetch_add(1, Ordering::Relaxed);
-        let items: Vec<BatchOpItem> = workflow_keys.iter().map(|&key| BatchOpItem {
-            workflow_key: key,
-            run_id: key * 1000,
-            status: BatchItemStatus::Pending,
-            error: None,
-        }).collect();
+        let items: Vec<BatchOpItem> = workflow_keys
+            .iter()
+            .map(|&key| BatchOpItem {
+                workflow_key: key,
+                run_id: key * 1000,
+                status: BatchItemStatus::Pending,
+                error: None,
+            })
+            .collect();
 
         let total = items.len();
         let op = SystemBatchOperation {
@@ -485,12 +590,19 @@ impl BatchOperationProcessor {
     /// Process the next batch of items.
     pub fn process_batch(&self, op_id: u64, batch_size: usize) -> usize {
         let mut ops = self.operations.write().unwrap();
-        let op = match ops.get_mut(&op_id) { Some(o) => o, None => return 0 };
+        let op = match ops.get_mut(&op_id) {
+            Some(o) => o,
+            None => return 0,
+        };
 
         let mut processed = 0;
         for item in op.items.iter_mut() {
-            if processed >= batch_size { break; }
-            if item.status != BatchItemStatus::Pending { continue; }
+            if processed >= batch_size {
+                break;
+            }
+            if item.status != BatchItemStatus::Pending {
+                continue;
+            }
 
             item.status = BatchItemStatus::Processing;
             // Simulate processing — all succeed
@@ -500,7 +612,10 @@ impl BatchOperationProcessor {
         }
 
         // Check if operation is complete
-        let all_done = op.items.iter().all(|i| i.status == BatchItemStatus::Completed || i.status == BatchItemStatus::Failed);
+        let all_done = op
+            .items
+            .iter()
+            .all(|i| i.status == BatchItemStatus::Completed || i.status == BatchItemStatus::Failed);
         if all_done {
             op.completed_at = Some(Instant::now());
             self.total_completed.fetch_add(1, Ordering::Relaxed);
@@ -514,11 +629,19 @@ impl BatchOperationProcessor {
         self.operations.read().unwrap().get(&op_id).cloned()
     }
 
-    pub fn total_started(&self) -> u64 { self.total_started.load(Ordering::Relaxed) }
-    pub fn total_completed(&self) -> u64 { self.total_completed.load(Ordering::Relaxed) }
+    pub fn total_started(&self) -> u64 {
+        self.total_started.load(Ordering::Relaxed)
+    }
+    pub fn total_completed(&self) -> u64 {
+        self.total_completed.load(Ordering::Relaxed)
+    }
 }
 
-impl Default for BatchOperationProcessor { fn default() -> Self { Self::new() } }
+impl Default for BatchOperationProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── 5. History Archival Workflow ────────────────────────────────────────────
 
@@ -582,11 +705,19 @@ impl HistoryArchivalWorkflow {
         count
     }
 
-    pub fn pending_count(&self) -> usize { self.pending_archivals.lock().unwrap().len() }
-    pub fn total_archived(&self) -> u64 { self.total_archived.load(Ordering::Relaxed) }
+    pub fn pending_count(&self) -> usize {
+        self.pending_archivals.lock().unwrap().len()
+    }
+    pub fn total_archived(&self) -> u64 {
+        self.total_archived.load(Ordering::Relaxed)
+    }
 }
 
-impl Default for HistoryArchivalWorkflow { fn default() -> Self { Self::new() } }
+impl Default for HistoryArchivalWorkflow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── 6. Queue Cleanup Workflow ───────────────────────────────────────────────
 
@@ -631,7 +762,8 @@ impl QueueCleanupWorkflow {
             completed_at: Instant::now(),
         };
         self.cleanup_history.lock().unwrap().push(record.clone());
-        self.total_cleaned.fetch_add(record.items_removed, Ordering::Relaxed);
+        self.total_cleaned
+            .fetch_add(record.items_removed, Ordering::Relaxed);
         record
     }
 
@@ -639,10 +771,16 @@ impl QueueCleanupWorkflow {
         self.cleanup_history.lock().unwrap().clone()
     }
 
-    pub fn total_cleaned(&self) -> u64 { self.total_cleaned.load(Ordering::Relaxed) }
+    pub fn total_cleaned(&self) -> u64 {
+        self.total_cleaned.load(Ordering::Relaxed)
+    }
 }
 
-impl Default for QueueCleanupWorkflow { fn default() -> Self { Self::new() } }
+impl Default for QueueCleanupWorkflow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── 7. Replication Repair Workflow ──────────────────────────────────────────
 
@@ -704,11 +842,19 @@ impl ReplicationRepairWorkflow {
         count
     }
 
-    pub fn pending_count(&self) -> usize { self.pending_repairs.lock().unwrap().len() }
-    pub fn total_repaired(&self) -> u64 { self.total_repaired.load(Ordering::Relaxed) }
+    pub fn pending_count(&self) -> usize {
+        self.pending_repairs.lock().unwrap().len()
+    }
+    pub fn total_repaired(&self) -> u64 {
+        self.total_repaired.load(Ordering::Relaxed)
+    }
 }
 
-impl Default for ReplicationRepairWorkflow { fn default() -> Self { Self::new() } }
+impl Default for ReplicationRepairWorkflow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -719,10 +865,25 @@ mod tests {
     #[test]
     fn test_parent_close_policy() {
         let executor = ParentClosePolicyExecutor::new();
-        executor.register_children(1, vec![
-            ChildWorkflowRef { child_workflow_key: 10, child_run_id: 100, namespace_id: 1, close_action: ParentCloseAction::Terminate, workflow_type: "child".into() },
-            ChildWorkflowRef { child_workflow_key: 11, child_run_id: 101, namespace_id: 1, close_action: ParentCloseAction::Abandon, workflow_type: "child".into() },
-        ]);
+        executor.register_children(
+            1,
+            vec![
+                ChildWorkflowRef {
+                    child_workflow_key: 10,
+                    child_run_id: 100,
+                    namespace_id: 1,
+                    close_action: ParentCloseAction::Terminate,
+                    workflow_type: "child".into(),
+                },
+                ChildWorkflowRef {
+                    child_workflow_key: 11,
+                    child_run_id: 101,
+                    namespace_id: 1,
+                    close_action: ParentCloseAction::Abandon,
+                    workflow_type: "child".into(),
+                },
+            ],
+        );
         assert_eq!(executor.pending_count(), 2);
 
         let results = executor.execute_for_parent(1);
@@ -734,7 +895,10 @@ mod tests {
     fn test_namespace_deletion() {
         let wf = NamespaceDeletionWorkflow::new();
         let status = wf.start_deletion(1, "test-ns");
-        assert_eq!(status.current_step, NamespaceDeletionStep::ValidateNamespace);
+        assert_eq!(
+            status.current_step,
+            NamespaceDeletionStep::ValidateNamespace
+        );
 
         let step = wf.advance_step(1).unwrap();
         assert_eq!(step, NamespaceDeletionStep::MarkNamespaceDeleting);
@@ -744,7 +908,9 @@ mod tests {
         wf.record_history_deleted(1, 100);
 
         // Advance through all steps (7 steps to reach Complete)
-        for _ in 0..7 { wf.advance_step(1); }
+        for _ in 0..7 {
+            wf.advance_step(1);
+        }
 
         let final_status = wf.get_status(1).unwrap();
         assert_eq!(final_status.current_step, NamespaceDeletionStep::Complete);
@@ -808,8 +974,12 @@ mod tests {
     fn test_history_archival() {
         let archival = HistoryArchivalWorkflow::new();
         archival.submit(ArchivalWorkflowState {
-            namespace_id: 1, workflow_key: 100, branch_token: vec![],
-            next_event_id: 50, archived_up_to: 0, status: ArchivalStatus::Pending,
+            namespace_id: 1,
+            workflow_key: 100,
+            branch_token: vec![],
+            next_event_id: 50,
+            archived_up_to: 0,
+            status: ArchivalStatus::Pending,
         });
         assert_eq!(archival.pending_count(), 1);
 
@@ -832,7 +1002,8 @@ mod tests {
     fn test_replication_repair() {
         let repair = ReplicationRepairWorkflow::new();
         repair.submit_repair(ReplicationRepairTask {
-            workflow_key: 100, namespace_id: 1,
+            workflow_key: 100,
+            namespace_id: 1,
             missing_event_ids: vec![5, 6, 7],
             source_cluster: "cluster-a".into(),
             status: RepairStatus::Pending,

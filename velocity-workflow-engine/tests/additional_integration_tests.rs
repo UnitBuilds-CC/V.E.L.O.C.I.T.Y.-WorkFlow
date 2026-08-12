@@ -4,16 +4,16 @@
 //! that complement the existing integration test suite.
 
 use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
-use velocity_workflow_engine::saga::{SagaOrchestrator, SagaStepDefinition};
-use velocity_workflow_engine::namespace::{NamespaceRegistry, NamespaceConfig};
-use velocity_workflow_engine::task_queue::{TaskQueue, TaskItem, TaskKind};
-use velocity_workflow_engine::timer_engine::TimerEngine;
+use velocity_workflow_engine::graceful_shutdown::{GracefulShutdownConfig, ShutdownController};
+use velocity_workflow_engine::health_check::{HealthChecker, HealthStatus};
 use velocity_workflow_engine::hot_swap::{HotSwapRegistry, HotSwapResult};
 use velocity_workflow_engine::metrics::MetricsRegistry;
 use velocity_workflow_engine::metrics_export::MetricsSnapshot;
-use velocity_workflow_engine::graceful_shutdown::{ShutdownController, GracefulShutdownConfig};
+use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
 use velocity_workflow_engine::resource_limits::{ResourceLimits, ResourceTracker};
-use velocity_workflow_engine::health_check::{HealthChecker, HealthStatus};
+use velocity_workflow_engine::saga::{SagaOrchestrator, SagaStepDefinition};
+use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
+use velocity_workflow_engine::timer_engine::TimerEngine;
 
 use std::sync::Arc;
 
@@ -71,7 +71,10 @@ fn test_concurrent_sagas() {
     // All sagas should be completed
     for id in &saga_ids {
         let saga = orchestrator.get_saga(*id).unwrap();
-        assert_eq!(saga.status, velocity_workflow_engine::saga::SagaStatus::Completed);
+        assert_eq!(
+            saga.status,
+            velocity_workflow_engine::saga::SagaStatus::Completed
+        );
     }
 }
 
@@ -118,9 +121,11 @@ fn test_query_consistency() {
     let key = engine.start_workflow(1, 1, 0, 42, 3, None);
 
     // Register a query handler that returns current step info
-    engine.query_registry().register_handler(key, 1, Box::new(|_input| {
-        b"status=running,step=0".to_vec()
-    }));
+    engine.query_registry().register_handler(
+        key,
+        1,
+        Box::new(|_input| b"status=running,step=0".to_vec()),
+    );
 
     // Query should return consistent result
     let result1 = engine.query_registry().execute_query(key, 1, &[]);
@@ -140,10 +145,8 @@ fn test_namespace_quota_enforcement() {
     let registry = NamespaceRegistry::new();
 
     // Register namespaces with different configs
-    let ns1 = NamespaceConfig::new(1, "production")
-        .with_description("Production namespace");
-    let ns2 = NamespaceConfig::new(2, "staging")
-        .with_description("Staging namespace");
+    let ns1 = NamespaceConfig::new(1, "production").with_description("Production namespace");
+    let ns2 = NamespaceConfig::new(2, "staging").with_description("Staging namespace");
 
     registry.register(ns1).unwrap();
     registry.register(ns2).unwrap();
@@ -165,17 +168,20 @@ fn test_task_queue_priority() {
 
     // Enqueue tasks with varying priorities
     for i in 0..5 {
-        tq.enqueue(hash, TaskItem {
-            task_id: i,
-            kind: TaskKind::WorkflowTask,
-            workflow_key: 100 + i,
-            task_queue_hash: hash,
-            step_index: 0,
-            activity_name_id: 0,
-            attempt: 1,
-            priority: (i * 10) as u8,
-            deadline_ms: 0,
-        });
+        tq.enqueue(
+            hash,
+            TaskItem {
+                task_id: i,
+                kind: TaskKind::WorkflowTask,
+                workflow_key: 100 + i,
+                task_queue_hash: hash,
+                step_index: 0,
+                activity_name_id: 0,
+                attempt: 1,
+                priority: (i * 10) as u8,
+                deadline_ms: 0,
+            },
+        );
     }
 
     // All tasks should be retrievable
@@ -257,9 +263,15 @@ fn test_metrics_accuracy() {
     // keys[4] remains running
 
     // Verify metrics match actual operations
-    let started = engine.metrics_registry().get_counter("velocity_workflow_started_total");
-    let completed = engine.metrics_registry().get_counter("velocity_workflow_completed_total");
-    let failed = engine.metrics_registry().get_counter("velocity_workflow_failed_total");
+    let started = engine
+        .metrics_registry()
+        .get_counter("velocity_workflow_started_total");
+    let completed = engine
+        .metrics_registry()
+        .get_counter("velocity_workflow_completed_total");
+    let failed = engine
+        .metrics_registry()
+        .get_counter("velocity_workflow_failed_total");
 
     assert_eq!(started, 5);
     assert_eq!(completed, 2);
@@ -409,9 +421,7 @@ fn test_concurrent_namespace_operations() {
     for i in 0..thread_count {
         let reg = Arc::clone(&registry);
         let ns_id = 100 + i as u64;
-        del_handles.push(std::thread::spawn(move || {
-            reg.delete(ns_id)
-        }));
+        del_handles.push(std::thread::spawn(move || reg.delete(ns_id)));
     }
 
     let del_results: Vec<_> = del_handles.into_iter().map(|h| h.join().unwrap()).collect();

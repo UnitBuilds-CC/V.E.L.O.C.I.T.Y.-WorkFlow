@@ -9,7 +9,10 @@
 //! - Codec metrics
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 
 // ─── Codec Error ─────────────────────────────────────────────────────────────
 
@@ -26,9 +29,16 @@ pub enum CodecError {
 impl std::fmt::Display for CodecError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EncodingFailed(m) | Self::DecodingFailed(m) | Self::InvalidPayload(m) | Self::UnknownCodec(m) => write!(f, "{}", m),
-            Self::SizeLimitExceeded { actual, max } => write!(f, "payload size {} exceeds limit {}", actual, max),
-            Self::ChainBroken { codec_name, step } => write!(f, "codec chain broken at step {} ({})", step, codec_name),
+            Self::EncodingFailed(m)
+            | Self::DecodingFailed(m)
+            | Self::InvalidPayload(m)
+            | Self::UnknownCodec(m) => write!(f, "{}", m),
+            Self::SizeLimitExceeded { actual, max } => {
+                write!(f, "payload size {} exceeds limit {}", actual, max)
+            }
+            Self::ChainBroken { codec_name, step } => {
+                write!(f, "codec chain broken at step {} ({})", step, codec_name)
+            }
         }
     }
 }
@@ -49,19 +59,37 @@ pub struct PayloadMetadata {
 }
 
 impl PayloadMetadata {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-    pub fn with_content_type(mut self, ct: &str) -> Self { self.content_type = Some(ct.to_string()); self }
-    pub fn with_encoding(mut self, enc: &str) -> Self { self.encoding = Some(enc.to_string()); self }
-    pub fn with_message_type(mut self, mt: &str) -> Self { self.message_type = Some(mt.to_string()); self }
-    pub fn with_entry(mut self, key: &str, value: &[u8]) -> Self { self.entries.insert(key.to_string(), value.to_vec()); self }
+    pub fn with_content_type(mut self, ct: &str) -> Self {
+        self.content_type = Some(ct.to_string());
+        self
+    }
+    pub fn with_encoding(mut self, enc: &str) -> Self {
+        self.encoding = Some(enc.to_string());
+        self
+    }
+    pub fn with_message_type(mut self, mt: &str) -> Self {
+        self.message_type = Some(mt.to_string());
+        self
+    }
+    pub fn with_entry(mut self, key: &str, value: &[u8]) -> Self {
+        self.entries.insert(key.to_string(), value.to_vec());
+        self
+    }
 
     pub fn is_encrypted(&self) -> bool {
-        self.encoding.as_deref().map_or(false, |e| e.contains("encrypted"))
+        self.encoding
+            .as_deref()
+            .map_or(false, |e| e.contains("encrypted"))
     }
 
     pub fn is_compressed(&self) -> bool {
-        self.encoding.as_deref().map_or(false, |e| e.contains("gzip") || e.contains("deflate"))
+        self.encoding
+            .as_deref()
+            .map_or(false, |e| e.contains("gzip") || e.contains("deflate"))
     }
 }
 
@@ -76,16 +104,23 @@ pub struct Payload {
 
 impl Payload {
     pub fn new(data: Vec<u8>) -> Self {
-        Self { data, metadata: PayloadMetadata::default() }
+        Self {
+            data,
+            metadata: PayloadMetadata::default(),
+        }
     }
 
     pub fn with_metadata(data: Vec<u8>, metadata: PayloadMetadata) -> Self {
         Self { data, metadata }
     }
 
-    pub fn size(&self) -> usize { self.data.len() }
+    pub fn size(&self) -> usize {
+        self.data.len()
+    }
 
-    pub fn is_empty(&self) -> bool { self.data.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 }
 
 // ─── PayloadCodec trait ──────────────────────────────────────────────────────
@@ -113,19 +148,33 @@ pub trait PayloadCodecLegacy: Send + Sync {
 /// Passes through unchanged.
 pub struct IdentityCodec;
 impl PayloadCodec for IdentityCodec {
-    fn name(&self) -> &str { "identity" }
-    fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> { Ok(payload.to_vec()) }
-    fn decode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> { Ok(payload.to_vec()) }
+    fn name(&self) -> &str {
+        "identity"
+    }
+    fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
+        Ok(payload.to_vec())
+    }
+    fn decode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
+        Ok(payload.to_vec())
+    }
 }
 
 // ─── XOR Codec (demo) ────────────────────────────────────────────────────────
 
 /// XOR cipher codec (demonstration — real impl would use AES-GCM).
-pub struct XorCodec { pub key: u8 }
+pub struct XorCodec {
+    pub key: u8,
+}
 impl PayloadCodec for XorCodec {
-    fn name(&self) -> &str { "xor" }
-    fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> { Ok(payload.iter().map(|b| b ^ self.key).collect()) }
-    fn decode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> { Ok(payload.iter().map(|b| b ^ self.key).collect()) }
+    fn name(&self) -> &str {
+        "xor"
+    }
+    fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
+        Ok(payload.iter().map(|b| b ^ self.key).collect())
+    }
+    fn decode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
+        Ok(payload.iter().map(|b| b ^ self.key).collect())
+    }
 }
 
 // ─── Compression Codec ───────────────────────────────────────────────────────
@@ -137,12 +186,21 @@ pub struct CompressionCodec {
 }
 
 impl CompressionCodec {
-    pub fn new() -> Self { Self { min_size_to_compress: 32 } }
-    pub fn with_min_size(mut self, min: usize) -> Self { self.min_size_to_compress = min; self }
+    pub fn new() -> Self {
+        Self {
+            min_size_to_compress: 32,
+        }
+    }
+    pub fn with_min_size(mut self, min: usize) -> Self {
+        self.min_size_to_compress = min;
+        self
+    }
 
     /// Simple RLE compression: runs of the same byte are encoded as [count, byte].
     fn rle_encode(data: &[u8]) -> Vec<u8> {
-        if data.is_empty() { return vec![]; }
+        if data.is_empty() {
+            return vec![];
+        }
         let mut result = Vec::new();
         let mut current = data[0];
         let mut count = 1u8;
@@ -163,24 +221,32 @@ impl CompressionCodec {
 
     fn rle_decode(data: &[u8]) -> Result<Vec<u8>, CodecError> {
         if data.len() % 2 != 0 {
-            return Err(CodecError::DecodingFailed("invalid RLE data (odd length)".into()));
+            return Err(CodecError::DecodingFailed(
+                "invalid RLE data (odd length)".into(),
+            ));
         }
         let mut result = Vec::new();
         for chunk in data.chunks_exact(2) {
             let count = chunk[0];
             let byte = chunk[1];
-            for _ in 0..count { result.push(byte); }
+            for _ in 0..count {
+                result.push(byte);
+            }
         }
         Ok(result)
     }
 }
 
 impl Default for CompressionCodec {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PayloadCodec for CompressionCodec {
-    fn name(&self) -> &str { "compression" }
+    fn name(&self) -> &str {
+        "compression"
+    }
 
     fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
         if payload.len() < self.min_size_to_compress {
@@ -209,7 +275,10 @@ impl PayloadCodec for CompressionCodec {
         match payload[0] {
             0x00 => Ok(payload[1..].to_vec()), // uncompressed
             0x01 => Self::rle_decode(&payload[1..]),
-            _ => Err(CodecError::DecodingFailed(format!("unknown compression marker: {}", payload[0]))),
+            _ => Err(CodecError::DecodingFailed(format!(
+                "unknown compression marker: {}",
+                payload[0]
+            ))),
         }
     }
 }
@@ -223,7 +292,9 @@ pub struct EncryptionCodec {
 }
 
 impl EncryptionCodec {
-    pub fn new(key: &[u8; 32]) -> Self { Self { key: *key } }
+    pub fn new(key: &[u8; 32]) -> Self {
+        Self { key: *key }
+    }
 
     /// Create with a passphrase (simplified — real impl would use key derivation).
     pub fn from_passphrase(passphrase: &str) -> Self {
@@ -236,11 +307,15 @@ impl EncryptionCodec {
 }
 
 impl PayloadCodec for EncryptionCodec {
-    fn name(&self) -> &str { "encryption" }
+    fn name(&self) -> &str {
+        "encryption"
+    }
 
     fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
         // XOR with key (cycling)
-        let encrypted: Vec<u8> = payload.iter().enumerate()
+        let encrypted: Vec<u8> = payload
+            .iter()
+            .enumerate()
             .map(|(i, b)| b ^ self.key[i % 32])
             .collect();
         Ok(encrypted)
@@ -267,11 +342,16 @@ impl SizeLimitCodec {
 }
 
 impl PayloadCodec for SizeLimitCodec {
-    fn name(&self) -> &str { "size-limit" }
+    fn name(&self) -> &str {
+        "size-limit"
+    }
 
     fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
         if payload.len() > self.max_size {
-            return Err(CodecError::SizeLimitExceeded { actual: payload.len(), max: self.max_size });
+            return Err(CodecError::SizeLimitExceeded {
+                actual: payload.len(),
+                max: self.max_size,
+            });
         }
         self.inner.encode(payload)
     }
@@ -279,7 +359,10 @@ impl PayloadCodec for SizeLimitCodec {
     fn decode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
         let decoded = self.inner.decode(payload)?;
         if decoded.len() > self.max_size {
-            return Err(CodecError::SizeLimitExceeded { actual: decoded.len(), max: self.max_size });
+            return Err(CodecError::SizeLimitExceeded {
+                actual: decoded.len(),
+                max: self.max_size,
+            });
         }
         Ok(decoded)
     }
@@ -302,16 +385,26 @@ pub struct CodecChainStats {
 }
 
 impl CodecChain {
-    pub fn new() -> Self { Self { codecs: Vec::new(), stats: CodecChainStats::default() } }
+    pub fn new() -> Self {
+        Self {
+            codecs: Vec::new(),
+            stats: CodecChainStats::default(),
+        }
+    }
 
-    pub fn add(&mut self, codec: Arc<dyn PayloadCodec>) { self.codecs.push(codec); }
+    pub fn add(&mut self, codec: Arc<dyn PayloadCodec>) {
+        self.codecs.push(codec);
+    }
 
     pub fn encode(&self, payload: &[u8]) -> Result<Vec<u8>, CodecError> {
         let mut result = payload.to_vec();
         for (i, codec) in self.codecs.iter().enumerate() {
             result = codec.encode(&result).map_err(|e| {
                 self.stats.encode_errors.fetch_add(1, Ordering::Relaxed);
-                CodecError::ChainBroken { codec_name: codec.name().to_string(), step: i }
+                CodecError::ChainBroken {
+                    codec_name: codec.name().to_string(),
+                    step: i,
+                }
             })?;
         }
         self.stats.encode_count.fetch_add(1, Ordering::Relaxed);
@@ -323,7 +416,10 @@ impl CodecChain {
         for (i, codec) in self.codecs.iter().rev().enumerate() {
             result = codec.decode(&result).map_err(|e| {
                 self.stats.decode_errors.fetch_add(1, Ordering::Relaxed);
-                CodecError::ChainBroken { codec_name: codec.name().to_string(), step: i }
+                CodecError::ChainBroken {
+                    codec_name: codec.name().to_string(),
+                    step: i,
+                }
             })?;
         }
         self.stats.decode_count.fetch_add(1, Ordering::Relaxed);
@@ -333,22 +429,40 @@ impl CodecChain {
     /// Encode a full Payload (data + metadata).
     pub fn encode_payload(&self, payload: &Payload) -> Result<Payload, CodecError> {
         let encoded_data = self.encode(&payload.data)?;
-        Ok(Payload::with_metadata(encoded_data, payload.metadata.clone()))
+        Ok(Payload::with_metadata(
+            encoded_data,
+            payload.metadata.clone(),
+        ))
     }
 
     /// Decode a full Payload.
     pub fn decode_payload(&self, payload: &Payload) -> Result<Payload, CodecError> {
         let decoded_data = self.decode(&payload.data)?;
-        Ok(Payload::with_metadata(decoded_data, payload.metadata.clone()))
+        Ok(Payload::with_metadata(
+            decoded_data,
+            payload.metadata.clone(),
+        ))
     }
 
-    pub fn codec_count(&self) -> usize { self.codecs.len() }
-    pub fn codec_names(&self) -> Vec<&str> { self.codecs.iter().map(|c| c.name()).collect() }
-    pub fn encode_count(&self) -> u64 { self.stats.encode_count.load(Ordering::Relaxed) }
-    pub fn decode_count(&self) -> u64 { self.stats.decode_count.load(Ordering::Relaxed) }
+    pub fn codec_count(&self) -> usize {
+        self.codecs.len()
+    }
+    pub fn codec_names(&self) -> Vec<&str> {
+        self.codecs.iter().map(|c| c.name()).collect()
+    }
+    pub fn encode_count(&self) -> u64 {
+        self.stats.encode_count.load(Ordering::Relaxed)
+    }
+    pub fn decode_count(&self) -> u64 {
+        self.stats.decode_count.load(Ordering::Relaxed)
+    }
 }
 
-impl Default for CodecChain { fn default() -> Self { Self::new() } }
+impl Default for CodecChain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── Codec Registry ──────────────────────────────────────────────────────────
 
@@ -360,8 +474,13 @@ pub struct CodecRegistry {
 impl CodecRegistry {
     pub fn new() -> Self {
         let mut codecs = HashMap::new();
-        codecs.insert("identity".to_string(), Arc::new(IdentityCodec) as Arc<dyn PayloadCodec>);
-        Self { codecs: Mutex::new(codecs) }
+        codecs.insert(
+            "identity".to_string(),
+            Arc::new(IdentityCodec) as Arc<dyn PayloadCodec>,
+        );
+        Self {
+            codecs: Mutex::new(codecs),
+        }
     }
 
     /// Register a codec.
@@ -379,7 +498,9 @@ impl CodecRegistry {
     pub fn build_chain(&self, names: &[&str]) -> Result<CodecChain, CodecError> {
         let mut chain = CodecChain::new();
         for name in names {
-            let codec = self.get(name).ok_or_else(|| CodecError::UnknownCodec(name.to_string()))?;
+            let codec = self
+                .get(name)
+                .ok_or_else(|| CodecError::UnknownCodec(name.to_string()))?;
             chain.add(codec);
         }
         Ok(chain)
@@ -391,11 +512,15 @@ impl CodecRegistry {
     }
 
     /// Number of registered codecs.
-    pub fn codec_count(&self) -> usize { self.codecs.lock().unwrap().len() }
+    pub fn codec_count(&self) -> usize {
+        self.codecs.lock().unwrap().len()
+    }
 }
 
 impl Default for CodecRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Payload Validator ───────────────────────────────────────────────────────
@@ -408,7 +533,10 @@ pub struct PayloadValidator {
 
 impl PayloadValidator {
     pub fn new(max_size: usize) -> Self {
-        Self { max_payload_size: max_size, allowed_content_types: Vec::new() }
+        Self {
+            max_payload_size: max_size,
+            allowed_content_types: Vec::new(),
+        }
     }
 
     pub fn with_allowed_content_types(mut self, types: Vec<String>) -> Self {
@@ -419,12 +547,18 @@ impl PayloadValidator {
     /// Validate a payload. Returns Ok(()) or an error.
     pub fn validate(&self, payload: &Payload) -> Result<(), CodecError> {
         if payload.size() > self.max_payload_size {
-            return Err(CodecError::SizeLimitExceeded { actual: payload.size(), max: self.max_payload_size });
+            return Err(CodecError::SizeLimitExceeded {
+                actual: payload.size(),
+                max: self.max_payload_size,
+            });
         }
         if !self.allowed_content_types.is_empty() {
             if let Some(ref ct) = payload.metadata.content_type {
                 if !self.allowed_content_types.contains(ct) {
-                    return Err(CodecError::InvalidPayload(format!("content type '{}' not allowed", ct)));
+                    return Err(CodecError::InvalidPayload(format!(
+                        "content type '{}' not allowed",
+                        ct
+                    )));
                 }
             }
         }
@@ -503,7 +637,9 @@ mod tests {
         let inner = Arc::new(IdentityCodec);
         let codec = SizeLimitCodec::new(inner, 10);
         assert!(codec.encode(b"small").is_ok());
-        assert!(codec.encode(b"this is way too large for the limit").is_err());
+        assert!(codec
+            .encode(b"this is way too large for the limit")
+            .is_err());
     }
 
     #[test]
@@ -568,7 +704,10 @@ mod tests {
         );
         let encoded = chain.encode_payload(&payload).unwrap();
         assert_ne!(encoded.data, payload.data);
-        assert_eq!(encoded.metadata.content_type.as_deref(), Some("application/json"));
+        assert_eq!(
+            encoded.metadata.content_type.as_deref(),
+            Some("application/json")
+        );
         let decoded = chain.decode_payload(&encoded).unwrap();
         assert_eq!(decoded.data, b"workflow data");
     }
@@ -586,9 +725,15 @@ mod tests {
     fn test_payload_validator_content_type() {
         let v = PayloadValidator::new(1000)
             .with_allowed_content_types(vec!["application/json".to_string()]);
-        let ok = Payload::with_metadata(b"data".to_vec(), PayloadMetadata::new().with_content_type("application/json"));
+        let ok = Payload::with_metadata(
+            b"data".to_vec(),
+            PayloadMetadata::new().with_content_type("application/json"),
+        );
         assert!(v.validate(&ok).is_ok());
-        let bad = Payload::with_metadata(b"data".to_vec(), PayloadMetadata::new().with_content_type("text/plain"));
+        let bad = Payload::with_metadata(
+            b"data".to_vec(),
+            PayloadMetadata::new().with_content_type("text/plain"),
+        );
         assert!(v.validate(&bad).is_err());
     }
 

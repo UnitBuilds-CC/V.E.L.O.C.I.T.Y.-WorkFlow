@@ -3,9 +3,12 @@
 //! Zero managed heap — all timer state lives in Rust-owned memory.
 
 use std::collections::BinaryHeap;
-use std::sync::{Arc, Mutex, Condvar, atomic::{AtomicBool, Ordering}};
-use std::time::{Instant, Duration};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Condvar, Mutex,
+};
 use std::thread;
+use std::time::{Duration, Instant};
 
 /// A pending timer entry.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -122,12 +125,15 @@ impl TimerEngine {
 
                     if fired.is_empty() {
                         // Calculate how long to wait for the next timer
-                        let wait_duration = heap.peek()
+                        let wait_duration = heap
+                            .peek()
                             .map(|e| e.fire_at.duration_since(now))
                             .unwrap_or(Duration::from_millis(500));
 
                         // Wait with timeout — will be woken if a new timer is added
-                        let _ = condvar.wait_timeout(heap, wait_duration.min(Duration::from_millis(100))).unwrap();
+                        let _ = condvar
+                            .wait_timeout(heap, wait_duration.min(Duration::from_millis(100)))
+                            .unwrap();
                     }
 
                     fired

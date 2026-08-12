@@ -154,8 +154,12 @@ impl ContextArena {
         self.used = 0;
     }
 
-    fn bytes_used(&self) -> usize { self.used }
-    fn bytes_total(&self) -> usize { self.capacity }
+    fn bytes_used(&self) -> usize {
+        self.used
+    }
+    fn bytes_total(&self) -> usize {
+        self.capacity
+    }
 }
 
 /// The AI agent's durable context window.
@@ -176,7 +180,11 @@ pub struct AiContextWindow {
 
 impl AiContextWindow {
     pub fn new(config: AiContextConfig) -> Self {
-        let arena_size = if config.use_arena { config.arena_size } else { 0 };
+        let arena_size = if config.use_arena {
+            config.arena_size
+        } else {
+            0
+        };
         Self {
             config,
             messages: VecDeque::new(),
@@ -232,8 +240,10 @@ impl AiContextWindow {
         self.stats.arena_bytes_total = self.arena.bytes_total();
 
         // Auto-compress if approaching limit
-        if self.config.auto_compress &&
-           self.current_tokens as f64 > self.config.max_tokens as f64 * self.config.compress_threshold {
+        if self.config.auto_compress
+            && self.current_tokens as f64
+                > self.config.max_tokens as f64 * self.config.compress_threshold
+        {
             self.compress();
         }
 
@@ -241,7 +251,12 @@ impl AiContextWindow {
     }
 
     /// Add a tool call to the context.
-    pub fn add_tool_call(&mut self, tool_name: &str, arguments: &str, requires_approval: bool) -> String {
+    pub fn add_tool_call(
+        &mut self,
+        tool_name: &str,
+        arguments: &str,
+        requires_approval: bool,
+    ) -> String {
         let call_id = format!("call_{}", self.tool_calls.len());
 
         let status = if requires_approval {
@@ -323,7 +338,8 @@ impl AiContextWindow {
                     continue;
                 }
                 tokens_freed += msg.token_count;
-                summary_parts.push(format!("[{}: {}]",
+                summary_parts.push(format!(
+                    "[{}: {}]",
                     format!("{:?}", msg.role),
                     msg.content.chars().take(100).collect::<String>()
                 ));
@@ -367,14 +383,16 @@ impl AiContextWindow {
 
     /// Get pending tool calls that need execution.
     pub fn pending_tool_calls(&self) -> Vec<&AgentToolCall> {
-        self.tool_calls.iter()
+        self.tool_calls
+            .iter()
             .filter(|c| c.status == ToolCallStatus::Pending || c.status == ToolCallStatus::Approved)
             .collect()
     }
 
     /// Get tool calls awaiting approval.
     pub fn awaiting_approval(&self) -> Vec<&AgentToolCall> {
-        self.tool_calls.iter()
+        self.tool_calls
+            .iter()
             .filter(|c| c.status == ToolCallStatus::AwaitingApproval)
             .collect()
     }
@@ -400,11 +418,21 @@ impl AiContextWindow {
     }
 
     // Accessors
-    pub fn current_tokens(&self) -> usize { self.current_tokens }
-    pub fn max_tokens(&self) -> usize { self.config.max_tokens }
-    pub fn message_count(&self) -> usize { self.messages.len() }
-    pub fn tool_call_count(&self) -> usize { self.tool_calls.len() }
-    pub fn stats(&self) -> AiContextStats { self.stats.clone() }
+    pub fn current_tokens(&self) -> usize {
+        self.current_tokens
+    }
+    pub fn max_tokens(&self) -> usize {
+        self.config.max_tokens
+    }
+    pub fn message_count(&self) -> usize {
+        self.messages.len()
+    }
+    pub fn tool_call_count(&self) -> usize {
+        self.tool_calls.len()
+    }
+    pub fn stats(&self) -> AiContextStats {
+        self.stats.clone()
+    }
 
     pub fn utilization(&self) -> f64 {
         self.current_tokens as f64 / self.config.max_tokens as f64
@@ -479,7 +507,13 @@ mod tests {
 
         // Add many messages to trigger compression
         for i in 0..20 {
-            ctx.add_message(MessageRole::User, &format!("Message number {} with some content to increase token count significantly", i));
+            ctx.add_message(
+                MessageRole::User,
+                &format!(
+                    "Message number {} with some content to increase token count significantly",
+                    i
+                ),
+            );
         }
 
         // Should have compressed — message count should be less than 20

@@ -86,7 +86,12 @@ impl SearchAttributeIndex {
     }
 
     /// Index a search attribute for a workflow.
-    pub fn index_attribute(&self, workflow_key: u64, attr_name: &str, attr_value: &SearchAttributeValue) {
+    pub fn index_attribute(
+        &self,
+        workflow_key: u64,
+        attr_name: &str,
+        attr_value: &SearchAttributeValue,
+    ) {
         let indexed_value = IndexedValue::from(attr_value);
         let key = IndexKey {
             attr_name: attr_name.to_string(),
@@ -142,7 +147,12 @@ impl SearchAttributeIndex {
     }
 
     /// Remove a specific attribute from a workflow.
-    pub fn remove_attribute(&self, workflow_key: u64, attr_name: &str, attr_value: &SearchAttributeValue) {
+    pub fn remove_attribute(
+        &self,
+        workflow_key: u64,
+        attr_name: &str,
+        attr_value: &SearchAttributeValue,
+    ) {
         let indexed_value = IndexedValue::from(attr_value);
         let key = IndexKey {
             attr_name: attr_name.to_string(),
@@ -182,7 +192,10 @@ impl SearchAttributeIndex {
 
         let index = self.index.read().unwrap();
         self.stats.write().unwrap().exact_queries += 1;
-        index.get(&key).map(|s| s.iter().copied().collect()).unwrap_or_default()
+        index
+            .get(&key)
+            .map(|s| s.iter().copied().collect())
+            .unwrap_or_default()
     }
 
     /// Range query: find all workflows with an integer attribute in [low, high].
@@ -198,7 +211,8 @@ impl SearchAttributeIndex {
 
         let index = self.index.read().unwrap();
         self.stats.write().unwrap().range_queries += 1;
-        index.range(low_key..=high_key)
+        index
+            .range(low_key..=high_key)
             .flat_map(|(_, set)| set.iter().copied())
             .collect()
     }
@@ -216,7 +230,8 @@ impl SearchAttributeIndex {
 
         let index = self.index.read().unwrap();
         self.stats.write().unwrap().range_queries += 1;
-        index.range(low_key..=high_key)
+        index
+            .range(low_key..=high_key)
             .flat_map(|(_, set)| set.iter().copied())
             .collect()
     }
@@ -236,9 +251,13 @@ impl SearchAttributeIndex {
 
         let index = self.index.read().unwrap();
         self.stats.write().unwrap().range_queries += 1;
-        index.range(low_key..high_key)
-            .filter(|(key, _)| key.attr_value.to_search_attribute_value()
-                .matches_string_prefix(prefix))
+        index
+            .range(low_key..high_key)
+            .filter(|(key, _)| {
+                key.attr_value
+                    .to_search_attribute_value()
+                    .matches_string_prefix(prefix)
+            })
             .flat_map(|(_, set)| set.iter().copied())
             .collect()
     }
@@ -256,7 +275,8 @@ impl SearchAttributeIndex {
 
         let index = self.index.read().unwrap();
         self.stats.write().unwrap().range_queries += 1;
-        index.range(low_key..=high_key)
+        index
+            .range(low_key..=high_key)
             .flat_map(|(_, set)| set.iter().copied())
             .collect()
     }
@@ -274,7 +294,8 @@ impl SearchAttributeIndex {
 
         let index = self.index.read().unwrap();
         self.stats.write().unwrap().range_queries += 1;
-        index.range(low_key..=high_key)
+        index
+            .range(low_key..=high_key)
             .flat_map(|(_, set)| set.iter().copied())
             .collect()
     }
@@ -431,13 +452,16 @@ impl SearchAttributeSchema {
             ("BatchOperationId", SearchAttributeType::Keyword),
         ];
         for (name, attr_type) in system_defs {
-            system.insert(name.to_string(), SearchAttributeField {
-                name: name.to_string(),
-                attr_type,
-                is_system: true,
-                is_dynamic: false,
-                index_enabled: true,
-            });
+            system.insert(
+                name.to_string(),
+                SearchAttributeField {
+                    name: name.to_string(),
+                    attr_type,
+                    is_system: true,
+                    is_dynamic: false,
+                    index_enabled: true,
+                },
+            );
         }
         Self {
             fields: RwLock::new(HashMap::new()),
@@ -446,10 +470,15 @@ impl SearchAttributeSchema {
     }
 
     /// Add a custom search attribute (idempotent — no-op if already exists with same type).
-    pub fn add_search_attribute(&self, name: &str, attr_type: SearchAttributeType) -> Result<(), SchemaError> {
+    pub fn add_search_attribute(
+        &self,
+        name: &str,
+        attr_type: SearchAttributeType,
+    ) -> Result<(), SchemaError> {
         if self.system_fields.contains_key(name) {
             return Err(SchemaError::Conflict(format!(
-                "cannot add custom attribute '{}': conflicts with system attribute", name
+                "cannot add custom attribute '{}': conflicts with system attribute",
+                name
             )));
         }
         let mut fields = self.fields.write().unwrap();
@@ -462,13 +491,16 @@ impl SearchAttributeSchema {
                 name, existing.attr_type, attr_type
             )));
         }
-        fields.insert(name.to_string(), SearchAttributeField {
-            name: name.to_string(),
-            attr_type,
-            is_system: false,
-            is_dynamic: true,
-            index_enabled: true,
-        });
+        fields.insert(
+            name.to_string(),
+            SearchAttributeField {
+                name: name.to_string(),
+                attr_type,
+                is_system: false,
+                is_dynamic: true,
+                index_enabled: true,
+            },
+        );
         Ok(())
     }
 
@@ -476,7 +508,8 @@ impl SearchAttributeSchema {
     pub fn remove_search_attribute(&self, name: &str) -> Result<(), SchemaError> {
         if self.system_fields.contains_key(name) {
             return Err(SchemaError::Forbidden(format!(
-                "cannot remove system attribute '{}'", name
+                "cannot remove system attribute '{}'",
+                name
             )));
         }
         self.fields.write().unwrap().remove(name);
@@ -485,7 +518,10 @@ impl SearchAttributeSchema {
 
     /// Look up a field definition by name (checks custom first, then system).
     pub fn get_field(&self, name: &str) -> Option<SearchAttributeField> {
-        self.fields.read().unwrap().get(name)
+        self.fields
+            .read()
+            .unwrap()
+            .get(name)
             .cloned()
             .or_else(|| self.system_fields.get(name).cloned())
     }
@@ -507,7 +543,11 @@ impl SearchAttributeSchema {
     }
 
     /// Validate that a value matches the declared type for a field.
-    pub fn validate_value(&self, field_name: &str, value: &SearchAttributeValue) -> Result<(), SchemaError> {
+    pub fn validate_value(
+        &self,
+        field_name: &str,
+        value: &SearchAttributeValue,
+    ) -> Result<(), SchemaError> {
         let field = self.get_field(field_name).ok_or_else(|| {
             SchemaError::UnknownField(format!("unknown search attribute '{}'", field_name))
         })?;
@@ -526,7 +566,8 @@ impl SearchAttributeSchema {
             Ok(())
         } else {
             Err(SchemaError::TypeMismatch(format!(
-                "field '{}' is {:?} but got {:?}", field_name, field.attr_type, value
+                "field '{}' is {:?} but got {:?}",
+                field_name, field.attr_type, value
             )))
         }
     }
@@ -538,7 +579,9 @@ impl SearchAttributeSchema {
 }
 
 impl Default for SearchAttributeSchema {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Errors from schema operations.
@@ -583,11 +626,18 @@ pub enum QueryNode {
     /// field <= value
     Lte { field: String, value: QueryValue },
     /// field BETWEEN low AND high
-    Between { field: String, low: QueryValue, high: QueryValue },
+    Between {
+        field: String,
+        low: QueryValue,
+        high: QueryValue,
+    },
     /// field LIKE "prefix%"
     Like { field: String, pattern: String },
     /// field IN (v1, v2, ...)
-    In { field: String, values: Vec<QueryValue> },
+    In {
+        field: String,
+        values: Vec<QueryValue>,
+    },
     /// left AND right
     And(Box<QueryNode>, Box<QueryNode>),
     /// left OR right
@@ -612,9 +662,21 @@ enum Token {
     StringLit(String),
     NumLit(i64),
     FloatLit(f64),
-    Eq, Neq, Gt, Gte, Lt, Lte,
-    And, Or, Not, Between, Like, In,
-    LParen, RParen, Comma,
+    Eq,
+    Neq,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+    And,
+    Or,
+    Not,
+    Between,
+    Like,
+    In,
+    LParen,
+    RParen,
+    Comma,
     Eof,
 }
 
@@ -625,7 +687,10 @@ struct Tokenizer {
 
 impl Tokenizer {
     fn new(input: &str) -> Self {
-        Self { chars: input.chars().collect(), pos: 0 }
+        Self {
+            chars: input.chars().collect(),
+            pos: 0,
+        }
     }
 
     fn peek_char(&self) -> Option<char> {
@@ -640,7 +705,11 @@ impl Tokenizer {
 
     fn skip_whitespace(&mut self) {
         while let Some(c) = self.peek_char() {
-            if c.is_whitespace() { self.pos += 1; } else { break; }
+            if c.is_whitespace() {
+                self.pos += 1;
+            } else {
+                break;
+            }
         }
     }
 
@@ -648,9 +717,16 @@ impl Tokenizer {
         let quote = self.next_char().unwrap(); // consume opening quote
         let mut s = String::new();
         while let Some(c) = self.next_char() {
-            if c == quote { break; }
-            if c == '\\' { if let Some(esc) = self.next_char() { s.push(esc); } }
-            else { s.push(c); }
+            if c == quote {
+                break;
+            }
+            if c == '\\' {
+                if let Some(esc) = self.next_char() {
+                    s.push(esc);
+                }
+            } else {
+                s.push(c);
+            }
         }
         s
     }
@@ -660,9 +736,16 @@ impl Tokenizer {
         s.push(first);
         let mut is_float = false;
         while let Some(c) = self.peek_char() {
-            if c.is_ascii_digit() { s.push(c); self.pos += 1; }
-            else if c == '.' && !is_float { is_float = true; s.push(c); self.pos += 1; }
-            else { break; }
+            if c.is_ascii_digit() {
+                s.push(c);
+                self.pos += 1;
+            } else if c == '.' && !is_float {
+                is_float = true;
+                s.push(c);
+                self.pos += 1;
+            } else {
+                break;
+            }
         }
         if is_float {
             Token::FloatLit(s.parse().unwrap_or(0.0))
@@ -675,8 +758,12 @@ impl Tokenizer {
         let mut s = String::new();
         s.push(first);
         while let Some(c) = self.peek_char() {
-            if c.is_alphanumeric() || c == '_' { s.push(c); self.pos += 1; }
-            else { break; }
+            if c.is_alphanumeric() || c == '_' {
+                s.push(c);
+                self.pos += 1;
+            } else {
+                break;
+            }
         }
         match s.to_uppercase().as_str() {
             "AND" => Token::And,
@@ -696,25 +783,49 @@ impl Tokenizer {
         loop {
             self.skip_whitespace();
             match self.peek_char() {
-                None => { tokens.push(Token::Eof); break; }
+                None => {
+                    tokens.push(Token::Eof);
+                    break;
+                }
                 Some(c) => match c {
                     '"' | '\'' => tokens.push(Token::StringLit(self.read_string())),
-                    '(' => { self.pos += 1; tokens.push(Token::LParen); }
-                    ')' => { self.pos += 1; tokens.push(Token::RParen); }
-                    ',' => { self.pos += 1; tokens.push(Token::Comma); }
-                    '=' => { self.pos += 1; tokens.push(Token::Eq); }
+                    '(' => {
+                        self.pos += 1;
+                        tokens.push(Token::LParen);
+                    }
+                    ')' => {
+                        self.pos += 1;
+                        tokens.push(Token::RParen);
+                    }
+                    ',' => {
+                        self.pos += 1;
+                        tokens.push(Token::Comma);
+                    }
+                    '=' => {
+                        self.pos += 1;
+                        tokens.push(Token::Eq);
+                    }
                     '!' if self.chars.get(self.pos + 1) == Some(&'=') => {
-                        self.pos += 2; tokens.push(Token::Neq);
+                        self.pos += 2;
+                        tokens.push(Token::Neq);
                     }
                     '>' => {
                         self.pos += 1;
-                        if self.peek_char() == Some('=') { self.pos += 1; tokens.push(Token::Gte); }
-                        else { tokens.push(Token::Gt); }
+                        if self.peek_char() == Some('=') {
+                            self.pos += 1;
+                            tokens.push(Token::Gte);
+                        } else {
+                            tokens.push(Token::Gt);
+                        }
                     }
                     '<' => {
                         self.pos += 1;
-                        if self.peek_char() == Some('=') { self.pos += 1; tokens.push(Token::Lte); }
-                        else { tokens.push(Token::Lt); }
+                        if self.peek_char() == Some('=') {
+                            self.pos += 1;
+                            tokens.push(Token::Lte);
+                        } else {
+                            tokens.push(Token::Lt);
+                        }
                     }
                     _ if c.is_ascii_digit() || c == '-' => {
                         self.pos += 1;
@@ -724,8 +835,10 @@ impl Tokenizer {
                         self.pos += 1;
                         tokens.push(self.read_ident(c));
                     }
-                    _ => { self.pos += 1; } // skip unknown
-                }
+                    _ => {
+                        self.pos += 1;
+                    } // skip unknown
+                },
             }
         }
         tokens
@@ -898,38 +1011,34 @@ impl SearchAttributeIndex {
                 let all = self.all_indexed_workflow_keys();
                 all.difference(&eq_set).copied().collect()
             }
-            QueryNode::Gt { field, value } => {
-                match value {
-                    QueryValue::Num(n) => self.greater_than_integer(field, *n).into_iter().collect(),
-                    _ => HashSet::new(),
+            QueryNode::Gt { field, value } => match value {
+                QueryValue::Num(n) => self.greater_than_integer(field, *n).into_iter().collect(),
+                _ => HashSet::new(),
+            },
+            QueryNode::Gte { field, value } => match value {
+                QueryValue::Num(n) => self
+                    .range_integer(field, *n, i64::MAX)
+                    .into_iter()
+                    .collect(),
+                _ => HashSet::new(),
+            },
+            QueryNode::Lt { field, value } => match value {
+                QueryValue::Num(n) => self.less_than_integer(field, *n).into_iter().collect(),
+                _ => HashSet::new(),
+            },
+            QueryNode::Lte { field, value } => match value {
+                QueryValue::Num(n) => self
+                    .range_integer(field, i64::MIN, *n)
+                    .into_iter()
+                    .collect(),
+                _ => HashSet::new(),
+            },
+            QueryNode::Between { field, low, high } => match (low, high) {
+                (QueryValue::Num(a), QueryValue::Num(b)) => {
+                    self.range_integer(field, *a, *b).into_iter().collect()
                 }
-            }
-            QueryNode::Gte { field, value } => {
-                match value {
-                    QueryValue::Num(n) => self.range_integer(field, *n, i64::MAX).into_iter().collect(),
-                    _ => HashSet::new(),
-                }
-            }
-            QueryNode::Lt { field, value } => {
-                match value {
-                    QueryValue::Num(n) => self.less_than_integer(field, *n).into_iter().collect(),
-                    _ => HashSet::new(),
-                }
-            }
-            QueryNode::Lte { field, value } => {
-                match value {
-                    QueryValue::Num(n) => self.range_integer(field, i64::MIN, *n).into_iter().collect(),
-                    _ => HashSet::new(),
-                }
-            }
-            QueryNode::Between { field, low, high } => {
-                match (low, high) {
-                    (QueryValue::Num(a), QueryValue::Num(b)) => {
-                        self.range_integer(field, *a, *b).into_iter().collect()
-                    }
-                    _ => HashSet::new(),
-                }
-            }
+                _ => HashSet::new(),
+            },
             QueryNode::Like { field, pattern } => {
                 let prefix = pattern.trim_end_matches('%');
                 self.prefix_match(field, prefix).into_iter().collect()
@@ -982,9 +1091,19 @@ fn query_value_to_sav(v: &QueryValue) -> SearchAttributeValue {
 /// A buffered operation for the bulk indexer.
 #[derive(Debug, Clone)]
 pub enum BulkOperation {
-    Index { workflow_key: u64, attr_name: String, attr_value: SearchAttributeValue },
-    Remove { workflow_key: u64 },
-    RemoveAttribute { workflow_key: u64, attr_name: String, attr_value: SearchAttributeValue },
+    Index {
+        workflow_key: u64,
+        attr_name: String,
+        attr_value: SearchAttributeValue,
+    },
+    Remove {
+        workflow_key: u64,
+    },
+    RemoveAttribute {
+        workflow_key: u64,
+        attr_name: String,
+        attr_value: SearchAttributeValue,
+    },
 }
 
 /// Statistics for the bulk indexer.
@@ -1037,14 +1156,24 @@ impl BulkIndexer {
         let count = ops.len() as u64;
         for op in ops {
             match op {
-                BulkOperation::Index { workflow_key, attr_name, attr_value } => {
-                    self.index.index_attribute(workflow_key, &attr_name, &attr_value);
+                BulkOperation::Index {
+                    workflow_key,
+                    attr_name,
+                    attr_value,
+                } => {
+                    self.index
+                        .index_attribute(workflow_key, &attr_name, &attr_value);
                 }
                 BulkOperation::Remove { workflow_key } => {
                     self.index.remove_workflow(workflow_key);
                 }
-                BulkOperation::RemoveAttribute { workflow_key, attr_name, attr_value } => {
-                    self.index.remove_attribute(workflow_key, &attr_name, &attr_value);
+                BulkOperation::RemoveAttribute {
+                    workflow_key,
+                    attr_name,
+                    attr_value,
+                } => {
+                    self.index
+                        .remove_attribute(workflow_key, &attr_name, &attr_value);
                 }
             }
         }
@@ -1117,17 +1246,20 @@ impl IndexLifecycleManager {
         if indices.contains_key(name) {
             return Ok(()); // idempotent
         }
-        indices.insert(name.to_string(), IndexMetadata {
-            name: name.to_string(),
-            alias: None,
-            state: IndexState::Active,
-            created_at_ms: 0, // would use real clock in production
-            doc_count: 0,
-            size_bytes: 0,
-            schema_version,
-            number_of_shards: shards,
-            replicas,
-        });
+        indices.insert(
+            name.to_string(),
+            IndexMetadata {
+                name: name.to_string(),
+                alias: None,
+                state: IndexState::Active,
+                created_at_ms: 0, // would use real clock in production
+                doc_count: 0,
+                size_bytes: 0,
+                schema_version,
+                number_of_shards: shards,
+                replicas,
+            },
+        );
         Ok(())
     }
 
@@ -1141,7 +1273,10 @@ impl IndexLifecycleManager {
             aliases.retain(|_, v| v != name);
             Ok(())
         } else {
-            Err(SchemaError::UnknownField(format!("index '{}' not found", name)))
+            Err(SchemaError::UnknownField(format!(
+                "index '{}' not found",
+                name
+            )))
         }
     }
 
@@ -1149,9 +1284,15 @@ impl IndexLifecycleManager {
     pub fn put_alias(&self, alias: &str, index_name: &str) -> Result<(), SchemaError> {
         let indices = self.indices.read().unwrap();
         if !indices.contains_key(index_name) {
-            return Err(SchemaError::UnknownField(format!("index '{}' not found", index_name)));
+            return Err(SchemaError::UnknownField(format!(
+                "index '{}' not found",
+                index_name
+            )));
         }
-        self.aliases.write().unwrap().insert(alias.to_string(), index_name.to_string());
+        self.aliases
+            .write()
+            .unwrap()
+            .insert(alias.to_string(), index_name.to_string());
         Ok(())
     }
 
@@ -1161,7 +1302,13 @@ impl IndexLifecycleManager {
     }
 
     /// Rollover: create a new index version and update the alias to point to it.
-    pub fn rollover(&self, alias: &str, shards: u32, replicas: u32, schema_version: u32) -> Result<String, SchemaError> {
+    pub fn rollover(
+        &self,
+        alias: &str,
+        shards: u32,
+        replicas: u32,
+        schema_version: u32,
+    ) -> Result<String, SchemaError> {
         // Find the current index for this alias
         let current = self.aliases.read().unwrap().get(alias).cloned();
         if let Some(current_name) = current {
@@ -1180,7 +1327,10 @@ impl IndexLifecycleManager {
 
     /// List all indices.
     pub fn list_indices(&self) -> Vec<IndexMetadata> {
-        self.indices.read().unwrap().values()
+        self.indices
+            .read()
+            .unwrap()
+            .values()
             .filter(|m| m.state != IndexState::Deleted)
             .cloned()
             .collect()
@@ -1193,14 +1343,19 @@ impl IndexLifecycleManager {
 
     /// Get the total number of active indices.
     pub fn active_index_count(&self) -> usize {
-        self.indices.read().unwrap().values()
+        self.indices
+            .read()
+            .unwrap()
+            .values()
             .filter(|m| m.state == IndexState::Active)
             .count()
     }
 }
 
 impl Default for IndexLifecycleManager {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -1212,9 +1367,21 @@ mod tests {
     #[test]
     fn test_index_exact_match() {
         let idx = SearchAttributeIndex::new();
-        idx.index_attribute(1, "customer_id", &SearchAttributeValue::String("C123".into()));
-        idx.index_attribute(2, "customer_id", &SearchAttributeValue::String("C456".into()));
-        idx.index_attribute(3, "customer_id", &SearchAttributeValue::String("C123".into()));
+        idx.index_attribute(
+            1,
+            "customer_id",
+            &SearchAttributeValue::String("C123".into()),
+        );
+        idx.index_attribute(
+            2,
+            "customer_id",
+            &SearchAttributeValue::String("C456".into()),
+        );
+        idx.index_attribute(
+            3,
+            "customer_id",
+            &SearchAttributeValue::String("C123".into()),
+        );
 
         let results = idx.exact_match("customer_id", &SearchAttributeValue::String("C123".into()));
         assert_eq!(results.len(), 2);
@@ -1251,7 +1418,11 @@ mod tests {
         idx.index_attribute(1, "name", &SearchAttributeValue::String("alice".into()));
         idx.index_attribute(2, "name", &SearchAttributeValue::String("albert".into()));
         idx.index_attribute(3, "name", &SearchAttributeValue::String("bob".into()));
-        idx.index_attribute(4, "name", &SearchAttributeValue::String("alice_smith".into()));
+        idx.index_attribute(
+            4,
+            "name",
+            &SearchAttributeValue::String("alice_smith".into()),
+        );
 
         let results = idx.prefix_match("name", "ali");
         assert_eq!(results.len(), 2); // alice, alice_smith
@@ -1354,7 +1525,11 @@ mod tests {
     fn test_multiple_values_same_workflow() {
         let idx = SearchAttributeIndex::new();
         idx.index_attribute(1, "status", &SearchAttributeValue::Keyword("active".into()));
-        idx.index_attribute(1, "region", &SearchAttributeValue::Keyword("us-east".into()));
+        idx.index_attribute(
+            1,
+            "region",
+            &SearchAttributeValue::Keyword("us-east".into()),
+        );
         idx.index_attribute(1, "priority", &SearchAttributeValue::Integer(5));
 
         let active = idx.exact_match("status", &SearchAttributeValue::Keyword("active".into()));
@@ -1368,7 +1543,9 @@ mod tests {
     #[test]
     fn test_empty_index_queries() {
         let idx = SearchAttributeIndex::new();
-        assert!(idx.exact_match("key", &SearchAttributeValue::String("val".into())).is_empty());
+        assert!(idx
+            .exact_match("key", &SearchAttributeValue::String("val".into()))
+            .is_empty());
         assert!(idx.range_integer("key", 0, 100).is_empty());
         assert!(idx.prefix_match("key", "pre").is_empty());
     }
@@ -1388,7 +1565,9 @@ mod tests {
     #[test]
     fn test_schema_add_custom_field() {
         let schema = SearchAttributeSchema::new();
-        assert!(schema.add_search_attribute("CustomerId", SearchAttributeType::Keyword).is_ok());
+        assert!(schema
+            .add_search_attribute("CustomerId", SearchAttributeType::Keyword)
+            .is_ok());
         assert_eq!(schema.custom_field_count(), 1);
         assert!(schema.get_field("CustomerId").is_some());
         assert!(!schema.get_field("CustomerId").unwrap().is_system);
@@ -1397,21 +1576,29 @@ mod tests {
     #[test]
     fn test_schema_add_idempotent() {
         let schema = SearchAttributeSchema::new();
-        assert!(schema.add_search_attribute("CustomerId", SearchAttributeType::Keyword).is_ok());
-        assert!(schema.add_search_attribute("CustomerId", SearchAttributeType::Keyword).is_ok()); // no-op
+        assert!(schema
+            .add_search_attribute("CustomerId", SearchAttributeType::Keyword)
+            .is_ok());
+        assert!(schema
+            .add_search_attribute("CustomerId", SearchAttributeType::Keyword)
+            .is_ok()); // no-op
         assert_eq!(schema.custom_field_count(), 1);
     }
 
     #[test]
     fn test_schema_add_conflict_with_system() {
         let schema = SearchAttributeSchema::new();
-        assert!(schema.add_search_attribute("WorkflowId", SearchAttributeType::Text).is_err());
+        assert!(schema
+            .add_search_attribute("WorkflowId", SearchAttributeType::Text)
+            .is_err());
     }
 
     #[test]
     fn test_schema_type_mismatch() {
         let schema = SearchAttributeSchema::new();
-        schema.add_search_attribute("Priority", SearchAttributeType::Int).unwrap();
+        schema
+            .add_search_attribute("Priority", SearchAttributeType::Int)
+            .unwrap();
         let result = schema.add_search_attribute("Priority", SearchAttributeType::Keyword);
         assert!(result.is_err());
     }
@@ -1419,15 +1606,23 @@ mod tests {
     #[test]
     fn test_schema_validate_value() {
         let schema = SearchAttributeSchema::new();
-        schema.add_search_attribute("Priority", SearchAttributeType::Int).unwrap();
-        assert!(schema.validate_value("Priority", &SearchAttributeValue::Integer(5)).is_ok());
-        assert!(schema.validate_value("Priority", &SearchAttributeValue::String("x".into()).into()).is_err());
+        schema
+            .add_search_attribute("Priority", SearchAttributeType::Int)
+            .unwrap();
+        assert!(schema
+            .validate_value("Priority", &SearchAttributeValue::Integer(5))
+            .is_ok());
+        assert!(schema
+            .validate_value("Priority", &SearchAttributeValue::String("x".into()).into())
+            .is_err());
     }
 
     #[test]
     fn test_schema_remove_custom() {
         let schema = SearchAttributeSchema::new();
-        schema.add_search_attribute("Temp", SearchAttributeType::Text).unwrap();
+        schema
+            .add_search_attribute("Temp", SearchAttributeType::Text)
+            .unwrap();
         assert_eq!(schema.custom_field_count(), 1);
         schema.remove_search_attribute("Temp").unwrap();
         assert_eq!(schema.custom_field_count(), 0);
@@ -1445,7 +1640,10 @@ mod tests {
     fn test_parse_simple_eq() {
         let q = VisibilityQueryParser::parse(r#"WorkflowType = "MyWorkflow""#).unwrap();
         match q {
-            QueryNode::Eq { field, value: QueryValue::Str(v) } => {
+            QueryNode::Eq {
+                field,
+                value: QueryValue::Str(v),
+            } => {
                 assert_eq!(field, "WorkflowType");
                 assert_eq!(v, "MyWorkflow");
             }
@@ -1467,7 +1665,8 @@ mod tests {
 
     #[test]
     fn test_parse_or_query() {
-        let q = VisibilityQueryParser::parse(r#"Status = "Running" OR Status = "Completed""#).unwrap();
+        let q =
+            VisibilityQueryParser::parse(r#"Status = "Running" OR Status = "Completed""#).unwrap();
         assert!(matches!(q, QueryNode::Or(_, _)));
     }
 
@@ -1500,7 +1699,8 @@ mod tests {
 
     #[test]
     fn test_parse_in() {
-        let q = VisibilityQueryParser::parse(r#"Status IN ("Running", "Completed", "Failed")"#).unwrap();
+        let q = VisibilityQueryParser::parse(r#"Status IN ("Running", "Completed", "Failed")"#)
+            .unwrap();
         match q {
             QueryNode::In { field, values } => {
                 assert_eq!(field, "Status");
@@ -1513,8 +1713,9 @@ mod tests {
     #[test]
     fn test_parse_parenthesized() {
         let q = VisibilityQueryParser::parse(
-            r#"(Status = "Running" OR Status = "Completed") AND Priority > 5"#
-        ).unwrap();
+            r#"(Status = "Running" OR Status = "Completed") AND Priority > 5"#,
+        )
+        .unwrap();
         match q {
             QueryNode::And(left, right) => {
                 assert!(matches!(*left, QueryNode::Or(_, _)));
@@ -1529,9 +1730,21 @@ mod tests {
     #[test]
     fn test_execute_eq_query() {
         let idx = SearchAttributeIndex::new();
-        idx.index_attribute(1, "status", &SearchAttributeValue::Keyword("running".into()));
-        idx.index_attribute(2, "status", &SearchAttributeValue::Keyword("completed".into()));
-        idx.index_attribute(3, "status", &SearchAttributeValue::Keyword("running".into()));
+        idx.index_attribute(
+            1,
+            "status",
+            &SearchAttributeValue::Keyword("running".into()),
+        );
+        idx.index_attribute(
+            2,
+            "status",
+            &SearchAttributeValue::Keyword("completed".into()),
+        );
+        idx.index_attribute(
+            3,
+            "status",
+            &SearchAttributeValue::Keyword("running".into()),
+        );
 
         let q = VisibilityQueryParser::parse(r#"status = "running""#).unwrap();
         let results = idx.execute_query(&q);
@@ -1543,11 +1756,23 @@ mod tests {
     #[test]
     fn test_execute_and_query() {
         let idx = SearchAttributeIndex::new();
-        idx.index_attribute(1, "status", &SearchAttributeValue::Keyword("running".into()));
+        idx.index_attribute(
+            1,
+            "status",
+            &SearchAttributeValue::Keyword("running".into()),
+        );
         idx.index_attribute(1, "priority", &SearchAttributeValue::Integer(10));
-        idx.index_attribute(2, "status", &SearchAttributeValue::Keyword("running".into()));
+        idx.index_attribute(
+            2,
+            "status",
+            &SearchAttributeValue::Keyword("running".into()),
+        );
         idx.index_attribute(2, "priority", &SearchAttributeValue::Integer(3));
-        idx.index_attribute(3, "status", &SearchAttributeValue::Keyword("completed".into()));
+        idx.index_attribute(
+            3,
+            "status",
+            &SearchAttributeValue::Keyword("completed".into()),
+        );
         idx.index_attribute(3, "priority", &SearchAttributeValue::Integer(8));
 
         let q = VisibilityQueryParser::parse(r#"status = "running" AND priority > 5"#).unwrap();
@@ -1559,11 +1784,20 @@ mod tests {
     #[test]
     fn test_execute_or_query() {
         let idx = SearchAttributeIndex::new();
-        idx.index_attribute(1, "status", &SearchAttributeValue::Keyword("running".into()));
-        idx.index_attribute(2, "status", &SearchAttributeValue::Keyword("completed".into()));
+        idx.index_attribute(
+            1,
+            "status",
+            &SearchAttributeValue::Keyword("running".into()),
+        );
+        idx.index_attribute(
+            2,
+            "status",
+            &SearchAttributeValue::Keyword("completed".into()),
+        );
         idx.index_attribute(3, "status", &SearchAttributeValue::Keyword("failed".into()));
 
-        let q = VisibilityQueryParser::parse(r#"status = "running" OR status = "completed""#).unwrap();
+        let q =
+            VisibilityQueryParser::parse(r#"status = "running" OR status = "completed""#).unwrap();
         let results = idx.execute_query(&q);
         assert_eq!(results.len(), 2);
         assert!(results.contains(&1));
@@ -1584,9 +1818,21 @@ mod tests {
     #[test]
     fn test_execute_like_query() {
         let idx = SearchAttributeIndex::new();
-        idx.index_attribute(1, "type", &SearchAttributeValue::String("PaymentWorkflow".into()));
-        idx.index_attribute(2, "type", &SearchAttributeValue::String("PaymentRefund".into()));
-        idx.index_attribute(3, "type", &SearchAttributeValue::String("OrderWorkflow".into()));
+        idx.index_attribute(
+            1,
+            "type",
+            &SearchAttributeValue::String("PaymentWorkflow".into()),
+        );
+        idx.index_attribute(
+            2,
+            "type",
+            &SearchAttributeValue::String("PaymentRefund".into()),
+        );
+        idx.index_attribute(
+            3,
+            "type",
+            &SearchAttributeValue::String("OrderWorkflow".into()),
+        );
 
         let q = VisibilityQueryParser::parse(r#"type LIKE "Payment%""#).unwrap();
         let results = idx.execute_query(&q);
@@ -1596,9 +1842,21 @@ mod tests {
     #[test]
     fn test_execute_in_query() {
         let idx = SearchAttributeIndex::new();
-        idx.index_attribute(1, "region", &SearchAttributeValue::Keyword("us-east".into()));
-        idx.index_attribute(2, "region", &SearchAttributeValue::Keyword("eu-west".into()));
-        idx.index_attribute(3, "region", &SearchAttributeValue::Keyword("ap-south".into()));
+        idx.index_attribute(
+            1,
+            "region",
+            &SearchAttributeValue::Keyword("us-east".into()),
+        );
+        idx.index_attribute(
+            2,
+            "region",
+            &SearchAttributeValue::Keyword("eu-west".into()),
+        );
+        idx.index_attribute(
+            3,
+            "region",
+            &SearchAttributeValue::Keyword("ap-south".into()),
+        );
 
         let q = VisibilityQueryParser::parse(r#"region IN ("us-east", "eu-west")"#).unwrap();
         let results = idx.execute_query(&q);
@@ -1613,11 +1871,13 @@ mod tests {
         let bulk = BulkIndexer::new(idx.clone(), 10);
 
         bulk.add(BulkOperation::Index {
-            workflow_key: 1, attr_name: "status".into(),
+            workflow_key: 1,
+            attr_name: "status".into(),
             attr_value: SearchAttributeValue::Keyword("running".into()),
         });
         bulk.add(BulkOperation::Index {
-            workflow_key: 2, attr_name: "status".into(),
+            workflow_key: 2,
+            attr_name: "status".into(),
             attr_value: SearchAttributeValue::Keyword("completed".into()),
         });
 
@@ -1636,7 +1896,8 @@ mod tests {
 
         for i in 1..=3 {
             bulk.add(BulkOperation::Index {
-                workflow_key: i, attr_name: "key".into(),
+                workflow_key: i,
+                attr_name: "key".into(),
                 attr_value: SearchAttributeValue::Integer(i as i64),
             });
         }
@@ -1663,7 +1924,8 @@ mod tests {
 
         for i in 0..10 {
             bulk.add(BulkOperation::Index {
-                workflow_key: i, attr_name: "x".into(),
+                workflow_key: i,
+                attr_name: "x".into(),
                 attr_value: SearchAttributeValue::Integer(i as i64),
             });
         }
@@ -1698,7 +1960,10 @@ mod tests {
         let mgr = IndexLifecycleManager::new();
         mgr.create_index("velocity-v1", 5, 1, 1).unwrap();
         mgr.put_alias("velocity", "velocity-v1").unwrap();
-        assert_eq!(mgr.resolve_alias("velocity"), Some("velocity-v1".to_string()));
+        assert_eq!(
+            mgr.resolve_alias("velocity"),
+            Some("velocity-v1".to_string())
+        );
     }
 
     #[test]
@@ -1738,9 +2003,18 @@ mod tests {
 
     #[test]
     fn test_search_attribute_type_parsing() {
-        assert_eq!(SearchAttributeType::from_type_name("keyword"), Some(SearchAttributeType::Keyword));
-        assert_eq!(SearchAttributeType::from_type_name("INT"), Some(SearchAttributeType::Int));
-        assert_eq!(SearchAttributeType::from_type_name("Boolean"), Some(SearchAttributeType::Bool));
+        assert_eq!(
+            SearchAttributeType::from_type_name("keyword"),
+            Some(SearchAttributeType::Keyword)
+        );
+        assert_eq!(
+            SearchAttributeType::from_type_name("INT"),
+            Some(SearchAttributeType::Int)
+        );
+        assert_eq!(
+            SearchAttributeType::from_type_name("Boolean"),
+            Some(SearchAttributeType::Bool)
+        );
         assert_eq!(SearchAttributeType::from_type_name("unknown"), None);
     }
 

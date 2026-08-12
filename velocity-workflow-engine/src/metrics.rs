@@ -3,7 +3,7 @@
 //! All metrics are stored in Rust with zero GC — can be scraped via FFI.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::RwLock;
 
 /// A named counter that only increments.
@@ -15,7 +15,11 @@ pub struct Counter {
 
 impl Counter {
     pub fn new(name: &str) -> Self {
-        Self { name: name.to_string(), value: AtomicU64::new(0), labels: HashMap::new() }
+        Self {
+            name: name.to_string(),
+            value: AtomicU64::new(0),
+            labels: HashMap::new(),
+        }
     }
 
     pub fn with_labels(mut self, labels: HashMap<String, String>) -> Self {
@@ -23,10 +27,18 @@ impl Counter {
         self
     }
 
-    pub fn inc(&self) { self.value.fetch_add(1, Ordering::Relaxed); }
-    pub fn add(&self, n: u64) { self.value.fetch_add(n, Ordering::Relaxed); }
-    pub fn get(&self) -> u64 { self.value.load(Ordering::Relaxed) }
-    pub fn name(&self) -> &str { &self.name }
+    pub fn inc(&self) {
+        self.value.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn add(&self, n: u64) {
+        self.value.fetch_add(n, Ordering::Relaxed);
+    }
+    pub fn get(&self) -> u64 {
+        self.value.load(Ordering::Relaxed)
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// A named gauge that can increase or decrease.
@@ -38,22 +50,36 @@ pub struct Gauge {
 
 impl Gauge {
     pub fn new(name: &str) -> Self {
-        Self { name: name.to_string(), value: AtomicI64::new(0), labels: HashMap::new() }
+        Self {
+            name: name.to_string(),
+            value: AtomicI64::new(0),
+            labels: HashMap::new(),
+        }
     }
 
-    pub fn set(&self, v: i64) { self.value.store(v, Ordering::Relaxed); }
-    pub fn inc(&self) { self.value.fetch_add(1, Ordering::Relaxed); }
-    pub fn dec(&self) { self.value.fetch_sub(1, Ordering::Relaxed); }
-    pub fn get(&self) -> i64 { self.value.load(Ordering::Relaxed) }
-    pub fn name(&self) -> &str { &self.name }
+    pub fn set(&self, v: i64) {
+        self.value.store(v, Ordering::Relaxed);
+    }
+    pub fn inc(&self) {
+        self.value.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn dec(&self) {
+        self.value.fetch_sub(1, Ordering::Relaxed);
+    }
+    pub fn get(&self) -> i64 {
+        self.value.load(Ordering::Relaxed)
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// A simple histogram with fixed buckets.
 pub struct Histogram {
     name: String,
-    buckets: Vec<f64>, // upper bounds
+    buckets: Vec<f64>,      // upper bounds
     counts: Vec<AtomicU64>, // count per bucket
-    sum: AtomicU64, // sum of all values (as millis for integer metrics)
+    sum: AtomicU64,         // sum of all values (as millis for integer metrics)
     count: AtomicU64,
 }
 
@@ -79,9 +105,15 @@ impl Histogram {
         self.count.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn count(&self) -> u64 { self.count.load(Ordering::Relaxed) }
-    pub fn sum(&self) -> u64 { self.sum.load(Ordering::Relaxed) }
-    pub fn name(&self) -> &str { &self.name }
+    pub fn count(&self) -> u64 {
+        self.count.load(Ordering::Relaxed)
+    }
+    pub fn sum(&self) -> u64 {
+        self.sum.load(Ordering::Relaxed)
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// Central metrics registry. All engine metrics are registered here.
@@ -131,38 +163,65 @@ impl MetricsRegistry {
         self.register_gauge("velocity_timers_pending");
 
         // Histograms (latency in ms)
-        self.register_histogram("velocity_workflow_duration_ms",
-            vec![10.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0, 30000.0, 60000.0]);
-        self.register_histogram("velocity_activity_duration_ms",
-            vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 5000.0]);
+        self.register_histogram(
+            "velocity_workflow_duration_ms",
+            vec![
+                10.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0, 30000.0, 60000.0,
+            ],
+        );
+        self.register_histogram(
+            "velocity_activity_duration_ms",
+            vec![
+                1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 5000.0,
+            ],
+        );
     }
 
     pub fn register_counter(&self, name: &str) {
-        self.counters.write().unwrap().insert(name.to_string(), Counter::new(name));
+        self.counters
+            .write()
+            .unwrap()
+            .insert(name.to_string(), Counter::new(name));
     }
 
     pub fn register_gauge(&self, name: &str) {
-        self.gauges.write().unwrap().insert(name.to_string(), Gauge::new(name));
+        self.gauges
+            .write()
+            .unwrap()
+            .insert(name.to_string(), Gauge::new(name));
     }
 
     pub fn register_histogram(&self, name: &str, buckets: Vec<f64>) {
-        self.histograms.write().unwrap().insert(name.to_string(), Histogram::new(name, buckets));
+        self.histograms
+            .write()
+            .unwrap()
+            .insert(name.to_string(), Histogram::new(name, buckets));
     }
 
     pub fn inc_counter(&self, name: &str) {
-        if let Some(c) = self.counters.read().unwrap().get(name) { c.inc(); }
+        if let Some(c) = self.counters.read().unwrap().get(name) {
+            c.inc();
+        }
     }
 
     pub fn add_counter(&self, name: &str, n: u64) {
-        if let Some(c) = self.counters.read().unwrap().get(name) { c.add(n); }
+        if let Some(c) = self.counters.read().unwrap().get(name) {
+            c.add(n);
+        }
     }
 
     pub fn get_counter(&self, name: &str) -> u64 {
-        self.counters.read().unwrap().get(name).map_or(0, |c| c.get())
+        self.counters
+            .read()
+            .unwrap()
+            .get(name)
+            .map_or(0, |c| c.get())
     }
 
     pub fn set_gauge(&self, name: &str, value: i64) {
-        if let Some(g) = self.gauges.read().unwrap().get(name) { g.set(value); }
+        if let Some(g) = self.gauges.read().unwrap().get(name) {
+            g.set(value);
+        }
     }
 
     pub fn get_gauge(&self, name: &str) -> i64 {
@@ -170,7 +229,9 @@ impl MetricsRegistry {
     }
 
     pub fn observe_histogram(&self, name: &str, value: f64) {
-        if let Some(h) = self.histograms.read().unwrap().get(name) { h.observe(value); }
+        if let Some(h) = self.histograms.read().unwrap().get(name) {
+            h.observe(value);
+        }
     }
 
     /// Export all metrics in Prometheus text exposition format.
@@ -196,9 +257,18 @@ impl MetricsRegistry {
         for (name, hist) in histograms.iter() {
             output.push_str(&format!("# TYPE {} histogram\n", name));
             for (i, bound) in hist.buckets.iter().enumerate() {
-                output.push_str(&format!("{}_bucket{{le=\"{}\"}} {}\n", name, bound, hist.counts[i].load(Ordering::Relaxed)));
+                output.push_str(&format!(
+                    "{}_bucket{{le=\"{}\"}} {}\n",
+                    name,
+                    bound,
+                    hist.counts[i].load(Ordering::Relaxed)
+                ));
             }
-            output.push_str(&format!("{}_bucket{{le=\"+Inf\"}} {}\n", name, hist.count()));
+            output.push_str(&format!(
+                "{}_bucket{{le=\"+Inf\"}} {}\n",
+                name,
+                hist.count()
+            ));
             output.push_str(&format!("{}_sum {}\n", name, hist.sum()));
             output.push_str(&format!("{}_count {}\n", name, hist.count()));
         }
@@ -215,22 +285,39 @@ impl MetricsRegistry {
 
     /// Return a snapshot of all counter names and their current values.
     pub fn counter_snapshot(&self) -> Vec<(String, u64)> {
-        self.counters.read().unwrap().iter().map(|(k, v)| (k.clone(), v.get())).collect()
+        self.counters
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.get()))
+            .collect()
     }
 
     /// Return a snapshot of all gauge names and their current values.
     pub fn gauge_snapshot(&self) -> Vec<(String, i64)> {
-        self.gauges.read().unwrap().iter().map(|(k, v)| (k.clone(), v.get())).collect()
+        self.gauges
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.get()))
+            .collect()
     }
 
     /// Return a snapshot of all histogram names, counts, and sums.
     pub fn histogram_snapshot(&self) -> Vec<(String, u64, u64)> {
-        self.histograms.read().unwrap().iter().map(|(k, v)| (k.clone(), v.count(), v.sum())).collect()
+        self.histograms
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.count(), v.sum()))
+            .collect()
     }
 }
 
 impl Default for MetricsRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

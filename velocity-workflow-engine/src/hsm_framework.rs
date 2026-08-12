@@ -8,7 +8,10 @@
 //! 5. **HSMRegistry**: Registry of all state machines in the system.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::Instant;
 
 // ─── 1. State ─────────────────────────────────────────────────────────────────
@@ -51,10 +54,24 @@ impl HSMState {
         }
     }
 
-    pub fn initial(mut self) -> Self { self.is_initial = true; self.state_type = HSMStateType::Initial; self }
-    pub fn final_state(mut self) -> Self { self.is_final = true; self.state_type = HSMStateType::Final; self }
-    pub fn with_entry_action(mut self, action: &str) -> Self { self.entry_actions.push(action.to_string()); self }
-    pub fn with_exit_action(mut self, action: &str) -> Self { self.exit_actions.push(action.to_string()); self }
+    pub fn initial(mut self) -> Self {
+        self.is_initial = true;
+        self.state_type = HSMStateType::Initial;
+        self
+    }
+    pub fn final_state(mut self) -> Self {
+        self.is_final = true;
+        self.state_type = HSMStateType::Final;
+        self
+    }
+    pub fn with_entry_action(mut self, action: &str) -> Self {
+        self.entry_actions.push(action.to_string());
+        self
+    }
+    pub fn with_exit_action(mut self, action: &str) -> Self {
+        self.exit_actions.push(action.to_string());
+        self
+    }
 }
 
 // ─── 2. Transition ────────────────────────────────────────────────────────────
@@ -84,9 +101,18 @@ impl HSMTransition {
         }
     }
 
-    pub fn with_guard(mut self, guard: &str) -> Self { self.guard = Some(guard.to_string()); self }
-    pub fn with_action(mut self, action: &str) -> Self { self.actions.push(action.to_string()); self }
-    pub fn internal(mut self) -> Self { self.is_internal = true; self }
+    pub fn with_guard(mut self, guard: &str) -> Self {
+        self.guard = Some(guard.to_string());
+        self
+    }
+    pub fn with_action(mut self, action: &str) -> Self {
+        self.actions.push(action.to_string());
+        self
+    }
+    pub fn internal(mut self) -> Self {
+        self.is_internal = true;
+        self
+    }
 }
 
 // ─── 3. State Machine ────────────────────────────────────────────────────────
@@ -140,7 +166,9 @@ impl HSMStateMachine {
 
     /// Initialize the state machine.
     pub fn initialize(&self) -> bool {
-        if self.initial_state.is_empty() { return false; }
+        if self.initial_state.is_empty() {
+            return false;
+        }
         *self.current_state.lock().unwrap() = self.initial_state.clone();
         true
     }
@@ -155,7 +183,9 @@ impl HSMStateMachine {
         let current = self.current_state.lock().unwrap().clone();
 
         // Find matching transition (clone to avoid borrow issues)
-        let matched: Option<HSMTransition> = self.transitions.iter()
+        let matched: Option<HSMTransition> = self
+            .transitions
+            .iter()
             .find(|t| t.source_state == current && t.event == event)
             .cloned();
 
@@ -200,16 +230,25 @@ impl HSMStateMachine {
     /// Get all available transitions from the current state.
     pub fn available_transitions(&self) -> Vec<String> {
         let current = self.current_state.lock().unwrap().clone();
-        self.transitions.iter()
+        self.transitions
+            .iter()
             .filter(|t| t.source_state == current)
             .map(|t| t.event.clone())
             .collect()
     }
 
-    pub fn total_transitions(&self) -> u64 { self.total_transitions.load(Ordering::Relaxed) }
-    pub fn state_count(&self) -> usize { self.states.len() }
-    pub fn transition_count(&self) -> usize { self.transitions.len() }
-    pub fn event_history(&self) -> Vec<EventRecord> { self.event_log.lock().unwrap().clone() }
+    pub fn total_transitions(&self) -> u64 {
+        self.total_transitions.load(Ordering::Relaxed)
+    }
+    pub fn state_count(&self) -> usize {
+        self.states.len()
+    }
+    pub fn transition_count(&self) -> usize {
+        self.transitions.len()
+    }
+    pub fn event_history(&self) -> Vec<EventRecord> {
+        self.event_log.lock().unwrap().clone()
+    }
 }
 
 /// Result of a transition.
@@ -244,7 +283,10 @@ impl HierarchicalStateMachine {
 
     /// Add a child state machine.
     pub fn add_child(&self, parent_state: &str, child: HSMStateMachine) {
-        self.child_machines.write().unwrap().insert(parent_state.to_string(), child);
+        self.child_machines
+            .write()
+            .unwrap()
+            .insert(parent_state.to_string(), child);
     }
 
     /// Fire an event on the root machine.
@@ -264,25 +306,39 @@ impl HierarchicalStateMachine {
     }
 
     /// Get the root machine's current state.
-    pub fn current_state(&self) -> String { self.root_machine.current_state() }
+    pub fn current_state(&self) -> String {
+        self.root_machine.current_state()
+    }
 
     /// Get a child machine's current state.
     pub fn child_state(&self, parent_state: &str) -> Option<String> {
-        self.child_machines.read().unwrap().get(parent_state).map(|c| c.current_state())
+        self.child_machines
+            .read()
+            .unwrap()
+            .get(parent_state)
+            .map(|c| c.current_state())
     }
 
     /// Check if the entire hierarchy is in a final state.
     pub fn is_final(&self) -> bool {
-        if !self.root_machine.is_final() { return false; }
+        if !self.root_machine.is_final() {
+            return false;
+        }
         let current = self.root_machine.current_state();
         let children = self.child_machines.read().unwrap();
         if let Some(child) = children.get(&current) {
             child.is_final()
-        } else { true }
+        } else {
+            true
+        }
     }
 
-    pub fn root_machine(&self) -> &HSMStateMachine { &self.root_machine }
-    pub fn total_events(&self) -> u64 { self.total_events.load(Ordering::Relaxed) }
+    pub fn root_machine(&self) -> &HSMStateMachine {
+        &self.root_machine
+    }
+    pub fn total_events(&self) -> u64 {
+        self.total_events.load(Ordering::Relaxed)
+    }
 }
 
 // ─── 5. HSM Registry ─────────────────────────────────────────────────────────
@@ -309,19 +365,35 @@ impl HSMRegistry {
 
     /// Get a state machine by name.
     pub fn get(&self, name: &str) -> Option<String> {
-        self.machines.read().unwrap().get(name).map(|m| m.current_state())
+        self.machines
+            .read()
+            .unwrap()
+            .get(name)
+            .map(|m| m.current_state())
     }
 
     /// Fire an event on a specific state machine.
     pub fn fire_event(&self, machine_name: &str, event: &str) -> Option<TransitionResult> {
-        self.machines.read().unwrap().get(machine_name).map(|m| m.fire_event(event))
+        self.machines
+            .read()
+            .unwrap()
+            .get(machine_name)
+            .map(|m| m.fire_event(event))
     }
 
-    pub fn total_registered(&self) -> u64 { self.total_registered.load(Ordering::Relaxed) }
-    pub fn machine_count(&self) -> usize { self.machines.read().unwrap().len() }
+    pub fn total_registered(&self) -> u64 {
+        self.total_registered.load(Ordering::Relaxed)
+    }
+    pub fn machine_count(&self) -> usize {
+        self.machines.read().unwrap().len()
+    }
 }
 
-impl Default for HSMRegistry { fn default() -> Self { Self::new() } }
+impl Default for HSMRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -337,13 +409,32 @@ mod tests {
         sm.add_state(HSMState::new("delivered").final_state());
         sm.add_state(HSMState::new("cancelled").final_state());
 
-        sm.add_transition(HSMTransition::new("start", "created", "processing", "process")
-            .with_action("validate_inventory"));
-        sm.add_transition(HSMTransition::new("ship", "processing", "shipped", "ship")
-            .with_action("generate_tracking"));
-        sm.add_transition(HSMTransition::new("deliver", "shipped", "delivered", "deliver"));
-        sm.add_transition(HSMTransition::new("cancel", "created", "cancelled", "cancel"));
-        sm.add_transition(HSMTransition::new("cancel_from_processing", "processing", "cancelled", "cancel"));
+        sm.add_transition(
+            HSMTransition::new("start", "created", "processing", "process")
+                .with_action("validate_inventory"),
+        );
+        sm.add_transition(
+            HSMTransition::new("ship", "processing", "shipped", "ship")
+                .with_action("generate_tracking"),
+        );
+        sm.add_transition(HSMTransition::new(
+            "deliver",
+            "shipped",
+            "delivered",
+            "deliver",
+        ));
+        sm.add_transition(HSMTransition::new(
+            "cancel",
+            "created",
+            "cancelled",
+            "cancel",
+        ));
+        sm.add_transition(HSMTransition::new(
+            "cancel_from_processing",
+            "processing",
+            "cancelled",
+            "cancel",
+        ));
         sm
     }
 
@@ -427,7 +518,12 @@ mod tests {
         root.add_state(HSMState::new("active"));
         root.add_state(HSMState::new("completed").final_state());
         root.add_transition(HSMTransition::new("start", "idle", "active", "start"));
-        root.add_transition(HSMTransition::new("finish", "active", "completed", "finish"));
+        root.add_transition(HSMTransition::new(
+            "finish",
+            "active",
+            "completed",
+            "finish",
+        ));
         root.initialize();
 
         assert_eq!(root.current_state(), "idle");

@@ -4,13 +4,13 @@
 //! and replication layer. Results are aggregated into a single health report
 //! suitable for Kubernetes liveness/readiness probes and load balancer checks.
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::engine::WorkflowEngine;
-use crate::db_adapter::{DatabaseAdapter, StatusFilter};
 use crate::cluster::ClusterManager;
+use crate::db_adapter::{DatabaseAdapter, StatusFilter};
+use crate::engine::WorkflowEngine;
 
 // ─── Health Status ──────────────────────────────────────────────────────────
 
@@ -93,7 +93,11 @@ impl AggregateHealth {
 
 impl std::fmt::Display for AggregateHealth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "overall={} timestamp={}", self.overall_status, self.timestamp)?;
+        write!(
+            f,
+            "overall={} timestamp={}",
+            self.overall_status, self.timestamp
+        )?;
         for (name, status) in &self.component_statuses {
             write!(f, " {}={}", name, status)?;
         }
@@ -120,7 +124,11 @@ impl HealthChecker {
         db_adapter: Option<Arc<dyn DatabaseAdapter>>,
         cluster_manager: Option<Arc<ClusterManager>>,
     ) -> Self {
-        Self { engine, db_adapter, cluster_manager }
+        Self {
+            engine,
+            db_adapter,
+            cluster_manager,
+        }
     }
 
     /// Check the health of the workflow engine core.
@@ -129,7 +137,9 @@ impl HealthChecker {
     pub fn check_engine(&self) -> HealthStatus {
         // Calling a public method that internally acquires the read lock.
         // If the lock is poisoned this will panic, which we catch.
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.engine.workflow_count())) {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.engine.workflow_count()
+        })) {
             Ok(_) => HealthStatus::Healthy,
             Err(_) => HealthStatus::Unhealthy("engine lock poisoned or panicked".into()),
         }
@@ -254,7 +264,10 @@ mod tests {
         statuses.insert("a".into(), HealthStatus::Healthy);
         statuses.insert("b".into(), HealthStatus::Degraded("slow".into()));
         let overall = AggregateHealth::compute_overall(&statuses);
-        assert_eq!(overall, HealthStatus::Degraded("one or more components degraded".into()));
+        assert_eq!(
+            overall,
+            HealthStatus::Degraded("one or more components degraded".into())
+        );
 
         statuses.insert("c".into(), HealthStatus::Unhealthy("down".into()));
         let overall = AggregateHealth::compute_overall(&statuses);

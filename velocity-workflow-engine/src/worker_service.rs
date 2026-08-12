@@ -27,10 +27,15 @@ pub enum SystemWorkflowKind {
 impl SystemWorkflowKind {
     pub fn all() -> &'static [SystemWorkflowKind] {
         &[
-            Self::Archival, Self::Replication, Self::BatchOperation,
-            Self::HistoryGarbageCollection, Self::CloseExecution,
-            Self::ParentClosePolicy, Self::StorageCompaction,
-            Self::HealthMonitoring, Self::NamespaceFailover,
+            Self::Archival,
+            Self::Replication,
+            Self::BatchOperation,
+            Self::HistoryGarbageCollection,
+            Self::CloseExecution,
+            Self::ParentClosePolicy,
+            Self::StorageCompaction,
+            Self::HealthMonitoring,
+            Self::NamespaceFailover,
             Self::ScheduleWorkflow,
         ]
     }
@@ -179,7 +184,10 @@ impl WorkerService {
 
     /// Register a handler for a system workflow kind.
     pub fn register_handler(&self, kind: SystemWorkflowKind, handler: SystemWorkflowHandler) {
-        self.handlers.write().unwrap().insert(kind, Arc::new(handler));
+        self.handlers
+            .write()
+            .unwrap()
+            .insert(kind, Arc::new(handler));
     }
 
     /// Enqueue a system task. Returns false if backpressure is applied.
@@ -280,21 +288,28 @@ impl WorkerService {
         let configs = self.configs.read().unwrap();
         let active = self.active_workers.read().unwrap();
 
-        SystemWorkflowKind::all().iter().map(|kind| {
-            let max_w = configs.get(kind).map(|c| c.max_workers).unwrap_or(4);
-            let act = active.get(kind).copied().unwrap_or(0);
-            let depth = queues.get(kind).map(|q| q.len() as u64).unwrap_or(0);
-            let utilization = if max_w > 0 { (act as f64 / max_w as f64) * 100.0 } else { 0.0 };
+        SystemWorkflowKind::all()
+            .iter()
+            .map(|kind| {
+                let max_w = configs.get(kind).map(|c| c.max_workers).unwrap_or(4);
+                let act = active.get(kind).copied().unwrap_or(0);
+                let depth = queues.get(kind).map(|q| q.len() as u64).unwrap_or(0);
+                let utilization = if max_w > 0 {
+                    (act as f64 / max_w as f64) * 100.0
+                } else {
+                    0.0
+                };
 
-            WorkerHealth {
-                kind: *kind,
-                active_workers: act,
-                max_workers: max_w,
-                queue_depth: depth,
-                utilization_pct: utilization,
-                is_healthy: utilization < 90.0,
-            }
-        }).collect()
+                WorkerHealth {
+                    kind: *kind,
+                    active_workers: act,
+                    max_workers: max_w,
+                    queue_depth: depth,
+                    utilization_pct: utilization,
+                    is_healthy: utilization < 90.0,
+                }
+            })
+            .collect()
     }
 
     /// Get overall statistics.
@@ -307,12 +322,22 @@ impl WorkerService {
 
     /// Get total queue depth across all kinds.
     pub fn total_queue_depth(&self) -> u64 {
-        self.queues.read().unwrap().values().map(|q| q.len() as u64).sum()
+        self.queues
+            .read()
+            .unwrap()
+            .values()
+            .map(|q| q.len() as u64)
+            .sum()
     }
 
     /// Get queue depth for a specific kind.
     pub fn queue_depth(&self, kind: SystemWorkflowKind) -> usize {
-        self.queues.read().unwrap().get(&kind).map(|q| q.len()).unwrap_or(0)
+        self.queues
+            .read()
+            .unwrap()
+            .get(&kind)
+            .map(|q| q.len())
+            .unwrap_or(0)
     }
 
     /// Update pool configuration for a kind.
@@ -385,7 +410,10 @@ mod tests {
         let health = svc.health();
         assert_eq!(health.len(), SystemWorkflowKind::all().len());
 
-        let archival_health = health.iter().find(|h| h.kind == SystemWorkflowKind::Archival).unwrap();
+        let archival_health = health
+            .iter()
+            .find(|h| h.kind == SystemWorkflowKind::Archival)
+            .unwrap();
         assert_eq!(archival_health.queue_depth, 1);
         assert!(archival_health.is_healthy);
     }
@@ -407,7 +435,10 @@ mod tests {
     fn test_system_workflow_kind_names() {
         assert_eq!(SystemWorkflowKind::Archival.name(), "archival");
         assert_eq!(SystemWorkflowKind::Replication.name(), "replication");
-        assert_eq!(SystemWorkflowKind::NamespaceFailover.name(), "namespace-failover");
+        assert_eq!(
+            SystemWorkflowKind::NamespaceFailover.name(),
+            "namespace-failover"
+        );
     }
 
     #[test]
@@ -417,7 +448,10 @@ mod tests {
         svc.configure_pool(config);
 
         let health = svc.health();
-        let archival = health.iter().find(|h| h.kind == SystemWorkflowKind::Archival).unwrap();
+        let archival = health
+            .iter()
+            .find(|h| h.kind == SystemWorkflowKind::Archival)
+            .unwrap();
         assert_eq!(archival.max_workers, 8);
     }
 }

@@ -5,8 +5,11 @@
 //! signal handling, query handling, and continuation-as-new.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Workflow Task Completion
@@ -275,8 +278,13 @@ impl WorkflowTaskHandler {
         }
     }
 
-    pub fn handle_completion(&self, completion: &WorkflowTaskCompletion) -> Result<CompletionResult, HandlerError> {
-        self.stats.completions_processed.fetch_add(1, Ordering::Relaxed);
+    pub fn handle_completion(
+        &self,
+        completion: &WorkflowTaskCompletion,
+    ) -> Result<CompletionResult, HandlerError> {
+        self.stats
+            .completions_processed
+            .fetch_add(1, Ordering::Relaxed);
 
         let mut result = CompletionResult {
             new_event_id: 0,
@@ -294,13 +302,17 @@ impl WorkflowTaskHandler {
                 return Err(HandlerError::CommandRejected(idx, e));
             }
 
-            self.stats.commands_processed.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .commands_processed
+                .fetch_add(1, Ordering::Relaxed);
             let event_id = result.new_event_id + 1;
             result.new_event_id = event_id;
 
             match command {
                 WorkflowCommand::ScheduleActivity(cmd) => {
-                    self.stats.activities_scheduled.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .activities_scheduled
+                        .fetch_add(1, Ordering::Relaxed);
                     result.generated_events.push(GeneratedEvent {
                         event_id,
                         event_type: "ActivityTaskScheduled".to_string(),
@@ -325,7 +337,9 @@ impl WorkflowTaskHandler {
                     });
                 }
                 WorkflowCommand::CompleteWorkflow(cmd) => {
-                    self.stats.workflows_completed.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .workflows_completed
+                        .fetch_add(1, Ordering::Relaxed);
                     result.generated_events.push(GeneratedEvent {
                         event_id,
                         event_type: "WorkflowExecutionCompleted".to_string(),
@@ -341,7 +355,9 @@ impl WorkflowTaskHandler {
                     });
                 }
                 WorkflowCommand::StartChildWorkflow(cmd) => {
-                    self.stats.child_workflows_started.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .child_workflows_started
+                        .fetch_add(1, Ordering::Relaxed);
                     result.generated_events.push(GeneratedEvent {
                         event_id,
                         event_type: "StartChildWorkflowExecutionInitiated".to_string(),
@@ -409,20 +425,33 @@ impl WorkflowTaskHandler {
                 }
             }
 
-            self.processed_commands.write().unwrap().push(ProcessedCommand {
-                command_index: idx,
-                command_type: format!("{:?}", command).split('(').next().unwrap_or("Unknown").to_string(),
-                event_id,
-                event_type: result.generated_events.last().map(|e| e.event_type.clone()).unwrap_or_default(),
-                success: true,
-                error: None,
-            });
+            self.processed_commands
+                .write()
+                .unwrap()
+                .push(ProcessedCommand {
+                    command_index: idx,
+                    command_type: format!("{:?}", command)
+                        .split('(')
+                        .next()
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                    event_id,
+                    event_type: result
+                        .generated_events
+                        .last()
+                        .map(|e| e.event_type.clone())
+                        .unwrap_or_default(),
+                    success: true,
+                    error: None,
+                });
         }
 
         Ok(result)
     }
 
-    pub fn stats(&self) -> &HandlerStats { &self.stats }
+    pub fn stats(&self) -> &HandlerStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -447,25 +476,45 @@ impl CommandValidator {
     pub fn validate(&self, command: &WorkflowCommand) -> Result<(), ValidationError> {
         match command {
             WorkflowCommand::ScheduleActivity(cmd) => {
-                if cmd.activity_id.is_empty() { return Err(ValidationError::EmptyField("activity_id".to_string())); }
-                if cmd.activity_id.len() > self.max_activity_id_length { return Err(ValidationError::FieldTooLong("activity_id".to_string())); }
-                if cmd.activity_type.is_empty() { return Err(ValidationError::EmptyField("activity_type".to_string())); }
-                if cmd.task_queue.is_empty() { return Err(ValidationError::EmptyField("task_queue".to_string())); }
+                if cmd.activity_id.is_empty() {
+                    return Err(ValidationError::EmptyField("activity_id".to_string()));
+                }
+                if cmd.activity_id.len() > self.max_activity_id_length {
+                    return Err(ValidationError::FieldTooLong("activity_id".to_string()));
+                }
+                if cmd.activity_type.is_empty() {
+                    return Err(ValidationError::EmptyField("activity_type".to_string()));
+                }
+                if cmd.task_queue.is_empty() {
+                    return Err(ValidationError::EmptyField("task_queue".to_string()));
+                }
                 Ok(())
             }
             WorkflowCommand::StartTimer(cmd) => {
-                if cmd.timer_id.is_empty() { return Err(ValidationError::EmptyField("timer_id".to_string())); }
-                if cmd.timer_id.len() > self.max_timer_id_length { return Err(ValidationError::FieldTooLong("timer_id".to_string())); }
+                if cmd.timer_id.is_empty() {
+                    return Err(ValidationError::EmptyField("timer_id".to_string()));
+                }
+                if cmd.timer_id.len() > self.max_timer_id_length {
+                    return Err(ValidationError::FieldTooLong("timer_id".to_string()));
+                }
                 Ok(())
             }
             WorkflowCommand::SignalExternalWorkflow(cmd) => {
-                if cmd.signal_name.is_empty() { return Err(ValidationError::EmptyField("signal_name".to_string())); }
-                if cmd.signal_name.len() > self.max_signal_name_length { return Err(ValidationError::FieldTooLong("signal_name".to_string())); }
+                if cmd.signal_name.is_empty() {
+                    return Err(ValidationError::EmptyField("signal_name".to_string()));
+                }
+                if cmd.signal_name.len() > self.max_signal_name_length {
+                    return Err(ValidationError::FieldTooLong("signal_name".to_string()));
+                }
                 Ok(())
             }
             WorkflowCommand::StartChildWorkflow(cmd) => {
-                if cmd.workflow_id.is_empty() { return Err(ValidationError::EmptyField("workflow_id".to_string())); }
-                if cmd.workflow_type.is_empty() { return Err(ValidationError::EmptyField("workflow_type".to_string())); }
+                if cmd.workflow_id.is_empty() {
+                    return Err(ValidationError::EmptyField("workflow_id".to_string()));
+                }
+                if cmd.workflow_type.is_empty() {
+                    return Err(ValidationError::EmptyField("workflow_type".to_string()));
+                }
                 Ok(())
             }
             _ => Ok(()),
@@ -557,20 +606,28 @@ mod tests {
     #[test]
     fn test_handle_complete_workflow() {
         let handler = WorkflowTaskHandler::new();
-        let completion = make_completion(vec![
-            WorkflowCommand::CompleteWorkflow(CompleteWorkflowCommand { result: Some(b"done".to_vec()) }),
-        ]);
+        let completion = make_completion(vec![WorkflowCommand::CompleteWorkflow(
+            CompleteWorkflowCommand {
+                result: Some(b"done".to_vec()),
+            },
+        )]);
         let result = handler.handle_completion(&completion).unwrap();
         assert_eq!(result.generated_events.len(), 1);
-        assert_eq!(result.generated_events[0].event_type, "WorkflowExecutionCompleted");
-        assert_eq!(handler.stats().workflows_completed.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            result.generated_events[0].event_type,
+            "WorkflowExecutionCompleted"
+        );
+        assert_eq!(
+            handler.stats().workflows_completed.load(Ordering::Relaxed),
+            1
+        );
     }
 
     #[test]
     fn test_handle_schedule_activity() {
         let handler = WorkflowTaskHandler::new();
-        let completion = make_completion(vec![
-            WorkflowCommand::ScheduleActivity(ScheduleActivityCommand {
+        let completion = make_completion(vec![WorkflowCommand::ScheduleActivity(
+            ScheduleActivityCommand {
                 activity_id: "act-1".to_string(),
                 activity_type: "MyActivity".to_string(),
                 task_queue: "default".to_string(),
@@ -582,22 +639,23 @@ mod tests {
                 retry_policy: None,
                 header: HashMap::new(),
                 request_start: true,
-            }),
-        ]);
+            },
+        )]);
         let result = handler.handle_completion(&completion).unwrap();
         assert_eq!(result.activity_tasks.len(), 1);
-        assert_eq!(handler.stats().activities_scheduled.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            handler.stats().activities_scheduled.load(Ordering::Relaxed),
+            1
+        );
     }
 
     #[test]
     fn test_handle_start_timer() {
         let handler = WorkflowTaskHandler::new();
-        let completion = make_completion(vec![
-            WorkflowCommand::StartTimer(StartTimerCommand {
-                timer_id: "timer-1".to_string(),
-                start_to_fire_timeout_ms: 5000,
-            }),
-        ]);
+        let completion = make_completion(vec![WorkflowCommand::StartTimer(StartTimerCommand {
+            timer_id: "timer-1".to_string(),
+            start_to_fire_timeout_ms: 5000,
+        })]);
         let result = handler.handle_completion(&completion).unwrap();
         assert_eq!(result.timer_tasks.len(), 1);
         assert_eq!(handler.stats().timers_started.load(Ordering::Relaxed), 1);
@@ -608,40 +666,58 @@ mod tests {
         let handler = WorkflowTaskHandler::new();
         let completion = make_completion(vec![
             WorkflowCommand::ScheduleActivity(ScheduleActivityCommand {
-                activity_id: "act-1".to_string(), activity_type: "Type".to_string(),
-                task_queue: "q".to_string(), input: None,
-                schedule_to_close_timeout_ms: 60000, schedule_to_start_timeout_ms: 10000,
-                start_to_close_timeout_ms: 30000, heartbeat_timeout_ms: 5000,
-                retry_policy: None, header: HashMap::new(), request_start: true,
+                activity_id: "act-1".to_string(),
+                activity_type: "Type".to_string(),
+                task_queue: "q".to_string(),
+                input: None,
+                schedule_to_close_timeout_ms: 60000,
+                schedule_to_start_timeout_ms: 10000,
+                start_to_close_timeout_ms: 30000,
+                heartbeat_timeout_ms: 5000,
+                retry_policy: None,
+                header: HashMap::new(),
+                request_start: true,
             }),
-            WorkflowCommand::StartTimer(StartTimerCommand { timer_id: "t1".to_string(), start_to_fire_timeout_ms: 1000 }),
+            WorkflowCommand::StartTimer(StartTimerCommand {
+                timer_id: "t1".to_string(),
+                start_to_fire_timeout_ms: 1000,
+            }),
             WorkflowCommand::CompleteWorkflow(CompleteWorkflowCommand { result: None }),
         ]);
         let result = handler.handle_completion(&completion).unwrap();
         assert_eq!(result.generated_events.len(), 3);
-        assert_eq!(handler.stats().commands_processed.load(Ordering::Relaxed), 3);
+        assert_eq!(
+            handler.stats().commands_processed.load(Ordering::Relaxed),
+            3
+        );
     }
 
     #[test]
     fn test_command_validation_empty_activity_id() {
         let handler = WorkflowTaskHandler::new();
-        let completion = make_completion(vec![
-            WorkflowCommand::ScheduleActivity(ScheduleActivityCommand {
-                activity_id: "".to_string(), activity_type: "Type".to_string(),
-                task_queue: "q".to_string(), input: None,
-                schedule_to_close_timeout_ms: 60000, schedule_to_start_timeout_ms: 10000,
-                start_to_close_timeout_ms: 30000, heartbeat_timeout_ms: 5000,
-                retry_policy: None, header: HashMap::new(), request_start: true,
-            }),
-        ]);
+        let completion = make_completion(vec![WorkflowCommand::ScheduleActivity(
+            ScheduleActivityCommand {
+                activity_id: "".to_string(),
+                activity_type: "Type".to_string(),
+                task_queue: "q".to_string(),
+                input: None,
+                schedule_to_close_timeout_ms: 60000,
+                schedule_to_start_timeout_ms: 10000,
+                start_to_close_timeout_ms: 30000,
+                heartbeat_timeout_ms: 5000,
+                retry_policy: None,
+                header: HashMap::new(),
+                request_start: true,
+            },
+        )]);
         assert!(handler.handle_completion(&completion).is_err());
     }
 
     #[test]
     fn test_continue_as_new() {
         let handler = WorkflowTaskHandler::new();
-        let completion = make_completion(vec![
-            WorkflowCommand::ContinueAsNew(ContinueAsNewCommand {
+        let completion =
+            make_completion(vec![WorkflowCommand::ContinueAsNew(ContinueAsNewCommand {
                 workflow_type: "NewWorkflow".to_string(),
                 task_queue: "default".to_string(),
                 input: None,
@@ -652,25 +728,32 @@ mod tests {
                 header: HashMap::new(),
                 memo: HashMap::new(),
                 search_attributes: HashMap::new(),
-            }),
-        ]);
+            })]);
         let result = handler.handle_completion(&completion).unwrap();
-        assert_eq!(result.generated_events[0].event_type, "WorkflowExecutionContinuedAsNew");
+        assert_eq!(
+            result.generated_events[0].event_type,
+            "WorkflowExecutionContinuedAsNew"
+        );
         assert_eq!(handler.stats().continue_as_new.load(Ordering::Relaxed), 1);
     }
 
     #[test]
     fn test_handler_stats() {
         let handler = WorkflowTaskHandler::new();
-        let completion = make_completion(vec![
-            WorkflowCommand::FailWorkflow(FailWorkflowCommand {
+        let completion =
+            make_completion(vec![WorkflowCommand::FailWorkflow(FailWorkflowCommand {
                 failure_message: "error".to_string(),
                 failure_type: "Application".to_string(),
                 retry_state: 0,
-            }),
-        ]);
+            })]);
         handler.handle_completion(&completion).unwrap();
-        assert_eq!(handler.stats().completions_processed.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            handler
+                .stats()
+                .completions_processed
+                .load(Ordering::Relaxed),
+            1
+        );
         assert_eq!(handler.stats().workflows_failed.load(Ordering::Relaxed), 1);
     }
 }

@@ -3,10 +3,13 @@
 //! Covers: task interfaces, task executor, task scheduler, priority queue,
 //! task lifecycle, task state tracking, and batch task processing.
 
-use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::cmp::Ordering as CmpOrdering;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Duration, Instant};
+use std::collections::{BinaryHeap, HashMap, VecDeque};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Task Types
@@ -93,8 +96,17 @@ impl Ord for TaskPriority {
 }
 
 impl Task {
-    pub fn new(id: &str, category: TaskCategory, namespace_id: &str, workflow_id: &str, run_id: &str) -> Self {
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    pub fn new(
+        id: &str,
+        category: TaskCategory,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Self {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         Self {
             id: id.to_string(),
             category,
@@ -169,7 +181,9 @@ struct PriorityQueueEntry {
 }
 
 impl PartialEq for PriorityQueueEntry {
-    fn eq(&self, other: &Self) -> bool { self.sequence == other.sequence }
+    fn eq(&self, other: &Self) -> bool {
+        self.sequence == other.sequence
+    }
 }
 impl Eq for PriorityQueueEntry {}
 
@@ -181,7 +195,9 @@ impl PartialOrd for PriorityQueueEntry {
 
 impl Ord for PriorityQueueEntry {
     fn cmp(&self, other: &Self) -> CmpOrdering {
-        self.task.priority.cmp(&other.task.priority)
+        self.task
+            .priority
+            .cmp(&other.task.priority)
             .then_with(|| other.sequence.cmp(&self.sequence))
     }
 }
@@ -211,7 +227,10 @@ impl PriorityTaskQueue {
 
     pub fn enqueue(&self, task: Task) {
         let seq = self.sequence.fetch_add(1, Ordering::Relaxed);
-        self.heap.write().unwrap().push(PriorityQueueEntry { task, sequence: seq });
+        self.heap.write().unwrap().push(PriorityQueueEntry {
+            task,
+            sequence: seq,
+        });
         self.stats.enqueued.fetch_add(1, Ordering::Relaxed);
         let size = self.heap.read().unwrap().len() as u64;
         self.stats.current_size.store(size, Ordering::Relaxed);
@@ -239,7 +258,9 @@ impl PriorityTaskQueue {
         self.heap.read().unwrap().is_empty()
     }
 
-    pub fn stats(&self) -> &TaskQueueStats { &self.stats }
+    pub fn stats(&self) -> &TaskQueueStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -298,8 +319,14 @@ impl TaskScheduler {
         // Create queues for all categories
         {
             let mut queues = scheduler.queues.write().unwrap();
-            for cat in &[TaskCategory::Transfer, TaskCategory::Timer, TaskCategory::Replication,
-                          TaskCategory::Visibility, TaskCategory::Archival, TaskCategory::Outbound] {
+            for cat in &[
+                TaskCategory::Transfer,
+                TaskCategory::Timer,
+                TaskCategory::Replication,
+                TaskCategory::Visibility,
+                TaskCategory::Archival,
+                TaskCategory::Outbound,
+            ] {
                 queues.insert(*cat, Arc::new(PriorityTaskQueue::new()));
             }
         }
@@ -324,23 +351,35 @@ impl TaskScheduler {
         }
     }
 
-    pub fn process_one(&self, category: TaskCategory) -> Result<TaskExecutionResult, TaskExecutionError> {
+    pub fn process_one(
+        &self,
+        category: TaskCategory,
+    ) -> Result<TaskExecutionResult, TaskExecutionError> {
         let queue = {
             let queues = self.queues.read().unwrap();
-            queues.get(&category).cloned()
-                .ok_or(TaskExecutionError { message: format!("No queue for {:?}", category), retryable: false })?
+            queues.get(&category).cloned().ok_or(TaskExecutionError {
+                message: format!("No queue for {:?}", category),
+                retryable: false,
+            })?
         };
 
-        let mut task = queue.dequeue()
-            .ok_or(TaskExecutionError { message: "Queue empty".to_string(), retryable: false })?;
+        let mut task = queue.dequeue().ok_or(TaskExecutionError {
+            message: "Queue empty".to_string(),
+            retryable: false,
+        })?;
 
         self.stats.tasks_executed.fetch_add(1, Ordering::Relaxed);
         task.mark_active();
 
         let executor = {
             let executors = self.executors.read().unwrap();
-            executors.get(&category).cloned()
-                .ok_or(TaskExecutionError { message: format!("No executor for {:?}", category), retryable: false })?
+            executors
+                .get(&category)
+                .cloned()
+                .ok_or(TaskExecutionError {
+                    message: format!("No executor for {:?}", category),
+                    retryable: false,
+                })?
         };
 
         match executor.execute(&mut task) {
@@ -384,7 +423,11 @@ impl TaskScheduler {
         }
     }
 
-    pub fn process_batch(&self, category: TaskCategory, max_count: usize) -> Vec<Result<TaskExecutionResult, TaskExecutionError>> {
+    pub fn process_batch(
+        &self,
+        category: TaskCategory,
+        max_count: usize,
+    ) -> Vec<Result<TaskExecutionResult, TaskExecutionError>> {
         let mut results = Vec::new();
         for _ in 0..max_count {
             match self.process_one(category) {
@@ -406,7 +449,9 @@ impl TaskScheduler {
         queues.values().map(|q| q.len()).sum()
     }
 
-    pub fn stats(&self) -> &SchedulerStats { &self.stats }
+    pub fn stats(&self) -> &SchedulerStats {
+        &self.stats
+    }
 
     pub fn start(&self) {
         self.running.store(true, Ordering::SeqCst);
@@ -429,14 +474,26 @@ impl TaskScheduler {
 mod tests {
     use super::*;
 
-    struct MockExecutor { category: TaskCategory, fail_count: Arc<AtomicU64>, max_failures: u64 }
+    struct MockExecutor {
+        category: TaskCategory,
+        fail_count: Arc<AtomicU64>,
+        max_failures: u64,
+    }
 
     impl MockExecutor {
         fn new(category: TaskCategory) -> Self {
-            Self { category, fail_count: Arc::new(AtomicU64::new(0)), max_failures: 0 }
+            Self {
+                category,
+                fail_count: Arc::new(AtomicU64::new(0)),
+                max_failures: 0,
+            }
         }
         fn with_failures(category: TaskCategory, max: u64) -> Self {
-            Self { category, fail_count: Arc::new(AtomicU64::new(0)), max_failures: max }
+            Self {
+                category,
+                fail_count: Arc::new(AtomicU64::new(0)),
+                max_failures: max,
+            }
         }
     }
 
@@ -445,13 +502,18 @@ mod tests {
             if self.max_failures > 0 {
                 let count = self.fail_count.fetch_add(1, Ordering::Relaxed);
                 if count < self.max_failures {
-                    return Err(TaskExecutionError { message: "transient".to_string(), retryable: true });
+                    return Err(TaskExecutionError {
+                        message: "transient".to_string(),
+                        retryable: true,
+                    });
                 }
             }
             task.mark_completed();
             Ok(TaskExecutionResult::Completed)
         }
-        fn category(&self) -> TaskCategory { self.category }
+        fn category(&self) -> TaskCategory {
+            self.category
+        }
     }
 
     #[test]
@@ -465,9 +527,12 @@ mod tests {
     #[test]
     fn test_task_priority_ordering() {
         let queue = PriorityTaskQueue::new();
-        let t_low = Task::new("low", TaskCategory::Transfer, "ns", "wf", "r").with_priority(TaskPriority::LOW);
-        let t_high = Task::new("high", TaskCategory::Transfer, "ns", "wf", "r").with_priority(TaskPriority::HIGH);
-        let t_default = Task::new("def", TaskCategory::Transfer, "ns", "wf", "r").with_priority(TaskPriority::DEFAULT);
+        let t_low = Task::new("low", TaskCategory::Transfer, "ns", "wf", "r")
+            .with_priority(TaskPriority::LOW);
+        let t_high = Task::new("high", TaskCategory::Transfer, "ns", "wf", "r")
+            .with_priority(TaskPriority::HIGH);
+        let t_default = Task::new("def", TaskCategory::Transfer, "ns", "wf", "r")
+            .with_priority(TaskPriority::DEFAULT);
 
         queue.enqueue(t_low);
         queue.enqueue(t_high);
@@ -532,7 +597,13 @@ mod tests {
         scheduler.register_executor(TaskCategory::Visibility, executor);
 
         for i in 0..5 {
-            scheduler.submit_task(Task::new(&format!("t-{}", i), TaskCategory::Visibility, "ns", "wf", "r"));
+            scheduler.submit_task(Task::new(
+                &format!("t-{}", i),
+                TaskCategory::Visibility,
+                "ns",
+                "wf",
+                "r",
+            ));
         }
 
         let results = scheduler.process_batch(TaskCategory::Visibility, 10);

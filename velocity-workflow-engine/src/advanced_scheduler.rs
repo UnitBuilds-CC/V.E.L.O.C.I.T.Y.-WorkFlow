@@ -2,8 +2,11 @@
 //! rich workflow schedules, rate limiter v2, sticky worker affinity, and build-ID versioning.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
-use std::time::{SystemTime, Duration, UNIX_EPOCH};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // ─── Cron Error ──────────────────────────────────────────────────────────────
 
@@ -19,7 +22,9 @@ impl std::fmt::Display for CronError {
         match self {
             CronError::InvalidFormat(m) => write!(f, "Invalid cron format: {}", m),
             CronError::InvalidValue(v) => write!(f, "Invalid cron value: {}", v),
-            CronError::OutOfRange(v, lo, hi) => write!(f, "Value {} out of range [{}, {}]", v, lo, hi),
+            CronError::OutOfRange(v, lo, hi) => {
+                write!(f, "Value {} out of range [{}, {}]", v, lo, hi)
+            }
         }
     }
 }
@@ -65,7 +70,7 @@ fn decompose(t: SystemTime) -> (u32, u32, u32, u32, u32, u32, u32) {
     // Simplified calendar: compute days since epoch (1970-01-01, Thursday).
     let days = total_secs / 86400;
     let weekday = ((days + 4) % 7) as u32; // 1970-01-01 was Thursday (4)
-    // Approximate year/month/day from days since epoch (sufficient for scheduling).
+                                           // Approximate year/month/day from days since epoch (sufficient for scheduling).
     let (year, month, day) = days_to_ymd(days);
     (second, minute, hour, day, month, year, weekday)
 }
@@ -75,17 +80,32 @@ fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
     let mut year: u32 = 1970;
     loop {
         let diy = if is_leap(year) { 366 } else { 365 };
-        if days < diy as u64 { break; }
+        if days < diy as u64 {
+            break;
+        }
         days -= diy as u64;
         year += 1;
     }
     let leap = is_leap(year);
     let month_days: [u32; 12] = [
-        31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut month: u32 = 1;
     for &md in &month_days {
-        if days < md as u64 { break; }
+        if days < md as u64 {
+            break;
+        }
         days -= md as u64;
         month += 1;
     }
@@ -99,9 +119,24 @@ fn is_leap(y: u32) -> bool {
 /// Days in a given month (1-indexed).
 fn days_in_month(year: u32, month: u32) -> u32 {
     match month {
-        1 => 31, 2 => if is_leap(year) { 29 } else { 28 },
-        3 => 31, 4 => 30, 5 => 31, 6 => 30,
-        7 => 31, 8 => 31, 9 => 30, 10 => 31, 11 => 30, 12 => 31,
+        1 => 31,
+        2 => {
+            if is_leap(year) {
+                29
+            } else {
+                28
+            }
+        }
+        3 => 31,
+        4 => 30,
+        5 => 31,
+        6 => 30,
+        7 => 31,
+        8 => 31,
+        9 => 30,
+        10 => 31,
+        11 => 30,
+        12 => 31,
         _ => 30,
     }
 }
@@ -114,20 +149,39 @@ fn parse_values(token: &str, min: u32, max: u32) -> Result<Vec<u32>, CronError> 
         if part == "*" {
             vals.extend(min..=max);
         } else if let Some(step_str) = part.strip_prefix("*/") {
-            let step: u32 = step_str.parse().map_err(|_| CronError::InvalidValue(part.into()))?;
-            if step == 0 { return Err(CronError::InvalidValue("step=0".into())); }
+            let step: u32 = step_str
+                .parse()
+                .map_err(|_| CronError::InvalidValue(part.into()))?;
+            if step == 0 {
+                return Err(CronError::InvalidValue("step=0".into()));
+            }
             let mut v = min;
-            while v <= max { vals.push(v); v += step; }
+            while v <= max {
+                vals.push(v);
+                v += step;
+            }
         } else if part.contains('-') {
             let bounds: Vec<&str> = part.split('-').collect();
-            if bounds.len() != 2 { return Err(CronError::InvalidValue(part.into())); }
-            let lo: u32 = bounds[0].parse().map_err(|_| CronError::InvalidValue(part.into()))?;
-            let hi: u32 = bounds[1].parse().map_err(|_| CronError::InvalidValue(part.into()))?;
-            if lo > max || hi > max { return Err(CronError::OutOfRange(part.into(), min, max)); }
+            if bounds.len() != 2 {
+                return Err(CronError::InvalidValue(part.into()));
+            }
+            let lo: u32 = bounds[0]
+                .parse()
+                .map_err(|_| CronError::InvalidValue(part.into()))?;
+            let hi: u32 = bounds[1]
+                .parse()
+                .map_err(|_| CronError::InvalidValue(part.into()))?;
+            if lo > max || hi > max {
+                return Err(CronError::OutOfRange(part.into(), min, max));
+            }
             vals.extend(lo..=hi);
         } else {
-            let v: u32 = part.parse().map_err(|_| CronError::InvalidValue(part.into()))?;
-            if v < min || v > max { return Err(CronError::OutOfRange(part.into(), min, max)); }
+            let v: u32 = part
+                .parse()
+                .map_err(|_| CronError::InvalidValue(part.into()))?;
+            if v < min || v > max {
+                return Err(CronError::OutOfRange(part.into(), min, max));
+            }
             vals.push(v);
         }
     }
@@ -137,7 +191,13 @@ fn parse_values(token: &str, min: u32, max: u32) -> Result<Vec<u32>, CronError> 
 }
 
 /// Parse a single cron field, detecting special characters L, W, #.
-fn parse_field(token: &str, min: u32, max: u32, is_dom: bool, is_dow: bool) -> Result<CronField, CronError> {
+fn parse_field(
+    token: &str,
+    min: u32,
+    max: u32,
+    is_dom: bool,
+    is_dow: bool,
+) -> Result<CronField, CronError> {
     let t = token.trim();
     // Special: L (last day of month or last weekday of month)
     if is_dom && t == "L" {
@@ -145,26 +205,44 @@ fn parse_field(token: &str, min: u32, max: u32, is_dom: bool, is_dow: bool) -> R
     }
     if is_dow && t.starts_with('L') {
         if t.len() > 1 {
-            let wd: u32 = t[1..].parse().map_err(|_| CronError::InvalidValue(t.into()))?;
-            if wd > 6 { return Err(CronError::OutOfRange(t.into(), 0, 6)); }
+            let wd: u32 = t[1..]
+                .parse()
+                .map_err(|_| CronError::InvalidValue(t.into()))?;
+            if wd > 6 {
+                return Err(CronError::OutOfRange(t.into(), 0, 6));
+            }
             return Ok(CronField::Last(Some(wd)));
         }
         return Ok(CronField::Last(None));
     }
     // Special: NW (nearest weekday)
     if is_dom && t.ends_with('W') && t.len() > 1 {
-        let d: u32 = t[..t.len()-1].parse().map_err(|_| CronError::InvalidValue(t.into()))?;
-        if d < 1 || d > 31 { return Err(CronError::OutOfRange(t.into(), 1, 31)); }
+        let d: u32 = t[..t.len() - 1]
+            .parse()
+            .map_err(|_| CronError::InvalidValue(t.into()))?;
+        if d < 1 || d > 31 {
+            return Err(CronError::OutOfRange(t.into(), 1, 31));
+        }
         return Ok(CronField::NearestWeekday(d));
     }
     // Special: W#N (nth weekday)
     if is_dow && t.contains('#') {
         let parts: Vec<&str> = t.split('#').collect();
-        if parts.len() != 2 { return Err(CronError::InvalidValue(t.into())); }
-        let wd: u32 = parts[0].parse().map_err(|_| CronError::InvalidValue(t.into()))?;
-        let n: u32 = parts[1].parse().map_err(|_| CronError::InvalidValue(t.into()))?;
-        if wd > 6 { return Err(CronError::OutOfRange(t.into(), 0, 6)); }
-        if n < 1 || n > 5 { return Err(CronError::OutOfRange(t.into(), 1, 5)); }
+        if parts.len() != 2 {
+            return Err(CronError::InvalidValue(t.into()));
+        }
+        let wd: u32 = parts[0]
+            .parse()
+            .map_err(|_| CronError::InvalidValue(t.into()))?;
+        let n: u32 = parts[1]
+            .parse()
+            .map_err(|_| CronError::InvalidValue(t.into()))?;
+        if wd > 6 {
+            return Err(CronError::OutOfRange(t.into(), 0, 6));
+        }
+        if n < 1 || n > 5 {
+            return Err(CronError::OutOfRange(t.into(), 1, 5));
+        }
         return Ok(CronField::NthWeekday { weekday: wd, n });
     }
     Ok(CronField::Values(parse_values(t, min, max)?))
@@ -176,7 +254,9 @@ fn field_matches(field: &CronField, val: u32, year: u32, month: u32, weekday: u3
         CronField::Last(opt_wd) => {
             if let Some(wd) = opt_wd {
                 // Last `wd` weekday of month: true if val is a matching weekday in last 7 days of month.
-                weekday == *wd && (days_in_month(year, month) - val) < 7 && val + 7 > days_in_month(year, month)
+                weekday == *wd
+                    && (days_in_month(year, month) - val) < 7
+                    && val + 7 > days_in_month(year, month)
             } else {
                 val == days_in_month(year, month)
             }
@@ -192,18 +272,24 @@ fn field_matches(field: &CronField, val: u32, year: u32, month: u32, weekday: u3
             let t_weekday = ((weekday as i64 + val as i64 - 1) % 7) as u32; // rough approx
             let _ = t_weekday;
             // Simplified: match target, target-1 (Fri), target+1 (Mon)
-            val == t || (t == 1 && val == 2) || (t == dim && val == dim - 1)
+            val == t
+                || (t == 1 && val == 2)
+                || (t == dim && val == dim - 1)
                 || (t > 1 && t < dim && (val == t - 1 || val == t + 1))
         }
         CronField::NthWeekday { weekday: wd, n } => {
             // Match if `val` is the Nth occurrence of weekday `wd` in the month.
-            if weekday != *wd { return false; }
+            if weekday != *wd {
+                return false;
+            }
             // Day-of-month for the nth occurrence: first occurrence is day 1..7, etc.
-            let first = (1..=7).find(|&d| {
-                // weekday of day d in this month
-                let approx_wd = ((weekday as i64 + d as i64 - val as i64) % 7 + 7) % 7;
-                approx_wd as u32 == *wd
-            }).unwrap_or(1);
+            let first = (1..=7)
+                .find(|&d| {
+                    // weekday of day d in this month
+                    let approx_wd = ((weekday as i64 + d as i64 - val as i64) % 7 + 7) % 7;
+                    approx_wd as u32 == *wd
+                })
+                .unwrap_or(1);
             let target = first + (n - 1) * 7;
             val == target && target <= days_in_month(year, month)
         }
@@ -215,7 +301,10 @@ impl CronExpression {
     pub fn parse(expr: &str) -> Result<Self, CronError> {
         let fields: Vec<&str> = expr.trim().split_whitespace().collect();
         if fields.len() != 6 {
-            return Err(CronError::InvalidFormat(format!("Expected 6 fields, got {}", fields.len())));
+            return Err(CronError::InvalidFormat(format!(
+                "Expected 6 fields, got {}",
+                fields.len()
+            )));
         }
         Ok(Self {
             seconds: parse_field(fields[0], 0, 59, false, false)?,
@@ -241,7 +330,11 @@ impl CronExpression {
     /// Compute the next fire time strictly after `from` by scanning forward second-by-second.
     /// Returns `None` if no match is found within ~2 years.
     pub fn next_fire_time(&self, from: SystemTime) -> Option<SystemTime> {
-        let start = from.duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs() + 1;
+        let start = from
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_secs()
+            + 1;
         let max_secs: u64 = 2 * 366 * 86400; // ~2 years
         for offset in 0..max_secs {
             let candidate = UNIX_EPOCH + Duration::from_secs(start + offset);
@@ -276,11 +369,25 @@ pub struct WorkflowSchedule {
 }
 
 impl WorkflowSchedule {
-    pub fn new(cron_expression: String, workflow_type_id: u64, namespace_id: u64, task_queue_hash: u64) -> Self {
+    pub fn new(
+        cron_expression: String,
+        workflow_type_id: u64,
+        namespace_id: u64,
+        task_queue_hash: u64,
+    ) -> Self {
         Self {
-            workflow_type_id, namespace_id, task_queue_hash, total_steps: 1,
-            cron_expression, start_at: None, end_at: None, jitter_ms: 0,
-            max_retries: 3, paused: false, memo: Vec::new(), search_attributes: Vec::new(),
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            total_steps: 1,
+            cron_expression,
+            start_at: None,
+            end_at: None,
+            jitter_ms: 0,
+            max_retries: 3,
+            paused: false,
+            memo: Vec::new(),
+            search_attributes: Vec::new(),
         }
     }
 }
@@ -315,7 +422,10 @@ pub struct ScheduleManager {
 
 impl ScheduleManager {
     pub fn new() -> Self {
-        Self { schedules: Mutex::new(HashMap::new()), next_id: AtomicU64::new(1) }
+        Self {
+            schedules: Mutex::new(HashMap::new()),
+            next_id: AtomicU64::new(1),
+        }
     }
 
     /// Register a new schedule. Returns its unique ID.
@@ -324,9 +434,16 @@ impl ScheduleManager {
         let now = SystemTime::now();
         let next_fire = parsed.next_fire_time(now);
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.schedules.lock().unwrap().insert(id, ScheduleState {
-            schedule, parsed_cron: parsed, last_fire: None, next_fire, fire_count: 0,
-        });
+        self.schedules.lock().unwrap().insert(
+            id,
+            ScheduleState {
+                schedule,
+                parsed_cron: parsed,
+                last_fire: None,
+                next_fire,
+                fire_count: 0,
+            },
+        );
         Ok(id)
     }
 
@@ -338,7 +455,12 @@ impl ScheduleManager {
     /// Pause a schedule so it stops firing.
     pub fn pause_schedule(&self, id: ScheduleId) -> bool {
         let mut m = self.schedules.lock().unwrap();
-        if let Some(s) = m.get_mut(&id) { s.schedule.paused = true; true } else { false }
+        if let Some(s) = m.get_mut(&id) {
+            s.schedule.paused = true;
+            true
+        } else {
+            false
+        }
     }
 
     /// Resume a paused schedule.
@@ -348,7 +470,9 @@ impl ScheduleManager {
             s.schedule.paused = false;
             s.next_fire = s.parsed_cron.next_fire_time(SystemTime::now());
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Update the cron expression of an existing schedule.
@@ -360,33 +484,50 @@ impl ScheduleManager {
                 s.parsed_cron = parsed;
                 s.next_fire = s.parsed_cron.next_fire_time(SystemTime::now());
                 true
-            } else { false }
-        } else { false }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     /// Get the next `count` fire times for a schedule.
     pub fn get_next_fire_times(&self, id: ScheduleId, count: usize) -> Vec<SystemTime> {
         let m = self.schedules.lock().unwrap();
-        let s = match m.get(&id) { Some(s) => s, None => return Vec::new() };
+        let s = match m.get(&id) {
+            Some(s) => s,
+            None => return Vec::new(),
+        };
         let mut times = Vec::with_capacity(count);
         let mut cursor = s.next_fire;
         for _ in 0..count {
             if let Some(t) = cursor {
                 times.push(t);
                 cursor = s.parsed_cron.next_fire_time(t);
-            } else { break; }
+            } else {
+                break;
+            }
         }
         times
     }
 
     /// List summary info for all registered schedules.
     pub fn list_schedules(&self) -> Vec<ScheduleInfo> {
-        self.schedules.lock().unwrap().iter().map(|(&id, s)| ScheduleInfo {
-            id, workflow_type_id: s.schedule.workflow_type_id,
-            namespace_id: s.schedule.namespace_id,
-            cron_expression: s.schedule.cron_expression.clone(),
-            paused: s.schedule.paused, fire_count: s.fire_count, next_fire: s.next_fire,
-        }).collect()
+        self.schedules
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(&id, s)| ScheduleInfo {
+                id,
+                workflow_type_id: s.schedule.workflow_type_id,
+                namespace_id: s.schedule.namespace_id,
+                cron_expression: s.schedule.cron_expression.clone(),
+                paused: s.schedule.paused,
+                fire_count: s.fire_count,
+                next_fire: s.next_fire,
+            })
+            .collect()
     }
 
     /// Advance the clock: returns IDs of schedules whose fire time has arrived.
@@ -394,13 +535,19 @@ impl ScheduleManager {
         let mut m = self.schedules.lock().unwrap();
         let mut fired = Vec::new();
         for (&id, s) in m.iter_mut() {
-            if s.schedule.paused { continue; }
+            if s.schedule.paused {
+                continue;
+            }
             // Check start_at / end_at bounds.
             if let Some(start) = s.schedule.start_at {
-                if now < start { continue; }
+                if now < start {
+                    continue;
+                }
             }
             if let Some(end) = s.schedule.end_at {
-                if now > end { continue; }
+                if now > end {
+                    continue;
+                }
             }
             if let Some(nf) = s.next_fire {
                 if now >= nf {
@@ -415,10 +562,16 @@ impl ScheduleManager {
     }
 
     /// Number of registered schedules.
-    pub fn count(&self) -> usize { self.schedules.lock().unwrap().len() }
+    pub fn count(&self) -> usize {
+        self.schedules.lock().unwrap().len()
+    }
 }
 
-impl Default for ScheduleManager { fn default() -> Self { Self::new() } }
+impl Default for ScheduleManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── RateLimiterV2 ──────────────────────────────────────────────────────────
 
@@ -445,7 +598,9 @@ impl RateLimiterV2 {
         let now = SystemTime::now();
         let elapsed = {
             let last = *self.last_refill.lock().unwrap();
-            now.duration_since(last).unwrap_or(Duration::ZERO).as_secs_f64()
+            now.duration_since(last)
+                .unwrap_or(Duration::ZERO)
+                .as_secs_f64()
         };
         if elapsed > 0.0 {
             let rate = *self.rate.lock().unwrap();
@@ -456,13 +611,20 @@ impl RateLimiterV2 {
     }
 
     /// Try to acquire a single token.
-    pub fn try_acquire(&self) -> bool { self.try_acquire_n(1) }
+    pub fn try_acquire(&self) -> bool {
+        self.try_acquire_n(1)
+    }
 
     /// Try to acquire `n` tokens at once.
     pub fn try_acquire_n(&self, n: u64) -> bool {
         self.refill();
         let mut tokens = self.tokens.lock().unwrap();
-        if *tokens >= n as f64 { *tokens -= n as f64; true } else { false }
+        if *tokens >= n as f64 {
+            *tokens -= n as f64;
+            true
+        } else {
+            false
+        }
     }
 
     /// Number of tokens currently available.
@@ -472,7 +634,9 @@ impl RateLimiterV2 {
     }
 
     /// Change the refill rate.
-    pub fn set_rate(&self, new_rate: f64) { *self.rate.lock().unwrap() = new_rate; }
+    pub fn set_rate(&self, new_rate: f64) {
+        *self.rate.lock().unwrap() = new_rate;
+    }
 
     /// Reset the bucket to full.
     pub fn reset(&self) {
@@ -491,7 +655,11 @@ pub struct StickyScheduler {
 }
 
 impl StickyScheduler {
-    pub fn new() -> Self { Self { sticky: Mutex::new(HashMap::new()) } }
+    pub fn new() -> Self {
+        Self {
+            sticky: Mutex::new(HashMap::new()),
+        }
+    }
 
     /// Assign a preferred worker for a workflow key.
     pub fn assign_worker(&self, workflow_key: u64, worker_id: WorkerId) {
@@ -514,10 +682,16 @@ impl StickyScheduler {
     }
 
     /// Number of active sticky assignments.
-    pub fn assignment_count(&self) -> usize { self.sticky.lock().unwrap().len() }
+    pub fn assignment_count(&self) -> usize {
+        self.sticky.lock().unwrap().len()
+    }
 }
 
-impl Default for StickyScheduler { fn default() -> Self { Self::new() } }
+impl Default for StickyScheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── WorkerVersioningV2 ─────────────────────────────────────────────────────
 
@@ -531,7 +705,10 @@ pub struct WorkerVersioningV2 {
 
 impl WorkerVersioningV2 {
     pub fn new() -> Self {
-        Self { versions: Mutex::new(HashMap::new()), current: Mutex::new(HashMap::new()) }
+        Self {
+            versions: Mutex::new(HashMap::new()),
+            current: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Register a new build ID for a task queue.
@@ -543,7 +720,8 @@ impl WorkerVersioningV2 {
         }
         // If this is the first version, make it current.
         let mut c = self.current.lock().unwrap();
-        c.entry(task_queue.to_string()).or_insert_with(|| build_id.to_string());
+        c.entry(task_queue.to_string())
+            .or_insert_with(|| build_id.to_string());
     }
 
     /// Explicitly set the current version for a task queue.
@@ -551,7 +729,10 @@ impl WorkerVersioningV2 {
         let v = self.versions.lock().unwrap();
         if let Some(versions) = v.get(task_queue) {
             if versions.iter().any(|b| b == build_id) {
-                self.current.lock().unwrap().insert(task_queue.to_string(), build_id.to_string());
+                self.current
+                    .lock()
+                    .unwrap()
+                    .insert(task_queue.to_string(), build_id.to_string());
                 return true;
             }
         }
@@ -566,14 +747,21 @@ impl WorkerVersioningV2 {
     /// Check whether dispatching to a specific build ID is valid (it is registered).
     pub fn dispatch_to_version(&self, task_queue: &str, build_id: &str) -> bool {
         let v = self.versions.lock().unwrap();
-        v.get(task_queue).map_or(false, |versions| versions.iter().any(|b| b == build_id))
+        v.get(task_queue)
+            .map_or(false, |versions| versions.iter().any(|b| b == build_id))
     }
 
     /// Number of task queues tracked.
-    pub fn task_queue_count(&self) -> usize { self.versions.lock().unwrap().len() }
+    pub fn task_queue_count(&self) -> usize {
+        self.versions.lock().unwrap().len()
+    }
 }
 
-impl Default for WorkerVersioningV2 { fn default() -> Self { Self::new() } }
+impl Default for WorkerVersioningV2 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -725,23 +913,30 @@ mod tests {
     #[test]
     fn test_update_schedule() {
         let mgr = ScheduleManager::new();
-        let id = mgr.register_schedule(make_schedule("0 0 12 * * *")).unwrap();
+        let id = mgr
+            .register_schedule(make_schedule("0 0 12 * * *"))
+            .unwrap();
         assert!(mgr.update_schedule(id, "0 0 6 * * *"));
         let infos = mgr.list_schedules();
-        assert!(infos.iter().any(|i| i.id == id && i.cron_expression == "0 0 6 * * *"));
+        assert!(infos
+            .iter()
+            .any(|i| i.id == id && i.cron_expression == "0 0 6 * * *"));
     }
 
     #[test]
     fn test_update_invalid_cron() {
         let mgr = ScheduleManager::new();
-        let id = mgr.register_schedule(make_schedule("0 0 12 * * *")).unwrap();
+        let id = mgr
+            .register_schedule(make_schedule("0 0 12 * * *"))
+            .unwrap();
         assert!(!mgr.update_schedule(id, "bad cron"));
     }
 
     #[test]
     fn test_list_schedules() {
         let mgr = ScheduleManager::new();
-        mgr.register_schedule(make_schedule("0 0 12 * * *")).unwrap();
+        mgr.register_schedule(make_schedule("0 0 12 * * *"))
+            .unwrap();
         mgr.register_schedule(make_schedule("0 0 6 * * *")).unwrap();
         assert_eq!(mgr.list_schedules().len(), 2);
     }

@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use crate::engine::{WorkflowEngine, WorkflowContext};
-use crate::workflow_reset::ResetReason;
+use crate::engine::{WorkflowContext, WorkflowEngine};
 use crate::schedules::ScheduleState;
+use crate::workflow_reset::ResetReason;
 
 // ─── Opaque handle ────────────────────────────────────────────────────────────
 
@@ -26,7 +26,9 @@ pub unsafe extern "C" fn velocity_engine_create() -> *mut EngineHandle {
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_destroy(handle: *mut EngineHandle) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = Box::from_raw(handle);
     h.engine.shutdown();
     0
@@ -45,7 +47,9 @@ pub unsafe extern "C" fn velocity_engine_start_workflow(
     input_ptr: *const u8,
     input_len: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
 
     let input = if input_ptr.is_null() || input_len == 0 {
@@ -54,7 +58,14 @@ pub unsafe extern "C" fn velocity_engine_start_workflow(
         Some(std::slice::from_raw_parts(input_ptr, input_len as usize).to_vec())
     };
 
-    h.engine.start_workflow(workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, input)
+    h.engine.start_workflow(
+        workflow_id,
+        workflow_type_id,
+        namespace_id,
+        task_queue_hash,
+        total_steps,
+        input,
+    )
 }
 
 /// Start a workflow with search attributes.
@@ -71,10 +82,15 @@ pub unsafe extern "C" fn velocity_engine_start_workflow_with_attrs(
     total_steps: u32,
     input_ptr: *const u8,
     input_len: u32,
-    attr_keys: *const *const u8, attr_key_lens: *const u32, attr_key_count: u32,
-    attr_vals: *const *const u8, attr_val_lens: *const u32,
+    attr_keys: *const *const u8,
+    attr_key_lens: *const u32,
+    attr_key_count: u32,
+    attr_vals: *const *const u8,
+    attr_val_lens: *const u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
 
     let input = if input_ptr.is_null() || input_len == 0 {
@@ -90,15 +106,37 @@ pub unsafe extern "C" fn velocity_engine_start_workflow_with_attrs(
         let vals = std::slice::from_raw_parts(attr_vals, attr_key_count as usize);
         let val_lens = std::slice::from_raw_parts(attr_val_lens, attr_key_count as usize);
         for i in 0..attr_key_count as usize {
-            let key_bytes = if keys[i].is_null() || key_lens[i] == 0 { continue; } else { std::slice::from_raw_parts(keys[i], key_lens[i] as usize) };
-            let val_bytes = if vals[i].is_null() || val_lens[i] == 0 { continue; } else { std::slice::from_raw_parts(vals[i], val_lens[i] as usize) };
-            if let (Ok(k), Ok(v)) = (std::str::from_utf8(key_bytes), std::str::from_utf8(val_bytes)) {
-                search_attrs.insert(k.to_string(), crate::visibility::SearchAttributeValue::String(v.to_string()));
+            let key_bytes = if keys[i].is_null() || key_lens[i] == 0 {
+                continue;
+            } else {
+                std::slice::from_raw_parts(keys[i], key_lens[i] as usize)
+            };
+            let val_bytes = if vals[i].is_null() || val_lens[i] == 0 {
+                continue;
+            } else {
+                std::slice::from_raw_parts(vals[i], val_lens[i] as usize)
+            };
+            if let (Ok(k), Ok(v)) = (
+                std::str::from_utf8(key_bytes),
+                std::str::from_utf8(val_bytes),
+            ) {
+                search_attrs.insert(
+                    k.to_string(),
+                    crate::visibility::SearchAttributeValue::String(v.to_string()),
+                );
             }
         }
     }
 
-    h.engine.start_workflow_with_attrs(workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, input, search_attrs)
+    h.engine.start_workflow_with_attrs(
+        workflow_id,
+        workflow_type_id,
+        namespace_id,
+        task_queue_hash,
+        total_steps,
+        input,
+        search_attrs,
+    )
 }
 
 #[no_mangle]
@@ -108,7 +146,9 @@ pub unsafe extern "C" fn velocity_engine_complete_workflow(
     result_ptr: *const u8,
     result_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     let result = if result_ptr.is_null() || result_len == 0 {
@@ -126,7 +166,9 @@ pub unsafe extern "C" fn velocity_engine_fail_workflow(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     h.engine.fail_workflow(workflow_key);
     0
@@ -137,7 +179,9 @@ pub unsafe extern "C" fn velocity_engine_cancel_workflow(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     h.engine.cancel_workflow(workflow_key);
     0
@@ -148,7 +192,9 @@ pub unsafe extern "C" fn velocity_engine_terminate_workflow(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     h.engine.terminate_workflow(workflow_key);
     0
@@ -159,7 +205,9 @@ pub unsafe extern "C" fn velocity_engine_get_status(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     h.engine.get_status(workflow_key) as i32
 }
@@ -172,9 +220,15 @@ pub unsafe extern "C" fn velocity_engine_is_step_completed(
     workflow_key: u64,
     step: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.is_step_completed(workflow_key, step) { 1 } else { 0 }
+    if h.engine.is_step_completed(workflow_key, step) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -185,7 +239,9 @@ pub unsafe extern "C" fn velocity_engine_complete_step(
     result_ptr: *const u8,
     result_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     let result = if result_ptr.is_null() || result_len == 0 {
@@ -208,7 +264,9 @@ pub unsafe extern "C" fn velocity_engine_get_step_result(
     out_buf: *mut u8,
     out_buf_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     match h.engine.get_step_result(workflow_key, step) {
@@ -231,7 +289,9 @@ pub unsafe extern "C" fn velocity_engine_get_current_step(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.get_current_step(workflow_key)
 }
@@ -241,7 +301,9 @@ pub unsafe extern "C" fn velocity_engine_get_total_steps(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.get_total_steps(workflow_key)
 }
@@ -257,7 +319,9 @@ pub unsafe extern "C" fn velocity_engine_schedule_activity(
     args_ptr: *const u8,
     args_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     let args = if args_ptr.is_null() || args_len == 0 {
@@ -266,7 +330,8 @@ pub unsafe extern "C" fn velocity_engine_schedule_activity(
         std::slice::from_raw_parts(args_ptr, args_len as usize).to_vec()
     };
 
-    h.engine.schedule_activity(workflow_key, step, activity_name_id, args);
+    h.engine
+        .schedule_activity(workflow_key, step, activity_name_id, args);
     0
 }
 
@@ -285,17 +350,31 @@ pub unsafe extern "C" fn velocity_engine_poll_task(
     out_task_id: *mut u64,
     out_attempt: *mut u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     match h.engine.task_queue().try_poll(task_queue_hash) {
         Some(task) => {
-            if !out_task_kind.is_null() { *out_task_kind = task.kind as u32; }
-            if !out_workflow_key.is_null() { *out_workflow_key = task.workflow_key; }
-            if !out_step_index.is_null() { *out_step_index = task.step_index; }
-            if !out_activity_name_id.is_null() { *out_activity_name_id = task.activity_name_id; }
-            if !out_task_id.is_null() { *out_task_id = task.task_id; }
-            if !out_attempt.is_null() { *out_attempt = task.attempt; }
+            if !out_task_kind.is_null() {
+                *out_task_kind = task.kind as u32;
+            }
+            if !out_workflow_key.is_null() {
+                *out_workflow_key = task.workflow_key;
+            }
+            if !out_step_index.is_null() {
+                *out_step_index = task.step_index;
+            }
+            if !out_activity_name_id.is_null() {
+                *out_activity_name_id = task.activity_name_id;
+            }
+            if !out_task_id.is_null() {
+                *out_task_id = task.task_id;
+            }
+            if !out_attempt.is_null() {
+                *out_attempt = task.attempt;
+            }
             1
         }
         None => 0,
@@ -312,7 +391,9 @@ pub unsafe extern "C" fn velocity_engine_signal(
     payload_ptr: *const u8,
     payload_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     let payload = if payload_ptr.is_null() || payload_len == 0 {
@@ -321,7 +402,8 @@ pub unsafe extern "C" fn velocity_engine_signal(
         std::slice::from_raw_parts(payload_ptr, payload_len as usize).to_vec()
     };
 
-    h.engine.signal_workflow(workflow_key, signal_name_id, payload);
+    h.engine
+        .signal_workflow(workflow_key, signal_name_id, payload);
     0
 }
 
@@ -331,9 +413,15 @@ pub unsafe extern "C" fn velocity_engine_has_signal(
     workflow_key: u64,
     signal_name_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.has_signal(workflow_key, signal_name_id) { 1 } else { 0 }
+    if h.engine.has_signal(workflow_key, signal_name_id) {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Timer ────────────────────────────────────────────────────────────────────
@@ -344,7 +432,9 @@ pub unsafe extern "C" fn velocity_engine_schedule_timer(
     workflow_key: u64,
     delay_ms: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.schedule_timer(workflow_key, delay_ms)
 }
@@ -357,11 +447,19 @@ pub unsafe extern "C" fn velocity_engine_verify_slab(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     match h.engine.get_slab(workflow_key) {
-        Some(slab) => if slab.verify_merkle_root() { 1 } else { 0 },
+        Some(slab) => {
+            if slab.verify_merkle_root() {
+                1
+            } else {
+                0
+            }
+        }
         None => -1,
     }
 }
@@ -369,10 +467,10 @@ pub unsafe extern "C" fn velocity_engine_verify_slab(
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_workflow_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_workflow_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.workflow_count() as u64
 }
@@ -382,16 +480,18 @@ pub unsafe extern "C" fn velocity_engine_pending_tasks(
     handle: *mut EngineHandle,
     task_queue_hash: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.task_queue().pending_count(task_queue_hash) as u64
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_pending_timers(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_pending_timers(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.timer_engine().pending_count() as u64
 }
@@ -401,7 +501,9 @@ pub unsafe extern "C" fn velocity_engine_event_sequence(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.get_event_sequence(workflow_key)
 }
@@ -419,7 +521,9 @@ pub unsafe extern "C" fn velocity_engine_start_child_workflow(
     input_ptr: *const u8,
     input_len: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
 
     let input = if input_ptr.is_null() || input_len == 0 {
@@ -428,7 +532,14 @@ pub unsafe extern "C" fn velocity_engine_start_child_workflow(
         Some(std::slice::from_raw_parts(input_ptr, input_len as usize).to_vec())
     };
 
-    h.engine.start_child_workflow(parent_key, child_workflow_id, workflow_type_id, task_queue_hash, total_steps, input)
+    h.engine.start_child_workflow(
+        parent_key,
+        child_workflow_id,
+        workflow_type_id,
+        task_queue_hash,
+        total_steps,
+        input,
+    )
 }
 
 // ─── WAL Persistence ─────────────────────────────────────────────────────────
@@ -464,12 +575,12 @@ pub unsafe extern "C" fn velocity_engine_create_with_wal(
 /// Get the number of records in the WAL. Returns 0 if WAL is not enabled.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_wal_record_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.wal() {
-        Some(wal) => {
-            wal.replay().map_or(0, |records| records.len() as u64)
-        }
+        Some(wal) => wal.replay().map_or(0, |records| records.len() as u64),
         None => 0,
     }
 }
@@ -477,7 +588,9 @@ pub unsafe extern "C" fn velocity_engine_wal_record_count(handle: *mut EngineHan
 /// Replay the WAL and reconstruct workflow state. Returns the number of workflows recovered.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_wal_replay(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.wal() {
         Some(wal) => {
@@ -491,13 +604,25 @@ pub unsafe extern "C" fn velocity_engine_wal_replay(handle: *mut EngineHandle) -
                 match record.event_type {
                     WalEventType::WorkflowStarted if record.data.len() >= 28 => {
                         let workflow_id = u64::from_le_bytes(record.data[0..8].try_into().unwrap());
-                        let workflow_type_id = u64::from_le_bytes(record.data[8..16].try_into().unwrap());
-                        let namespace_id = u64::from_le_bytes(record.data[16..24].try_into().unwrap());
-                        let task_queue_hash = u64::from_le_bytes(record.data[24..32].try_into().unwrap_or([0;8]));
+                        let workflow_type_id =
+                            u64::from_le_bytes(record.data[8..16].try_into().unwrap());
+                        let namespace_id =
+                            u64::from_le_bytes(record.data[16..24].try_into().unwrap());
+                        let task_queue_hash =
+                            u64::from_le_bytes(record.data[24..32].try_into().unwrap_or([0; 8]));
                         let total_steps = if record.data.len() >= 36 {
                             u32::from_le_bytes(record.data[32..36].try_into().unwrap())
-                        } else { 1 };
-                        h.engine.start_workflow(workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, None);
+                        } else {
+                            1
+                        };
+                        h.engine.start_workflow(
+                            workflow_id,
+                            workflow_type_id,
+                            namespace_id,
+                            task_queue_hash,
+                            total_steps,
+                            None,
+                        );
                         recovered += 1;
                     }
                     WalEventType::StepCompleted if record.data.len() >= 4 => {
@@ -534,7 +659,9 @@ pub unsafe extern "C" fn velocity_engine_register_namespace(
     name_ptr: *const u8,
     name_len: u32,
 ) -> u64 {
-    if handle.is_null() || name_ptr.is_null() || name_len == 0 { return 0; }
+    if handle.is_null() || name_ptr.is_null() || name_len == 0 {
+        return 0;
+    }
     let h = &*handle;
     let name_bytes = std::slice::from_raw_parts(name_ptr, name_len as usize);
     let name = match std::str::from_utf8(name_bytes) {
@@ -550,15 +677,23 @@ pub unsafe extern "C" fn velocity_engine_is_namespace_active(
     handle: *mut EngineHandle,
     namespace_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.namespaces().is_active(namespace_id) { 1 } else { 0 }
+    if h.engine.namespaces().is_active(namespace_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get the number of registered namespaces.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_namespace_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.namespaces().count() as u64
 }
@@ -568,7 +703,9 @@ pub unsafe extern "C" fn velocity_engine_namespace_count(handle: *mut EngineHand
 /// Get the total number of indexed workflows.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_visibility_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.visibility().count() as u64
 }
@@ -579,7 +716,9 @@ pub unsafe extern "C" fn velocity_engine_visibility_count_by_status(
     handle: *mut EngineHandle,
     status: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let ws = match status {
         1 => crate::engine::WorkflowStatus::Running,
@@ -598,7 +737,9 @@ pub unsafe extern "C" fn velocity_engine_visibility_count_by_namespace(
     handle: *mut EngineHandle,
     namespace_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.visibility().list_by_namespace(namespace_id).len() as u64
 }
@@ -613,7 +754,9 @@ pub unsafe extern "C" fn velocity_engine_update(
     payload_ptr: *const u8,
     payload_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     let payload = if payload_ptr.is_null() || payload_len == 0 {
@@ -622,7 +765,8 @@ pub unsafe extern "C" fn velocity_engine_update(
         std::slice::from_raw_parts(payload_ptr, payload_len as usize).to_vec()
     };
 
-    h.engine.update_workflow(workflow_key, update_name_id, payload);
+    h.engine
+        .update_workflow(workflow_key, update_name_id, payload);
     0
 }
 
@@ -632,9 +776,15 @@ pub unsafe extern "C" fn velocity_engine_has_update(
     workflow_key: u64,
     update_name_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.has_update(workflow_key, update_name_id) { 1 } else { 0 }
+    if h.engine.has_update(workflow_key, update_name_id) {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Cron Scheduling ─────────────────────────────────────────────────────
@@ -651,14 +801,24 @@ pub unsafe extern "C" fn velocity_engine_register_cron(
     total_steps: u32,
     current_time_minutes: u64,
 ) -> u64 {
-    if handle.is_null() || cron_expr_ptr.is_null() || cron_expr_len == 0 { return 0; }
+    if handle.is_null() || cron_expr_ptr.is_null() || cron_expr_len == 0 {
+        return 0;
+    }
     let h = &*handle;
     let expr_bytes = std::slice::from_raw_parts(cron_expr_ptr, cron_expr_len as usize);
     let expr = match std::str::from_utf8(expr_bytes) {
         Ok(s) => s,
         Err(_) => return 0,
     };
-    h.engine.register_cron(expr, workflow_type_id, namespace_id, task_queue_hash, total_steps, current_time_minutes)
+    h.engine
+        .register_cron(
+            expr,
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            total_steps,
+            current_time_minutes,
+        )
         .unwrap_or(0)
 }
 
@@ -668,7 +828,9 @@ pub unsafe extern "C" fn velocity_engine_process_cron_fires(
     handle: *mut EngineHandle,
     current_time_minutes: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.process_cron_fires(current_time_minutes).len() as u64
 }
@@ -676,7 +838,9 @@ pub unsafe extern "C" fn velocity_engine_process_cron_fires(
 /// Get the number of registered cron schedules.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_cron_schedule_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.cron_scheduler().schedule_count() as u64
 }
@@ -691,7 +855,9 @@ pub unsafe extern "C" fn velocity_engine_batch_terminate(
     keys_ptr: *const u64,
     keys_len: u32,
 ) -> u64 {
-    if handle.is_null() || keys_ptr.is_null() || keys_len == 0 { return 0; }
+    if handle.is_null() || keys_ptr.is_null() || keys_len == 0 {
+        return 0;
+    }
     let h = &*handle;
     let keys = std::slice::from_raw_parts(keys_ptr, keys_len as usize).to_vec();
     h.engine.batch_terminate(keys)
@@ -704,7 +870,9 @@ pub unsafe extern "C" fn velocity_engine_batch_cancel(
     keys_ptr: *const u64,
     keys_len: u32,
 ) -> u64 {
-    if handle.is_null() || keys_ptr.is_null() || keys_len == 0 { return 0; }
+    if handle.is_null() || keys_ptr.is_null() || keys_len == 0 {
+        return 0;
+    }
     let h = &*handle;
     let keys = std::slice::from_raw_parts(keys_ptr, keys_len as usize).to_vec();
     h.engine.batch_cancel(keys)
@@ -720,7 +888,9 @@ pub unsafe extern "C" fn velocity_engine_batch_signal(
     payload_ptr: *const u8,
     payload_len: u32,
 ) -> u64 {
-    if handle.is_null() || keys_ptr.is_null() || keys_len == 0 { return 0; }
+    if handle.is_null() || keys_ptr.is_null() || keys_len == 0 {
+        return 0;
+    }
     let h = &*handle;
     let keys = std::slice::from_raw_parts(keys_ptr, keys_len as usize).to_vec();
     let payload = if payload_ptr.is_null() || payload_len == 0 {
@@ -734,7 +904,9 @@ pub unsafe extern "C" fn velocity_engine_batch_signal(
 /// Get the number of batch operations submitted.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_batch_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.batch_executor().batch_count() as u64
 }
@@ -744,7 +916,9 @@ pub unsafe extern "C" fn velocity_engine_batch_count(handle: *mut EngineHandle) 
 /// Get the number of archived workflows.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_archive_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.archive_store().count() as u64
 }
@@ -755,7 +929,9 @@ pub unsafe extern "C" fn velocity_engine_archive_count_by_namespace(
     handle: *mut EngineHandle,
     namespace_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.archive_store().count_by_namespace(namespace_id) as u64
 }
@@ -766,16 +942,27 @@ pub unsafe extern "C" fn velocity_engine_is_archived(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.archive_store().get(workflow_key).is_some() { 1 } else { 0 }
+    if h.engine.archive_store().get(workflow_key).is_some() {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Event History ──────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_event_count(handle: *mut EngineHandle, workflow_key: u64) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_event_count(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.history_store().event_count(workflow_key) as u64
 }
@@ -784,23 +971,38 @@ pub unsafe extern "C" fn velocity_engine_event_count(handle: *mut EngineHandle, 
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_create_version_set(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_versioning().create_version_set()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_add_build_id(handle: *mut EngineHandle, set_id: u64, build_id_ptr: *const u8, build_id_len: u32) -> i32 {
-    if handle.is_null() || build_id_ptr.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_add_build_id(
+    handle: *mut EngineHandle,
+    set_id: u64,
+    build_id_ptr: *const u8,
+    build_id_len: u32,
+) -> i32 {
+    if handle.is_null() || build_id_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let bid = std::str::from_utf8(std::slice::from_raw_parts(build_id_ptr, build_id_len as usize)).unwrap_or("");
+    let bid = std::str::from_utf8(std::slice::from_raw_parts(
+        build_id_ptr,
+        build_id_len as usize,
+    ))
+    .unwrap_or("");
     h.engine.worker_versioning().add_build_id(set_id, bid);
     0
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_version_set_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_versioning().version_set_count() as u64
 }
@@ -808,38 +1010,70 @@ pub unsafe extern "C" fn velocity_engine_version_set_count(handle: *mut EngineHa
 // ─── Rate Limiter ───────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_rate_limit_check(handle: *mut EngineHandle, namespace_id: u64, tokens: u32) -> i32 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_rate_limit_check(
+    handle: *mut EngineHandle,
+    namespace_id: u64,
+    tokens: u32,
+) -> i32 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.rate_limiter().try_acquire(namespace_id, tokens as u64) { 1 } else { 0 }
+    if h.engine
+        .rate_limiter()
+        .try_acquire(namespace_id, tokens as u64)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Heartbeat ──────────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_register_heartbeat(handle: *mut EngineHandle, workflow_key: u64, activity_id: u64, timeout_ms: u64) -> i32 {
-    if handle.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_register_heartbeat(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+    activity_id: u64,
+    timeout_ms: u64,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.heartbeat_tracker().register(workflow_key, activity_id, timeout_ms, 3);
+    h.engine
+        .heartbeat_tracker()
+        .register(workflow_key, activity_id, timeout_ms, 3);
     0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_record_heartbeat(handle: *mut EngineHandle, workflow_key: u64, activity_id: u64) -> i32 {
-    if handle.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_record_heartbeat(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+    activity_id: u64,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.heartbeat_tracker().record_heartbeat(workflow_key, activity_id, None);
+    h.engine
+        .heartbeat_tracker()
+        .record_heartbeat(workflow_key, activity_id, None);
     0
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_heartbeat_active_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.heartbeat_tracker().active_count() as u64
 }
 
-/// Register heartbeat tracking for an activity. 
+/// Register heartbeat tracking for an activity.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_heartbeat_register(
     handle: *mut EngineHandle,
@@ -847,9 +1081,13 @@ pub unsafe extern "C" fn velocity_engine_heartbeat_register(
     activity_id: u64,
     timeout_ms: u64,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
-    h.engine.heartbeat_tracker().register(workflow_key, activity_id, timeout_ms, 3);
+    h.engine
+        .heartbeat_tracker()
+        .register(workflow_key, activity_id, timeout_ms, 3);
 }
 
 /// Check heartbeat timeouts. Returns count of timed-out heartbeats.
@@ -857,7 +1095,9 @@ pub unsafe extern "C" fn velocity_engine_heartbeat_register(
 pub unsafe extern "C" fn velocity_engine_heartbeat_check_timeouts(
     handle: *mut EngineHandle,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.heartbeat_tracker().check_timeouts().len() as u32
 }
@@ -869,19 +1109,37 @@ pub unsafe extern "C" fn velocity_engine_heartbeat_unregister(
     workflow_key: u64,
     activity_id: u64,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
-    h.engine.heartbeat_tracker().unregister(workflow_key, activity_id);
+    h.engine
+        .heartbeat_tracker()
+        .unregister(workflow_key, activity_id);
 }
 
 // ─── Auth ───────────────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_auth_check(handle: *mut EngineHandle, subject_ptr: *const u8, subject_len: u32, role_ptr: *const u8, role_len: u32, permission: u32) -> i32 {
-    if handle.is_null() || subject_ptr.is_null() || role_ptr.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_auth_check(
+    handle: *mut EngineHandle,
+    subject_ptr: *const u8,
+    subject_len: u32,
+    role_ptr: *const u8,
+    role_len: u32,
+    permission: u32,
+) -> i32 {
+    if handle.is_null() || subject_ptr.is_null() || role_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let subject = std::str::from_utf8(std::slice::from_raw_parts(subject_ptr, subject_len as usize)).unwrap_or("");
-    let role = std::str::from_utf8(std::slice::from_raw_parts(role_ptr, role_len as usize)).unwrap_or("");
+    let subject = std::str::from_utf8(std::slice::from_raw_parts(
+        subject_ptr,
+        subject_len as usize,
+    ))
+    .unwrap_or("");
+    let role =
+        std::str::from_utf8(std::slice::from_raw_parts(role_ptr, role_len as usize)).unwrap_or("");
     let perm = match permission {
         0 => crate::auth::Permission::StartWorkflow,
         1 => crate::auth::Permission::SignalWorkflow,
@@ -893,83 +1151,165 @@ pub unsafe extern "C" fn velocity_engine_auth_check(handle: *mut EngineHandle, s
         7 => crate::auth::Permission::AdminAccess,
         _ => return 0,
     };
-    let claims = crate::auth::Claims { subject: subject.to_string(), namespace_id: 0, roles: vec![role.to_string()] };
-    if h.engine.auth_manager().authorize(&claims, &perm) { 1 } else { 0 }
+    let claims = crate::auth::Claims {
+        subject: subject.to_string(),
+        namespace_id: 0,
+        roles: vec![role.to_string()],
+    };
+    if h.engine.auth_manager().authorize(&claims, &perm) {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Dynamic Config ─────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_config_set_int(handle: *mut EngineHandle, key_ptr: *const u8, key_len: u32, value: i64) -> i32 {
-    if handle.is_null() || key_ptr.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_config_set_int(
+    handle: *mut EngineHandle,
+    key_ptr: *const u8,
+    key_len: u32,
+    value: i64,
+) -> i32 {
+    if handle.is_null() || key_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    h.engine.dynamic_config().set(key, crate::dynamic_config::ConfigValue::Int(value));
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    h.engine
+        .dynamic_config()
+        .set(key, crate::dynamic_config::ConfigValue::Int(value));
     0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_config_get_int(handle: *mut EngineHandle, key_ptr: *const u8, key_len: u32, default: i64) -> i64 {
-    if handle.is_null() || key_ptr.is_null() { return default; }
+pub unsafe extern "C" fn velocity_engine_config_get_int(
+    handle: *mut EngineHandle,
+    key_ptr: *const u8,
+    key_len: u32,
+    default: i64,
+) -> i64 {
+    if handle.is_null() || key_ptr.is_null() {
+        return default;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
     let val = h.engine.dynamic_config().get_int(key);
     val
 }
 
 /// Set a boolean config value.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_config_set_bool(handle: *mut EngineHandle, key_ptr: *const u8, key_len: u32, value: i32) -> i32 {
-    if handle.is_null() || key_ptr.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_config_set_bool(
+    handle: *mut EngineHandle,
+    key_ptr: *const u8,
+    key_len: u32,
+    value: i32,
+) -> i32 {
+    if handle.is_null() || key_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    h.engine.dynamic_config().set(key, crate::dynamic_config::ConfigValue::Bool(value != 0));
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    h.engine
+        .dynamic_config()
+        .set(key, crate::dynamic_config::ConfigValue::Bool(value != 0));
     0
 }
 
 /// Set a float config value.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_config_set_float(handle: *mut EngineHandle, key_ptr: *const u8, key_len: u32, value: f64) -> i32 {
-    if handle.is_null() || key_ptr.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_config_set_float(
+    handle: *mut EngineHandle,
+    key_ptr: *const u8,
+    key_len: u32,
+    value: f64,
+) -> i32 {
+    if handle.is_null() || key_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    h.engine.dynamic_config().set(key, crate::dynamic_config::ConfigValue::Float(value));
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    h.engine
+        .dynamic_config()
+        .set(key, crate::dynamic_config::ConfigValue::Float(value));
     0
 }
 
 /// Set a string config value.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_config_set_string(handle: *mut EngineHandle, key_ptr: *const u8, key_len: u32, val_ptr: *const u8, val_len: u32) -> i32 {
-    if handle.is_null() || key_ptr.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_config_set_string(
+    handle: *mut EngineHandle,
+    key_ptr: *const u8,
+    key_len: u32,
+    val_ptr: *const u8,
+    val_len: u32,
+) -> i32 {
+    if handle.is_null() || key_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    let val = if val_ptr.is_null() || val_len == 0 { "" } else { std::str::from_utf8(std::slice::from_raw_parts(val_ptr, val_len as usize)).unwrap_or("") };
-    h.engine.dynamic_config().set(key, crate::dynamic_config::ConfigValue::String(val.to_string()));
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    let val = if val_ptr.is_null() || val_len == 0 {
+        ""
+    } else {
+        std::str::from_utf8(std::slice::from_raw_parts(val_ptr, val_len as usize)).unwrap_or("")
+    };
+    h.engine.dynamic_config().set(
+        key,
+        crate::dynamic_config::ConfigValue::String(val.to_string()),
+    );
     0
 }
 
 /// Get a boolean config value.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_config_get_bool(handle: *mut EngineHandle, key_ptr: *const u8, key_len: u32) -> i32 {
-    if handle.is_null() || key_ptr.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_config_get_bool(
+    handle: *mut EngineHandle,
+    key_ptr: *const u8,
+    key_len: u32,
+) -> i32 {
+    if handle.is_null() || key_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    if h.engine.dynamic_config().get_bool(key) { 1 } else { 0 }
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    if h.engine.dynamic_config().get_bool(key) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get a float config value.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_config_get_float(handle: *mut EngineHandle, key_ptr: *const u8, key_len: u32) -> f64 {
-    if handle.is_null() || key_ptr.is_null() { return 0.0; }
+pub unsafe extern "C" fn velocity_engine_config_get_float(
+    handle: *mut EngineHandle,
+    key_ptr: *const u8,
+    key_len: u32,
+) -> f64 {
+    if handle.is_null() || key_ptr.is_null() {
+        return 0.0;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
     h.engine.dynamic_config().get_float(key)
 }
 
 /// Get config key count.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_config_key_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.dynamic_config().key_count() as u64
 }
@@ -977,17 +1317,29 @@ pub unsafe extern "C" fn velocity_engine_config_key_count(handle: *mut EngineHan
 // ─── Query Handler ──────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_register_query_handler(handle: *mut EngineHandle, workflow_key: u64, query_name_id: u64) -> i32 {
-    if handle.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_register_query_handler(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+    query_name_id: u64,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     // Register a default passthrough handler
-    h.engine.query_registry().register_handler(workflow_key, query_name_id, Box::new(|input| input.to_vec()));
+    h.engine.query_registry().register_handler(
+        workflow_key,
+        query_name_id,
+        Box::new(|input| input.to_vec()),
+    );
     0
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_query_handler_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.query_registry().workflow_count() as u64
 }
@@ -995,18 +1347,37 @@ pub unsafe extern "C" fn velocity_engine_query_handler_count(handle: *mut Engine
 // ─── Memo ───────────────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_set_memo(handle: *mut EngineHandle, workflow_key: u64, key_ptr: *const u8, key_len: u32, val_ptr: *const u8, val_len: u32) -> i32 {
-    if handle.is_null() || key_ptr.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_set_memo(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+    key_ptr: *const u8,
+    key_len: u32,
+    val_ptr: *const u8,
+    val_len: u32,
+) -> i32 {
+    if handle.is_null() || key_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    let val = if val_ptr.is_null() || val_len == 0 { vec![] } else { std::slice::from_raw_parts(val_ptr, val_len as usize).to_vec() };
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    let val = if val_ptr.is_null() || val_len == 0 {
+        vec![]
+    } else {
+        std::slice::from_raw_parts(val_ptr, val_len as usize).to_vec()
+    };
     h.engine.memo_store().set(workflow_key, key, val, None);
     0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_memo_count(handle: *mut EngineHandle, workflow_key: u64) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_memo_count(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.memo_store().get_all(workflow_key).len() as u64
 }
@@ -1017,12 +1388,18 @@ pub unsafe extern "C" fn velocity_engine_memo_count(handle: *mut EngineHandle, w
 pub unsafe extern "C" fn velocity_engine_get_memo(
     handle: *mut EngineHandle,
     workflow_key: u64,
-    key_ptr: *const u8, key_len: u32,
-    out_ptr: *mut u8, out_cap: u32, out_len: *mut u32,
+    key_ptr: *const u8,
+    key_len: u32,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || key_ptr.is_null() || out_ptr.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || key_ptr.is_null() || out_ptr.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
     match h.engine.memo_store().get(workflow_key, key) {
         Some(val) => {
             let write_len = std::cmp::min(val.len(), out_cap as usize);
@@ -1030,7 +1407,10 @@ pub unsafe extern "C" fn velocity_engine_get_memo(
             *out_len = write_len as u32;
             0
         }
-        None => { *out_len = 0; -1 }
+        None => {
+            *out_len = 0;
+            -1
+        }
     }
 }
 
@@ -1039,14 +1419,23 @@ pub unsafe extern "C" fn velocity_engine_get_memo(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_create_schedule(
     handle: *mut EngineHandle,
-    workflow_type_id: u64, namespace_id: u64, task_queue_hash: u64,
-    overlap_policy: u32, jitter: u64,
+    workflow_type_id: u64,
+    namespace_id: u64,
+    task_queue_hash: u64,
+    overlap_policy: u32,
+    jitter: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let spec = crate::schedules::CalendarSpec {
-        second: "0".into(), minute: "*".into(), hour: "*".into(),
-        day_of_month: "*".into(), month: "*".into(), day_of_week: "*".into(),
+        second: "0".into(),
+        minute: "*".into(),
+        hour: "*".into(),
+        day_of_month: "*".into(),
+        month: "*".into(),
+        day_of_week: "*".into(),
         comment: "ffi".into(),
     };
     let overlap = match overlap_policy {
@@ -1056,50 +1445,101 @@ pub unsafe extern "C" fn velocity_engine_create_schedule(
         3 => crate::schedules::OverlapPolicy::TerminateOther,
         _ => crate::schedules::OverlapPolicy::AllowAll,
     };
-    h.engine.schedule_manager().create_schedule(spec, workflow_type_id, namespace_id, task_queue_hash, overlap, jitter)
+    h.engine.schedule_manager().create_schedule(
+        spec,
+        workflow_type_id,
+        namespace_id,
+        task_queue_hash,
+        overlap,
+        jitter,
+    )
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_schedule_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.schedule_manager().count() as u64
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_pause_schedule(handle: *mut EngineHandle, schedule_id: u64) -> i32 {
-    if handle.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_pause_schedule(
+    handle: *mut EngineHandle,
+    schedule_id: u64,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.schedule_manager().pause(schedule_id) { 0 } else { -1 }
+    if h.engine.schedule_manager().pause(schedule_id) {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_unpause_schedule(handle: *mut EngineHandle, schedule_id: u64) -> i32 {
-    if handle.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_unpause_schedule(
+    handle: *mut EngineHandle,
+    schedule_id: u64,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.schedule_manager().unpause(schedule_id) { 0 } else { -1 }
+    if h.engine.schedule_manager().unpause(schedule_id) {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_delete_schedule(handle: *mut EngineHandle, schedule_id: u64) -> i32 {
-    if handle.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_delete_schedule(
+    handle: *mut EngineHandle,
+    schedule_id: u64,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.schedule_manager().delete(schedule_id) { 0 } else { -1 }
+    if h.engine.schedule_manager().delete(schedule_id) {
+        0
+    } else {
+        -1
+    }
 }
 
 // ─── Workflow Reset ─────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_add_reset_point(handle: *mut EngineHandle, workflow_key: u64, event_id: u64) -> i32 {
-    if handle.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_add_reset_point(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+    event_id: u64,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.workflow_resetter().create_reset_point(workflow_key, event_id, ResetReason::Custom("ffi".to_string()));
+    h.engine.workflow_resetter().create_reset_point(
+        workflow_key,
+        event_id,
+        ResetReason::Custom("ffi".to_string()),
+    );
     0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_reset_point_count(handle: *mut EngineHandle, workflow_key: u64) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_reset_point_count(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.workflow_resetter().reset_count(workflow_key) as u64
 }
@@ -1110,20 +1550,38 @@ pub unsafe extern "C" fn velocity_engine_reset_point_count(handle: *mut EngineHa
 pub unsafe extern "C" fn velocity_engine_register_patch(
     handle: *mut EngineHandle,
     workflow_type_id: u64,
-    marker_ptr: *const u8, marker_len: u32,
-    min_version: u64, max_version: u64,
-    desc_ptr: *const u8, desc_len: u32,
+    marker_ptr: *const u8,
+    marker_len: u32,
+    min_version: u64,
+    max_version: u64,
+    desc_ptr: *const u8,
+    desc_len: u32,
 ) -> u64 {
-    if handle.is_null() || marker_ptr.is_null() { return 0; }
+    if handle.is_null() || marker_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let marker = std::str::from_utf8(std::slice::from_raw_parts(marker_ptr, marker_len as usize)).unwrap_or("");
-    let desc = if desc_ptr.is_null() || desc_len == 0 { "" } else { std::str::from_utf8(std::slice::from_raw_parts(desc_ptr, desc_len as usize)).unwrap_or("") };
-    h.engine.patch_registry().register_patch(workflow_type_id, marker, min_version, max_version, desc)
+    let marker = std::str::from_utf8(std::slice::from_raw_parts(marker_ptr, marker_len as usize))
+        .unwrap_or("");
+    let desc = if desc_ptr.is_null() || desc_len == 0 {
+        ""
+    } else {
+        std::str::from_utf8(std::slice::from_raw_parts(desc_ptr, desc_len as usize)).unwrap_or("")
+    };
+    h.engine.patch_registry().register_patch(
+        workflow_type_id,
+        marker,
+        min_version,
+        max_version,
+        desc,
+    )
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_patch_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.patch_registry().patch_count() as u64
 }
@@ -1134,9 +1592,15 @@ pub unsafe extern "C" fn velocity_engine_deactivate_patch(
     handle: *mut EngineHandle,
     patch_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.patch_registry().deactivate_patch(patch_id) { 1 } else { 0 }
+    if h.engine.patch_registry().deactivate_patch(patch_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Find an active patch by workflow type and version. Returns patch_id or 0 if not found.
@@ -1146,9 +1610,13 @@ pub unsafe extern "C" fn velocity_engine_find_patch(
     workflow_type_id: u64,
     version: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.patch_registry().find_patch(workflow_type_id, version)
+    h.engine
+        .patch_registry()
+        .find_patch(workflow_type_id, version)
         .map_or(0, |p| p.patch_id)
 }
 
@@ -1161,7 +1629,9 @@ pub unsafe extern "C" fn velocity_engine_get_patch(
     patch_id: u64,
     out_fields: *mut u64,
 ) -> i32 {
-    if handle.is_null() || out_fields.is_null() { return 0; }
+    if handle.is_null() || out_fields.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.patch_registry().get_patch(patch_id) {
         Some(p) => {
@@ -1186,9 +1656,14 @@ pub unsafe extern "C" fn velocity_engine_active_patches_for_type(
     out_ids: *mut u64,
     max_count: u32,
 ) -> u32 {
-    if handle.is_null() || out_ids.is_null() { return 0; }
+    if handle.is_null() || out_ids.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let patches = h.engine.patch_registry().active_patches_for_type(workflow_type_id);
+    let patches = h
+        .engine
+        .patch_registry()
+        .active_patches_for_type(workflow_type_id);
     let out = std::slice::from_raw_parts_mut(out_ids, max_count as usize);
     let count = patches.len().min(max_count as usize);
     for i in 0..count {
@@ -1209,9 +1684,12 @@ pub unsafe extern "C" fn velocity_engine_visibility_query(
     out_keys: *mut u64,
     max_results: u32,
 ) -> u32 {
-    if handle.is_null() || query_ptr.is_null() || out_keys.is_null() { return 0; }
+    if handle.is_null() || query_ptr.is_null() || out_keys.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let query_str = std::str::from_utf8(std::slice::from_raw_parts(query_ptr, query_len as usize)).unwrap_or("");
+    let query_str = std::str::from_utf8(std::slice::from_raw_parts(query_ptr, query_len as usize))
+        .unwrap_or("");
     let parsed = match crate::visibility_query::VisibilityQuery::parse(query_str) {
         Ok(q) => q,
         Err(_) => return 0,
@@ -1228,24 +1706,43 @@ pub unsafe extern "C" fn velocity_engine_visibility_query(
 // ─── Cluster ────────────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_register_cluster(handle: *mut EngineHandle, name_ptr: *const u8, name_len: u32, addr_ptr: *const u8, addr_len: u32) -> u64 {
-    if handle.is_null() || name_ptr.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_register_cluster(
+    handle: *mut EngineHandle,
+    name_ptr: *const u8,
+    name_len: u32,
+    addr_ptr: *const u8,
+    addr_len: u32,
+) -> u64 {
+    if handle.is_null() || name_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
-    let addr = if addr_ptr.is_null() || addr_len == 0 { "" } else { std::str::from_utf8(std::slice::from_raw_parts(addr_ptr, addr_len as usize)).unwrap_or("") };
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let addr = if addr_ptr.is_null() || addr_len == 0 {
+        ""
+    } else {
+        std::str::from_utf8(std::slice::from_raw_parts(addr_ptr, addr_len as usize)).unwrap_or("")
+    };
     h.engine.cluster_manager().register_cluster(name, addr)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_cluster_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.cluster_manager().cluster_count() as u64
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_pending_replication_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_pending_replication_count(
+    handle: *mut EngineHandle,
+) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.cluster_manager().pending_replication_count() as u64
 }
@@ -1253,23 +1750,42 @@ pub unsafe extern "C" fn velocity_engine_pending_replication_count(handle: *mut 
 // ─── Sharding ───────────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_shard_for_key(handle: *mut EngineHandle, workflow_key: u64) -> u32 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_shard_for_key(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+) -> u32 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.shard_manager().shard_for_key(workflow_key)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_assign_shard(handle: *mut EngineHandle, shard_id: u32, host_ptr: *const u8, host_len: u32) -> i32 {
-    if handle.is_null() || host_ptr.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_assign_shard(
+    handle: *mut EngineHandle,
+    shard_id: u32,
+    host_ptr: *const u8,
+    host_len: u32,
+) -> i32 {
+    if handle.is_null() || host_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let host = std::str::from_utf8(std::slice::from_raw_parts(host_ptr, host_len as usize)).unwrap_or("");
-    if h.engine.shard_manager().assign_shard(shard_id, host) { 1 } else { 0 }
+    let host =
+        std::str::from_utf8(std::slice::from_raw_parts(host_ptr, host_len as usize)).unwrap_or("");
+    if h.engine.shard_manager().assign_shard(shard_id, host) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_shard_count(handle: *mut EngineHandle) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.shard_manager().shard_count()
 }
@@ -1277,25 +1793,46 @@ pub unsafe extern "C" fn velocity_engine_shard_count(handle: *mut EngineHandle) 
 // ─── Nexus ──────────────────────────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_register_nexus_service(handle: *mut EngineHandle, name_ptr: *const u8, name_len: u32, endpoint_ptr: *const u8, endpoint_len: u32) -> i32 {
-    if handle.is_null() || name_ptr.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_register_nexus_service(
+    handle: *mut EngineHandle,
+    name_ptr: *const u8,
+    name_len: u32,
+    endpoint_ptr: *const u8,
+    endpoint_len: u32,
+) -> i32 {
+    if handle.is_null() || name_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
-    let endpoint = if endpoint_ptr.is_null() || endpoint_len == 0 { "" } else { std::str::from_utf8(std::slice::from_raw_parts(endpoint_ptr, endpoint_len as usize)).unwrap_or("") };
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let endpoint = if endpoint_ptr.is_null() || endpoint_len == 0 {
+        ""
+    } else {
+        std::str::from_utf8(std::slice::from_raw_parts(
+            endpoint_ptr,
+            endpoint_len as usize,
+        ))
+        .unwrap_or("")
+    };
     h.engine.nexus_manager().register_service(name, endpoint);
     0
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_nexus_service_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.nexus_manager().service_count() as u64
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_nexus_operation_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.nexus_manager().operation_count() as u64
 }
@@ -1308,7 +1845,9 @@ pub unsafe extern "C" fn velocity_engine_describe_namespace(
     namespace_id: u64,
     out: *mut u64, // [0]=id, [1]=retention_ms, [2]=max_concurrent, [3]=workflow_count, [4]=is_active
 ) -> i32 {
-    if handle.is_null() || out.is_null() { return -1; }
+    if handle.is_null() || out.is_null() {
+        return -1;
+    }
     let h = &*handle;
     match h.engine.namespaces().get(namespace_id) {
         Some(ns) => {
@@ -1316,7 +1855,11 @@ pub unsafe extern "C" fn velocity_engine_describe_namespace(
             *out.add(1) = ns.retention_period.as_millis() as u64;
             *out.add(2) = ns.max_concurrent_workflows;
             *out.add(3) = h.engine.namespaces().workflow_count(namespace_id);
-            *out.add(4) = if h.engine.namespaces().is_active(namespace_id) { 1 } else { 0 };
+            *out.add(4) = if h.engine.namespaces().is_active(namespace_id) {
+                1
+            } else {
+                0
+            };
             1
         }
         None => 0,
@@ -1328,7 +1871,9 @@ pub unsafe extern "C" fn velocity_engine_namespace_workflow_count(
     handle: *mut EngineHandle,
     namespace_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.namespaces().workflow_count(namespace_id)
 }
@@ -1338,9 +1883,15 @@ pub unsafe extern "C" fn velocity_engine_deactivate_namespace(
     handle: *mut EngineHandle,
     namespace_id: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.namespaces().deactivate(namespace_id) { 1 } else { 0 }
+    if h.engine.namespaces().deactivate(namespace_id) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -1348,9 +1899,15 @@ pub unsafe extern "C" fn velocity_engine_activate_namespace(
     handle: *mut EngineHandle,
     namespace_id: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.namespaces().activate(namespace_id) { 1 } else { 0 }
+    if h.engine.namespaces().activate(namespace_id) {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Cron Enhanced (Batch 24) ───────────────────────────────────────────
@@ -1360,9 +1917,14 @@ pub unsafe extern "C" fn velocity_engine_cron_next_fire_time(
     handle: *mut EngineHandle,
     schedule_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.cron_scheduler().next_fire_time(schedule_id).unwrap_or(0)
+    h.engine
+        .cron_scheduler()
+        .next_fire_time(schedule_id)
+        .unwrap_or(0)
 }
 
 #[no_mangle]
@@ -1370,9 +1932,14 @@ pub unsafe extern "C" fn velocity_engine_cron_fire_count(
     handle: *mut EngineHandle,
     schedule_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.cron_scheduler().fire_count(schedule_id).unwrap_or(0) as u64
+    h.engine
+        .cron_scheduler()
+        .fire_count(schedule_id)
+        .unwrap_or(0) as u64
 }
 
 #[no_mangle]
@@ -1380,9 +1947,15 @@ pub unsafe extern "C" fn velocity_engine_cron_unregister(
     handle: *mut EngineHandle,
     schedule_id: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.cron_scheduler().unregister(schedule_id) { 1 } else { 0 }
+    if h.engine.cron_scheduler().unregister(schedule_id) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -1391,18 +1964,27 @@ pub unsafe extern "C" fn velocity_engine_cron_set_paused(
     schedule_id: u64,
     paused: i32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.cron_scheduler().set_paused(schedule_id, paused != 0) { 1 } else { 0 }
+    if h.engine
+        .cron_scheduler()
+        .set_paused(schedule_id, paused != 0)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Codec Enhanced (Batch 24) ──────────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_codec_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_codec_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.codec_chain().codec_count() as u64
 }
@@ -1414,10 +1996,15 @@ pub unsafe extern "C" fn velocity_engine_search_attr_count(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     // Use the visibility index to count search attrs for a workflow
-    h.engine.visibility().get(workflow_key).map_or(0, |w| w.search_attributes.len() as u64)
+    h.engine
+        .visibility()
+        .get(workflow_key)
+        .map_or(0, |w| w.search_attributes.len() as u64)
 }
 
 // ─── Rate Limiter Enhanced (Batch 22) ───────────────────────────────────
@@ -1429,17 +2016,21 @@ pub unsafe extern "C" fn velocity_engine_rate_set_namespace_limit(
     rate: f64,
     capacity: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.rate_limiter().set_namespace_limit(namespace_id, rate, capacity);
+    h.engine
+        .rate_limiter()
+        .set_namespace_limit(namespace_id, rate, capacity);
     0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_rate_namespace_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_rate_namespace_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.rate_limiter().namespace_count() as u64
 }
@@ -1453,17 +2044,24 @@ pub unsafe extern "C" fn velocity_engine_remove_memo(
     key_ptr: *const u8,
     key_len: u32,
 ) -> i32 {
-    if handle.is_null() || key_ptr.is_null() { return -1; }
+    if handle.is_null() || key_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    if h.engine.memo_store().remove(workflow_key, key) { 1 } else { 0 }
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    if h.engine.memo_store().remove(workflow_key, key) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_memo_workflow_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_memo_workflow_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.memo_store().workflow_count() as u64
 }
@@ -1477,10 +2075,23 @@ pub unsafe extern "C" fn velocity_engine_versioning_set_current(
     build_id_ptr: *const u8,
     build_id_len: u32,
 ) -> i32 {
-    if handle.is_null() || build_id_ptr.is_null() { return -1; }
+    if handle.is_null() || build_id_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let build_id = std::str::from_utf8(std::slice::from_raw_parts(build_id_ptr, build_id_len as usize)).unwrap_or("");
-    if h.engine.worker_versioning().set_current_build_id(set_id, build_id) { 1 } else { 0 }
+    let build_id = std::str::from_utf8(std::slice::from_raw_parts(
+        build_id_ptr,
+        build_id_len as usize,
+    ))
+    .unwrap_or("");
+    if h.engine
+        .worker_versioning()
+        .set_current_build_id(set_id, build_id)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -1490,7 +2101,9 @@ pub unsafe extern "C" fn velocity_engine_versioning_get_current(
     out_ptr: *mut u8,
     out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_ptr.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || out_ptr.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
     match h.engine.worker_versioning().get_current_build_id(set_id) {
         Some(bid) => {
@@ -1513,11 +2126,16 @@ pub unsafe extern "C" fn velocity_engine_versioning_add_routing_rule(
     bid_len: u32,
     percentage: u32,
 ) -> i32 {
-    if handle.is_null() || tq_ptr.is_null() || bid_ptr.is_null() { return -1; }
+    if handle.is_null() || tq_ptr.is_null() || bid_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let tq = std::str::from_utf8(std::slice::from_raw_parts(tq_ptr, tq_len as usize)).unwrap_or("");
-    let bid = std::str::from_utf8(std::slice::from_raw_parts(bid_ptr, bid_len as usize)).unwrap_or("");
-    h.engine.worker_versioning().add_routing_rule(tq, bid, percentage);
+    let bid =
+        std::str::from_utf8(std::slice::from_raw_parts(bid_ptr, bid_len as usize)).unwrap_or("");
+    h.engine
+        .worker_versioning()
+        .add_routing_rule(tq, bid, percentage);
     0
 }
 
@@ -1529,7 +2147,9 @@ pub unsafe extern "C" fn velocity_engine_versioning_resolve_build_id(
     out_ptr: *mut u8,
     out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || tq_ptr.is_null() || out_ptr.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || tq_ptr.is_null() || out_ptr.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let tq = std::str::from_utf8(std::slice::from_raw_parts(tq_ptr, tq_len as usize)).unwrap_or("");
     match h.engine.worker_versioning().resolve_build_id(tq) {
@@ -1548,7 +2168,9 @@ pub unsafe extern "C" fn velocity_engine_versioning_resolve_build_id(
 pub unsafe extern "C" fn velocity_engine_versioning_routing_rule_count(
     handle: *mut EngineHandle,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_versioning().routing_rule_count() as u64
 }
@@ -1561,18 +2183,24 @@ pub unsafe extern "C" fn velocity_engine_auth_deny_subject(
     subject_ptr: *const u8,
     subject_len: u32,
 ) -> i32 {
-    if handle.is_null() || subject_ptr.is_null() { return -1; }
+    if handle.is_null() || subject_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let subject = std::str::from_utf8(std::slice::from_raw_parts(subject_ptr, subject_len as usize)).unwrap_or("");
+    let subject = std::str::from_utf8(std::slice::from_raw_parts(
+        subject_ptr,
+        subject_len as usize,
+    ))
+    .unwrap_or("");
     h.engine.auth_manager().deny_subject(subject);
     0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_auth_role_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_auth_role_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.auth_manager().role_count() as u64
 }
@@ -1585,9 +2213,12 @@ pub unsafe extern "C" fn velocity_engine_metrics_inc_counter(
     name_ptr: *const u8,
     name_len: u32,
 ) -> i32 {
-    if handle.is_null() || name_ptr.is_null() { return -1; }
+    if handle.is_null() || name_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
     h.engine.metrics_registry().inc_counter(name);
     0
 }
@@ -1598,9 +2229,12 @@ pub unsafe extern "C" fn velocity_engine_metrics_get_counter(
     name_ptr: *const u8,
     name_len: u32,
 ) -> u64 {
-    if handle.is_null() || name_ptr.is_null() { return 0; }
+    if handle.is_null() || name_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
     h.engine.metrics_registry().get_counter(name)
 }
 
@@ -1611,9 +2245,12 @@ pub unsafe extern "C" fn velocity_engine_metrics_set_gauge(
     name_len: u32,
     value: i64,
 ) -> i32 {
-    if handle.is_null() || name_ptr.is_null() { return -1; }
+    if handle.is_null() || name_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
     h.engine.metrics_registry().set_gauge(name, value);
     0
 }
@@ -1624,9 +2261,12 @@ pub unsafe extern "C" fn velocity_engine_metrics_get_gauge(
     name_ptr: *const u8,
     name_len: u32,
 ) -> i64 {
-    if handle.is_null() || name_ptr.is_null() { return 0; }
+    if handle.is_null() || name_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
     h.engine.metrics_registry().get_gauge(name)
 }
 
@@ -1637,9 +2277,12 @@ pub unsafe extern "C" fn velocity_engine_metrics_observe_histogram(
     name_len: u32,
     value: f64,
 ) -> i32 {
-    if handle.is_null() || name_ptr.is_null() { return -1; }
+    if handle.is_null() || name_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
     h.engine.metrics_registry().observe_histogram(name, value);
     0
 }
@@ -1651,7 +2294,9 @@ pub unsafe extern "C" fn velocity_engine_history_event_count(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.history_store().event_count(workflow_key) as u64
 }
@@ -1661,9 +2306,15 @@ pub unsafe extern "C" fn velocity_engine_history_remove(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.history_store().remove_history(workflow_key) { 1 } else { 0 }
+    if h.engine.history_store().remove_history(workflow_key) {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Archive Store Enhanced (Batch 23) ──────────────────────────────────
@@ -1674,7 +2325,9 @@ pub unsafe extern "C" fn velocity_engine_archive_retrieve(
     workflow_key: u64,
     out: *mut u64, // [0]=workflow_key, [1]=namespace_id, [2]=workflow_type_id, [3]=status, [4]=event_count
 ) -> i32 {
-    if handle.is_null() || out.is_null() { return -1; }
+    if handle.is_null() || out.is_null() {
+        return -1;
+    }
     let h = &*handle;
     match h.engine.archive_store().get(workflow_key) {
         Some(rec) => {
@@ -1694,9 +2347,15 @@ pub unsafe extern "C" fn velocity_engine_archive_delete(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.archive_store().delete(workflow_key) { 1 } else { 0 }
+    if h.engine.archive_store().delete(workflow_key) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -1704,7 +2363,9 @@ pub unsafe extern "C" fn velocity_engine_archive_count_by_status(
     handle: *mut EngineHandle,
     status: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let ws = match status {
         1 => crate::engine::WorkflowStatus::Running,
@@ -1732,7 +2393,9 @@ pub unsafe extern "C" fn velocity_engine_enqueue_replication(
     payload_len: u32,
     task_type: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let payload = if payload_ptr.is_null() || payload_len == 0 {
         Vec::new()
@@ -1751,14 +2414,21 @@ pub unsafe extern "C" fn velocity_engine_enqueue_replication(
         8 => crate::cluster::ReplicationTaskType::SyncVersionedTransition,
         _ => crate::cluster::ReplicationTaskType::SyncHistory,
     };
-    h.engine.cluster_manager().enqueue_replication(source_cluster_id, target_cluster_id, workflow_key, event_type, payload, tt)
+    h.engine.cluster_manager().enqueue_replication(
+        source_cluster_id,
+        target_cluster_id,
+        workflow_key,
+        event_type,
+        payload,
+        tt,
+    )
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_drain_replication_tasks(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_drain_replication_tasks(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.cluster_manager().drain_replication_tasks().len() as u64
 }
@@ -1769,7 +2439,9 @@ pub unsafe extern "C" fn velocity_engine_get_cluster_info(
     cluster_id: u64,
     out: *mut u64, // [0]=cluster_id, [1]=is_active, [2]=failover_version, [3]=replication_enabled
 ) -> u64 {
-    if handle.is_null() || out.is_null() { return 0; }
+    if handle.is_null() || out.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.cluster_manager().get_cluster(cluster_id) {
         Some(info) => {
@@ -1784,10 +2456,10 @@ pub unsafe extern "C" fn velocity_engine_get_cluster_info(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_local_cluster_id(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_local_cluster_id(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.cluster_manager().local_cluster_id()
 }
@@ -1795,10 +2467,10 @@ pub unsafe extern "C" fn velocity_engine_local_cluster_id(
 // ─── Sharding Enhanced (Batch 21) ───────────────────────────────────────
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_assigned_shard_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_assigned_shard_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.shard_manager().assigned_count() as u64
 }
@@ -1810,7 +2482,9 @@ pub unsafe extern "C" fn velocity_engine_get_shard_owner(
     out_ptr: *mut u8,
     out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_ptr.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || out_ptr.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
     match h.engine.shard_manager().get_owner(shard_id) {
         Some(owner) => {
@@ -1832,9 +2506,12 @@ pub unsafe extern "C" fn velocity_engine_get_shards_for_host(
     out_shards: *mut u32,
     out_count: *mut u32,
 ) -> u64 {
-    if handle.is_null() || host_ptr.is_null() || out_shards.is_null() || out_count.is_null() { return 0; }
+    if handle.is_null() || host_ptr.is_null() || out_shards.is_null() || out_count.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let host = std::str::from_utf8(std::slice::from_raw_parts(host_ptr, host_len as usize)).unwrap_or("");
+    let host =
+        std::str::from_utf8(std::slice::from_raw_parts(host_ptr, host_len as usize)).unwrap_or("");
     let shards = h.engine.shard_manager().get_shards_for_host(host);
     let max_count = *out_count as usize;
     let copy_count = shards.len().min(max_count);
@@ -1860,13 +2537,39 @@ pub unsafe extern "C" fn velocity_engine_nexus_start_operation(
     callback_ptr: *const u8,
     callback_len: u32,
 ) -> u64 {
-    if handle.is_null() || service_ptr.is_null() || operation_ptr.is_null() { return 0; }
+    if handle.is_null() || service_ptr.is_null() || operation_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let service = std::str::from_utf8(std::slice::from_raw_parts(service_ptr, service_len as usize)).unwrap_or("");
-    let operation = std::str::from_utf8(std::slice::from_raw_parts(operation_ptr, operation_len as usize)).unwrap_or("");
-    let input = if input_ptr.is_null() || input_len == 0 { None } else { Some(std::slice::from_raw_parts(input_ptr, input_len as usize).to_vec()) };
-    let callback = if callback_ptr.is_null() || callback_len == 0 { None } else { std::str::from_utf8(std::slice::from_raw_parts(callback_ptr, callback_len as usize)).ok().map(|s| s.to_string()) };
-    h.engine.nexus_manager().start_operation(service, operation, workflow_key, input, callback).unwrap_or(0)
+    let service = std::str::from_utf8(std::slice::from_raw_parts(
+        service_ptr,
+        service_len as usize,
+    ))
+    .unwrap_or("");
+    let operation = std::str::from_utf8(std::slice::from_raw_parts(
+        operation_ptr,
+        operation_len as usize,
+    ))
+    .unwrap_or("");
+    let input = if input_ptr.is_null() || input_len == 0 {
+        None
+    } else {
+        Some(std::slice::from_raw_parts(input_ptr, input_len as usize).to_vec())
+    };
+    let callback = if callback_ptr.is_null() || callback_len == 0 {
+        None
+    } else {
+        std::str::from_utf8(std::slice::from_raw_parts(
+            callback_ptr,
+            callback_len as usize,
+        ))
+        .ok()
+        .map(|s| s.to_string())
+    };
+    h.engine
+        .nexus_manager()
+        .start_operation(service, operation, workflow_key, input, callback)
+        .unwrap_or(0)
 }
 
 #[no_mangle]
@@ -1876,10 +2579,23 @@ pub unsafe extern "C" fn velocity_engine_nexus_complete_operation(
     result_ptr: *const u8,
     result_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let result = if result_ptr.is_null() || result_len == 0 { Vec::new() } else { std::slice::from_raw_parts(result_ptr, result_len as usize).to_vec() };
-    if h.engine.nexus_manager().complete_operation(operation_id, result) { 1 } else { 0 }
+    let result = if result_ptr.is_null() || result_len == 0 {
+        Vec::new()
+    } else {
+        std::slice::from_raw_parts(result_ptr, result_len as usize).to_vec()
+    };
+    if h.engine
+        .nexus_manager()
+        .complete_operation(operation_id, result)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -1887,9 +2603,15 @@ pub unsafe extern "C" fn velocity_engine_nexus_fail_operation(
     handle: *mut EngineHandle,
     operation_id: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.nexus_manager().fail_operation(operation_id) { 1 } else { 0 }
+    if h.engine.nexus_manager().fail_operation(operation_id) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -1898,7 +2620,9 @@ pub unsafe extern "C" fn velocity_engine_nexus_get_operation(
     operation_id: u64,
     out: *mut u64, // [0]=operation_id, [1]=workflow_key, [2]=state, [3]=has_result
 ) -> u64 {
-    if handle.is_null() || out.is_null() { return 0; }
+    if handle.is_null() || out.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.nexus_manager().get_operation(operation_id) {
         Some(op) => {
@@ -1917,18 +2641,37 @@ pub unsafe extern "C" fn velocity_engine_nexus_get_operation(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_signal_with_start(
     handle: *mut EngineHandle,
-    workflow_id: u64, workflow_type_id: u64, namespace_id: u64, task_queue_hash: u64, total_steps: u32,
+    workflow_id: u64,
+    workflow_type_id: u64,
+    namespace_id: u64,
+    task_queue_hash: u64,
+    total_steps: u32,
     signal_name_id: u64,
-    payload_ptr: *const u8, payload_len: u32,
+    payload_ptr: *const u8,
+    payload_len: u32,
     out_was_started: *mut u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let payload = if payload_ptr.is_null() || payload_len == 0 { Vec::new() } else {
+    let payload = if payload_ptr.is_null() || payload_len == 0 {
+        Vec::new()
+    } else {
         std::slice::from_raw_parts(payload_ptr, payload_len as usize).to_vec()
     };
-    let (key, was_started) = h.engine.signal_with_start(workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, signal_name_id, payload);
-    if !out_was_started.is_null() { *out_was_started = if was_started { 1 } else { 0 }; }
+    let (key, was_started) = h.engine.signal_with_start(
+        workflow_id,
+        workflow_type_id,
+        namespace_id,
+        task_queue_hash,
+        total_steps,
+        signal_name_id,
+        payload,
+    );
+    if !out_was_started.is_null() {
+        *out_was_started = if was_started { 1 } else { 0 };
+    }
     key
 }
 
@@ -1938,11 +2681,16 @@ pub unsafe extern "C" fn velocity_engine_signal_with_start(
 pub unsafe extern "C" fn velocity_engine_continue_as_new(
     handle: *mut EngineHandle,
     workflow_key: u64,
-    input_ptr: *const u8, input_len: u32,
+    input_ptr: *const u8,
+    input_len: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let input = if input_ptr.is_null() || input_len == 0 { None } else {
+    let input = if input_ptr.is_null() || input_len == 0 {
+        None
+    } else {
         Some(std::slice::from_raw_parts(input_ptr, input_len as usize).to_vec())
     };
     h.engine.continue_as_new(workflow_key, input)
@@ -1952,7 +2700,9 @@ pub unsafe extern "C" fn velocity_engine_continue_as_new(
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_codec_chain_len(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.codec_chain().codec_count() as u64
 }
@@ -1962,9 +2712,8 @@ pub unsafe extern "C" fn velocity_engine_codec_chain_len(handle: *mut EngineHand
 /// Callback type for listing workflow executions. Called once per workflow.
 /// Parameters: workflow_key, workflow_id, run_id, workflow_type_id, namespace_id,
 ///             status, start_time_ms, close_time_ms, task_queue_hash, user_data
-type WorkflowInfoCallback = unsafe extern "C" fn(
-    u64, u64, u64, u64, u64, u32, u64, i64, u64, *mut std::ffi::c_void,
-);
+type WorkflowInfoCallback =
+    unsafe extern "C" fn(u64, u64, u64, u64, u64, u32, u64, i64, u64, *mut std::ffi::c_void);
 
 /// List workflows, optionally filtered by namespace_id (u64::MAX = all).
 /// Calls the callback once per matching workflow.
@@ -1976,7 +2725,9 @@ pub unsafe extern "C" fn velocity_engine_list_workflows(
     callback: WorkflowInfoCallback,
     user_data: *mut std::ffi::c_void,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let vis = h.engine.visibility();
 
@@ -2007,11 +2758,19 @@ pub unsafe extern "C" fn velocity_engine_list_workflows(
     let count = infos.len() as u64;
     for info in &infos {
         callback(
-            info.workflow_key, info.workflow_id, info.run_id,
-            info.workflow_type_id, info.namespace_id,
-            info.status as u32, info.start_time_ms,
-            match info.close_time_ms { Some(t) => t as i64, None => -1i64 },
-            info.task_queue_hash, user_data,
+            info.workflow_key,
+            info.workflow_id,
+            info.run_id,
+            info.workflow_type_id,
+            info.namespace_id,
+            info.status as u32,
+            info.start_time_ms,
+            match info.close_time_ms {
+                Some(t) => t as i64,
+                None => -1i64,
+            },
+            info.task_queue_hash,
+            user_data,
         );
     }
     count
@@ -2022,17 +2781,25 @@ pub unsafe extern "C" fn velocity_engine_list_workflows(
 pub unsafe extern "C" fn velocity_engine_set_search_attribute(
     handle: *mut EngineHandle,
     workflow_key: u64,
-    key_ptr: *const u8, key_len: u32,
-    val_ptr: *const u8, val_len: u32,
+    key_ptr: *const u8,
+    key_len: u32,
+    val_ptr: *const u8,
+    val_len: u32,
 ) -> i32 {
-    if handle.is_null() || key_ptr.is_null() { return -1; }
+    if handle.is_null() || key_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    let val = if val_ptr.is_null() || val_len == 0 { "" } else {
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    let val = if val_ptr.is_null() || val_len == 0 {
+        ""
+    } else {
         std::str::from_utf8(std::slice::from_raw_parts(val_ptr, val_len as usize)).unwrap_or("")
     };
     h.engine.visibility().set_search_attribute(
-        workflow_key, key.to_string(),
+        workflow_key,
+        key.to_string(),
         crate::visibility::SearchAttributeValue::String(val.to_string()),
     );
     0
@@ -2046,9 +2813,12 @@ pub unsafe extern "C" fn velocity_engine_complete_activity(
     handle: *mut EngineHandle,
     workflow_key: u64,
     step: u32,
-    result_ptr: *const u8, result_len: u32,
+    result_ptr: *const u8,
+    result_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let result = if result_ptr.is_null() || result_len == 0 {
         Vec::new()
@@ -2066,7 +2836,9 @@ pub unsafe extern "C" fn velocity_engine_fail_activity(
     workflow_key: u64,
     step: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     // For now, failing an activity fails the workflow (no retry logic at engine level yet)
     h.engine.fail_workflow(workflow_key);
@@ -2077,9 +2849,7 @@ pub unsafe extern "C" fn velocity_engine_fail_activity(
 
 /// Callback type for event history entries.
 /// Parameters: event_id, event_type, payload_ptr, payload_len, user_data
-type HistoryEventCallback = unsafe extern "C" fn(
-    u64, u32, *const u8, u32, *mut std::ffi::c_void,
-);
+type HistoryEventCallback = unsafe extern "C" fn(u64, u32, *const u8, u32, *mut std::ffi::c_void);
 
 /// Get the event history for a workflow. Calls the callback for each event.
 #[no_mangle]
@@ -2089,9 +2859,15 @@ pub unsafe extern "C" fn velocity_engine_get_event_history(
     callback: HistoryEventCallback,
     user_data: *mut std::ffi::c_void,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let events = h.engine.history_store().get_history(workflow_key).unwrap_or_default();
+    let events = h
+        .engine
+        .history_store()
+        .get_history(workflow_key)
+        .unwrap_or_default();
     let count = events.len() as u64;
     for (i, event) in events.iter().enumerate() {
         let payload_ptr = if event.payload.is_empty() {
@@ -2122,7 +2898,9 @@ pub unsafe extern "C" fn velocity_engine_metrics_export(
     callback: MetricsExportCallback,
     user_data: *mut std::ffi::c_void,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let text = h.engine.metrics_registry().export_prometheus();
     let bytes = text.as_bytes();
@@ -2132,39 +2910,57 @@ pub unsafe extern "C" fn velocity_engine_metrics_export(
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_metrics_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.metrics_registry().metric_count() as u64
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_inc_counter(
-    handle: *mut EngineHandle, name_ptr: *const u8, name_len: u32,
+    handle: *mut EngineHandle,
+    name_ptr: *const u8,
+    name_len: u32,
 ) -> i32 {
-    if handle.is_null() || name_ptr.is_null() { return -1; }
+    if handle.is_null() || name_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
     h.engine.metrics_registry().inc_counter(name);
     0
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_get_counter(
-    handle: *mut EngineHandle, name_ptr: *const u8, name_len: u32,
+    handle: *mut EngineHandle,
+    name_ptr: *const u8,
+    name_len: u32,
 ) -> u64 {
-    if handle.is_null() || name_ptr.is_null() { return 0; }
+    if handle.is_null() || name_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
     h.engine.metrics_registry().get_counter(name)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_set_gauge(
-    handle: *mut EngineHandle, name_ptr: *const u8, name_len: u32, value: i64,
+    handle: *mut EngineHandle,
+    name_ptr: *const u8,
+    name_len: u32,
+    value: i64,
 ) -> i32 {
-    if handle.is_null() || name_ptr.is_null() { return -1; }
+    if handle.is_null() || name_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
+    let name =
+        std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("");
     h.engine.metrics_registry().set_gauge(name, value);
     0
 }
@@ -2177,48 +2973,80 @@ type SagaStepCallback = unsafe extern "C" fn(u32, *const u8, u32, u64, u64, *mut
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_create_saga(
-    handle: *mut EngineHandle, workflow_key: u64, step_count: u32,
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+    step_count: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     // Create a saga with placeholder steps (real step definitions come from C#)
     let mut steps = Vec::new();
     for i in 0..step_count {
         steps.push(crate::saga::SagaStepDefinition::new(
-            &format!("step_{}", i), i as u64
+            &format!("step_{}", i),
+            i as u64,
         ));
     }
-    h.engine.saga_orchestrator().create_saga(workflow_key, steps)
+    h.engine
+        .saga_orchestrator()
+        .create_saga(workflow_key, steps)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_complete_saga_step(
-    handle: *mut EngineHandle, saga_id: u64, step_index: u32,
+    handle: *mut EngineHandle,
+    saga_id: u64,
+    step_index: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.saga_orchestrator().complete_step(saga_id, step_index as usize, None) { 0 } else { -1 }
+    if h.engine
+        .saga_orchestrator()
+        .complete_step(saga_id, step_index as usize, None)
+    {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_fail_saga_step(
-    handle: *mut EngineHandle, saga_id: u64, step_index: u32,
+    handle: *mut EngineHandle,
+    saga_id: u64,
+    step_index: u32,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().fail_step(saga_id, step_index as usize).len() as u32
+    h.engine
+        .saga_orchestrator()
+        .fail_step(saga_id, step_index as usize)
+        .len() as u32
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_saga_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.saga_orchestrator().saga_count() as u64
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_saga_status(handle: *mut EngineHandle, saga_id: u64) -> i32 {
-    if handle.is_null() { return -1; }
+pub unsafe extern "C" fn velocity_engine_saga_status(
+    handle: *mut EngineHandle,
+    saga_id: u64,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     match h.engine.saga_orchestrator().get_saga(saga_id) {
         Some(s) => match s.status {
@@ -2238,34 +3066,53 @@ pub unsafe extern "C" fn velocity_engine_saga_status(handle: *mut EngineHandle, 
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_create_partition(
-    handle: *mut EngineHandle, task_queue_hash: u64,
+    handle: *mut EngineHandle,
+    task_queue_hash: u64,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.partition_manager().create_partition(task_queue_hash)
+    h.engine
+        .partition_manager()
+        .create_partition(task_queue_hash)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_set_partition_forwarding(
-    handle: *mut EngineHandle, from: u32, to: u32, rate: f64,
+    handle: *mut EngineHandle,
+    from: u32,
+    to: u32,
+    rate: f64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    if h.engine.partition_manager().set_forwarding(from, to, rate) { 0 } else { -1 }
+    if h.engine.partition_manager().set_forwarding(from, to, rate) {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_partition_count(handle: *mut EngineHandle) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.partition_manager().partition_count() as u32
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_partition_pending(
-    handle: *mut EngineHandle, task_queue_hash: u64,
+    handle: *mut EngineHandle,
+    task_queue_hash: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.partition_manager().total_pending(task_queue_hash) as u64
 }
@@ -2278,9 +3125,15 @@ pub unsafe extern "C" fn velocity_engine_partition_describe(
     partition_id: u32,
     out_fields: *mut u64,
 ) -> i32 {
-    if handle.is_null() || out_fields.is_null() { return 0; }
+    if handle.is_null() || out_fields.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    match h.engine.partition_manager().describe_partition(partition_id) {
+    match h
+        .engine
+        .partition_manager()
+        .describe_partition(partition_id)
+    {
         Some(info) => {
             let fields = std::slice::from_raw_parts_mut(out_fields, 6);
             fields[0] = info.partition_id as u64;
@@ -2299,7 +3152,9 @@ pub unsafe extern "C" fn velocity_engine_partition_describe(
 /// Get partition count.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_partition_count_v2(handle: *mut EngineHandle) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.partition_manager().partition_count() as u32
 }
@@ -2311,7 +3166,9 @@ pub unsafe extern "C" fn velocity_engine_partition_ids(
     out_ids: *mut u32,
     max_count: u32,
 ) -> u32 {
-    if handle.is_null() || out_ids.is_null() { return 0; }
+    if handle.is_null() || out_ids.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let ids = h.engine.partition_manager().partition_ids();
     let out = std::slice::from_raw_parts_mut(out_ids, max_count as usize);
@@ -2331,14 +3188,19 @@ pub unsafe extern "C" fn velocity_engine_replay(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let result = h.engine.replay_engine().replay_from_store(
-        workflow_key,
-        h.engine.history_store(),
-        None,
-    );
-    if result.success { 1 } else { 0 }
+    let result =
+        h.engine
+            .replay_engine()
+            .replay_from_store(workflow_key, h.engine.history_store(), None);
+    if result.success {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get the replayed status for a workflow after replay.
@@ -2348,9 +3210,12 @@ pub unsafe extern "C" fn velocity_engine_replay_status(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.replay_engine()
+    h.engine
+        .replay_engine()
         .get_cached(workflow_key)
         .map(|r| r.status as i32)
         .unwrap_or(-1)
@@ -2362,9 +3227,12 @@ pub unsafe extern "C" fn velocity_engine_replay_step_count(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.replay_engine()
+    h.engine
+        .replay_engine()
         .get_cached(workflow_key)
         .map(|r| r.step_results.len() as u32)
         .unwrap_or(0)
@@ -2376,9 +3244,12 @@ pub unsafe extern "C" fn velocity_engine_replay_event_count(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.replay_engine()
+    h.engine
+        .replay_engine()
         .get_cached(workflow_key)
         .map(|r| r.events_replayed as u32)
         .unwrap_or(0)
@@ -2391,18 +3262,31 @@ pub unsafe extern "C" fn velocity_engine_verify_determinism(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let history = h.engine.history_store().get_history(workflow_key).unwrap_or_default();
-    if h.engine.replay_engine().verify_determinism(workflow_key, &history) { 1 } else { 0 }
+    let history = h
+        .engine
+        .history_store()
+        .get_history(workflow_key)
+        .unwrap_or_default();
+    if h.engine
+        .replay_engine()
+        .verify_determinism(workflow_key, &history)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get the total number of replays performed.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_replay_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_replay_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.replay_engine().total_replays()
 }
@@ -2414,24 +3298,33 @@ pub unsafe extern "C" fn velocity_engine_replay_count(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_authorize(
     handle: *mut EngineHandle,
-    subject_ptr: *const u8, subject_len: u32,
+    subject_ptr: *const u8,
+    subject_len: u32,
     namespace_id: u64,
-    roles_ptr: *const u8, roles_len: u32,
+    roles_ptr: *const u8,
+    roles_len: u32,
     permission: u32,
 ) -> i32 {
-    if handle.is_null() || subject_ptr.is_null() || roles_ptr.is_null() { return 0; }
+    if handle.is_null() || subject_ptr.is_null() || roles_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    
-    let subject = std::str::from_utf8(std::slice::from_raw_parts(subject_ptr, subject_len as usize)).unwrap_or("");
-    let roles_str = std::str::from_utf8(std::slice::from_raw_parts(roles_ptr, roles_len as usize)).unwrap_or("");
+
+    let subject = std::str::from_utf8(std::slice::from_raw_parts(
+        subject_ptr,
+        subject_len as usize,
+    ))
+    .unwrap_or("");
+    let roles_str = std::str::from_utf8(std::slice::from_raw_parts(roles_ptr, roles_len as usize))
+        .unwrap_or("");
     let roles: Vec<String> = roles_str.split(',').map(|s| s.trim().to_string()).collect();
-    
+
     let claims = crate::auth::Claims {
         subject: subject.to_string(),
         namespace_id,
         roles,
     };
-    
+
     let perm = match permission {
         0 => crate::auth::Permission::StartWorkflow,
         1 => crate::auth::Permission::SignalWorkflow,
@@ -2447,16 +3340,20 @@ pub unsafe extern "C" fn velocity_engine_authorize(
         11 => crate::auth::Permission::AdminAccess,
         _ => return 0,
     };
-    
-    if h.engine.auth_manager().authorize(&claims, &perm) { 1 } else { 0 }
+
+    if h.engine.auth_manager().authorize(&claims, &perm) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get the number of registered roles.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_role_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_role_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.auth_manager().role_count() as u64
 }
@@ -2469,9 +3366,13 @@ pub unsafe extern "C" fn velocity_engine_set_rate_limit(
     rate: f64,
     capacity: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.rate_limiter().set_namespace_limit(namespace_id, rate, capacity);
+    h.engine
+        .rate_limiter()
+        .set_namespace_limit(namespace_id, rate, capacity);
     0
 }
 
@@ -2491,7 +3392,9 @@ pub unsafe extern "C" fn velocity_engine_schedule_activity_with_timeouts(
     schedule_to_close_ms: u64,
     heartbeat_ms: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let args = if args_ptr.is_null() || args_len == 0 {
         Vec::new()
@@ -2499,28 +3402,34 @@ pub unsafe extern "C" fn velocity_engine_schedule_activity_with_timeouts(
         std::slice::from_raw_parts(args_ptr, args_len as usize).to_vec()
     };
     h.engine.schedule_activity_with_timeouts(
-        workflow_key, step, activity_name_id, args,
-        schedule_to_start_ms, start_to_close_ms, schedule_to_close_ms, heartbeat_ms
+        workflow_key,
+        step,
+        activity_name_id,
+        args,
+        schedule_to_start_ms,
+        start_to_close_ms,
+        schedule_to_close_ms,
+        heartbeat_ms,
     );
     0
 }
 
 /// Check activity timeouts. Returns the number of timed-out activities.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_check_activity_timeouts(
-    handle: *mut EngineHandle,
-) -> u32 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_check_activity_timeouts(handle: *mut EngineHandle) -> u32 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.check_activity_timeouts().len() as u32
 }
 
 /// Check workflow timeouts. Returns the number of timed-out workflows.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_check_workflow_timeouts(
-    handle: *mut EngineHandle,
-) -> u32 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_check_workflow_timeouts(handle: *mut EngineHandle) -> u32 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.check_workflow_timeouts()
 }
@@ -2532,9 +3441,12 @@ pub unsafe extern "C" fn velocity_engine_set_workflow_timeout(
     workflow_key: u64,
     timeout_ms: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.set_workflow_execution_timeout(workflow_key, timeout_ms);
+    h.engine
+        .set_workflow_execution_timeout(workflow_key, timeout_ms);
     0
 }
 
@@ -2547,7 +3459,9 @@ pub unsafe extern "C" fn velocity_engine_apply_parent_close_policy(
     parent_key: u64,
     policy: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let p = match policy {
         0 => crate::engine::ParentClosePolicy::Terminate,
@@ -2568,9 +3482,15 @@ pub unsafe extern "C" fn velocity_engine_fail_activity_with_retry(
     workflow_key: u64,
     step: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.fail_activity_with_retry(workflow_key, step) { 1 } else { 0 }
+    if h.engine.fail_activity_with_retry(workflow_key, step) {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Query Dispatch ─────────────────────────────────────────────────────────
@@ -2586,7 +3506,9 @@ pub unsafe extern "C" fn velocity_engine_execute_query(
     output_ptr: *mut u8,
     output_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let input = if input_ptr.is_null() || input_len == 0 {
         &[]
@@ -2612,9 +3534,15 @@ pub unsafe extern "C" fn velocity_engine_reset_workflow(
     workflow_key: u64,
     reset_to_event_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.reset_workflow(workflow_key, reset_to_event_id) { 1 } else { 0 }
+    if h.engine.reset_workflow(workflow_key, reset_to_event_id) {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Visibility SQL Query ───────────────────────────────────────────────────
@@ -2629,10 +3557,13 @@ pub unsafe extern "C" fn velocity_engine_execute_visibility_query(
     callback: crate::ffi::WorkflowInfoCallback,
     user_data: *mut std::ffi::c_void,
 ) -> u64 {
-    if handle.is_null() || query_ptr.is_null() { return 0; }
+    if handle.is_null() || query_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let query_str = std::str::from_utf8(std::slice::from_raw_parts(query_ptr, query_len as usize)).unwrap_or("");
-    
+    let query_str = std::str::from_utf8(std::slice::from_raw_parts(query_ptr, query_len as usize))
+        .unwrap_or("");
+
     match crate::visibility_query::VisibilityQuery::parse(query_str) {
         Ok(query) => {
             let results = query.execute(h.engine.visibility());
@@ -2659,7 +3590,8 @@ pub unsafe extern "C" fn velocity_engine_execute_visibility_query(
 // ─── Namespace Listing ────────────────────────────────────────────────────────
 
 /// Callback for listing namespaces: (id, name_ptr, name_len, is_active, retention_secs)
-type NamespaceInfoCallback = unsafe extern "C" fn(u64, *const u8, u32, u32, u64, *mut std::ffi::c_void);
+type NamespaceInfoCallback =
+    unsafe extern "C" fn(u64, *const u8, u32, u32, u64, *mut std::ffi::c_void);
 
 /// List all registered namespaces via callback.
 #[no_mangle]
@@ -2668,7 +3600,9 @@ pub unsafe extern "C" fn velocity_engine_list_namespaces(
     callback: NamespaceInfoCallback,
     user_data: *mut std::ffi::c_void,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let namespaces = h.engine.namespaces().list();
     for ns in &namespaces {
@@ -2696,7 +3630,9 @@ pub unsafe extern "C" fn velocity_engine_export_metrics(
     out_cap: u32,
     out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_ptr.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || out_ptr.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let prometheus_text = h.engine.metrics_registry().export_prometheus();
     let bytes = prometheus_text.as_bytes();
@@ -2722,12 +3658,16 @@ pub unsafe extern "C" fn velocity_engine_describe_workflow(
     out_cap: u32,
     out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_ptr.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || out_ptr.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     // Get workflow context
     let status = h.engine.get_status(workflow_key);
-    if status as i32 == 0 { return -2; } // not found
+    if status as i32 == 0 {
+        return -2;
+    } // not found
 
     let total_steps = h.engine.get_total_steps(workflow_key);
     let event_seq = h.engine.get_event_sequence(workflow_key);
@@ -2744,7 +3684,14 @@ pub unsafe extern "C" fn velocity_engine_describe_workflow(
     let vis_info = h.engine.visibility().get(workflow_key);
     let (start_time_ms, close_time_ms, has_close, workflow_type_id, namespace_id, task_queue_hash) =
         match &vis_info {
-            Some(info) => (info.start_time_ms, info.close_time_ms.unwrap_or(0), info.close_time_ms.is_some() as u8, info.workflow_type_id, info.namespace_id, info.task_queue_hash),
+            Some(info) => (
+                info.start_time_ms,
+                info.close_time_ms.unwrap_or(0),
+                info.close_time_ms.is_some() as u8,
+                info.workflow_type_id,
+                info.namespace_id,
+                info.task_queue_hash,
+            ),
             None => (0u64, 0u64, 0u8, 0u64, 0u64, 0u64),
         };
 
@@ -2762,7 +3709,10 @@ pub unsafe extern "C" fn velocity_engine_describe_workflow(
     buf.extend_from_slice(&task_queue_hash.to_le_bytes());
 
     // Search attributes from visibility
-    let search_attr_count = vis_info.as_ref().map(|v| v.search_attributes.len() as u32).unwrap_or(0);
+    let search_attr_count = vis_info
+        .as_ref()
+        .map(|v| v.search_attributes.len() as u32)
+        .unwrap_or(0);
     buf.extend_from_slice(&search_attr_count.to_le_bytes());
     if let Some(info) = &vis_info {
         for (key, val) in &info.search_attributes {
@@ -2826,10 +3776,16 @@ pub unsafe extern "C" fn velocity_engine_describe_partition(
     out_cap: u32,
     out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_ptr.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || out_ptr.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
-    let info = match h.engine.partition_manager().describe_partition(partition_id) {
+    let info = match h
+        .engine
+        .partition_manager()
+        .describe_partition(partition_id)
+    {
         Some(i) => i,
         None => return -2,
     };
@@ -2840,8 +3796,14 @@ pub unsafe extern "C" fn velocity_engine_describe_partition(
     buf.extend_from_slice(&info.pending_tasks.to_le_bytes());
     buf.extend_from_slice(&info.worker_count.to_le_bytes());
     match info.parent_partition {
-        Some(pid) => { buf.push(1); buf.extend_from_slice(&pid.to_le_bytes()); }
-        None => { buf.push(0); buf.extend_from_slice(&0u32.to_le_bytes()); }
+        Some(pid) => {
+            buf.push(1);
+            buf.extend_from_slice(&pid.to_le_bytes());
+        }
+        None => {
+            buf.push(0);
+            buf.extend_from_slice(&0u32.to_le_bytes());
+        }
     }
     buf.extend_from_slice(&info.forward_rate.to_le_bytes());
 
@@ -2862,7 +3824,9 @@ pub unsafe extern "C" fn velocity_engine_archive_workflow(
     base_dir_ptr: *const u8,
     base_dir_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     let base_dir = if base_dir_ptr.is_null() || base_dir_len == 0 {
@@ -2879,14 +3843,20 @@ pub unsafe extern "C" fn velocity_engine_archive_workflow(
 
     // Build a cold storage record from the workflow context
     let status = h.engine.get_status(workflow_key);
-    if status as i32 == 0 { return -3; } // not found
+    if status as i32 == 0 {
+        return -3;
+    } // not found
 
     let vis_info = h.engine.visibility().get(workflow_key);
-    let (workflow_id, run_id, workflow_type_id, namespace_id) =
-        match &vis_info {
-            Some(info) => (info.workflow_id, info.run_id, info.workflow_type_id, info.namespace_id),
-            None => return -4,
-        };
+    let (workflow_id, run_id, workflow_type_id, namespace_id) = match &vis_info {
+        Some(info) => (
+            info.workflow_id,
+            info.run_id,
+            info.workflow_type_id,
+            info.namespace_id,
+        ),
+        None => return -4,
+    };
 
     // Collect step results
     let total_steps = h.engine.get_total_steps(workflow_key);
@@ -2930,7 +3900,9 @@ pub unsafe extern "C" fn velocity_engine_retrieve_workflow(
     base_dir_len: u32,
     out_status: *mut u8,
 ) -> i32 {
-    if handle.is_null() || out_status.is_null() { return -1; }
+    if handle.is_null() || out_status.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     let base_dir = if base_dir_ptr.is_null() || base_dir_len == 0 {
@@ -2962,7 +3934,9 @@ pub unsafe extern "C" fn velocity_engine_cold_storage_count(
     base_dir_ptr: *const u8,
     base_dir_len: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let _h = &*handle;
 
     let base_dir = if base_dir_ptr.is_null() || base_dir_len == 0 {
@@ -2990,7 +3964,9 @@ pub unsafe extern "C" fn velocity_engine_cold_storage_list_keys(
     callback: unsafe extern "C" fn(u64, *mut std::ffi::c_void),
     user_data: *mut std::ffi::c_void,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let _h = &*handle;
 
     let base_dir = if base_dir_ptr.is_null() || base_dir_len == 0 {
@@ -3020,12 +3996,19 @@ pub unsafe extern "C" fn velocity_engine_cold_storage_list_keys(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_codec_encode(
     handle: *mut EngineHandle,
-    in_ptr: *const u8, in_len: u32,
-    out_ptr: *mut u8, out_cap: u32, out_len: *mut u32,
+    in_ptr: *const u8,
+    in_len: u32,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let input = if in_ptr.is_null() || in_len == 0 { &[] as &[u8] } else {
+    let input = if in_ptr.is_null() || in_len == 0 {
+        &[] as &[u8]
+    } else {
         std::slice::from_raw_parts(in_ptr, in_len as usize)
     };
     match h.engine.codec_chain().encode(input) {
@@ -3046,12 +4029,19 @@ pub unsafe extern "C" fn velocity_engine_codec_encode(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_codec_decode(
     handle: *mut EngineHandle,
-    in_ptr: *const u8, in_len: u32,
-    out_ptr: *mut u8, out_cap: u32, out_len: *mut u32,
+    in_ptr: *const u8,
+    in_len: u32,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_len.is_null() { return -1; }
+    if handle.is_null() || out_len.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let input = if in_ptr.is_null() || in_len == 0 { &[] as &[u8] } else {
+    let input = if in_ptr.is_null() || in_len == 0 {
+        &[] as &[u8]
+    } else {
         std::slice::from_raw_parts(in_ptr, in_len as usize)
     };
     match h.engine.codec_chain().decode(input) {
@@ -3072,22 +4062,33 @@ pub unsafe extern "C" fn velocity_engine_codec_decode(
 /// Mark a saga compensation step as completed.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_complete_saga_compensation(
-    handle: *mut EngineHandle, saga_id: u64, step_index: u32,
+    handle: *mut EngineHandle,
+    saga_id: u64,
+    step_index: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().complete_compensation(saga_id, step_index as usize);
+    h.engine
+        .saga_orchestrator()
+        .complete_compensation(saga_id, step_index as usize);
     0
 }
 
 /// Get the number of steps in a saga.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_saga_step_count(
-    handle: *mut EngineHandle, saga_id: u64,
+    handle: *mut EngineHandle,
+    saga_id: u64,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().get_saga(saga_id)
+    h.engine
+        .saga_orchestrator()
+        .get_saga(saga_id)
         .map(|s| s.steps.len() as u32)
         .unwrap_or(0)
 }
@@ -3096,11 +4097,17 @@ pub unsafe extern "C" fn velocity_engine_saga_step_count(
 /// Returns: 0=Pending, 1=Running, 2=Completed, 3=Failed, 4=Compensating, 5=Compensated, 6=CompensationFailed
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_saga_step_status(
-    handle: *mut EngineHandle, saga_id: u64, step_index: u32,
+    handle: *mut EngineHandle,
+    saga_id: u64,
+    step_index: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().get_saga(saga_id)
+    h.engine
+        .saga_orchestrator()
+        .get_saga(saga_id)
         .and_then(|s| s.steps.get(step_index as usize).cloned())
         .map(|step| match step.status {
             crate::saga::SagaStepStatus::Pending => 0,
@@ -3117,11 +4124,16 @@ pub unsafe extern "C" fn velocity_engine_saga_step_status(
 /// Get the current step index being executed in a saga.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_saga_current_step(
-    handle: *mut EngineHandle, saga_id: u64,
+    handle: *mut EngineHandle,
+    saga_id: u64,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().get_saga(saga_id)
+    h.engine
+        .saga_orchestrator()
+        .get_saga(saga_id)
         .map(|s| s.current_step as u32)
         .unwrap_or(0)
 }
@@ -3134,9 +4146,12 @@ pub unsafe extern "C" fn velocity_engine_saga_current_step(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_wal_recover(
     handle: *mut EngineHandle,
-    wal_path_ptr: *const u8, wal_path_len: u32,
+    wal_path_ptr: *const u8,
+    wal_path_len: u32,
 ) -> i64 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
 
     let wal_path = if wal_path_ptr.is_null() || wal_path_len == 0 {
@@ -3162,19 +4177,32 @@ pub unsafe extern "C" fn velocity_engine_wal_recover(
         match record.event_type {
             crate::wal::WalEventType::WorkflowStarted => {
                 if record.data.len() >= 32 {
-                    let workflow_id = u64::from_le_bytes(record.data[0..8].try_into().unwrap_or([0;8]));
-                    let workflow_type_id = u64::from_le_bytes(record.data[8..16].try_into().unwrap_or([0;8]));
-                    let namespace_id = u64::from_le_bytes(record.data[16..24].try_into().unwrap_or([0;8]));
-                    let task_queue_hash = u64::from_le_bytes(record.data[24..32].try_into().unwrap_or([0;8]));
+                    let workflow_id =
+                        u64::from_le_bytes(record.data[0..8].try_into().unwrap_or([0; 8]));
+                    let workflow_type_id =
+                        u64::from_le_bytes(record.data[8..16].try_into().unwrap_or([0; 8]));
+                    let namespace_id =
+                        u64::from_le_bytes(record.data[16..24].try_into().unwrap_or([0; 8]));
+                    let task_queue_hash =
+                        u64::from_le_bytes(record.data[24..32].try_into().unwrap_or([0; 8]));
                     let total_steps = if record.data.len() >= 36 {
-                        u32::from_le_bytes(record.data[32..36].try_into().unwrap_or([0;4]))
-                    } else { 1 };
-                    h.engine.start_workflow(workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, None);
+                        u32::from_le_bytes(record.data[32..36].try_into().unwrap_or([0; 4]))
+                    } else {
+                        1
+                    };
+                    h.engine.start_workflow(
+                        workflow_id,
+                        workflow_type_id,
+                        namespace_id,
+                        task_queue_hash,
+                        total_steps,
+                        None,
+                    );
                 }
             }
             crate::wal::WalEventType::StepCompleted => {
                 if record.data.len() >= 4 {
-                    let step = u32::from_le_bytes(record.data[0..4].try_into().unwrap_or([0;4]));
+                    let step = u32::from_le_bytes(record.data[0..4].try_into().unwrap_or([0; 4]));
                     let result = if record.data.len() > 4 {
                         record.data[4..].to_vec()
                     } else {
@@ -3184,7 +4212,11 @@ pub unsafe extern "C" fn velocity_engine_wal_recover(
                 }
             }
             crate::wal::WalEventType::WorkflowCompleted => {
-                let result = if record.data.is_empty() { None } else { Some(record.data.clone()) };
+                let result = if record.data.is_empty() {
+                    None
+                } else {
+                    Some(record.data.clone())
+                };
                 h.engine.complete_workflow(record.workflow_key, result);
             }
             crate::wal::WalEventType::WorkflowFailed => {
@@ -3198,13 +4230,15 @@ pub unsafe extern "C" fn velocity_engine_wal_recover(
             }
             crate::wal::WalEventType::SignalReceived => {
                 if record.data.len() >= 8 {
-                    let signal_name_id = u64::from_le_bytes(record.data[0..8].try_into().unwrap_or([0;8]));
+                    let signal_name_id =
+                        u64::from_le_bytes(record.data[0..8].try_into().unwrap_or([0; 8]));
                     let payload = if record.data.len() > 8 {
                         record.data[8..].to_vec()
                     } else {
                         vec![]
                     };
-                    h.engine.signal_workflow(record.workflow_key, signal_name_id, payload);
+                    h.engine
+                        .signal_workflow(record.workflow_key, signal_name_id, payload);
                 }
             }
             _ => {} // Timer, Activity, Child events handled by other recovery paths
@@ -3229,15 +4263,22 @@ pub unsafe extern "C" fn velocity_engine_get_history_page(
     out_cap: u32,
     out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_ptr.is_null() { return -1; }
+    if handle.is_null() || out_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    let events = h.engine.history_store().get_history_page(workflow_key, start_event_id, max_count as usize);
-    
+    let events =
+        h.engine
+            .history_store()
+            .get_history_page(workflow_key, start_event_id, max_count as usize);
+
     let mut pos = 0u32;
     for event in &events {
         let needed = 8 + 4 + 8 + 4 + event.payload.len() as u32;
-        if pos + needed > out_cap { break; }
-        
+        if pos + needed > out_cap {
+            break;
+        }
+
         // event_id
         (out_ptr.add(pos as usize) as *mut u64).write(event.event_id);
         pos += 8;
@@ -3252,11 +4293,15 @@ pub unsafe extern "C" fn velocity_engine_get_history_page(
         (out_ptr.add(pos as usize) as *mut u32).write(plen);
         pos += 4;
         if plen > 0 {
-            std::ptr::copy_nonoverlapping(event.payload.as_ptr(), out_ptr.add(pos as usize), plen as usize);
+            std::ptr::copy_nonoverlapping(
+                event.payload.as_ptr(),
+                out_ptr.add(pos as usize),
+                plen as usize,
+            );
             pos += plen;
         }
     }
-    
+
     *out_len = pos;
     events.len() as i32
 }
@@ -3272,31 +4317,39 @@ pub unsafe extern "C" fn velocity_engine_get_history_event(
     out_cap: u32,
     out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || out_ptr.is_null() { return -1; }
+    if handle.is_null() || out_ptr.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let history = h.engine.history_store().get_history(workflow_key);
     match history {
-        Some(events) => {
-            match events.iter().find(|e| e.event_id == event_id) {
-                Some(event) => {
-                    let copy_len = std::cmp::min(event.payload.len() as u32, out_cap);
-                    if copy_len > 0 {
-                        std::ptr::copy_nonoverlapping(event.payload.as_ptr(), out_ptr, copy_len as usize);
-                    }
-                    *out_len = copy_len;
-                    event.event_type as i32
+        Some(events) => match events.iter().find(|e| e.event_id == event_id) {
+            Some(event) => {
+                let copy_len = std::cmp::min(event.payload.len() as u32, out_cap);
+                if copy_len > 0 {
+                    std::ptr::copy_nonoverlapping(
+                        event.payload.as_ptr(),
+                        out_ptr,
+                        copy_len as usize,
+                    );
                 }
-                None => -1,
+                *out_len = copy_len;
+                event.event_type as i32
             }
-        }
+            None => -1,
+        },
         None => -1,
     }
 }
 
 /// Get total event count across all workflows in the history store.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_total_history_event_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_total_history_event_count(
+    handle: *mut EngineHandle,
+) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     // Sum event counts across all workflow histories
     let store = h.engine.history_store();
@@ -3311,7 +4364,9 @@ pub unsafe extern "C" fn velocity_engine_latest_reset_event_id(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i64 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     match h.engine.workflow_resetter().get_latest_reset(workflow_key) {
         Some(rp) => rp.reset_to_event_id as i64,
@@ -3322,7 +4377,9 @@ pub unsafe extern "C" fn velocity_engine_latest_reset_event_id(
 /// Get total reset count across all workflows.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_total_reset_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.workflow_resetter().total_reset_count()
 }
@@ -3335,9 +4392,13 @@ pub unsafe extern "C" fn velocity_engine_saga_workflow_key(
     handle: *mut EngineHandle,
     saga_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().get_saga(saga_id)
+    h.engine
+        .saga_orchestrator()
+        .get_saga(saga_id)
         .map(|e| e.workflow_key)
         .unwrap_or(0)
 }
@@ -3348,9 +4409,13 @@ pub unsafe extern "C" fn velocity_engine_saga_overall_status(
     handle: *mut EngineHandle,
     saga_id: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().get_saga(saga_id)
+    h.engine
+        .saga_orchestrator()
+        .get_saga(saga_id)
         .map(|e| e.status as i32)
         .unwrap_or(-1)
 }
@@ -3364,14 +4429,23 @@ pub unsafe extern "C" fn velocity_engine_saga_complete_step(
     result_ptr: *const u8,
     result_len: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let result = if result_ptr.is_null() || result_len == 0 {
         None
     } else {
         Some(std::slice::from_raw_parts(result_ptr, result_len as usize).to_vec())
     };
-    if h.engine.saga_orchestrator().complete_step(saga_id, step_index as usize, result) { 1 } else { 0 }
+    if h.engine
+        .saga_orchestrator()
+        .complete_step(saga_id, step_index as usize, result)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 /// Fail a saga step. Returns the number of compensation steps triggered.
@@ -3381,9 +4455,14 @@ pub unsafe extern "C" fn velocity_engine_saga_fail_step(
     saga_id: u64,
     step_index: u32,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().fail_step(saga_id, step_index as usize).len() as u32
+    h.engine
+        .saga_orchestrator()
+        .fail_step(saga_id, step_index as usize)
+        .len() as u32
 }
 
 /// Complete a compensation step.
@@ -3393,9 +4472,13 @@ pub unsafe extern "C" fn velocity_engine_saga_complete_compensation(
     saga_id: u64,
     step_index: u32,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
-    h.engine.saga_orchestrator().complete_compensation(saga_id, step_index as usize);
+    h.engine
+        .saga_orchestrator()
+        .complete_compensation(saga_id, step_index as usize);
 }
 
 /// Get saga details. Writes [saga_id, workflow_key, current_step, step_count, status] to out_fields.
@@ -3406,7 +4489,9 @@ pub unsafe extern "C" fn velocity_engine_saga_get(
     saga_id: u64,
     out_fields: *mut u64,
 ) -> i32 {
-    if handle.is_null() || out_fields.is_null() { return 0; }
+    if handle.is_null() || out_fields.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.saga_orchestrator().get_saga(saga_id) {
         Some(e) => {
@@ -3430,7 +4515,9 @@ pub unsafe extern "C" fn velocity_engine_sagas_by_status(
     out_ids: *mut u64,
     max_count: u32,
 ) -> u32 {
-    if handle.is_null() || out_ids.is_null() { return 0; }
+    if handle.is_null() || out_ids.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let saga_status = match status {
         0 => crate::saga::SagaStatus::Created,
@@ -3454,7 +4541,9 @@ pub unsafe extern "C" fn velocity_engine_sagas_by_status(
 /// Get total number of workflows with history records.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_history_workflow_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.history_store().workflow_count() as u64
 }
@@ -3466,22 +4555,36 @@ pub unsafe extern "C" fn velocity_engine_history_workflow_count(handle: *mut Eng
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_register_worker(
     handle: *mut EngineHandle,
-    addr_ptr: *const u8, addr_len: u32,
-    tq_hashes_ptr: *const u64, tq_count: u32,
-    version_ptr: *const u8, version_len: u32,
+    addr_ptr: *const u8,
+    addr_len: u32,
+    tq_hashes_ptr: *const u64,
+    tq_count: u32,
+    version_ptr: *const u8,
+    version_len: u32,
 ) -> u64 {
-    if handle.is_null() || addr_ptr.is_null() { return 0; }
+    if handle.is_null() || addr_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let addr = std::str::from_utf8(std::slice::from_raw_parts(addr_ptr, addr_len as usize)).unwrap_or("");
-    let version = if version_ptr.is_null() || version_len == 0 { "unknown" } else {
-        std::str::from_utf8(std::slice::from_raw_parts(version_ptr, version_len as usize)).unwrap_or("unknown")
+    let addr =
+        std::str::from_utf8(std::slice::from_raw_parts(addr_ptr, addr_len as usize)).unwrap_or("");
+    let version = if version_ptr.is_null() || version_len == 0 {
+        "unknown"
+    } else {
+        std::str::from_utf8(std::slice::from_raw_parts(
+            version_ptr,
+            version_len as usize,
+        ))
+        .unwrap_or("unknown")
     };
     let hashes = if tq_hashes_ptr.is_null() || tq_count == 0 {
         &[]
     } else {
         std::slice::from_raw_parts(tq_hashes_ptr, tq_count as usize)
     };
-    h.engine.worker_registry().register_worker(addr, hashes, &[], version)
+    h.engine
+        .worker_registry()
+        .register_worker(addr, hashes, &[], version)
 }
 
 /// Unregister a worker. Returns 1 if found and removed, 0 if not found.
@@ -3490,9 +4593,15 @@ pub unsafe extern "C" fn velocity_engine_unregister_worker(
     handle: *mut EngineHandle,
     worker_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.worker_registry().unregister_worker(worker_id) { 1 } else { 0 }
+    if h.engine.worker_registry().unregister_worker(worker_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Record a heartbeat from a worker. Returns 1 if worker found, 0 if not.
@@ -3501,15 +4610,23 @@ pub unsafe extern "C" fn velocity_engine_worker_heartbeat(
     handle: *mut EngineHandle,
     worker_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.worker_registry().heartbeat(worker_id) { 1 } else { 0 }
+    if h.engine.worker_registry().heartbeat(worker_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get total number of registered workers.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_worker_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_registry().worker_count() as u64
 }
@@ -3517,7 +4634,9 @@ pub unsafe extern "C" fn velocity_engine_worker_count(handle: *mut EngineHandle)
 /// Get number of active (healthy) workers.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_active_worker_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_registry().active_worker_count() as u64
 }
@@ -3528,7 +4647,9 @@ pub unsafe extern "C" fn velocity_engine_worker_task_completed(
     handle: *mut EngineHandle,
     worker_id: u64,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
     h.engine.worker_registry().record_task_completed(worker_id);
 }
@@ -3539,7 +4660,9 @@ pub unsafe extern "C" fn velocity_engine_worker_task_failed(
     handle: *mut EngineHandle,
     worker_id: u64,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
     h.engine.worker_registry().record_task_failed(worker_id);
 }
@@ -3551,7 +4674,9 @@ pub unsafe extern "C" fn velocity_engine_set_worker_status(
     worker_id: u64,
     status: i32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let ws = match status {
         0 => crate::worker_registry::WorkerStatus::Active,
@@ -3570,9 +4695,14 @@ pub unsafe extern "C" fn velocity_engine_detect_stale_workers(
     handle: *mut EngineHandle,
     timeout_ms: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.worker_registry().detect_stale_workers(timeout_ms).len() as u64
+    h.engine
+        .worker_registry()
+        .detect_stale_workers(timeout_ms)
+        .len() as u64
 }
 
 /// Add a task queue hash to a worker's capabilities.
@@ -3582,15 +4712,21 @@ pub unsafe extern "C" fn velocity_engine_worker_add_task_queue(
     worker_id: u64,
     tq_hash: u64,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
-    h.engine.worker_registry().add_task_queue(worker_id, tq_hash);
+    h.engine
+        .worker_registry()
+        .add_task_queue(worker_id, tq_hash);
 }
 
 /// Get total tasks completed across all workers.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_total_tasks_completed(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_registry().total_tasks_completed()
 }
@@ -3598,7 +4734,9 @@ pub unsafe extern "C" fn velocity_engine_total_tasks_completed(handle: *mut Engi
 /// Get total tasks failed across all workers.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_total_tasks_failed(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_registry().total_tasks_failed()
 }
@@ -3611,7 +4749,9 @@ pub unsafe extern "C" fn velocity_engine_get_workers_for_queue(
     out_ptr: *mut u64,
     out_cap: u32,
 ) -> u32 {
-    if handle.is_null() || out_ptr.is_null() { return 0; }
+    if handle.is_null() || out_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let workers = h.engine.worker_registry().get_workers_for_queue(tq_hash);
     let count = std::cmp::min(workers.len(), out_cap as usize);
@@ -3629,13 +4769,19 @@ pub unsafe extern "C" fn velocity_engine_get_workers_for_queue(
 pub unsafe extern "C" fn velocity_engine_get_search_attribute(
     handle: *mut EngineHandle,
     workflow_key: u64,
-    key_ptr: *const u8, key_len: u32,
-    out_ptr: *mut u8, out_cap: u32, out_len: *mut u32,
+    key_ptr: *const u8,
+    key_len: u32,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_len: *mut u32,
 ) -> i32 {
-    if handle.is_null() || key_ptr.is_null() || out_ptr.is_null() { return 0; }
+    if handle.is_null() || key_ptr.is_null() || out_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
-    
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+
     let vis = h.engine.visibility();
     if let Some(info) = vis.get(workflow_key) {
         if let Some(val) = info.search_attributes.get(key) {
@@ -3663,23 +4809,33 @@ pub unsafe extern "C" fn velocity_engine_get_search_attribute(
 pub unsafe extern "C" fn velocity_engine_list_search_attributes(
     handle: *mut EngineHandle,
     workflow_key: u64,
-    out_ptr: *mut u8, out_cap: u32, out_len: *mut u32,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_len: *mut u32,
 ) -> u32 {
-    if handle.is_null() || out_ptr.is_null() { return 0; }
+    if handle.is_null() || out_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let vis = h.engine.visibility();
-    
+
     if let Some(info) = vis.get(workflow_key) {
         let mut pos = 0u32;
         let mut count = 0u32;
         for key in info.search_attributes.keys() {
             let key_bytes = key.as_bytes();
             let needed = 4 + key_bytes.len() as u32;
-            if pos + needed > out_cap { break; }
+            if pos + needed > out_cap {
+                break;
+            }
             // Write key length + key
             (out_ptr.add(pos as usize) as *mut u32).write(key_bytes.len() as u32);
             pos += 4;
-            std::ptr::copy_nonoverlapping(key_bytes.as_ptr(), out_ptr.add(pos as usize), key_bytes.len());
+            std::ptr::copy_nonoverlapping(
+                key_bytes.as_ptr(),
+                out_ptr.add(pos as usize),
+                key_bytes.len(),
+            );
             pos += key_bytes.len() as u32;
             count += 1;
         }
@@ -3701,12 +4857,15 @@ pub unsafe extern "C" fn velocity_engine_set_workflow_timeouts(
     run_timeout_ms: u64,
     task_timeout_ms: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     let mut workflows = h.engine.workflows_write();
     if let Some(ctx) = workflows.get_mut(&workflow_key) {
         if execution_timeout_ms > 0 {
-            ctx.workflow_execution_timeout = Some(std::time::Duration::from_millis(execution_timeout_ms));
+            ctx.workflow_execution_timeout =
+                Some(std::time::Duration::from_millis(execution_timeout_ms));
         }
         if run_timeout_ms > 0 {
             ctx.workflow_run_timeout = Some(std::time::Duration::from_millis(run_timeout_ms));
@@ -3723,14 +4882,18 @@ pub unsafe extern "C" fn velocity_engine_set_workflow_timeouts(
 /// Check and enforce workflow timeouts. Returns the number of workflows timed out.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_check_timeouts(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let mut timed_out = 0u64;
     let mut workflows = h.engine.workflows_write();
-    
+
     for (key, ctx) in workflows.iter_mut() {
-        if ctx.status != crate::engine::WorkflowStatus::Running { continue; }
-        
+        if ctx.status != crate::engine::WorkflowStatus::Running {
+            continue;
+        }
+
         // Check execution timeout
         if let Some(timeout) = ctx.workflow_execution_timeout {
             if ctx.start_time.elapsed() > timeout {
@@ -3746,21 +4909,23 @@ pub unsafe extern "C" fn velocity_engine_check_timeouts(handle: *mut EngineHandl
             }
         }
     }
-    
+
     // Also clean expired tasks from the task queue
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
     h.engine.task_queue().remove_expired(now_ms);
-    
+
     timed_out
 }
 
 /// Get total pending tasks across all task queues.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_total_pending_tasks(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.task_queue().total_pending() as u64
 }
@@ -3768,7 +4933,9 @@ pub unsafe extern "C" fn velocity_engine_total_pending_tasks(handle: *mut Engine
 /// Get number of distinct task queues.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_task_queue_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.task_queue().queue_count() as u64
 }
@@ -3783,7 +4950,9 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let history = h.engine.history_store().get_history(workflow_key);
     match history {
@@ -3793,10 +4962,18 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
                 let mut workflows = h.engine.workflows_write();
                 // If context doesn't exist (crash recovery), create one
                 if !workflows.contains_key(&workflow_key) {
-                    let total_steps = result.step_results.keys()
-                        .max().map(|&m| m + 1).unwrap_or(0);
+                    let total_steps = result
+                        .step_results
+                        .keys()
+                        .max()
+                        .map(|&m| m + 1)
+                        .unwrap_or(0);
                     let mut ctx = WorkflowContext::new(
-                        workflow_key >> 32, workflow_key & 0xFFFFFFFF, 0, 0, total_steps,
+                        workflow_key >> 32,
+                        workflow_key & 0xFFFFFFFF,
+                        0,
+                        0,
+                        total_steps,
                     );
                     ctx.status = result.status;
                     for (step, data) in &result.step_results {
@@ -3806,8 +4983,10 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
                     // Restore pending signals
                     for (signal_id, payloads) in &result.pending_signals {
                         for payload in payloads {
-                            ctx.signal_buffer.entry(*signal_id)
-                                .or_default().push(payload.clone());
+                            ctx.signal_buffer
+                                .entry(*signal_id)
+                                .or_default()
+                                .push(payload.clone());
                         }
                     }
                     workflows.insert(workflow_key, ctx);
@@ -3820,8 +4999,10 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
                     ctx.status = result.status;
                     for (signal_id, payloads) in &result.pending_signals {
                         for payload in payloads {
-                            ctx.signal_buffer.entry(*signal_id)
-                                .or_default().push(payload.clone());
+                            ctx.signal_buffer
+                                .entry(*signal_id)
+                                .or_default()
+                                .push(payload.clone());
                         }
                     }
                 }
@@ -3844,16 +5025,28 @@ pub unsafe extern "C" fn velocity_engine_cold_storage_delete(
     base_dir_ptr: *const u8,
     base_dir_len: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let _h = &*handle;
     let base_dir = if base_dir_ptr.is_null() || base_dir_len == 0 {
         "/tmp/velocity_cold_storage"
     } else {
-        std::str::from_utf8(std::slice::from_raw_parts(base_dir_ptr, base_dir_len as usize)).unwrap_or("/tmp/velocity_cold_storage")
+        std::str::from_utf8(std::slice::from_raw_parts(
+            base_dir_ptr,
+            base_dir_len as usize,
+        ))
+        .unwrap_or("/tmp/velocity_cold_storage")
     };
     match crate::cold_storage::FileColdStorage::new(base_dir) {
         Ok(storage) => match storage.delete(workflow_key) {
-            Ok(deleted) => if deleted { 1 } else { 0 },
+            Ok(deleted) => {
+                if deleted {
+                    1
+                } else {
+                    0
+                }
+            }
             Err(_) => 0,
         },
         Err(_) => 0,
@@ -3868,12 +5061,18 @@ pub unsafe extern "C" fn velocity_engine_cold_storage_gc(
     base_dir_ptr: *const u8,
     base_dir_len: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let _h = &*handle;
     let base_dir = if base_dir_ptr.is_null() || base_dir_len == 0 {
         "/tmp/velocity_cold_storage"
     } else {
-        std::str::from_utf8(std::slice::from_raw_parts(base_dir_ptr, base_dir_len as usize)).unwrap_or("/tmp/velocity_cold_storage")
+        std::str::from_utf8(std::slice::from_raw_parts(
+            base_dir_ptr,
+            base_dir_len as usize,
+        ))
+        .unwrap_or("/tmp/velocity_cold_storage")
     };
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -3898,11 +5097,17 @@ pub unsafe extern "C" fn velocity_engine_cold_storage_list_by_namespace(
     out_ptr: *mut u64,
     out_cap: u32,
 ) -> u32 {
-    if handle.is_null() || out_ptr.is_null() { return 0; }
+    if handle.is_null() || out_ptr.is_null() {
+        return 0;
+    }
     let base_dir = if base_dir_ptr.is_null() || base_dir_len == 0 {
         "/tmp/velocity_cold_storage"
     } else {
-        std::str::from_utf8(std::slice::from_raw_parts(base_dir_ptr, base_dir_len as usize)).unwrap_or("/tmp/velocity_cold_storage")
+        std::str::from_utf8(std::slice::from_raw_parts(
+            base_dir_ptr,
+            base_dir_len as usize,
+        ))
+        .unwrap_or("/tmp/velocity_cold_storage")
     };
     match crate::cold_storage::FileColdStorage::new(base_dir) {
         Ok(storage) => {
@@ -3926,7 +5131,9 @@ pub unsafe extern "C" fn velocity_engine_list_schedules(
     out_ptr: *mut u64,
     out_cap: u32,
 ) -> u32 {
-    if handle.is_null() || out_ptr.is_null() { return 0; }
+    if handle.is_null() || out_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let schedules = h.engine.schedule_manager().list();
     let count = std::cmp::min(schedules.len(), out_cap as usize);
@@ -3945,7 +5152,9 @@ pub unsafe extern "C" fn velocity_engine_describe_schedule(
     schedule_id: u64,
     out_fields: *mut u64,
 ) -> i32 {
-    if handle.is_null() || out_fields.is_null() { return 0; }
+    if handle.is_null() || out_fields.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.schedule_manager().get(schedule_id) {
         Some(entry) => {
@@ -3966,10 +5175,18 @@ pub unsafe extern "C" fn velocity_engine_schedule_is_paused(
     handle: *mut EngineHandle,
     schedule_id: u64,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
     match h.engine.schedule_manager().get(schedule_id) {
-        Some(entry) => if entry.state == ScheduleState::Paused { 1 } else { 0 },
+        Some(entry) => {
+            if entry.state == ScheduleState::Paused {
+                1
+            } else {
+                0
+            }
+        }
         None => -1,
     }
 }
@@ -3985,14 +5202,18 @@ pub unsafe extern "C" fn velocity_engine_list_config_keys(
     out_ptr: *mut u8,
     out_cap: u32,
 ) -> u32 {
-    if handle.is_null() || out_ptr.is_null() { return 0; }
+    if handle.is_null() || out_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let keys = h.engine.dynamic_config().list_keys();
     let mut offset = 0usize;
     for key in &keys {
         let key_bytes = key.as_bytes();
         let needed = 4 + key_bytes.len();
-        if offset + needed > out_cap as usize { break; }
+        if offset + needed > out_cap as usize {
+            break;
+        }
         // Write key length (u32 LE)
         let len_bytes = (key_bytes.len() as u32).to_le_bytes();
         std::ptr::copy_nonoverlapping(len_bytes.as_ptr(), out_ptr.add(offset), 4);
@@ -4011,9 +5232,12 @@ pub unsafe extern "C" fn velocity_engine_get_config_int(
     key_ptr: *const u8,
     key_len: u32,
 ) -> i64 {
-    if handle.is_null() || key_ptr.is_null() { return 0; }
+    if handle.is_null() || key_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let key = std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
+    let key =
+        std::str::from_utf8(std::slice::from_raw_parts(key_ptr, key_len as usize)).unwrap_or("");
     h.engine.dynamic_config().get_int(key)
 }
 
@@ -4027,7 +5251,9 @@ pub unsafe extern "C" fn velocity_engine_check_heartbeat_timeouts(
     out_ptr: *mut u64,
     out_cap: u32,
 ) -> u32 {
-    if handle.is_null() || out_ptr.is_null() { return 0; }
+    if handle.is_null() || out_ptr.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let timed_out = h.engine.heartbeat_tracker().check_timeouts();
     let max_entries = out_cap as usize / 2;
@@ -4047,7 +5273,9 @@ pub unsafe extern "C" fn velocity_engine_count_by_status(
     handle: *mut EngineHandle,
     status: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let ws = match status {
         1 => crate::engine::WorkflowStatus::Running,
@@ -4068,7 +5296,9 @@ pub unsafe extern "C" fn velocity_engine_count_by_namespace(
     handle: *mut EngineHandle,
     namespace_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.visibility().count_by_namespace(namespace_id) as u64
 }
@@ -4079,7 +5309,9 @@ pub unsafe extern "C" fn velocity_engine_count_by_type(
     handle: *mut EngineHandle,
     workflow_type_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.visibility().count_by_type(workflow_type_id) as u64
 }
@@ -4092,7 +5324,9 @@ pub unsafe extern "C" fn velocity_engine_get_namespace_retention_ms(
     handle: *mut EngineHandle,
     namespace_id: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.namespaces().get(namespace_id) {
         Some(config) => config.retention_period.as_millis() as u64,
@@ -4107,7 +5341,9 @@ pub unsafe extern "C" fn velocity_engine_get_namespace_retention_ms(
 pub unsafe extern "C" fn velocity_engine_cleanup_expired_workflows(
     handle: *mut EngineHandle,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4141,9 +5377,18 @@ pub unsafe extern "C" fn velocity_engine_has_query_handler(
     workflow_key: u64,
     query_name_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.query_registry().has_handler(workflow_key, query_name_id) { 1 } else { 0 }
+    if h.engine
+        .query_registry()
+        .has_handler(workflow_key, query_name_id)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 /// Unregister all query handlers for a workflow. Returns 1 if removed, 0 if not found.
@@ -4152,7 +5397,9 @@ pub unsafe extern "C" fn velocity_engine_unregister_query_handler(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.query_registry().unregister_workflow(workflow_key);
     1
@@ -4167,7 +5414,9 @@ pub unsafe extern "C" fn velocity_engine_get_reset_points(
     out_event_ids: *mut u64,
     max_count: u32,
 ) -> u32 {
-    if handle.is_null() || out_event_ids.is_null() { return 0; }
+    if handle.is_null() || out_event_ids.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let points = h.engine.workflow_resetter().get_reset_points(workflow_key);
     let out = std::slice::from_raw_parts_mut(out_event_ids, max_count as usize);
@@ -4187,9 +5436,11 @@ pub unsafe extern "C" fn velocity_engine_cloud_storage_set_backend(
     handle: *mut EngineHandle,
     backend: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    use crate::cold_storage::{MockS3Adapter, MockGcsAdapter};
+    use crate::cold_storage::{MockGcsAdapter, MockS3Adapter};
     let adapter: Arc<dyn crate::cold_storage::CloudStorageAdapter> = match backend {
         0 => Arc::new(MockS3Adapter::new("velocity-bucket", "us-east-1")),
         1 => Arc::new(MockGcsAdapter::new("velocity-bucket")),
@@ -4207,7 +5458,9 @@ pub unsafe extern "C" fn velocity_engine_cloud_archive(
     namespace_id: u64,
     status: i32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let record = crate::cold_storage::ColdStorageRecord {
         workflow_key,
@@ -4244,9 +5497,14 @@ pub unsafe extern "C" fn velocity_engine_cloud_contains(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.cloud_storage().retrieve(workflow_key).map_or(0, |_| 1)
+    h.engine
+        .cloud_storage()
+        .retrieve(workflow_key)
+        .map_or(0, |_| 1)
 }
 
 /// Delete a workflow from cloud storage. Returns 1 if deleted, 0 if not found.
@@ -4255,17 +5513,22 @@ pub unsafe extern "C" fn velocity_engine_cloud_delete(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.cloud_storage().delete(workflow_key).map_or(0, |deleted| if deleted { 1 } else { 0 })
+    h.engine
+        .cloud_storage()
+        .delete(workflow_key)
+        .map_or(0, |deleted| if deleted { 1 } else { 0 })
 }
 
 /// Get the total count of records in cloud storage.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_cloud_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_cloud_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.cloud_storage().count().unwrap_or(0) as u64
 }
@@ -4279,9 +5542,15 @@ pub unsafe extern "C" fn velocity_engine_cloud_list_by_namespace(
     out_keys: *mut u64,
     max_count: u32,
 ) -> u32 {
-    if handle.is_null() || out_keys.is_null() { return 0; }
+    if handle.is_null() || out_keys.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let records = h.engine.cloud_storage().list_by_namespace(namespace_id).unwrap_or_default();
+    let records = h
+        .engine
+        .cloud_storage()
+        .list_by_namespace(namespace_id)
+        .unwrap_or_default();
     let out = std::slice::from_raw_parts_mut(out_keys, max_count as usize);
     let count = records.len().min(max_count as usize);
     for (i, r) in records.iter().take(count).enumerate() {
@@ -4297,13 +5566,18 @@ pub unsafe extern "C" fn velocity_engine_cloud_gc(
     handle: *mut EngineHandle,
     retention_ms: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    h.engine.cloud_storage().gc_older_than(retention_ms, now_ms).unwrap_or(0) as i32
+    h.engine
+        .cloud_storage()
+        .gc_older_than(retention_ms, now_ms)
+        .unwrap_or(0) as i32
 }
 
 /// Get the cloud storage backend name. Writes name to out_name buffer.
@@ -4314,7 +5588,9 @@ pub unsafe extern "C" fn velocity_engine_cloud_backend_name(
     out_name: *mut u8,
     max_len: u32,
 ) -> u32 {
-    if handle.is_null() || out_name.is_null() { return 0; }
+    if handle.is_null() || out_name.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let cs = h.engine.cloud_storage();
     let name = cs.backend_name();
@@ -4332,18 +5608,34 @@ pub unsafe extern "C" fn velocity_engine_cloud_backend_name(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_list_by_search_attribute(
     handle: *mut EngineHandle,
-    attr_key_ptr: *const u8, attr_key_len: u32,
-    attr_val_ptr: *const u8, attr_val_len: u32,
-    out_keys: *mut u64, max_count: u32,
+    attr_key_ptr: *const u8,
+    attr_key_len: u32,
+    attr_val_ptr: *const u8,
+    attr_val_len: u32,
+    out_keys: *mut u64,
+    max_count: u32,
 ) -> u32 {
-    if handle.is_null() || out_keys.is_null() { return 0; }
+    if handle.is_null() || out_keys.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let key_slice = if attr_key_ptr.is_null() { &[] } else { std::slice::from_raw_parts(attr_key_ptr, attr_key_len as usize) };
-    let val_slice = if attr_val_ptr.is_null() { &[] } else { std::slice::from_raw_parts(attr_val_ptr, attr_val_len as usize) };
+    let key_slice = if attr_key_ptr.is_null() {
+        &[]
+    } else {
+        std::slice::from_raw_parts(attr_key_ptr, attr_key_len as usize)
+    };
+    let val_slice = if attr_val_ptr.is_null() {
+        &[]
+    } else {
+        std::slice::from_raw_parts(attr_val_ptr, attr_val_len as usize)
+    };
     let key = std::str::from_utf8(key_slice).unwrap_or("");
     let val = std::str::from_utf8(val_slice).unwrap_or("");
     let attr_val = crate::visibility::SearchAttributeValue::String(val.to_string());
-    let results = h.engine.visibility().list_by_search_attribute(key, &attr_val);
+    let results = h
+        .engine
+        .visibility()
+        .list_by_search_attribute(key, &attr_val);
     let out = std::slice::from_raw_parts_mut(out_keys, max_count as usize);
     let count = results.len().min(max_count as usize);
     for (i, info) in results.iter().take(count).enumerate() {
@@ -4357,12 +5649,19 @@ pub unsafe extern "C" fn velocity_engine_list_by_search_attribute(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_list_by_time_range(
     handle: *mut EngineHandle,
-    start_time_ms: u64, end_time_ms: u64,
-    out_keys: *mut u64, max_count: u32,
+    start_time_ms: u64,
+    end_time_ms: u64,
+    out_keys: *mut u64,
+    max_count: u32,
 ) -> u32 {
-    if handle.is_null() || out_keys.is_null() { return 0; }
+    if handle.is_null() || out_keys.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let results = h.engine.visibility().list_by_time_range(start_time_ms, end_time_ms);
+    let results = h
+        .engine
+        .visibility()
+        .list_by_time_range(start_time_ms, end_time_ms);
     let out = std::slice::from_raw_parts_mut(out_keys, max_count as usize);
     let count = results.len().min(max_count as usize);
     for (i, info) in results.iter().take(count).enumerate() {
@@ -4376,29 +5675,32 @@ pub unsafe extern "C" fn velocity_engine_list_by_time_range(
 /// Invalidate the replay cache for a specific workflow.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_replay_invalidate(
-    handle: *mut EngineHandle, workflow_key: u64,
+    handle: *mut EngineHandle,
+    workflow_key: u64,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
     h.engine.replay_engine().invalidate_cache(workflow_key);
 }
 
 /// Clear the entire replay cache.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_replay_clear_cache(
-    handle: *mut EngineHandle,
-) {
-    if handle.is_null() { return; }
+pub unsafe extern "C" fn velocity_engine_replay_clear_cache(handle: *mut EngineHandle) {
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
     h.engine.replay_engine().clear_cache();
 }
 
 /// Get the replay cache size (number of cached replay results).
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_replay_cache_size(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_replay_cache_size(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.replay_engine().cache_size() as u64
 }
@@ -4408,9 +5710,13 @@ pub unsafe extern "C" fn velocity_engine_replay_cache_size(
 /// Update the overlap policy for a schedule. Returns 1 on success.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_schedule_set_overlap_policy(
-    handle: *mut EngineHandle, schedule_id: u64, policy: u32,
+    handle: *mut EngineHandle,
+    schedule_id: u64,
+    policy: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let overlap = match policy {
         0 => crate::schedules::OverlapPolicy::Skip,
@@ -4420,17 +5726,30 @@ pub unsafe extern "C" fn velocity_engine_schedule_set_overlap_policy(
         4 => crate::schedules::OverlapPolicy::AllowAll,
         _ => return 0,
     };
-    if h.engine.schedule_manager().update_overlap_policy(schedule_id, overlap) { 1 } else { 0 }
+    if h.engine
+        .schedule_manager()
+        .update_overlap_policy(schedule_id, overlap)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 /// Set remaining actions for a schedule. Returns 1 on success.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_schedule_set_remaining_actions(
-    handle: *mut EngineHandle, schedule_id: u64, remaining: u64,
+    handle: *mut EngineHandle,
+    schedule_id: u64,
+    remaining: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.schedule_manager().set_remaining_actions(schedule_id, remaining);
+    h.engine
+        .schedule_manager()
+        .set_remaining_actions(schedule_id, remaining);
     1
 }
 
@@ -4441,7 +5760,9 @@ pub unsafe extern "C" fn velocity_engine_schedule_set_remaining_actions(
 pub unsafe extern "C" fn velocity_engine_history_workflow_count_v2(
     handle: *mut EngineHandle,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.history_store().workflow_count() as u64
 }
@@ -4451,9 +5772,12 @@ pub unsafe extern "C" fn velocity_engine_history_workflow_count_v2(
 /// Get the total pending task count across all partitions for a task queue hash.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_partition_total_pending(
-    handle: *mut EngineHandle, task_queue_hash: u64,
+    handle: *mut EngineHandle,
+    task_queue_hash: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.partition_manager().total_pending(task_queue_hash) as u64
 }
@@ -4464,14 +5788,26 @@ pub unsafe extern "C" fn velocity_engine_partition_total_pending(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_nexus_register_service(
     handle: *mut EngineHandle,
-    service_name_ptr: *const u8, service_name_len: u32,
-    endpoint_ptr: *const u8, endpoint_len: u32,
+    service_name_ptr: *const u8,
+    service_name_len: u32,
+    endpoint_ptr: *const u8,
+    endpoint_len: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let name_slice = if service_name_ptr.is_null() { &[] } else { std::slice::from_raw_parts(service_name_ptr, service_name_len as usize) };
+    let name_slice = if service_name_ptr.is_null() {
+        &[]
+    } else {
+        std::slice::from_raw_parts(service_name_ptr, service_name_len as usize)
+    };
     let name = std::str::from_utf8(name_slice).unwrap_or("");
-    let ep_slice = if endpoint_ptr.is_null() { &[] } else { std::slice::from_raw_parts(endpoint_ptr, endpoint_len as usize) };
+    let ep_slice = if endpoint_ptr.is_null() {
+        &[]
+    } else {
+        std::slice::from_raw_parts(endpoint_ptr, endpoint_len as usize)
+    };
     let endpoint = std::str::from_utf8(ep_slice).unwrap_or("");
     h.engine.nexus_manager().register_service(name, endpoint);
     1
@@ -4485,15 +5821,23 @@ pub unsafe extern "C" fn velocity_engine_nexus_register_service(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_cloud_set_s3(
     handle: *mut EngineHandle,
-    bucket_ptr: *const u8, bucket_len: u32,
-    region_ptr: *const u8, region_len: u32,
-    access_key_ptr: *const u8, access_key_len: u32,
-    secret_key_ptr: *const u8, secret_key_len: u32,
+    bucket_ptr: *const u8,
+    bucket_len: u32,
+    region_ptr: *const u8,
+    region_len: u32,
+    access_key_ptr: *const u8,
+    access_key_len: u32,
+    secret_key_ptr: *const u8,
+    secret_key_len: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let to_str = |p: *const u8, l: u32| -> &str {
-        if p.is_null() { return ""; }
+        if p.is_null() {
+            return "";
+        }
         let s = std::slice::from_raw_parts(p, l as usize);
         std::str::from_utf8(s).unwrap_or("")
     };
@@ -4510,10 +5854,14 @@ pub unsafe extern "C" fn velocity_engine_cloud_set_s3(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_cloud_set_s3(
     _handle: *mut EngineHandle,
-    _bucket_ptr: *const u8, _bucket_len: u32,
-    _region_ptr: *const u8, _region_len: u32,
-    _access_key_ptr: *const u8, _access_key_len: u32,
-    _secret_key_ptr: *const u8, _secret_key_len: u32,
+    _bucket_ptr: *const u8,
+    _bucket_len: u32,
+    _region_ptr: *const u8,
+    _region_len: u32,
+    _access_key_ptr: *const u8,
+    _access_key_len: u32,
+    _secret_key_ptr: *const u8,
+    _secret_key_len: u32,
 ) -> i32 {
     0 // Feature not compiled
 }
@@ -4524,13 +5872,19 @@ pub unsafe extern "C" fn velocity_engine_cloud_set_s3(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_cloud_set_gcs(
     handle: *mut EngineHandle,
-    bucket_ptr: *const u8, bucket_len: u32,
-    token_ptr: *const u8, token_len: u32,
+    bucket_ptr: *const u8,
+    bucket_len: u32,
+    token_ptr: *const u8,
+    token_len: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let to_str = |p: *const u8, l: u32| -> &str {
-        if p.is_null() { return ""; }
+        if p.is_null() {
+            return "";
+        }
         let s = std::slice::from_raw_parts(p, l as usize);
         std::str::from_utf8(s).unwrap_or("")
     };
@@ -4545,8 +5899,10 @@ pub unsafe extern "C" fn velocity_engine_cloud_set_gcs(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_cloud_set_gcs(
     _handle: *mut EngineHandle,
-    _bucket_ptr: *const u8, _bucket_len: u32,
-    _token_ptr: *const u8, _token_len: u32,
+    _bucket_ptr: *const u8,
+    _bucket_len: u32,
+    _token_ptr: *const u8,
+    _token_len: u32,
 ) -> i32 {
     0 // Feature not compiled
 }
@@ -4566,7 +5922,9 @@ pub unsafe extern "C" fn velocity_engine_apply_replication_task(
     payload_len: u32,
     failover_version: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let payload = if payload_ptr.is_null() || payload_len == 0 {
         Vec::new()
@@ -4586,7 +5944,11 @@ pub unsafe extern "C" fn velocity_engine_apply_replication_task(
         last_event_id: 0,
         created_ms: 0,
     };
-    if h.engine.apply_replication_task(task) { 1 } else { 0 }
+    if h.engine.apply_replication_task(task) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Process a fired timer — re-enqueues any pending activity retries.
@@ -4595,7 +5957,9 @@ pub unsafe extern "C" fn velocity_engine_process_fired_timer(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
     h.engine.process_fired_timer(workflow_key);
 }
@@ -4606,7 +5970,9 @@ pub unsafe extern "C" fn velocity_engine_replication_status(
     handle: *mut EngineHandle,
     out: *mut u64,
 ) -> i32 {
-    if handle.is_null() || out.is_null() { return 0; }
+    if handle.is_null() || out.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let (pending, count, active, applied) = h.engine.cluster_manager().replication_status();
     let slice = std::slice::from_raw_parts_mut(out, 4);
@@ -4624,9 +5990,18 @@ pub unsafe extern "C" fn velocity_engine_set_cluster_active(
     cluster_id: u64,
     active: i32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.cluster_manager().set_cluster_active(cluster_id, active != 0) { 1 } else { 0 }
+    if h.engine
+        .cluster_manager()
+        .set_cluster_active(cluster_id, active != 0)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 /// Set failover version for a cluster. Returns 1 on success.
@@ -4636,9 +6011,18 @@ pub unsafe extern "C" fn velocity_engine_set_failover_version(
     cluster_id: u64,
     version: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.cluster_manager().set_failover_version(cluster_id, version) { 1 } else { 0 }
+    if h.engine
+        .cluster_manager()
+        .set_failover_version(cluster_id, version)
+    {
+        1
+    } else {
+        0
+    }
 }
 
 // ─── Nexus Full Lifecycle (Batch 31) ──────────────────────────────────────
@@ -4649,9 +6033,15 @@ pub unsafe extern "C" fn velocity_engine_nexus_mark_started(
     handle: *mut EngineHandle,
     op_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.nexus_manager().mark_started(op_id, None) { 1 } else { 0 }
+    if h.engine.nexus_manager().mark_started(op_id, None) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Cancel a nexus operation. Returns 1 on success.
@@ -4660,9 +6050,15 @@ pub unsafe extern "C" fn velocity_engine_nexus_cancel(
     handle: *mut EngineHandle,
     op_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.nexus_manager().cancel_operation(op_id) { 1 } else { 0 }
+    if h.engine.nexus_manager().cancel_operation(op_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Timeout a nexus operation. Returns 1 on success.
@@ -4671,20 +6067,29 @@ pub unsafe extern "C" fn velocity_engine_nexus_timeout(
     handle: *mut EngineHandle,
     op_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.nexus_manager().timeout_operation(op_id) { 1 } else { 0 }
+    if h.engine.nexus_manager().timeout_operation(op_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Retry a failed/timed-out nexus operation. Returns 1 on success.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_nexus_retry(
-    handle: *mut EngineHandle,
-    op_id: u64,
-) -> i32 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_nexus_retry(handle: *mut EngineHandle, op_id: u64) -> i32 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.nexus_manager().retry_operation(op_id) { 1 } else { 0 }
+    if h.engine.nexus_manager().retry_operation(op_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Count nexus operations by state (0=Scheduled,1=Started,2=Completed,3=Failed,4=Canceled,5=TimedOut).
@@ -4693,7 +6098,9 @@ pub unsafe extern "C" fn velocity_engine_nexus_count_by_state(
     handle: *mut EngineHandle,
     state: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let s = match state {
         0 => crate::nexus::NexusOperationState::Scheduled,
@@ -4715,9 +6122,14 @@ pub unsafe extern "C" fn velocity_engine_select_worker(
     handle: *mut EngineHandle,
     tq_hash: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.worker_registry().select_worker(tq_hash).unwrap_or(0)
+    h.engine
+        .worker_registry()
+        .select_worker(tq_hash)
+        .unwrap_or(0)
 }
 
 /// Check if a worker has capacity. Returns 1 if yes.
@@ -4726,9 +6138,15 @@ pub unsafe extern "C" fn velocity_engine_worker_has_capacity(
     handle: *mut EngineHandle,
     worker_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.worker_registry().has_capacity(worker_id) { 1 } else { 0 }
+    if h.engine.worker_registry().has_capacity(worker_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Drain a worker (stop dispatching new tasks). Returns 1 on success.
@@ -4737,9 +6155,15 @@ pub unsafe extern "C" fn velocity_engine_drain_worker(
     handle: *mut EngineHandle,
     worker_id: u64,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.worker_registry().drain_worker(worker_id) { 1 } else { 0 }
+    if h.engine.worker_registry().drain_worker(worker_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Register a worker with explicit capacity. Returns worker_id.
@@ -4754,24 +6178,48 @@ pub unsafe extern "C" fn velocity_engine_register_worker_with_capacity(
     version_len: u32,
     max_concurrent: u32,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let address = if address_ptr.is_null() || address_len == 0 { String::new() } else {
-        String::from_utf8_lossy(std::slice::from_raw_parts(address_ptr, address_len as usize)).to_string()
+    let address = if address_ptr.is_null() || address_len == 0 {
+        String::new()
+    } else {
+        String::from_utf8_lossy(std::slice::from_raw_parts(
+            address_ptr,
+            address_len as usize,
+        ))
+        .to_string()
     };
-    let version = if version_ptr.is_null() || version_len == 0 { String::new() } else {
-        String::from_utf8_lossy(std::slice::from_raw_parts(version_ptr, version_len as usize)).to_string()
+    let version = if version_ptr.is_null() || version_len == 0 {
+        String::new()
+    } else {
+        String::from_utf8_lossy(std::slice::from_raw_parts(
+            version_ptr,
+            version_len as usize,
+        ))
+        .to_string()
     };
-    let hashes = if tq_hash_ptr.is_null() || tq_hash_count == 0 { Vec::new() } else {
+    let hashes = if tq_hash_ptr.is_null() || tq_hash_count == 0 {
+        Vec::new()
+    } else {
         std::slice::from_raw_parts(tq_hash_ptr, tq_hash_count as usize).to_vec()
     };
-    h.engine.worker_registry().register_worker_with_capacity(&address, &hashes, &[], &version, max_concurrent)
+    h.engine.worker_registry().register_worker_with_capacity(
+        &address,
+        &hashes,
+        &[],
+        &version,
+        max_concurrent,
+    )
 }
 
 /// Get total current load across all workers.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_total_worker_load(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_registry().total_current_load() as u64
 }
@@ -4779,7 +6227,9 @@ pub unsafe extern "C" fn velocity_engine_total_worker_load(handle: *mut EngineHa
 /// Get total available capacity across all workers.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_total_worker_capacity(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.worker_registry().total_capacity() as u64
 }
@@ -4793,9 +6243,13 @@ pub unsafe extern "C" fn velocity_engine_sharding_add_host(
     host_ptr: *const u8,
     host_len: u32,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
-    let host = if host_ptr.is_null() || host_len == 0 { return; } else {
+    let host = if host_ptr.is_null() || host_len == 0 {
+        return;
+    } else {
         String::from_utf8_lossy(std::slice::from_raw_parts(host_ptr, host_len as usize)).to_string()
     };
     h.engine.shard_manager().add_host(&host);
@@ -4808,12 +6262,20 @@ pub unsafe extern "C" fn velocity_engine_sharding_remove_host(
     host_ptr: *const u8,
     host_len: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let host = if host_ptr.is_null() || host_len == 0 { return 0; } else {
+    let host = if host_ptr.is_null() || host_len == 0 {
+        return 0;
+    } else {
         String::from_utf8_lossy(std::slice::from_raw_parts(host_ptr, host_len as usize)).to_string()
     };
-    if h.engine.shard_manager().remove_host(&host) { 1 } else { 0 }
+    if h.engine.shard_manager().remove_host(&host) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Migrate a shard to a new host. Returns 1 on success.
@@ -4824,18 +6286,28 @@ pub unsafe extern "C" fn velocity_engine_sharding_migrate(
     host_ptr: *const u8,
     host_len: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let host = if host_ptr.is_null() || host_len == 0 { return 0; } else {
+    let host = if host_ptr.is_null() || host_len == 0 {
+        return 0;
+    } else {
         String::from_utf8_lossy(std::slice::from_raw_parts(host_ptr, host_len as usize)).to_string()
     };
-    if h.engine.shard_manager().migrate_shard(shard_id, &host) { 1 } else { 0 }
+    if h.engine.shard_manager().migrate_shard(shard_id, &host) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get number of hosts on the hash ring.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_sharding_host_count(handle: *mut EngineHandle) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.shard_manager().host_count() as u64
 }
@@ -4849,9 +6321,14 @@ pub unsafe extern "C" fn velocity_engine_create_child_partition(
     parent_id: u32,
     tq_hash: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.partition_manager().create_child_partition(parent_id, tq_hash).unwrap_or(0) as u64
+    h.engine
+        .partition_manager()
+        .create_child_partition(parent_id, tq_hash)
+        .unwrap_or(0) as u64
 }
 
 /// Delete a partition. Returns 1 on success.
@@ -4860,9 +6337,15 @@ pub unsafe extern "C" fn velocity_engine_delete_partition(
     handle: *mut EngineHandle,
     partition_id: u32,
 ) -> i32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    if h.engine.partition_manager().delete_partition(partition_id) { 1 } else { 0 }
+    if h.engine.partition_manager().delete_partition(partition_id) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get the depth of a partition in the hierarchy.
@@ -4871,9 +6354,15 @@ pub unsafe extern "C" fn velocity_engine_partition_depth(
     handle: *mut EngineHandle,
     partition_id: u32,
 ) -> i32 {
-    if handle.is_null() { return -1; }
+    if handle.is_null() {
+        return -1;
+    }
     let h = &*handle;
-    h.engine.partition_manager().partition_depth(partition_id).map(|d| d as i32).unwrap_or(-1)
+    h.engine
+        .partition_manager()
+        .partition_depth(partition_id)
+        .map(|d| d as i32)
+        .unwrap_or(-1)
 }
 
 /// Get total backlog across all partitions for a task queue.
@@ -4882,7 +6371,9 @@ pub unsafe extern "C" fn velocity_engine_partition_backlog(
     handle: *mut EngineHandle,
     tq_hash: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.partition_manager().total_backlog(tq_hash)
 }
@@ -4895,9 +6386,14 @@ pub unsafe extern "C" fn velocity_engine_get_search_attr_count(
     handle: *mut EngineHandle,
     workflow_key: u64,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    h.engine.get_workflow_search_attributes(workflow_key).map(|m| m.len() as u64).unwrap_or(0)
+    h.engine
+        .get_workflow_search_attributes(workflow_key)
+        .map(|m| m.len() as u64)
+        .unwrap_or(0)
 }
 
 /// Get a search attribute key by index. Writes key to out_key buffer. Returns key length (0 if not found).
@@ -4909,14 +6405,18 @@ pub unsafe extern "C" fn velocity_engine_get_search_attr_key(
     out_key: *mut u8,
     out_key_cap: u32,
 ) -> u32 {
-    if handle.is_null() || out_key.is_null() { return 0; }
+    if handle.is_null() || out_key.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let attrs = match h.engine.get_workflow_search_attributes(workflow_key) {
         Some(a) => a,
         None => return 0,
     };
     let keys: Vec<&String> = attrs.keys().collect();
-    if index as usize >= keys.len() { return 0; }
+    if index as usize >= keys.len() {
+        return 0;
+    }
     let key = keys[index as usize].as_bytes();
     let len = key.len().min(out_key_cap as usize);
     std::ptr::copy_nonoverlapping(key.as_ptr(), out_key, len);
@@ -4933,14 +6433,18 @@ pub unsafe extern "C" fn velocity_engine_get_search_attr_val(
     out_val: *mut u8,
     out_val_cap: u32,
 ) -> u32 {
-    if handle.is_null() || out_val.is_null() { return 0; }
+    if handle.is_null() || out_val.is_null() {
+        return 0;
+    }
     let h = &*handle;
     let attrs = match h.engine.get_workflow_search_attributes(workflow_key) {
         Some(a) => a,
         None => return 0,
     };
     let keys: Vec<&String> = attrs.keys().collect();
-    if index as usize >= keys.len() { return 0; }
+    if index as usize >= keys.len() {
+        return 0;
+    }
     let val = match attrs.get(keys[index as usize]) {
         Some(v) => format!("{:?}", v),
         None => return 0,
@@ -4957,17 +6461,23 @@ pub unsafe extern "C" fn velocity_engine_get_search_attr_val(
 #[no_mangle]
 pub unsafe extern "C" fn velocity_engine_repl_add_link(
     handle: *mut EngineHandle,
-    cluster_name: *const u8, cluster_name_len: u32,
+    cluster_name: *const u8,
+    cluster_name_len: u32,
     cluster_id: u64,
-    endpoint: *const u8, endpoint_len: u32,
+    endpoint: *const u8,
+    endpoint_len: u32,
 ) {
-    if handle.is_null() { return; }
+    if handle.is_null() {
+        return;
+    }
     let h = &*handle;
     let name_bytes = std::slice::from_raw_parts(cluster_name, cluster_name_len as usize);
     let ep_bytes = std::slice::from_raw_parts(endpoint, endpoint_len as usize);
     let name = std::str::from_utf8(name_bytes).unwrap_or("unknown");
     let ep = std::str::from_utf8(ep_bytes).unwrap_or("");
-    h.engine.replication_transport().add_link(name, cluster_id, ep);
+    h.engine
+        .replication_transport()
+        .add_link(name, cluster_id, ep);
 }
 
 /// Remove a replication link.
@@ -4976,7 +6486,9 @@ pub unsafe extern "C" fn velocity_engine_repl_remove_link(
     handle: *mut EngineHandle,
     cluster_id: u64,
 ) -> bool {
-    if handle.is_null() { return false; }
+    if handle.is_null() {
+        return false;
+    }
     let h = &*handle;
     h.engine.replication_transport().remove_link(cluster_id)
 }
@@ -4988,9 +6500,13 @@ pub unsafe extern "C" fn velocity_engine_repl_set_link_active(
     cluster_id: u64,
     active: bool,
 ) -> bool {
-    if handle.is_null() { return false; }
+    if handle.is_null() {
+        return false;
+    }
     let h = &*handle;
-    h.engine.replication_transport().set_link_active(cluster_id, active)
+    h.engine
+        .replication_transport()
+        .set_link_active(cluster_id, active)
 }
 
 /// Pull outgoing replication tasks for a remote cluster (poll-based transport).
@@ -5001,9 +6517,14 @@ pub unsafe extern "C" fn velocity_engine_repl_pull_for_cluster(
     cluster_id: u64,
     max_count: u32,
 ) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
-    let tasks = h.engine.replication_transport().pull_for_cluster(cluster_id, max_count as usize);
+    let tasks = h
+        .engine
+        .replication_transport()
+        .pull_for_cluster(cluster_id, max_count as usize);
     // Store tasks back into the cluster manager's replication queue for gRPC delivery
     // For now, just return the count — the gRPC layer will call drain again with serialization
     tasks.len() as u32
@@ -5021,7 +6542,9 @@ pub unsafe extern "C" fn velocity_engine_repl_push_from_cluster(
     failover_version: u64,
     last_event_id: u64,
 ) -> bool {
-    if handle.is_null() { return false; }
+    if handle.is_null() {
+        return false;
+    }
     let h = &*handle;
     let pl = if payload.is_null() || payload_len == 0 {
         Vec::new()
@@ -5041,15 +6564,18 @@ pub unsafe extern "C" fn velocity_engine_repl_push_from_cluster(
         last_event_id,
         created_ms: 0,
     };
-    h.engine.replication_transport().push_from_cluster(cluster_id, vec![task]) > 0
+    h.engine
+        .replication_transport()
+        .push_from_cluster(cluster_id, vec![task])
+        > 0
 }
 
 /// Get the number of active replication links.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_engine_repl_active_link_count(
-    handle: *mut EngineHandle,
-) -> u64 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_engine_repl_active_link_count(handle: *mut EngineHandle) -> u64 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.replication_transport().active_link_count() as u64
 }
@@ -5059,7 +6585,9 @@ pub unsafe extern "C" fn velocity_engine_repl_active_link_count(
 pub unsafe extern "C" fn velocity_engine_repl_total_pending_outgoing(
     handle: *mut EngineHandle,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.replication_transport().total_pending_outgoing() as u64
 }
@@ -5069,7 +6597,9 @@ pub unsafe extern "C" fn velocity_engine_repl_total_pending_outgoing(
 pub unsafe extern "C" fn velocity_engine_repl_total_pending_incoming(
     handle: *mut EngineHandle,
 ) -> u64 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.replication_transport().total_pending_incoming() as u64
 }
@@ -5077,23 +6607,33 @@ pub unsafe extern "C" fn velocity_engine_repl_total_pending_incoming(
 // ── Replication Daemon FFI ──────────────────────────────────────────────
 
 /// Global replication daemon instance (one per engine).
-static REPL_DAEMON: std::sync::OnceLock<std::sync::Arc<crate::replication_daemon::ReplicationDaemon>> = std::sync::OnceLock::new();
+static REPL_DAEMON: std::sync::OnceLock<
+    std::sync::Arc<crate::replication_daemon::ReplicationDaemon>,
+> = std::sync::OnceLock::new();
 
-fn get_daemon(engine: *mut std::ffi::c_void) -> std::sync::Arc<crate::replication_daemon::ReplicationDaemon> {
-    REPL_DAEMON.get_or_init(|| {
-        let handle = unsafe { &*(engine as *const crate::engine::WorkflowEngine) };
-        std::sync::Arc::new(crate::replication_daemon::ReplicationDaemon::new(
-            handle.replication_transport().clone(),
-            crate::replication_daemon::ReplicationDaemonConfig::default(),
-        ))
-    }).clone()
+fn get_daemon(
+    engine: *mut std::ffi::c_void,
+) -> std::sync::Arc<crate::replication_daemon::ReplicationDaemon> {
+    REPL_DAEMON
+        .get_or_init(|| {
+            let handle = unsafe { &*(engine as *const crate::engine::WorkflowEngine) };
+            std::sync::Arc::new(crate::replication_daemon::ReplicationDaemon::new(
+                handle.replication_transport().clone(),
+                crate::replication_daemon::ReplicationDaemonConfig::default(),
+            ))
+        })
+        .clone()
 }
 
 /// Start the replication daemon background poller.
 #[no_mangle]
 pub extern "C" fn velocity_engine_repl_daemon_start(engine: *mut std::ffi::c_void) -> u32 {
     let daemon = get_daemon(engine);
-    if daemon.start() { 1 } else { 0 }
+    if daemon.start() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Stop the replication daemon.
@@ -5111,7 +6651,11 @@ pub extern "C" fn velocity_engine_repl_daemon_stop(engine: *mut std::ffi::c_void
 #[no_mangle]
 pub extern "C" fn velocity_engine_repl_daemon_is_running(engine: *mut std::ffi::c_void) -> u32 {
     if let Some(daemon) = REPL_DAEMON.get() {
-        if daemon.is_running() { 1 } else { 0 }
+        if daemon.is_running() {
+            1
+        } else {
+            0
+        }
     } else {
         0
     }
@@ -5191,11 +6735,11 @@ pub extern "C" fn velocity_engine_repl_daemon_delivery_count(engine: *mut std::f
 // Batch 35+ — Raft Consensus, History Compaction, Durable RPC, AI Context
 // ============================================================
 
-use std::sync::OnceLock;
+use crate::ai_context::{AiContextConfig, AiContextWindow, MessageRole};
+use crate::durable_rpc::{DurableRpcConfig, DurableServiceMesh};
+use crate::history_compaction::{CompactableEventType, CompactionConfig, HistoryCompactor};
 use crate::raft_consensus::{RaftCluster, RaftConfig};
-use crate::history_compaction::{HistoryCompactor, CompactionConfig, CompactableEventType};
-use crate::durable_rpc::{DurableServiceMesh, DurableRpcConfig};
-use crate::ai_context::{AiContextWindow, AiContextConfig, MessageRole};
+use std::sync::OnceLock;
 
 static RAFT_CLUSTER: OnceLock<std::sync::Mutex<RaftCluster>> = OnceLock::new();
 static HISTORY_COMPACTOR: OnceLock<std::sync::Mutex<HistoryCompactor>> = OnceLock::new();
@@ -5206,13 +6750,16 @@ fn get_raft() -> &'static std::sync::Mutex<RaftCluster> {
     RAFT_CLUSTER.get_or_init(|| std::sync::Mutex::new(RaftCluster::new()))
 }
 fn get_compactor() -> &'static std::sync::Mutex<HistoryCompactor> {
-    HISTORY_COMPACTOR.get_or_init(|| std::sync::Mutex::new(HistoryCompactor::new(CompactionConfig::default())))
+    HISTORY_COMPACTOR
+        .get_or_init(|| std::sync::Mutex::new(HistoryCompactor::new(CompactionConfig::default())))
 }
 fn get_mesh() -> &'static std::sync::Mutex<DurableServiceMesh> {
-    SERVICE_MESH.get_or_init(|| std::sync::Mutex::new(DurableServiceMesh::new(DurableRpcConfig::default())))
+    SERVICE_MESH
+        .get_or_init(|| std::sync::Mutex::new(DurableServiceMesh::new(DurableRpcConfig::default())))
 }
 fn get_ai_ctx() -> &'static std::sync::Mutex<AiContextWindow> {
-    AI_CONTEXT.get_or_init(|| std::sync::Mutex::new(AiContextWindow::new(AiContextConfig::default())))
+    AI_CONTEXT
+        .get_or_init(|| std::sync::Mutex::new(AiContextWindow::new(AiContextConfig::default())))
 }
 
 // --- Raft Consensus FFI ---
@@ -5220,7 +6767,10 @@ fn get_ai_ctx() -> &'static std::sync::Mutex<AiContextWindow> {
 #[no_mangle]
 pub extern "C" fn velocity_raft_create_group(node_id: u64) -> u64 {
     let mut cluster = get_raft().lock().unwrap();
-    cluster.create_group(RaftConfig { node_id, ..Default::default() })
+    cluster.create_group(RaftConfig {
+        node_id,
+        ..Default::default()
+    })
 }
 
 #[no_mangle]
@@ -5230,15 +6780,25 @@ pub extern "C" fn velocity_raft_become_leader(group_id: u64) -> bool {
         node.start_election();
         node.become_leader();
         true
-    } else { false }
+    } else {
+        false
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn velocity_raft_append_entry(group_id: u64, workflow_key: u64, event_type: u8, payload: *const u8, payload_len: u32) -> u64 {
+pub extern "C" fn velocity_raft_append_entry(
+    group_id: u64,
+    workflow_key: u64,
+    event_type: u8,
+    payload: *const u8,
+    payload_len: u32,
+) -> u64 {
     let mut cluster = get_raft().lock().unwrap();
     let data = if !payload.is_null() && payload_len > 0 {
         unsafe { std::slice::from_raw_parts(payload, payload_len as usize) }.to_vec()
-    } else { Vec::new() };
+    } else {
+        Vec::new()
+    };
     let et = match event_type {
         0 => crate::raft_consensus::RaftEventType::WorkflowStarted,
         1 => crate::raft_consensus::RaftEventType::StepCompleted,
@@ -5248,7 +6808,9 @@ pub extern "C" fn velocity_raft_append_entry(group_id: u64, workflow_key: u64, e
     };
     if let Some(node) = cluster.get_node_mut(group_id) {
         node.append_entry(workflow_key, et, data).unwrap_or(0)
-    } else { 0 }
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -5256,7 +6818,9 @@ pub extern "C" fn velocity_raft_apply_committed(group_id: u64) -> u64 {
     let mut cluster = get_raft().lock().unwrap();
     if let Some(node) = cluster.get_node_mut(group_id) {
         node.apply_committed().len() as u64
-    } else { 0 }
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
@@ -5266,7 +6830,11 @@ pub extern "C" fn velocity_raft_group_count() -> u64 {
 
 #[no_mangle]
 pub extern "C" fn velocity_raft_stat_committed() -> u64 {
-    get_raft().lock().unwrap().aggregate_stats().entries_committed
+    get_raft()
+        .lock()
+        .unwrap()
+        .aggregate_stats()
+        .entries_committed
 }
 
 // --- History Compaction FFI ---
@@ -5290,7 +6858,10 @@ pub extern "C" fn velocity_compact_append_event(workflow_key: u64, event_type: u
 
 #[no_mangle]
 pub extern "C" fn velocity_compact_workflow(workflow_key: u64) -> u64 {
-    get_compactor().lock().unwrap().compact_workflow(workflow_key)
+    get_compactor()
+        .lock()
+        .unwrap()
+        .compact_workflow(workflow_key)
 }
 
 #[no_mangle]
@@ -5300,18 +6871,35 @@ pub extern "C" fn velocity_compact_all() -> u64 {
 
 #[no_mangle]
 pub extern "C" fn velocity_compact_event_count(workflow_key: u64) -> u64 {
-    get_compactor().lock().unwrap().workflow_event_count(workflow_key) as u64
+    get_compactor()
+        .lock()
+        .unwrap()
+        .workflow_event_count(workflow_key) as u64
 }
 
 // --- Durable RPC FFI ---
 
 #[no_mangle]
-pub extern "C" fn velocity_rpc_initiate(caller: *const u8, caller_len: u32, target: *const u8, target_len: u32, method: *const u8, method_len: u32) -> u64 {
-    let c = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(caller, caller_len as usize)) };
-    let t = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(target, target_len as usize)) };
-    let m = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(method, method_len as usize)) };
+pub extern "C" fn velocity_rpc_initiate(
+    caller: *const u8,
+    caller_len: u32,
+    target: *const u8,
+    target_len: u32,
+    method: *const u8,
+    method_len: u32,
+) -> u64 {
+    let c = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(caller, caller_len as usize))
+    };
+    let t = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(target, target_len as usize))
+    };
+    let m = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(method, method_len as usize))
+    };
     let mut mesh = get_mesh().lock().unwrap();
-    mesh.initiate_rpc(c, t, m, Vec::new(), None, None).unwrap_or(0)
+    mesh.initiate_rpc(c, t, m, Vec::new(), None, None)
+        .unwrap_or(0)
 }
 
 #[no_mangle]
@@ -5338,7 +6926,9 @@ pub extern "C" fn velocity_rpc_stat_completed() -> u64 {
 
 #[no_mangle]
 pub extern "C" fn velocity_ai_add_message(role: u8, content: *const u8, content_len: u32) -> u64 {
-    let text = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(content, content_len as usize)) };
+    let text = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(content, content_len as usize))
+    };
     let r = match role {
         0 => MessageRole::System,
         1 => MessageRole::User,
@@ -5365,9 +6955,18 @@ pub extern "C" fn velocity_ai_message_count() -> u64 {
 }
 
 #[no_mangle]
-pub extern "C" fn velocity_ai_add_tool_call(tool: *const u8, tool_len: u32, args: *const u8, args_len: u32) -> u64 {
-    let t = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(tool, tool_len as usize)) };
-    let a = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(args, args_len as usize)) };
+pub extern "C" fn velocity_ai_add_tool_call(
+    tool: *const u8,
+    tool_len: u32,
+    args: *const u8,
+    args_len: u32,
+) -> u64 {
+    let t = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(tool, tool_len as usize))
+    };
+    let a = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(args, args_len as usize))
+    };
     let ctx = get_ai_ctx().lock().unwrap();
     // Return tool call count as ID (simplified)
     ctx.stats().total_tool_calls + 1
@@ -5375,7 +6974,9 @@ pub extern "C" fn velocity_ai_add_tool_call(tool: *const u8, tool_len: u32, args
 
 // ─── Hardware Abstraction Layer FFI ─────────────────────────────────────────
 
-use crate::hardware_integration::{HardwareAbstractionLayer, MerkleEccResult, compute_simple_merkle_root};
+use crate::hardware_integration::{
+    compute_simple_merkle_root, HardwareAbstractionLayer, MerkleEccResult,
+};
 
 static HAL: OnceLock<std::sync::Mutex<HardwareAbstractionLayer>> = OnceLock::new();
 
@@ -5404,7 +7005,10 @@ pub unsafe extern "C" fn velocity_hal_on_slab_write(
     if !merkle_root_ptr.is_null() {
         merkle_root.copy_from_slice(std::slice::from_raw_parts(merkle_root_ptr, 32));
     }
-    let parity = get_hal().lock().unwrap().on_slab_write(workflow_key, slab_data, merkle_root);
+    let parity = get_hal()
+        .lock()
+        .unwrap()
+        .on_slab_write(workflow_key, slab_data, merkle_root);
     parity.len() as u64
 }
 
@@ -5422,7 +7026,10 @@ pub unsafe extern "C" fn velocity_hal_on_slab_read(
     if !merkle_root_ptr.is_null() {
         merkle_root.copy_from_slice(std::slice::from_raw_parts(merkle_root_ptr, 32));
     }
-    let result = get_hal().lock().unwrap().on_slab_read(workflow_key, slab_data, &merkle_root);
+    let result = get_hal()
+        .lock()
+        .unwrap()
+        .on_slab_read(workflow_key, slab_data, &merkle_root);
     match result {
         crate::hardware_traits::VerificationResult::Valid => 0,
         crate::hardware_traits::VerificationResult::Repaired => 1,
@@ -5438,7 +7045,10 @@ pub unsafe extern "C" fn velocity_hal_merkle_ecc_self_heal(
     slab_len: u32,
 ) -> u32 {
     let slab_data = std::slice::from_raw_parts_mut(slab_ptr, slab_len as usize);
-    let result = get_hal().lock().unwrap().merkle_ecc_self_heal(workflow_key, slab_data);
+    let result = get_hal()
+        .lock()
+        .unwrap()
+        .merkle_ecc_self_heal(workflow_key, slab_data);
     match result {
         MerkleEccResult::Valid => 0,
         MerkleEccResult::Repaired => 1,
@@ -5491,19 +7101,31 @@ pub extern "C" fn velocity_hal_cleanup_workflow(workflow_key: u64) {
 /// Check if ECC verification is enabled.
 #[no_mangle]
 pub extern "C" fn velocity_hal_is_ecc_enabled() -> u32 {
-    if get_hal().lock().unwrap().is_ecc_enabled() { 1 } else { 0 }
+    if get_hal().lock().unwrap().is_ecc_enabled() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Check if SmartNIC offload is enabled.
 #[no_mangle]
 pub extern "C" fn velocity_hal_is_nic_enabled() -> u32 {
-    if get_hal().lock().unwrap().is_nic_enabled() { 1 } else { 0 }
+    if get_hal().lock().unwrap().is_nic_enabled() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Check if TEE protection is enabled.
 #[no_mangle]
 pub extern "C" fn velocity_hal_is_tee_enabled() -> u32 {
-    if get_hal().lock().unwrap().is_tee_enabled() { 1 } else { 0 }
+    if get_hal().lock().unwrap().is_tee_enabled() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Compute a simple Merkle root for arbitrary data.
@@ -5520,11 +7142,14 @@ pub unsafe extern "C" fn velocity_hal_compute_merkle_root(
 
 // ─── Network Replication FFI ──────────────────────────────────────────────────
 
-use crate::network_replication::{TcpReplicationServer, TcpReplicationConfig, UdpReplicationTransport, UdpReplicationConfig};
+use crate::network_replication::{
+    TcpReplicationConfig, TcpReplicationServer, UdpReplicationConfig, UdpReplicationTransport,
+};
 use crate::search_index::SearchAttributeIndex;
 
 static TCP_REPL_SERVER: OnceLock<std::sync::Mutex<Option<TcpReplicationServer>>> = OnceLock::new();
-static UDP_REPL_TRANSPORT: OnceLock<std::sync::Mutex<Option<UdpReplicationTransport>>> = OnceLock::new();
+static UDP_REPL_TRANSPORT: OnceLock<std::sync::Mutex<Option<UdpReplicationTransport>>> =
+    OnceLock::new();
 static SEARCH_INDEX: OnceLock<SearchAttributeIndex> = OnceLock::new();
 
 fn get_tcp_repl() -> &'static std::sync::Mutex<Option<TcpReplicationServer>> {
@@ -5574,7 +7199,10 @@ pub extern "C" fn velocity_net_tcp_init(
 #[no_mangle]
 pub extern "C" fn velocity_net_tcp_connections_accepted() -> u64 {
     let guard = get_tcp_repl().lock().unwrap();
-    guard.as_ref().map(|s| s.stats().connections_accepted).unwrap_or(0)
+    guard
+        .as_ref()
+        .map(|s| s.stats().connections_accepted)
+        .unwrap_or(0)
 }
 
 /// Get TCP replication frames sent count.
@@ -5661,10 +7289,15 @@ pub extern "C" fn velocity_search_index_string(
     val_ptr: *const u8,
     val_len: u32,
 ) {
-    let attr = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize)) };
-    let val = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(val_ptr, val_len as usize)) };
+    let attr = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize))
+    };
+    let val = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(val_ptr, val_len as usize))
+    };
     get_search_index().index_attribute(
-        workflow_key, attr,
+        workflow_key,
+        attr,
         &crate::visibility::SearchAttributeValue::String(val.to_string()),
     );
 }
@@ -5677,9 +7310,12 @@ pub extern "C" fn velocity_search_index_integer(
     attr_len: u32,
     value: i64,
 ) {
-    let attr = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize)) };
+    let attr = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize))
+    };
     get_search_index().index_attribute(
-        workflow_key, attr,
+        workflow_key,
+        attr,
         &crate::visibility::SearchAttributeValue::Integer(value),
     );
 }
@@ -5692,12 +7328,18 @@ pub extern "C" fn velocity_search_query_exact_count(
     val_ptr: *const u8,
     val_len: u32,
 ) -> u64 {
-    let attr = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize)) };
-    let val = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(val_ptr, val_len as usize)) };
-    get_search_index().exact_match(
-        attr,
-        &crate::visibility::SearchAttributeValue::String(val.to_string()),
-    ).len() as u64
+    let attr = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize))
+    };
+    let val = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(val_ptr, val_len as usize))
+    };
+    get_search_index()
+        .exact_match(
+            attr,
+            &crate::visibility::SearchAttributeValue::String(val.to_string()),
+        )
+        .len() as u64
 }
 
 /// Query integer range [low, high]. Returns count of matching workflows.
@@ -5708,7 +7350,9 @@ pub extern "C" fn velocity_search_query_range_count(
     low: i64,
     high: i64,
 ) -> u64 {
-    let attr = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize)) };
+    let attr = unsafe {
+        std::str::from_utf8_unchecked(std::slice::from_raw_parts(attr_ptr, attr_len as usize))
+    };
     get_search_index().range_integer(attr, low, high).len() as u64
 }
 
@@ -5747,7 +7391,8 @@ pub extern "C" fn velocity_chaos_soak_test(
 /// Run a crash recovery test. Returns (started << 32) | recovered.
 #[no_mangle]
 pub extern "C" fn velocity_chaos_crash_recovery_test(workflow_count: u32) -> u64 {
-    let (started, recovered) = crate::chaos_endurance::run_crash_recovery_test(workflow_count as usize);
+    let (started, recovered) =
+        crate::chaos_endurance::run_crash_recovery_test(workflow_count as usize);
     ((started as u64) << 32) | (recovered as u64)
 }
 
@@ -5791,7 +7436,11 @@ pub extern "C" fn velocity_hotswap_apply(patch_id: u64, workflow_key: u64) -> u3
 /// Rollback the last patch for a workflow. Returns 1 on success, 0 on failure.
 #[no_mangle]
 pub extern "C" fn velocity_hotswap_rollback(workflow_key: u64) -> u32 {
-    if get_hot_swap().rollback(workflow_key) { 1 } else { 0 }
+    if get_hot_swap().rollback(workflow_key) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Get total patch count.
@@ -5823,25 +7472,38 @@ pub extern "C" fn velocity_slab_header_size() -> u32 {
 /// Get the slab count for an engine.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_slab_count(handle: *mut EngineHandle) -> u32 {
-    if handle.is_null() { return 0; }
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     h.engine.workflow_count() as u32
 }
 
 /// Verify a slab's Merkle root for a workflow. Returns 1 if valid, 0 if invalid.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_slab_verify_merkle(handle: *mut EngineHandle, workflow_key: u64) -> u32 {
-    if handle.is_null() { return 0; }
+pub unsafe extern "C" fn velocity_slab_verify_merkle(
+    handle: *mut EngineHandle,
+    workflow_key: u64,
+) -> u32 {
+    if handle.is_null() {
+        return 0;
+    }
     let h = &*handle;
     match h.engine.get_slab(workflow_key) {
-        Some(slab) => if slab.verify_merkle_root() { 1 } else { 0 },
+        Some(slab) => {
+            if slab.verify_merkle_root() {
+                1
+            } else {
+                0
+            }
+        }
         None => 0,
     }
 }
 
 // ─── Observability FFI ───────────────────────────────────────────────────────
 
-use crate::observability::{self, ObservabilityConfig, ObservabilityContext, LogLevel};
+use crate::observability::{self, LogLevel, ObservabilityConfig, ObservabilityContext};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static OBS_INIT: AtomicU64 = AtomicU64::new(0);
@@ -5878,7 +7540,9 @@ pub unsafe extern "C" fn velocity_obs_init(
 }
 
 fn obs_ctx() -> Option<&'static ObservabilityContext> {
-    if OBS_INIT.load(Ordering::Acquire) == 0 { return None; }
+    if OBS_INIT.load(Ordering::Acquire) == 0 {
+        return None;
+    }
     observability::global()
 }
 
@@ -5894,7 +7558,10 @@ pub unsafe extern "C" fn velocity_obs_log_event(
     field_val_lens: *const u32,
     field_count: u32,
 ) -> i32 {
-    let ctx = match obs_ctx() { Some(c) => c, None => return -1 };
+    let ctx = match obs_ctx() {
+        Some(c) => c,
+        None => return -1,
+    };
 
     let event_name = if name_ptr.is_null() || name_len == 0 {
         "unknown"
@@ -5916,28 +7583,35 @@ pub unsafe extern "C" fn velocity_obs_log_event(
         let val_lens = std::slice::from_raw_parts(field_val_lens, field_count as usize);
 
         for i in 0..(field_count as usize).min(32) {
-            let k = if keys[i].is_null() || key_lens[i] == 0 { "" } else {
-                std::str::from_utf8(std::slice::from_raw_parts(keys[i], key_lens[i] as usize)).unwrap_or("")
+            let k = if keys[i].is_null() || key_lens[i] == 0 {
+                ""
+            } else {
+                std::str::from_utf8(std::slice::from_raw_parts(keys[i], key_lens[i] as usize))
+                    .unwrap_or("")
             };
-            let v = if vals[i].is_null() || val_lens[i] == 0 { "" } else {
-                std::str::from_utf8(std::slice::from_raw_parts(vals[i], val_lens[i] as usize)).unwrap_or("")
+            let v = if vals[i].is_null() || val_lens[i] == 0 {
+                ""
+            } else {
+                std::str::from_utf8(std::slice::from_raw_parts(vals[i], val_lens[i] as usize))
+                    .unwrap_or("")
             };
             fields_buf[i] = (k, v);
             field_count_actual += 1;
         }
     }
 
-    ctx.logger().log_event(log_level, event_name, &fields_buf[..field_count_actual]);
+    ctx.logger()
+        .log_event(log_level, event_name, &fields_buf[..field_count_actual]);
     0
 }
 
 /// Export Prometheus metrics into the provided buffer. Returns bytes written.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_obs_export_metrics(
-    buf: *mut u8,
-    buf_len: u32,
-) -> u64 {
-    let ctx = match obs_ctx() { Some(c) => c, None => return 0 };
+pub unsafe extern "C" fn velocity_obs_export_metrics(buf: *mut u8, buf_len: u32) -> u64 {
+    let ctx = match obs_ctx() {
+        Some(c) => c,
+        None => return 0,
+    };
     let output = ctx.metrics().export_prometheus();
     let bytes = output.as_bytes();
     let copy_len = bytes.len().min(buf_len as usize);
@@ -5954,22 +7628,36 @@ pub unsafe extern "C" fn velocity_obs_start_span(
     name_len: u32,
     parent_id: u64,
 ) -> u64 {
-    let ctx = match obs_ctx() { Some(c) => c, None => return 0 };
+    let ctx = match obs_ctx() {
+        Some(c) => c,
+        None => return 0,
+    };
     let name = if name_ptr.is_null() || name_len == 0 {
         "unknown"
     } else {
         let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
         std::str::from_utf8(slice).unwrap_or("unknown")
     };
-    let parent = if parent_id == 0 { None } else { Some(parent_id) };
+    let parent = if parent_id == 0 {
+        None
+    } else {
+        Some(parent_id)
+    };
     ctx.tracer().start_span(name, parent)
 }
 
 /// End a trace span.
 #[no_mangle]
 pub unsafe extern "C" fn velocity_obs_end_span(span_id: u64) -> i32 {
-    let ctx = match obs_ctx() { Some(c) => c, None => return -1 };
-    if ctx.tracer().end_span(span_id) { 0 } else { -1 }
+    let ctx = match obs_ctx() {
+        Some(c) => c,
+        None => return -1,
+    };
+    if ctx.tracer().end_span(span_id) {
+        0
+    } else {
+        -1
+    }
 }
 
 /// Increment the workflow_started_total counter.
@@ -6024,14 +7712,19 @@ pub unsafe extern "C" fn velocity_update_controller_create() -> u64 {
 
 /// Register an update handler (identity handler for FFI — just echoes args).
 #[no_mangle]
-pub unsafe extern "C" fn velocity_update_register_handler(controller_id: u64, name_ptr: *const u8, name_len: u32) -> i32 {
+pub unsafe extern "C" fn velocity_update_register_handler(
+    controller_id: u64,
+    name_ptr: *const u8,
+    name_len: u32,
+) -> i32 {
     let mut controllers = update_controllers();
     let map = controllers.as_mut().unwrap();
     let controller = match map.get_mut(&controller_id) {
         Some(c) => c,
         None => return -1,
     };
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("unknown");
+    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize))
+        .unwrap_or("unknown");
     controller.register_handler(name, |args| Ok(args.to_vec()));
     0
 }
@@ -6041,8 +7734,10 @@ pub unsafe extern "C" fn velocity_update_register_handler(controller_id: u64, na
 pub unsafe extern "C" fn velocity_update_submit(
     controller_id: u64,
     workflow_key: u64,
-    name_ptr: *const u8, name_len: u32,
-    args_ptr: *const u8, args_len: u32,
+    name_ptr: *const u8,
+    name_len: u32,
+    args_ptr: *const u8,
+    args_len: u32,
 ) -> i32 {
     let controllers = update_controllers();
     let map = controllers.as_ref().unwrap();
@@ -6050,8 +7745,13 @@ pub unsafe extern "C" fn velocity_update_submit(
         Some(c) => c,
         None => return -1,
     };
-    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)).unwrap_or("unknown");
-    let args = if args_ptr.is_null() || args_len == 0 { vec![] } else { std::slice::from_raw_parts(args_ptr, args_len as usize).to_vec() };
+    let name = std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize))
+        .unwrap_or("unknown");
+    let args = if args_ptr.is_null() || args_len == 0 {
+        vec![]
+    } else {
+        std::slice::from_raw_parts(args_ptr, args_len as usize).to_vec()
+    };
     let request = UpdateRequest {
         workflow_key,
         update_id: format!("ffi-update-{}", workflow_key),
@@ -6060,7 +7760,11 @@ pub unsafe extern "C" fn velocity_update_submit(
         wait_policy: UpdateWaitPolicy::Completed,
     };
     let result = controller.submit_update(request);
-    if result.status == crate::update::UpdateStatus::Completed { 0 } else { -1 }
+    if result.status == crate::update::UpdateStatus::Completed {
+        0
+    } else {
+        -1
+    }
 }
 
 /// Get handler count for a controller.
@@ -6080,7 +7784,8 @@ use crate::reachability::ReachabilityTracker;
 
 static REACHABILITY_TRACKERS: Mutex<Option<HashMap<u64, ReachabilityTracker>>> = Mutex::new(None);
 
-fn reachability_trackers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, ReachabilityTracker>>> {
+fn reachability_trackers(
+) -> std::sync::MutexGuard<'static, Option<HashMap<u64, ReachabilityTracker>>> {
     let mut guard = REACHABILITY_TRACKERS.lock().unwrap();
     if guard.is_none() {
         *guard = Some(HashMap::new());
@@ -6100,36 +7805,60 @@ pub unsafe extern "C" fn velocity_reachability_tracker_create() -> u64 {
 
 /// Record a worker poll on a task queue.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_reachability_record_poll(tracker_id: u64, queue_ptr: *const u8, queue_len: u32, timestamp: u64) {
+pub unsafe extern "C" fn velocity_reachability_record_poll(
+    tracker_id: u64,
+    queue_ptr: *const u8,
+    queue_len: u32,
+    timestamp: u64,
+) {
     let trackers = reachability_trackers();
     let map = trackers.as_ref().unwrap();
     if let Some(tracker) = map.get(&tracker_id) {
-        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize)).unwrap_or("unknown");
+        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize))
+            .unwrap_or("unknown");
         tracker.record_poll(queue, timestamp);
     }
 }
 
 /// Check if a task queue is reachable. Returns 1 if reachable, 0 otherwise.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_reachability_check(tracker_id: u64, queue_ptr: *const u8, queue_len: u32) -> i32 {
+pub unsafe extern "C" fn velocity_reachability_check(
+    tracker_id: u64,
+    queue_ptr: *const u8,
+    queue_len: u32,
+) -> i32 {
     let trackers = reachability_trackers();
     let map = trackers.as_ref().unwrap();
     if let Some(tracker) = map.get(&tracker_id) {
-        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize)).unwrap_or("unknown");
+        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize))
+            .unwrap_or("unknown");
         let result = tracker.check_task_queue(queue);
-        if result.is_reachable { 1 } else { 0 }
-    } else { 0 }
+        if result.is_reachable {
+            1
+        } else {
+            0
+        }
+    } else {
+        0
+    }
 }
 
 /// Get worker count for a task queue.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_reachability_worker_count(tracker_id: u64, queue_ptr: *const u8, queue_len: u32) -> u32 {
+pub unsafe extern "C" fn velocity_reachability_worker_count(
+    tracker_id: u64,
+    queue_ptr: *const u8,
+    queue_len: u32,
+) -> u32 {
     let trackers = reachability_trackers();
     let map = trackers.as_ref().unwrap();
     if let Some(tracker) = map.get(&tracker_id) {
-        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize)).unwrap_or("unknown");
+        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize))
+            .unwrap_or("unknown");
         tracker.check_task_queue(queue).worker_count as u32
-    } else { 0 }
+    } else {
+        0
+    }
 }
 
 // ─── Deployment API ──────────────────────────────────────────────────────────
@@ -6138,7 +7867,8 @@ use crate::deployment_api::DeploymentManager;
 
 static DEPLOYMENT_MANAGERS: Mutex<Option<HashMap<u64, DeploymentManager>>> = Mutex::new(None);
 
-fn deployment_managers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, DeploymentManager>>> {
+fn deployment_managers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, DeploymentManager>>>
+{
     let mut guard = DEPLOYMENT_MANAGERS.lock().unwrap();
     if guard.is_none() {
         *guard = Some(HashMap::new());
@@ -6160,31 +7890,47 @@ pub unsafe extern "C" fn velocity_deployment_manager_create() -> u64 {
 #[no_mangle]
 pub unsafe extern "C" fn velocity_deployment_create(
     manager_id: u64,
-    id_ptr: *const u8, id_len: u32,
-    series_ptr: *const u8, series_len: u32,
-    build_ptr: *const u8, build_len: u32,
+    id_ptr: *const u8,
+    id_len: u32,
+    series_ptr: *const u8,
+    series_len: u32,
+    build_ptr: *const u8,
+    build_len: u32,
     timestamp: u64,
 ) -> i32 {
     let managers = deployment_managers();
     let map = managers.as_ref().unwrap();
     if let Some(mgr) = map.get(&manager_id) {
-        let id = std::str::from_utf8(std::slice::from_raw_parts(id_ptr, id_len as usize)).unwrap_or("unknown");
-        let series = std::str::from_utf8(std::slice::from_raw_parts(series_ptr, series_len as usize)).unwrap_or("unknown");
-        let build = std::str::from_utf8(std::slice::from_raw_parts(build_ptr, build_len as usize)).unwrap_or("unknown");
+        let id = std::str::from_utf8(std::slice::from_raw_parts(id_ptr, id_len as usize))
+            .unwrap_or("unknown");
+        let series =
+            std::str::from_utf8(std::slice::from_raw_parts(series_ptr, series_len as usize))
+                .unwrap_or("unknown");
+        let build = std::str::from_utf8(std::slice::from_raw_parts(build_ptr, build_len as usize))
+            .unwrap_or("unknown");
         mgr.create_deployment(id, series, build, timestamp);
         0
-    } else { -1 }
+    } else {
+        -1
+    }
 }
 
 /// Activate a deployment. Returns 0 on success.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_deployment_activate(manager_id: u64, id_ptr: *const u8, id_len: u32) -> i32 {
+pub unsafe extern "C" fn velocity_deployment_activate(
+    manager_id: u64,
+    id_ptr: *const u8,
+    id_len: u32,
+) -> i32 {
     let managers = deployment_managers();
     let map = managers.as_ref().unwrap();
     if let Some(mgr) = map.get(&manager_id) {
-        let id = std::str::from_utf8(std::slice::from_raw_parts(id_ptr, id_len as usize)).unwrap_or("unknown");
+        let id = std::str::from_utf8(std::slice::from_raw_parts(id_ptr, id_len as usize))
+            .unwrap_or("unknown");
         mgr.activate_deployment(id).map(|_| 0).unwrap_or(-1)
-    } else { -1 }
+    } else {
+        -1
+    }
 }
 
 /// Get deployment count.
@@ -6200,7 +7946,7 @@ pub unsafe extern "C" fn velocity_deployment_count(manager_id: u64) -> u32 {
 
 // ─── Codec Server ────────────────────────────────────────────────────────────
 
-use crate::codec_server::{CodecServer, CodecRequest};
+use crate::codec_server::{CodecRequest, CodecServer};
 
 static CODEC_SERVERS: Mutex<Option<HashMap<u64, CodecServer>>> = Mutex::new(None);
 
@@ -6235,7 +7981,7 @@ pub unsafe extern "C" fn velocity_codec_server_codec_count(server_id: u64) -> u3
 
 // ─── Worker Sessions ─────────────────────────────────────────────────────────
 
-use crate::worker_sessions::{SessionManager, SessionConfig};
+use crate::worker_sessions::{SessionConfig, SessionManager};
 
 static SESSION_MANAGERS: Mutex<Option<HashMap<u64, SessionManager>>> = Mutex::new(None);
 
@@ -6259,15 +8005,26 @@ pub unsafe extern "C" fn velocity_session_manager_create() -> u64 {
 
 /// Create a session. Returns session count.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_session_create(manager_id: u64, worker_ptr: *const u8, worker_len: u32, queue_ptr: *const u8, queue_len: u32) -> u32 {
+pub unsafe extern "C" fn velocity_session_create(
+    manager_id: u64,
+    worker_ptr: *const u8,
+    worker_len: u32,
+    queue_ptr: *const u8,
+    queue_len: u32,
+) -> u32 {
     let managers = session_managers();
     let map = managers.as_ref().unwrap();
     if let Some(mgr) = map.get(&manager_id) {
-        let worker = std::str::from_utf8(std::slice::from_raw_parts(worker_ptr, worker_len as usize)).unwrap_or("unknown");
-        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize)).unwrap_or("unknown");
+        let worker =
+            std::str::from_utf8(std::slice::from_raw_parts(worker_ptr, worker_len as usize))
+                .unwrap_or("unknown");
+        let queue = std::str::from_utf8(std::slice::from_raw_parts(queue_ptr, queue_len as usize))
+            .unwrap_or("unknown");
         mgr.create_session(worker, queue);
         mgr.session_count() as u32
-    } else { 0 }
+    } else {
+        0
+    }
 }
 
 /// Get session count.
@@ -6298,7 +8055,8 @@ use crate::worker_determinism::DeterminismChecker;
 
 static DETERMINISM_CHECKERS: Mutex<Option<HashMap<u64, DeterminismChecker>>> = Mutex::new(None);
 
-fn determinism_checkers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, DeterminismChecker>>> {
+fn determinism_checkers() -> std::sync::MutexGuard<'static, Option<HashMap<u64, DeterminismChecker>>>
+{
     let mut guard = DETERMINISM_CHECKERS.lock().unwrap();
     if guard.is_none() {
         *guard = Some(HashMap::new());
@@ -6318,14 +8076,28 @@ pub unsafe extern "C" fn velocity_determinism_checker_create() -> u64 {
 
 /// Record a side effect. Returns side effect ID.
 #[no_mangle]
-pub unsafe extern "C" fn velocity_determinism_record_side_effect(checker_id: u64, op_ptr: *const u8, op_len: u32, result_ptr: *const u8, result_len: u32, timestamp: u64) -> u64 {
+pub unsafe extern "C" fn velocity_determinism_record_side_effect(
+    checker_id: u64,
+    op_ptr: *const u8,
+    op_len: u32,
+    result_ptr: *const u8,
+    result_len: u32,
+    timestamp: u64,
+) -> u64 {
     let checkers = determinism_checkers();
     let map = checkers.as_ref().unwrap();
     if let Some(checker) = map.get(&checker_id) {
-        let op = std::str::from_utf8(std::slice::from_raw_parts(op_ptr, op_len as usize)).unwrap_or("unknown");
-        let result = if result_ptr.is_null() || result_len == 0 { vec![] } else { std::slice::from_raw_parts(result_ptr, result_len as usize).to_vec() };
+        let op = std::str::from_utf8(std::slice::from_raw_parts(op_ptr, op_len as usize))
+            .unwrap_or("unknown");
+        let result = if result_ptr.is_null() || result_len == 0 {
+            vec![]
+        } else {
+            std::slice::from_raw_parts(result_ptr, result_len as usize).to_vec()
+        };
         checker.record_side_effect(op, &result, timestamp)
-    } else { 0 }
+    } else {
+        0
+    }
 }
 
 /// Get violation count.
@@ -6363,11 +8135,15 @@ mod tests {
             assert!(!engine.is_null());
 
             // Start a 3-step workflow
-            let key = velocity_engine_start_workflow(engine, 1001, 1, 0, 42, 3, std::ptr::null(), 0);
+            let key =
+                velocity_engine_start_workflow(engine, 1001, 1, 0, 42, 3, std::ptr::null(), 0);
             assert!(key > 0);
 
             // Check status
-            assert_eq!(velocity_engine_get_status(engine, key), WorkflowStatus::Running as i32);
+            assert_eq!(
+                velocity_engine_get_status(engine, key),
+                WorkflowStatus::Running as i32
+            );
 
             // Poll the task queue — should have a workflow task
             let mut kind = 0u32;
@@ -6376,7 +8152,16 @@ mod tests {
             let mut act = 0u64;
             let mut tid = 0u64;
             let mut attempt = 0u32;
-            let result = velocity_engine_poll_task(engine, 42, &mut kind, &mut wk, &mut step, &mut act, &mut tid, &mut attempt);
+            let result = velocity_engine_poll_task(
+                engine,
+                42,
+                &mut kind,
+                &mut wk,
+                &mut step,
+                &mut act,
+                &mut tid,
+                &mut attempt,
+            );
             assert_eq!(result, 1);
             assert_eq!(kind, TaskKind::WorkflowTask as u32);
             assert_eq!(wk, key);
@@ -6391,7 +8176,10 @@ mod tests {
 
             // Complete workflow
             velocity_engine_complete_workflow(engine, key, std::ptr::null(), 0);
-            assert_eq!(velocity_engine_get_status(engine, key), WorkflowStatus::Completed as i32);
+            assert_eq!(
+                velocity_engine_get_status(engine, key),
+                WorkflowStatus::Completed as i32
+            );
 
             // Cleanup
             assert_eq!(velocity_engine_destroy(engine), 0);
@@ -6402,7 +8190,8 @@ mod tests {
     fn test_ffi_signal() {
         unsafe {
             let engine = velocity_engine_create();
-            let key = velocity_engine_start_workflow(engine, 2001, 1, 0, 42, 1, std::ptr::null(), 0);
+            let key =
+                velocity_engine_start_workflow(engine, 2001, 1, 0, 42, 1, std::ptr::null(), 0);
 
             assert_eq!(velocity_engine_has_signal(engine, key, 100), 0);
 
@@ -6421,11 +8210,21 @@ mod tests {
             assert!(ctrl_id > 0);
 
             let name = b"setAmount";
-            assert_eq!(velocity_update_register_handler(ctrl_id, name.as_ptr(), name.len() as u32), 0);
+            assert_eq!(
+                velocity_update_register_handler(ctrl_id, name.as_ptr(), name.len() as u32),
+                0
+            );
             assert_eq!(velocity_update_handler_count(ctrl_id), 1);
 
             let args = b"100";
-            let result = velocity_update_submit(ctrl_id, 1, name.as_ptr(), name.len() as u32, args.as_ptr(), args.len() as u32);
+            let result = velocity_update_submit(
+                ctrl_id,
+                1,
+                name.as_ptr(),
+                name.len() as u32,
+                args.as_ptr(),
+                args.len() as u32,
+            );
             assert_eq!(result, 0);
         }
     }
@@ -6438,8 +8237,14 @@ mod tests {
 
             let queue = b"main-queue";
             velocity_reachability_record_poll(tracker_id, queue.as_ptr(), queue.len() as u32, 1000);
-            assert_eq!(velocity_reachability_check(tracker_id, queue.as_ptr(), queue.len() as u32), 1);
-            assert!(velocity_reachability_worker_count(tracker_id, queue.as_ptr(), queue.len() as u32) >= 1);
+            assert_eq!(
+                velocity_reachability_check(tracker_id, queue.as_ptr(), queue.len() as u32),
+                1
+            );
+            assert!(
+                velocity_reachability_worker_count(tracker_id, queue.as_ptr(), queue.len() as u32)
+                    >= 1
+            );
         }
     }
 
@@ -6452,10 +8257,25 @@ mod tests {
             let id = b"deploy-1";
             let series = b"production";
             let build = b"v1.0.0";
-            assert_eq!(velocity_deployment_create(mgr_id, id.as_ptr(), id.len() as u32, series.as_ptr(), series.len() as u32, build.as_ptr(), build.len() as u32, 1000), 0);
+            assert_eq!(
+                velocity_deployment_create(
+                    mgr_id,
+                    id.as_ptr(),
+                    id.len() as u32,
+                    series.as_ptr(),
+                    series.len() as u32,
+                    build.as_ptr(),
+                    build.len() as u32,
+                    1000
+                ),
+                0
+            );
             assert_eq!(velocity_deployment_count(mgr_id), 1);
 
-            assert_eq!(velocity_deployment_activate(mgr_id, id.as_ptr(), id.len() as u32), 0);
+            assert_eq!(
+                velocity_deployment_activate(mgr_id, id.as_ptr(), id.len() as u32),
+                0
+            );
         }
     }
 
@@ -6476,7 +8296,13 @@ mod tests {
 
             let worker = b"worker-1";
             let queue = b"main-queue";
-            let count = velocity_session_create(mgr_id, worker.as_ptr(), worker.len() as u32, queue.as_ptr(), queue.len() as u32);
+            let count = velocity_session_create(
+                mgr_id,
+                worker.as_ptr(),
+                worker.len() as u32,
+                queue.as_ptr(),
+                queue.len() as u32,
+            );
             assert!(count >= 1);
             assert_eq!(velocity_session_count(mgr_id), count);
             assert!(velocity_session_active_count(mgr_id) >= 1);
@@ -6491,7 +8317,14 @@ mod tests {
 
             let op = b"db_query";
             let result = b"42";
-            let id = velocity_determinism_record_side_effect(checker_id, op.as_ptr(), op.len() as u32, result.as_ptr(), result.len() as u32, 1000);
+            let id = velocity_determinism_record_side_effect(
+                checker_id,
+                op.as_ptr(),
+                op.len() as u32,
+                result.as_ptr(),
+                result.len() as u32,
+                1000,
+            );
             assert!(id == 0); // First side effect gets ID 0
 
             assert_eq!(velocity_determinism_side_effect_count(checker_id), 1);

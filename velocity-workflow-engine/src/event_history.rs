@@ -2,7 +2,10 @@
 //! Every state change is recorded as a history event with sequence number, timestamp, and data.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
@@ -50,10 +53,18 @@ pub struct WorkflowHistory {
 
 impl WorkflowHistory {
     pub fn new() -> Self {
-        Self { events: Vec::new(), next_event_id: AtomicU64::new(1) }
+        Self {
+            events: Vec::new(),
+            next_event_id: AtomicU64::new(1),
+        }
     }
 
-    pub fn append(&mut self, event_type: HistoryEventType, workflow_key: u64, payload: Vec<u8>) -> u64 {
+    pub fn append(
+        &mut self,
+        event_type: HistoryEventType,
+        workflow_key: u64,
+        payload: Vec<u8>,
+    ) -> u64 {
         let event_id = self.next_event_id.fetch_add(1, Ordering::Relaxed);
         self.events.push(HistoryEvent {
             event_id,
@@ -66,39 +77,62 @@ impl WorkflowHistory {
         event_id
     }
 
-    pub fn append_with_attrs(&mut self, event_type: HistoryEventType, workflow_key: u64, payload: Vec<u8>, attrs: HashMap<String, String>) -> u64 {
+    pub fn append_with_attrs(
+        &mut self,
+        event_type: HistoryEventType,
+        workflow_key: u64,
+        payload: Vec<u8>,
+        attrs: HashMap<String, String>,
+    ) -> u64 {
         let event_id = self.next_event_id.fetch_add(1, Ordering::Relaxed);
         self.events.push(HistoryEvent {
-            event_id, event_type, workflow_key, timestamp_ms: 0, payload, attributes: attrs,
+            event_id,
+            event_type,
+            workflow_key,
+            timestamp_ms: 0,
+            payload,
+            attributes: attrs,
         });
         event_id
     }
 
-    pub fn get_events(&self) -> &[HistoryEvent] { &self.events }
+    pub fn get_events(&self) -> &[HistoryEvent] {
+        &self.events
+    }
 
     pub fn get_event(&self, event_id: u64) -> Option<&HistoryEvent> {
         self.events.iter().find(|e| e.event_id == event_id)
     }
 
     pub fn get_events_by_type(&self, event_type: HistoryEventType) -> Vec<&HistoryEvent> {
-        self.events.iter().filter(|e| e.event_type == event_type).collect()
+        self.events
+            .iter()
+            .filter(|e| e.event_type == event_type)
+            .collect()
     }
 
-    pub fn event_count(&self) -> usize { self.events.len() }
+    pub fn event_count(&self) -> usize {
+        self.events.len()
+    }
 
     pub fn last_event_id(&self) -> u64 {
         self.events.last().map_or(0, |e| e.event_id)
     }
 
     pub fn get_events_page(&self, start_event_id: u64, max_count: usize) -> Vec<&HistoryEvent> {
-        self.events.iter()
+        self.events
+            .iter()
             .filter(|e| e.event_id >= start_event_id)
             .take(max_count)
             .collect()
     }
 }
 
-impl Default for WorkflowHistory { fn default() -> Self { Self::new() } }
+impl Default for WorkflowHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Global history store managing histories for all workflows.
 pub struct HistoryStore {
@@ -106,33 +140,70 @@ pub struct HistoryStore {
 }
 
 impl HistoryStore {
-    pub fn new() -> Self { Self { histories: Mutex::new(HashMap::new()) } }
+    pub fn new() -> Self {
+        Self {
+            histories: Mutex::new(HashMap::new()),
+        }
+    }
 
-    pub fn record_event(&self, workflow_key: u64, event_type: HistoryEventType, payload: Vec<u8>) -> u64 {
+    pub fn record_event(
+        &self,
+        workflow_key: u64,
+        event_type: HistoryEventType,
+        payload: Vec<u8>,
+    ) -> u64 {
         let mut histories = self.histories.lock().unwrap();
-        let history = histories.entry(workflow_key).or_insert_with(WorkflowHistory::new);
+        let history = histories
+            .entry(workflow_key)
+            .or_insert_with(WorkflowHistory::new);
         history.append(event_type, workflow_key, payload)
     }
 
-    pub fn record_event_with_attrs(&self, workflow_key: u64, event_type: HistoryEventType, payload: Vec<u8>, attrs: HashMap<String, String>) -> u64 {
+    pub fn record_event_with_attrs(
+        &self,
+        workflow_key: u64,
+        event_type: HistoryEventType,
+        payload: Vec<u8>,
+        attrs: HashMap<String, String>,
+    ) -> u64 {
         let mut histories = self.histories.lock().unwrap();
-        let history = histories.entry(workflow_key).or_insert_with(WorkflowHistory::new);
+        let history = histories
+            .entry(workflow_key)
+            .or_insert_with(WorkflowHistory::new);
         history.append_with_attrs(event_type, workflow_key, payload, attrs)
     }
 
     pub fn get_history(&self, workflow_key: u64) -> Option<Vec<HistoryEvent>> {
-        self.histories.lock().unwrap().get(&workflow_key).map(|h| h.events.clone())
+        self.histories
+            .lock()
+            .unwrap()
+            .get(&workflow_key)
+            .map(|h| h.events.clone())
     }
 
-    pub fn get_history_page(&self, workflow_key: u64, start_event_id: u64, max_count: usize) -> Vec<HistoryEvent> {
-        self.histories.lock().unwrap()
+    pub fn get_history_page(
+        &self,
+        workflow_key: u64,
+        start_event_id: u64,
+        max_count: usize,
+    ) -> Vec<HistoryEvent> {
+        self.histories
+            .lock()
+            .unwrap()
             .get(&workflow_key)
-            .map(|h| h.get_events_page(start_event_id, max_count).into_iter().cloned().collect())
+            .map(|h| {
+                h.get_events_page(start_event_id, max_count)
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
     pub fn event_count(&self, workflow_key: u64) -> usize {
-        self.histories.lock().unwrap()
+        self.histories
+            .lock()
+            .unwrap()
             .get(&workflow_key)
             .map_or(0, |h| h.event_count())
     }
@@ -142,11 +213,19 @@ impl HistoryStore {
     }
 
     pub fn remove_history(&self, workflow_key: u64) -> bool {
-        self.histories.lock().unwrap().remove(&workflow_key).is_some()
+        self.histories
+            .lock()
+            .unwrap()
+            .remove(&workflow_key)
+            .is_some()
     }
 }
 
-impl Default for HistoryStore { fn default() -> Self { Self::new() } }
+impl Default for HistoryStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -190,7 +269,10 @@ mod tests {
         store.record_event(key, HistoryEventType::WorkflowCompleted, vec![]);
 
         let history = store.get_history(key).unwrap();
-        let signals: Vec<_> = history.iter().filter(|e| e.event_type == HistoryEventType::SignalReceived).collect();
+        let signals: Vec<_> = history
+            .iter()
+            .filter(|e| e.event_type == HistoryEventType::SignalReceived)
+            .collect();
         assert_eq!(signals.len(), 2);
     }
 }

@@ -2,7 +2,10 @@
 //! Full multi-cluster replication with typed tasks, version history, and conflict detection.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 
 /// Typed replication task types matching Temporal's replication task categories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +68,9 @@ pub struct VersionHistory {
 }
 
 impl VersionHistory {
-    pub fn new() -> Self { Self { items: Vec::new() } }
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
 
     /// Add a new item to the version history.
     pub fn add_item(&mut self, failover_version: u64, event_id: u64) {
@@ -76,7 +81,10 @@ impl VersionHistory {
                 return;
             }
         }
-        self.items.push(VersionHistoryItem { failover_version, event_id });
+        self.items.push(VersionHistoryItem {
+            failover_version,
+            event_id,
+        });
     }
 
     /// Get the current (latest) failover version.
@@ -91,8 +99,12 @@ impl VersionHistory {
 
     /// Check if this version history is a superset of another (for conflict detection).
     pub fn contains(&self, other: &VersionHistory) -> bool {
-        if other.items.is_empty() { return true; }
-        if self.items.len() < other.items.len() { return false; }
+        if other.items.is_empty() {
+            return true;
+        }
+        if self.items.len() < other.items.len() {
+            return false;
+        }
         for (s, o) in self.items.iter().zip(other.items.iter()) {
             if s.failover_version != o.failover_version || s.event_id < o.event_id {
                 return false;
@@ -116,8 +128,12 @@ impl VersionHistory {
         divergence
     }
 
-    pub fn len(&self) -> usize { self.items.len() }
-    pub fn is_empty(&self) -> bool { self.items.is_empty() }
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
 }
 
 /// Tracks version histories per workflow for conflict resolution.
@@ -127,41 +143,68 @@ pub struct VersionHistoryStore {
 }
 
 impl VersionHistoryStore {
-    pub fn new() -> Self { Self { histories: Mutex::new(HashMap::new()) } }
+    pub fn new() -> Self {
+        Self {
+            histories: Mutex::new(HashMap::new()),
+        }
+    }
 
     /// Get or create version history for a workflow.
     pub fn get_or_create(&self, workflow_key: u64) -> VersionHistory {
         let mut histories = self.histories.lock().unwrap();
-        histories.entry(workflow_key).or_insert_with(VersionHistory::new).clone()
+        histories
+            .entry(workflow_key)
+            .or_insert_with(VersionHistory::new)
+            .clone()
     }
 
     /// Record a new event in the version history.
     pub fn record_event(&self, workflow_key: u64, failover_version: u64, event_id: u64) {
         let mut histories = self.histories.lock().unwrap();
-        histories.entry(workflow_key).or_insert_with(VersionHistory::new).add_item(failover_version, event_id);
+        histories
+            .entry(workflow_key)
+            .or_insert_with(VersionHistory::new)
+            .add_item(failover_version, event_id);
     }
 
     /// Check if an incoming replication task conflicts with local state.
     /// Returns true if the task can be applied (no conflict or local is behind).
-    pub fn check_incoming(&self, workflow_key: u64, remote_version: u64, remote_event_id: u64) -> bool {
+    pub fn check_incoming(
+        &self,
+        workflow_key: u64,
+        remote_version: u64,
+        remote_event_id: u64,
+    ) -> bool {
         let histories = self.histories.lock().unwrap();
         match histories.get(&workflow_key) {
             None => true, // No local history, accept
             Some(local) => {
                 let local_version = local.current_version();
-                if remote_version > local_version { true }
-                else if remote_version < local_version { false } // Stale task
-                else { remote_event_id > local.current_event_id() } // Same version, check event ordering
+                if remote_version > local_version {
+                    true
+                } else if remote_version < local_version {
+                    false
+                }
+                // Stale task
+                else {
+                    remote_event_id > local.current_event_id()
+                } // Same version, check event ordering
             }
         }
     }
 
     /// Count workflows tracked in version history.
-    pub fn workflow_count(&self) -> usize { self.histories.lock().unwrap().len() }
+    pub fn workflow_count(&self) -> usize {
+        self.histories.lock().unwrap().len()
+    }
 
     /// Remove version history for a workflow (after deletion/cleanup).
     pub fn remove(&self, workflow_key: u64) -> bool {
-        self.histories.lock().unwrap().remove(&workflow_key).is_some()
+        self.histories
+            .lock()
+            .unwrap()
+            .remove(&workflow_key)
+            .is_some()
     }
 }
 
@@ -179,11 +222,18 @@ pub struct ClusterManager {
 impl ClusterManager {
     pub fn new(local_name: &str) -> Self {
         let mut clusters = HashMap::new();
-        clusters.insert(0, ClusterInfo {
-            cluster_name: local_name.to_string(), cluster_id: 0, is_active: true,
-            failover_version: 0, address: "localhost".to_string(),
-            replication_enabled: false, initial_replication_level: 0,
-        });
+        clusters.insert(
+            0,
+            ClusterInfo {
+                cluster_name: local_name.to_string(),
+                cluster_id: 0,
+                is_active: true,
+                failover_version: 0,
+                address: "localhost".to_string(),
+                replication_enabled: false,
+                initial_replication_level: 0,
+            },
+        );
         Self {
             clusters: Mutex::new(clusters),
             replication_queue: Mutex::new(Vec::new()),
@@ -197,48 +247,98 @@ impl ClusterManager {
     pub fn register_cluster(&self, name: &str, address: &str) -> u64 {
         let mut clusters = self.clusters.lock().unwrap();
         let id = clusters.len() as u64;
-        clusters.insert(id, ClusterInfo {
-            cluster_name: name.to_string(), cluster_id: id, is_active: true,
-            failover_version: 0, address: address.to_string(),
-            replication_enabled: true, initial_replication_level: 0,
-        });
+        clusters.insert(
+            id,
+            ClusterInfo {
+                cluster_name: name.to_string(),
+                cluster_id: id,
+                is_active: true,
+                failover_version: 0,
+                address: address.to_string(),
+                replication_enabled: true,
+                initial_replication_level: 0,
+            },
+        );
         id
     }
 
-    pub fn get_cluster(&self, cluster_id: u64) -> Option<ClusterInfo> { self.clusters.lock().unwrap().get(&cluster_id).cloned() }
-    pub fn local_cluster_id(&self) -> u64 { self.local_cluster_id }
-    pub fn cluster_count(&self) -> usize { self.clusters.lock().unwrap().len() }
+    pub fn get_cluster(&self, cluster_id: u64) -> Option<ClusterInfo> {
+        self.clusters.lock().unwrap().get(&cluster_id).cloned()
+    }
+    pub fn local_cluster_id(&self) -> u64 {
+        self.local_cluster_id
+    }
+    pub fn cluster_count(&self) -> usize {
+        self.clusters.lock().unwrap().len()
+    }
 
-    pub fn enqueue_replication(&self, source: u64, target: u64, workflow_key: u64, event_type: u32, payload: Vec<u8>, task_type: ReplicationTaskType) -> u64 {
+    pub fn enqueue_replication(
+        &self,
+        source: u64,
+        target: u64,
+        workflow_key: u64,
+        event_type: u32,
+        payload: Vec<u8>,
+        task_type: ReplicationTaskType,
+    ) -> u64 {
         let task_id = self.next_task_id.fetch_add(1, Ordering::Relaxed);
         let event_id = self.next_event_id.fetch_add(1, Ordering::Relaxed);
-        self.replication_queue.lock().unwrap().push(ReplicationTask {
-            task_id, source_cluster_id: source, target_cluster_id: target,
-            workflow_key, event_type, payload, failover_version: 0,
-            task_type, first_event_id: event_id, last_event_id: event_id, created_ms: 0,
-        });
+        self.replication_queue
+            .lock()
+            .unwrap()
+            .push(ReplicationTask {
+                task_id,
+                source_cluster_id: source,
+                target_cluster_id: target,
+                workflow_key,
+                event_type,
+                payload,
+                failover_version: 0,
+                task_type,
+                first_event_id: event_id,
+                last_event_id: event_id,
+                created_ms: 0,
+            });
         task_id
     }
 
     /// Enqueue a batch of replication tasks (for efficiency).
-    pub fn enqueue_replication_batch(&self, source: u64, target: u64, tasks: Vec<(u64, u32, Vec<u8>, ReplicationTaskType)>) -> Vec<u64> {
+    pub fn enqueue_replication_batch(
+        &self,
+        source: u64,
+        target: u64,
+        tasks: Vec<(u64, u32, Vec<u8>, ReplicationTaskType)>,
+    ) -> Vec<u64> {
         let mut queue = self.replication_queue.lock().unwrap();
         let mut ids = Vec::with_capacity(tasks.len());
         for (workflow_key, event_type, payload, task_type) in tasks {
             let task_id = self.next_task_id.fetch_add(1, Ordering::Relaxed);
             let event_id = self.next_event_id.fetch_add(1, Ordering::Relaxed);
             queue.push(ReplicationTask {
-                task_id, source_cluster_id: source, target_cluster_id: target,
-                workflow_key, event_type, payload, failover_version: 0,
-                task_type, first_event_id: event_id, last_event_id: event_id, created_ms: 0,
+                task_id,
+                source_cluster_id: source,
+                target_cluster_id: target,
+                workflow_key,
+                event_type,
+                payload,
+                failover_version: 0,
+                task_type,
+                first_event_id: event_id,
+                last_event_id: event_id,
+                created_ms: 0,
             });
             ids.push(task_id);
         }
         ids
     }
 
-    pub fn pending_replication_count(&self) -> usize { self.replication_queue.lock().unwrap().len() }
-    pub fn drain_replication_tasks(&self) -> Vec<ReplicationTask> { let mut q = self.replication_queue.lock().unwrap(); std::mem::take(&mut *q) }
+    pub fn pending_replication_count(&self) -> usize {
+        self.replication_queue.lock().unwrap().len()
+    }
+    pub fn drain_replication_tasks(&self) -> Vec<ReplicationTask> {
+        let mut q = self.replication_queue.lock().unwrap();
+        std::mem::take(&mut *q)
+    }
 
     /// Apply an incoming replication task from a remote cluster.
     /// Validates source cluster, checks for duplicates, verifies version ordering.
@@ -249,12 +349,16 @@ impl ClusterManager {
             let clusters = self.clusters.lock().unwrap();
             clusters.contains_key(&task.source_cluster_id)
         };
-        if !source_valid { return false; }
+        if !source_valid {
+            return false;
+        }
 
         // Deduplication check
         {
             let applied = self.applied_tasks.lock().unwrap();
-            if applied.contains_key(&task.task_id) { return false; }
+            if applied.contains_key(&task.task_id) {
+                return false;
+            }
         }
 
         // Update failover version for the source cluster
@@ -268,16 +372,27 @@ impl ClusterManager {
         }
 
         // Mark as applied
-        self.applied_tasks.lock().unwrap().insert(task.task_id, true);
+        self.applied_tasks
+            .lock()
+            .unwrap()
+            .insert(task.task_id, true);
         true
     }
 
     /// Get replication status: (pending_tasks, cluster_count, active_clusters, applied_count).
     pub fn replication_status(&self) -> (usize, usize, usize, usize) {
         let clusters = self.clusters.lock().unwrap();
-        let active = clusters.values().filter(|c| c.is_active && c.replication_enabled).count();
+        let active = clusters
+            .values()
+            .filter(|c| c.is_active && c.replication_enabled)
+            .count();
         let applied = self.applied_tasks.lock().unwrap().len();
-        (self.replication_queue.lock().unwrap().len(), clusters.len(), active, applied)
+        (
+            self.replication_queue.lock().unwrap().len(),
+            clusters.len(),
+            active,
+            applied,
+        )
     }
 
     /// Update the failover version for a cluster (used during failover).
@@ -304,7 +419,10 @@ impl ClusterManager {
 
     /// Get all active cluster IDs (for replication target selection).
     pub fn active_cluster_ids(&self) -> Vec<u64> {
-        self.clusters.lock().unwrap().values()
+        self.clusters
+            .lock()
+            .unwrap()
+            .values()
             .filter(|c| c.is_active && c.replication_enabled)
             .map(|c| c.cluster_id)
             .collect()
@@ -316,8 +434,16 @@ impl ClusterManager {
     }
 }
 
-impl Default for ClusterManager { fn default() -> Self { Self::new("local") } }
-impl Default for VersionHistoryStore { fn default() -> Self { Self::new() } }
+impl Default for ClusterManager {
+    fn default() -> Self {
+        Self::new("local")
+    }
+}
+impl Default for VersionHistoryStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -368,10 +494,17 @@ mod tests {
         let mgr = ClusterManager::new("dc1");
         mgr.register_cluster("dc2", "dc2:9090");
         let task = ReplicationTask {
-            task_id: 100, source_cluster_id: 1, target_cluster_id: 0,
-            workflow_key: 42, event_type: 1, payload: vec![],
-            failover_version: 5, task_type: ReplicationTaskType::SyncHistory,
-            first_event_id: 1, last_event_id: 1, created_ms: 0,
+            task_id: 100,
+            source_cluster_id: 1,
+            target_cluster_id: 0,
+            workflow_key: 42,
+            event_type: 1,
+            payload: vec![],
+            failover_version: 5,
+            task_type: ReplicationTaskType::SyncHistory,
+            first_event_id: 1,
+            last_event_id: 1,
+            created_ms: 0,
         };
         assert!(mgr.apply_incoming_replication(task.clone()));
         // Duplicate should be rejected
@@ -382,10 +515,17 @@ mod tests {
     fn test_apply_unknown_source() {
         let mgr = ClusterManager::new("dc1");
         let task = ReplicationTask {
-            task_id: 1, source_cluster_id: 999, target_cluster_id: 0,
-            workflow_key: 1, event_type: 0, payload: vec![],
-            failover_version: 1, task_type: ReplicationTaskType::SyncHistory,
-            first_event_id: 1, last_event_id: 1, created_ms: 0,
+            task_id: 1,
+            source_cluster_id: 999,
+            target_cluster_id: 0,
+            workflow_key: 1,
+            event_type: 0,
+            payload: vec![],
+            failover_version: 1,
+            task_type: ReplicationTaskType::SyncHistory,
+            first_event_id: 1,
+            last_event_id: 1,
+            created_ms: 0,
         };
         assert!(!mgr.apply_incoming_replication(task));
     }

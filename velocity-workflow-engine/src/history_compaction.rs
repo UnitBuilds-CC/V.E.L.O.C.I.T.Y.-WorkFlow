@@ -139,7 +139,12 @@ impl HistoryCompactor {
     }
 
     /// Append a raw event to L0 for a workflow.
-    pub fn append_event(&mut self, workflow_key: u64, event_type: CompactableEventType, payload: Vec<u8>) -> u64 {
+    pub fn append_event(
+        &mut self,
+        workflow_key: u64,
+        event_type: CompactableEventType,
+        payload: Vec<u8>,
+    ) -> u64 {
         let event_id = self.next_event_id;
         self.next_event_id += 1;
 
@@ -153,7 +158,10 @@ impl HistoryCompactor {
             merged_range: None,
         };
 
-        let history = self.histories.entry(workflow_key).or_insert_with(WorkflowHistory::new);
+        let history = self
+            .histories
+            .entry(workflow_key)
+            .or_insert_with(WorkflowHistory::new);
         history.l0.push_back(event);
         self.stats.total_events_l0 += 1;
 
@@ -176,17 +184,24 @@ impl HistoryCompactor {
         let l3_audit = self.config.l3_audit_trail_count;
 
         if history.l0.len() >= l0_thresh {
-            squashed += Self::do_compact_l0_to_l1(&mut history, &mut self.next_event_id, &mut self.stats);
+            squashed +=
+                Self::do_compact_l0_to_l1(&mut history, &mut self.next_event_id, &mut self.stats);
             self.stats.l0_to_l1_compactions += 1;
         }
 
         if history.l1.len() >= l1_thresh {
-            squashed += Self::do_compact_l1_to_l2(&mut history, &mut self.next_event_id, &mut self.stats);
+            squashed +=
+                Self::do_compact_l1_to_l2(&mut history, &mut self.next_event_id, &mut self.stats);
             self.stats.l1_to_l2_compactions += 1;
         }
 
         if history.l2.len() >= l2_thresh {
-            squashed += Self::do_compact_l2_to_l3(&mut history, &mut self.next_event_id, &mut self.stats, l3_audit);
+            squashed += Self::do_compact_l2_to_l3(
+                &mut history,
+                &mut self.next_event_id,
+                &mut self.stats,
+                l3_audit,
+            );
             self.stats.l2_to_l3_compactions += 1;
         }
 
@@ -210,7 +225,11 @@ impl HistoryCompactor {
     }
 
     /// L0 → L1: Group activity events and squash retries.
-    fn do_compact_l0_to_l1(history: &mut WorkflowHistory, next_id: &mut u64, stats: &mut CompactionStats) -> u64 {
+    fn do_compact_l0_to_l1(
+        history: &mut WorkflowHistory,
+        next_id: &mut u64,
+        stats: &mut CompactionStats,
+    ) -> u64 {
         let to_compact: Vec<CompactableEvent> = history.l0.drain(..).collect();
         let original_count = to_compact.len() as u64;
 
@@ -219,18 +238,18 @@ impl HistoryCompactor {
 
         while i < to_compact.len() {
             match to_compact[i].event_type {
-                CompactableEventType::ActivityTaskScheduled |
-                CompactableEventType::ActivityTaskStarted |
-                CompactableEventType::ActivityTaskCompleted |
-                CompactableEventType::ActivityTaskFailed => {
+                CompactableEventType::ActivityTaskScheduled
+                | CompactableEventType::ActivityTaskStarted
+                | CompactableEventType::ActivityTaskCompleted
+                | CompactableEventType::ActivityTaskFailed => {
                     let group_start = i;
                     let mut group_end = i + 1;
                     while group_end < to_compact.len() {
                         match to_compact[group_end].event_type {
-                            CompactableEventType::ActivityTaskScheduled |
-                            CompactableEventType::ActivityTaskStarted |
-                            CompactableEventType::ActivityTaskCompleted |
-                            CompactableEventType::ActivityTaskFailed => group_end += 1,
+                            CompactableEventType::ActivityTaskScheduled
+                            | CompactableEventType::ActivityTaskStarted
+                            | CompactableEventType::ActivityTaskCompleted
+                            | CompactableEventType::ActivityTaskFailed => group_end += 1,
                             _ => break,
                         }
                     }
@@ -268,7 +287,11 @@ impl HistoryCompactor {
     }
 
     /// L1 → L2: Merge completed step sequences into state delta events.
-    fn do_compact_l1_to_l2(history: &mut WorkflowHistory, next_id: &mut u64, stats: &mut CompactionStats) -> u64 {
+    fn do_compact_l1_to_l2(
+        history: &mut WorkflowHistory,
+        next_id: &mut u64,
+        stats: &mut CompactionStats,
+    ) -> u64 {
         let to_compact: Vec<CompactableEvent> = history.l1.drain(..).collect();
         let original_count = to_compact.len() as u64;
 
@@ -279,11 +302,15 @@ impl HistoryCompactor {
             if to_compact[i].event_type == CompactableEventType::WorkflowTaskScheduled {
                 let group_start = i;
                 let mut group_end = i + 1;
-                while group_end < to_compact.len() &&
-                      to_compact[group_end].event_type != CompactableEventType::WorkflowTaskCompleted {
+                while group_end < to_compact.len()
+                    && to_compact[group_end].event_type
+                        != CompactableEventType::WorkflowTaskCompleted
+                {
                     group_end += 1;
                 }
-                if group_end < to_compact.len() { group_end += 1; }
+                if group_end < to_compact.len() {
+                    group_end += 1;
+                }
 
                 let first = &to_compact[group_start];
                 let last = &to_compact[(group_end - 1).min(to_compact.len() - 1)];
@@ -316,7 +343,12 @@ impl HistoryCompactor {
     }
 
     /// L2 → L3: Keep only terminal state + last N events for audit.
-    fn do_compact_l2_to_l3(history: &mut WorkflowHistory, next_id: &mut u64, stats: &mut CompactionStats, audit_count: usize) -> u64 {
+    fn do_compact_l2_to_l3(
+        history: &mut WorkflowHistory,
+        next_id: &mut u64,
+        stats: &mut CompactionStats,
+        audit_count: usize,
+    ) -> u64 {
         let to_compact: Vec<CompactableEvent> = history.l2.drain(..).collect();
         let original_count = to_compact.len() as u64;
 
@@ -355,11 +387,15 @@ impl HistoryCompactor {
     }
 
     pub fn workflow_event_count(&self, workflow_key: u64) -> usize {
-        self.histories.get(&workflow_key).map(|h| h.total_events()).unwrap_or(0)
+        self.histories
+            .get(&workflow_key)
+            .map(|h| h.total_events())
+            .unwrap_or(0)
     }
 
     pub fn get_events(&self, workflow_key: u64, level: CompactionLevel) -> Vec<CompactableEvent> {
-        self.histories.get(&workflow_key)
+        self.histories
+            .get(&workflow_key)
             .map(|h| match level {
                 CompactionLevel::L0 => h.l0.iter().cloned().collect(),
                 CompactionLevel::L1 => h.l1.iter().cloned().collect(),
@@ -369,8 +405,12 @@ impl HistoryCompactor {
             .unwrap_or_default()
     }
 
-    pub fn stats(&self) -> CompactionStats { self.stats.clone() }
-    pub fn workflow_count(&self) -> usize { self.histories.len() }
+    pub fn stats(&self) -> CompactionStats {
+        self.stats.clone()
+    }
+    pub fn workflow_count(&self) -> usize {
+        self.histories.len()
+    }
 
     pub fn remove_workflow(&mut self, workflow_key: u64) -> bool {
         self.histories.remove(&workflow_key).is_some()

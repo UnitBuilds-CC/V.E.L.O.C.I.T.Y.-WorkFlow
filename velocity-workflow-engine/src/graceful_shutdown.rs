@@ -171,11 +171,7 @@ impl ShutdownController {
         self.wait_drain_loop(guard, deadline)
     }
 
-    fn wait_drain_loop(
-        &self,
-        guard: std::sync::MutexGuard<'_, ()>,
-        deadline: Instant,
-    ) -> bool {
+    fn wait_drain_loop(&self, guard: std::sync::MutexGuard<'_, ()>, deadline: Instant) -> bool {
         let mut guard = guard;
         loop {
             if self.all_drained() {
@@ -222,14 +218,9 @@ impl ShutdownController {
         let drained = self.drained.lock().unwrap();
         let started = self.shutdown_started.lock().unwrap();
 
-        let remaining: Vec<String> = registered
-            .difference(&drained)
-            .cloned()
-            .collect();
+        let remaining: Vec<String> = registered.difference(&drained).cloned().collect();
 
-        let elapsed_ms = started
-            .map(|s| s.elapsed().as_millis() as u64)
-            .unwrap_or(0);
+        let elapsed_ms = started.map(|s| s.elapsed().as_millis() as u64).unwrap_or(0);
 
         ShutdownStatus {
             shutting_down: self.shutdown_flag.load(Ordering::Acquire),
@@ -322,7 +313,9 @@ mod tests {
         ctrl.mark_component_drained("task_queue");
         let status = ctrl.shutdown_status();
         assert_eq!(status.components_remaining.len(), 1);
-        assert!(status.components_remaining.contains(&"timer_engine".to_string()));
+        assert!(status
+            .components_remaining
+            .contains(&"timer_engine".to_string()));
 
         ctrl.mark_component_drained("timer_engine");
         let status = ctrl.shutdown_status();

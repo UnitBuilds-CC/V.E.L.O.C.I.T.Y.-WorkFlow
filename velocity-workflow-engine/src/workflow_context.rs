@@ -9,7 +9,10 @@
 //! 5. **ExecutionStats**: Execution statistics tracking.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── 1. Workflow Execution Context ───────────────────────────────────────────
@@ -68,10 +71,21 @@ pub struct WorkflowExecutionContext {
 }
 
 impl WorkflowExecutionContext {
-    pub fn new(workflow_key: u64, workflow_id: u64, run_id: u64,
-        namespace_id: u64, shard_id: u64, workflow_type: &str, task_queue: &str) -> Self {
+    pub fn new(
+        workflow_key: u64,
+        workflow_id: u64,
+        run_id: u64,
+        namespace_id: u64,
+        shard_id: u64,
+        workflow_type: &str,
+        task_queue: &str,
+    ) -> Self {
         Self {
-            workflow_key, workflow_id, run_id, namespace_id, shard_id,
+            workflow_key,
+            workflow_id,
+            run_id,
+            namespace_id,
+            shard_id,
             context_state: RwLock::new(ContextState::Created),
             workflow_type: workflow_type.to_string(),
             task_queue: task_queue.to_string(),
@@ -102,7 +116,9 @@ impl WorkflowExecutionContext {
         if *state == ContextState::Created {
             *state = ContextState::Loaded;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Lock the context for exclusive access.
@@ -149,7 +165,9 @@ impl WorkflowExecutionContext {
         if *state == ContextState::Locked {
             *state = ContextState::Processing;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Record a command being processed.
@@ -160,7 +178,8 @@ impl WorkflowExecutionContext {
 
     /// Record tasks generated.
     pub fn record_tasks_generated(&self, count: u64) {
-        self.task_generated_count.fetch_add(count, Ordering::Relaxed);
+        self.task_generated_count
+            .fetch_add(count, Ordering::Relaxed);
     }
 
     /// Allocate the next event ID.
@@ -205,9 +224,15 @@ impl WorkflowExecutionContext {
         }
     }
 
-    pub fn current_status(&self) -> u64 { self.status.load(Ordering::Relaxed) }
-    pub fn is_running(&self) -> bool { self.current_status() == 1 }
-    pub fn is_locked(&self) -> bool { self.lock_id.lock().unwrap().is_some() }
+    pub fn current_status(&self) -> u64 {
+        self.status.load(Ordering::Relaxed)
+    }
+    pub fn is_running(&self) -> bool {
+        self.current_status() == 1
+    }
+    pub fn is_locked(&self) -> bool {
+        self.lock_id.lock().unwrap().is_some()
+    }
 }
 
 // ─── 2. Shard Context ────────────────────────────────────────────────────────
@@ -246,10 +271,16 @@ impl ShardContext {
 
     /// Acquire the shard.
     pub fn acquire(&self) -> bool {
-        if self.is_acquired.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        if self
+            .is_acquired
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
             self.range_id.fetch_add(1, Ordering::Relaxed);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Release the shard.
@@ -348,12 +379,30 @@ impl ContextManager {
     }
 
     /// Create a new workflow context.
-    pub fn create_context(&self, workflow_key: u64, workflow_id: u64, run_id: u64,
-        namespace_id: u64, shard_id: u64, workflow_type: &str, task_queue: &str) -> bool {
-        let ctx = WorkflowExecutionContext::new(workflow_key, workflow_id, run_id, namespace_id, shard_id, workflow_type, task_queue);
+    pub fn create_context(
+        &self,
+        workflow_key: u64,
+        workflow_id: u64,
+        run_id: u64,
+        namespace_id: u64,
+        shard_id: u64,
+        workflow_type: &str,
+        task_queue: &str,
+    ) -> bool {
+        let ctx = WorkflowExecutionContext::new(
+            workflow_key,
+            workflow_id,
+            run_id,
+            namespace_id,
+            shard_id,
+            workflow_type,
+            task_queue,
+        );
         ctx.load(); // Auto-load the context
         let mut contexts = self.contexts.write().unwrap();
-        if contexts.contains_key(&workflow_key) { return false; }
+        if contexts.contains_key(&workflow_key) {
+            return false;
+        }
         contexts.insert(workflow_key, ctx);
         self.total_created.fetch_add(1, Ordering::Relaxed);
         true
@@ -361,7 +410,11 @@ impl ContextManager {
 
     /// Get a context by workflow key.
     pub fn get_context(&self, workflow_key: u64) -> Option<ExecutionStats> {
-        self.contexts.read().unwrap().get(&workflow_key).map(|c| c.execution_stats())
+        self.contexts
+            .read()
+            .unwrap()
+            .get(&workflow_key)
+            .map(|c| c.execution_stats())
     }
 
     /// Lock a workflow context.
@@ -371,13 +424,20 @@ impl ContextManager {
             if ctx.lock_context(lock_id) {
                 self.total_locked.fetch_add(1, Ordering::Relaxed);
                 true
-            } else { false }
-        } else { false }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     /// Unlock a workflow context.
     pub fn unlock_workflow(&self, workflow_key: u64, lock_id: &str) -> bool {
-        self.contexts.read().unwrap().get(&workflow_key)
+        self.contexts
+            .read()
+            .unwrap()
+            .get(&workflow_key)
             .map_or(false, |c| c.unlock_context(lock_id))
     }
 
@@ -387,36 +447,62 @@ impl ContextManager {
             ctx.complete(final_status);
             self.total_completed.fetch_add(1, Ordering::Relaxed);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Register a shard context.
     pub fn register_shard(&self, shard_id: u64, owner_host: &str) -> bool {
         let shard_ctx = ShardContext::new(shard_id, owner_host);
-        self.shard_contexts.write().unwrap().insert(shard_id, shard_ctx);
+        self.shard_contexts
+            .write()
+            .unwrap()
+            .insert(shard_id, shard_ctx);
         true
     }
 
     /// Acquire a shard.
     pub fn acquire_shard(&self, shard_id: u64) -> bool {
-        self.shard_contexts.read().unwrap().get(&shard_id)
+        self.shard_contexts
+            .read()
+            .unwrap()
+            .get(&shard_id)
             .map_or(false, |s| s.acquire())
     }
 
     /// Get shard stats.
     pub fn shard_stats(&self, shard_id: u64) -> Option<ShardStats> {
-        self.shard_contexts.read().unwrap().get(&shard_id).map(|s| s.stats())
+        self.shard_contexts
+            .read()
+            .unwrap()
+            .get(&shard_id)
+            .map(|s| s.stats())
     }
 
     /// Total contexts.
-    pub fn total_contexts(&self) -> usize { self.contexts.read().unwrap().len() }
-    pub fn total_created(&self) -> u64 { self.total_created.load(Ordering::Relaxed) }
-    pub fn total_completed(&self) -> u64 { self.total_completed.load(Ordering::Relaxed) }
-    pub fn total_locked(&self) -> u64 { self.total_locked.load(Ordering::Relaxed) }
-    pub fn total_shards(&self) -> usize { self.shard_contexts.read().unwrap().len() }
+    pub fn total_contexts(&self) -> usize {
+        self.contexts.read().unwrap().len()
+    }
+    pub fn total_created(&self) -> u64 {
+        self.total_created.load(Ordering::Relaxed)
+    }
+    pub fn total_completed(&self) -> u64 {
+        self.total_completed.load(Ordering::Relaxed)
+    }
+    pub fn total_locked(&self) -> u64 {
+        self.total_locked.load(Ordering::Relaxed)
+    }
+    pub fn total_shards(&self) -> usize {
+        self.shard_contexts.read().unwrap().len()
+    }
 }
 
-impl Default for ContextManager { fn default() -> Self { Self::new() } }
+impl Default for ContextManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── 4. Execution Stats ──────────────────────────────────────────────────────
 

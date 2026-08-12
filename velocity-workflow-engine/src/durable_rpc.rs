@@ -264,7 +264,9 @@ impl DurableServiceMesh {
     pub fn recover_in_flight(&mut self) -> Vec<DurableRpcId> {
         let mut recovered = Vec::new();
 
-        let in_flight_ids: Vec<DurableRpcId> = self.rpcs.iter()
+        let in_flight_ids: Vec<DurableRpcId> = self
+            .rpcs
+            .iter()
             .filter(|(_, rpc)| rpc.state == DurableRpcState::InFlight)
             .map(|(id, _)| *id)
             .collect();
@@ -327,7 +329,9 @@ impl DurableServiceMesh {
         let before = self.rpcs.len();
         self.rpcs.retain(|_, rpc| {
             match rpc.state {
-                DurableRpcState::Completed | DurableRpcState::Failed | DurableRpcState::Canceled => {
+                DurableRpcState::Completed
+                | DurableRpcState::Failed
+                | DurableRpcState::Canceled => {
                     // Keep if within age window
                     rpc.completed_ms == 0 || rpc.completed_ms > max_age_ms
                 }
@@ -349,7 +353,14 @@ mod tests {
     #[test]
     fn test_initiate_rpc() {
         let mut mesh = test_mesh();
-        let id = mesh.initiate_rpc("service-a", "service-b", "GetUser", vec![1, 2, 3], None, None);
+        let id = mesh.initiate_rpc(
+            "service-a",
+            "service-b",
+            "GetUser",
+            vec![1, 2, 3],
+            None,
+            None,
+        );
         assert!(id.is_some());
         assert_eq!(mesh.rpc_count(), 1);
         assert_eq!(mesh.in_flight_count(), 1);
@@ -358,7 +369,9 @@ mod tests {
     #[test]
     fn test_complete_rpc() {
         let mut mesh = test_mesh();
-        let id = mesh.initiate_rpc("a", "b", "Method", vec![], None, None).unwrap();
+        let id = mesh
+            .initiate_rpc("a", "b", "Method", vec![], None, None)
+            .unwrap();
         assert!(mesh.complete_rpc(id, vec![4, 5, 6]));
 
         let rpc = mesh.get_rpc(id).unwrap();
@@ -369,7 +382,9 @@ mod tests {
     #[test]
     fn test_fail_and_retry() {
         let mut mesh = test_mesh();
-        let id = mesh.initiate_rpc("a", "b", "Method", vec![], None, None).unwrap();
+        let id = mesh
+            .initiate_rpc("a", "b", "Method", vec![], None, None)
+            .unwrap();
 
         mesh.fail_rpc(id, "timeout");
         let rpc = mesh.get_rpc(id).unwrap();
@@ -387,7 +402,9 @@ mod tests {
             ..Default::default()
         });
 
-        let id = mesh.initiate_rpc("a", "b", "Method", vec![], None, None).unwrap();
+        let id = mesh
+            .initiate_rpc("a", "b", "Method", vec![], None, None)
+            .unwrap();
         mesh.fail_rpc(id, "error 1"); // First failure → retry
         mesh.fail_rpc(id, "error 2"); // Second failure → permanent fail
 
@@ -399,7 +416,9 @@ mod tests {
     #[test]
     fn test_cancel_rpc() {
         let mut mesh = test_mesh();
-        let id = mesh.initiate_rpc("a", "b", "Method", vec![], None, None).unwrap();
+        let id = mesh
+            .initiate_rpc("a", "b", "Method", vec![], None, None)
+            .unwrap();
         assert!(mesh.cancel_rpc(id));
 
         let rpc = mesh.get_rpc(id).unwrap();
@@ -409,8 +428,12 @@ mod tests {
     #[test]
     fn test_crash_recovery() {
         let mut mesh = test_mesh();
-        let id1 = mesh.initiate_rpc("a", "b", "Method1", vec![], None, None).unwrap();
-        let _id2 = mesh.initiate_rpc("a", "c", "Method2", vec![], None, None).unwrap();
+        let id1 = mesh
+            .initiate_rpc("a", "b", "Method1", vec![], None, None)
+            .unwrap();
+        let _id2 = mesh
+            .initiate_rpc("a", "c", "Method2", vec![], None, None)
+            .unwrap();
 
         // Simulate crash: both RPCs are in-flight
         let recovered = mesh.recover_in_flight();
@@ -436,8 +459,14 @@ mod tests {
             ..Default::default()
         });
 
-        assert!(mesh.initiate_rpc("a", "b", "M1", vec![], None, None).is_some());
-        assert!(mesh.initiate_rpc("a", "b", "M2", vec![], None, None).is_some());
-        assert!(mesh.initiate_rpc("a", "b", "M3", vec![], None, None).is_none()); // Backpressure
+        assert!(mesh
+            .initiate_rpc("a", "b", "M1", vec![], None, None)
+            .is_some());
+        assert!(mesh
+            .initiate_rpc("a", "b", "M2", vec![], None, None)
+            .is_some());
+        assert!(mesh
+            .initiate_rpc("a", "b", "M3", vec![], None, None)
+            .is_none()); // Backpressure
     }
 }

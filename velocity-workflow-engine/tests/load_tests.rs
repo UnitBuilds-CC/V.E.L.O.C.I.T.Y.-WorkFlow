@@ -6,16 +6,16 @@
 //!
 //! Run with: `cargo test --test load_tests --release -- --nocapture`
 
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
-use velocity_workflow_engine::task_queue::{TaskQueue, TaskItem, TaskKind};
-use velocity_workflow_engine::timer_engine::TimerEngine;
-use velocity_workflow_engine::namespace::{NamespaceRegistry, NamespaceConfig};
+use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
 use velocity_workflow_engine::rate_limiter::RateLimiter;
+use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
+use velocity_workflow_engine::timer_engine::TimerEngine;
 use velocity_workflow_engine::visibility::VisibilityIndex;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -189,7 +189,9 @@ fn run_throughput_test(config: &LoadTestConfig) -> LoadTestResult {
     result.errors = errors.load(Ordering::Relaxed);
     result.operations_per_second = result.total_operations as f64 / elapsed.as_secs_f64();
     result.start_latencies_us = Arc::try_unwrap(start_latencies)
-        .unwrap().into_inner().unwrap();
+        .unwrap()
+        .into_inner()
+        .unwrap();
     result.calculate_percentiles();
     result.memory_peak_mb = estimate_memory_mb(&engine, result.total_operations);
     result
@@ -264,8 +266,18 @@ fn run_mixed_workload_test(config: &LoadTestConfig) -> LoadTestResult {
         let start_latencies = Arc::clone(&start_latencies);
         for i in 0..config.concurrent_workflows {
             let t0 = Instant::now();
-            let key = engine.start_workflow(1, 1, 0, 3_000_000 + i as u64, config.steps_per_workflow, None);
-            start_latencies.lock().unwrap().push(t0.elapsed().as_micros() as u64);
+            let key = engine.start_workflow(
+                1,
+                1,
+                0,
+                3_000_000 + i as u64,
+                config.steps_per_workflow,
+                None,
+            );
+            start_latencies
+                .lock()
+                .unwrap()
+                .push(t0.elapsed().as_micros() as u64);
             active_keys.lock().unwrap().push(key);
             total_ops.fetch_add(1, Ordering::Relaxed);
         }
@@ -358,7 +370,9 @@ fn run_mixed_workload_test(config: &LoadTestConfig) -> LoadTestResult {
     result.errors = errors.load(Ordering::Relaxed);
     result.operations_per_second = result.total_operations as f64 / elapsed.as_secs_f64();
     result.start_latencies_us = Arc::try_unwrap(start_latencies)
-        .unwrap().into_inner().unwrap();
+        .unwrap()
+        .into_inner()
+        .unwrap();
     result.calculate_percentiles();
     result.memory_peak_mb = estimate_memory_mb(&engine, result.total_operations);
     result
@@ -478,7 +492,9 @@ fn run_burst_test(config: &LoadTestConfig) -> LoadTestResult {
     result.errors = errors.load(Ordering::Relaxed);
     result.operations_per_second = result.total_operations as f64 / elapsed.as_secs_f64();
     result.start_latencies_us = Arc::try_unwrap(start_latencies)
-        .unwrap().into_inner().unwrap();
+        .unwrap()
+        .into_inner()
+        .unwrap();
     result.calculate_percentiles();
     result.memory_peak_mb = estimate_memory_mb(&engine, result.total_operations);
     result
@@ -498,13 +514,31 @@ fn print_result(result: &LoadTestResult) {
     println!("│  Load Test: {:<43}│", result.test_name);
     println!("├─────────────────────────────────────────────────────────┤");
     println!("│  Total Operations:  {:<35}│", result.total_operations);
-    println!("│  Ops/Second:        {:<35.1}│", result.operations_per_second);
-    println!("│  P50 Latency:       {:<35.3}│", format!("{} ms", result.p50_ms));
-    println!("│  P95 Latency:       {:<35.3}│", format!("{} ms", result.p95_ms));
-    println!("│  P99 Latency:       {:<35.3}│", format!("{} ms", result.p99_ms));
+    println!(
+        "│  Ops/Second:        {:<35.1}│",
+        result.operations_per_second
+    );
+    println!(
+        "│  P50 Latency:       {:<35.3}│",
+        format!("{} ms", result.p50_ms)
+    );
+    println!(
+        "│  P95 Latency:       {:<35.3}│",
+        format!("{} ms", result.p95_ms)
+    );
+    println!(
+        "│  P99 Latency:       {:<35.3}│",
+        format!("{} ms", result.p99_ms)
+    );
     println!("│  Errors:            {:<35}│", result.errors);
-    println!("│  Est. Peak Memory:  {:<35.2}│", format!("{} MB", result.memory_peak_mb));
-    println!("│  Elapsed:           {:<35.3}│", format!("{:.3} s", result.elapsed.as_secs_f64()));
+    println!(
+        "│  Est. Peak Memory:  {:<35.2}│",
+        format!("{} MB", result.memory_peak_mb)
+    );
+    println!(
+        "│  Elapsed:           {:<35.3}│",
+        format!("{:.3} s", result.elapsed.as_secs_f64())
+    );
     println!("└─────────────────────────────────────────────────────────┘");
 }
 
@@ -522,10 +556,19 @@ fn test_throughput_low_concurrency() {
     };
     let result = run_throughput_test(&config);
     print_result(&result);
-    assert!(result.total_operations > 0, "Should complete at least some workflows");
+    assert!(
+        result.total_operations > 0,
+        "Should complete at least some workflows"
+    );
     // Load tests may have some errors under concurrent stress — that's expected
-    println!("  Error rate: {:.2}%", 
-        if result.total_operations > 0 { result.errors as f64 / (result.total_operations + result.errors) as f64 * 100.0 } else { 0.0 });
+    println!(
+        "  Error rate: {:.2}%",
+        if result.total_operations > 0 {
+            result.errors as f64 / (result.total_operations + result.errors) as f64 * 100.0
+        } else {
+            0.0
+        }
+    );
 }
 
 #[test]
@@ -567,7 +610,11 @@ fn test_latency_single_workflow() {
     let result = run_latency_test(&config);
     print_result(&result);
     assert!(result.total_operations > 0);
-    assert!(result.p50_ms < 10.0, "P50 should be under 10ms, got {}", result.p50_ms);
+    assert!(
+        result.p50_ms < 10.0,
+        "P50 should be under 10ms, got {}",
+        result.p50_ms
+    );
 }
 
 #[test]
@@ -581,7 +628,11 @@ fn test_latency_many_workflows() {
     let result = run_latency_test(&config);
     print_result(&result);
     assert!(result.total_operations > 0);
-    assert!(result.p99_ms < 50.0, "P99 should be under 50ms, got {}", result.p99_ms);
+    assert!(
+        result.p99_ms < 50.0,
+        "P99 should be under 50ms, got {}",
+        result.p99_ms
+    );
 }
 
 #[test]
@@ -637,7 +688,10 @@ fn test_burst_small() {
     };
     let result = run_burst_test(&config);
     print_result(&result);
-    assert!(result.total_operations > 0, "Should complete burst workflows");
+    assert!(
+        result.total_operations > 0,
+        "Should complete burst workflows"
+    );
 }
 
 #[test]
@@ -651,8 +705,10 @@ fn test_burst_large() {
     print_result(&result);
     assert!(result.total_operations > 0);
     // Burst tests may have some errors under extreme load — that's expected
-    println!("  Burst error rate: {:.2}%", 
-        result.errors as f64 / result.total_operations as f64 * 100.0);
+    println!(
+        "  Burst error rate: {:.2}%",
+        result.errors as f64 / result.total_operations as f64 * 100.0
+    );
 }
 
 #[test]
@@ -745,7 +801,11 @@ fn test_timer_engine_throughput() {
     }
     let schedule_elapsed = start.elapsed();
 
-    println!("Scheduled {} timers in {:.3}ms", iterations, schedule_elapsed.as_secs_f64() * 1000.0);
+    println!(
+        "Scheduled {} timers in {:.3}ms",
+        iterations,
+        schedule_elapsed.as_secs_f64() * 1000.0
+    );
     assert_eq!(timer.pending_count(), iterations as usize);
 
     // Cancel half
@@ -755,8 +815,15 @@ fn test_timer_engine_throughput() {
     }
     let cancel_elapsed = cancel_start.elapsed();
 
-    println!("Cancelled {} timers in {:.3}ms", iterations / 2, cancel_elapsed.as_secs_f64() * 1000.0);
-    assert_eq!(timer.pending_count(), iterations as usize - iterations as usize / 2);
+    println!(
+        "Cancelled {} timers in {:.3}ms",
+        iterations / 2,
+        cancel_elapsed.as_secs_f64() * 1000.0
+    );
+    assert_eq!(
+        timer.pending_count(),
+        iterations as usize - iterations as usize / 2
+    );
 }
 
 #[test]
@@ -773,9 +840,16 @@ fn test_namespace_registration_throughput() {
     let elapsed = start.elapsed();
 
     let ops_per_sec = iterations as f64 / elapsed.as_secs_f64();
-    println!("Registered {} namespaces in {:.3}ms ({:.0} ops/sec)",
-        iterations, elapsed.as_secs_f64() * 1000.0, ops_per_sec);
-    assert!(ops_per_sec > 10_000.0, "Should register at least 10K namespaces/sec");
+    println!(
+        "Registered {} namespaces in {:.3}ms ({:.0} ops/sec)",
+        iterations,
+        elapsed.as_secs_f64() * 1000.0,
+        ops_per_sec
+    );
+    assert!(
+        ops_per_sec > 10_000.0,
+        "Should register at least 10K namespaces/sec"
+    );
 }
 
 #[test]
@@ -793,8 +867,12 @@ fn test_rate_limiter_throughput() {
     let elapsed = start.elapsed();
 
     let ops_per_sec = iterations as f64 / elapsed.as_secs_f64();
-    println!("Rate limiter: {} acquires in {:.3}ms ({:.0} ops/sec)",
-        acquired, elapsed.as_secs_f64() * 1000.0, ops_per_sec);
+    println!(
+        "Rate limiter: {} acquires in {:.3}ms ({:.0} ops/sec)",
+        acquired,
+        elapsed.as_secs_f64() * 1000.0,
+        ops_per_sec
+    );
     assert!(acquired > 0);
 }
 
@@ -825,7 +903,11 @@ fn test_visibility_index_throughput() {
     let elapsed = start.elapsed();
 
     let ops_per_sec = iterations as f64 / elapsed.as_secs_f64();
-    println!("Indexed {} workflows in {:.3}ms ({:.0} ops/sec)",
-        iterations, elapsed.as_secs_f64() * 1000.0, ops_per_sec);
+    println!(
+        "Indexed {} workflows in {:.3}ms ({:.0} ops/sec)",
+        iterations,
+        elapsed.as_secs_f64() * 1000.0,
+        ops_per_sec
+    );
     assert!(ops_per_sec > 10_000.0);
 }

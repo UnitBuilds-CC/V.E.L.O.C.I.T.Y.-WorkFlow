@@ -4,8 +4,11 @@
 //! search attribute, deployment, operator, and admin handlers.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Mutex, atomic::{AtomicU64, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // API Request/Response Types
@@ -322,8 +325,13 @@ impl FrontendServiceImpl {
         }
     }
 
-    pub fn register_namespace(&self, req: &RegisterNamespaceRequest) -> Result<RegisterNamespaceResponse, FrontendError> {
-        self.stats.namespace_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn register_namespace(
+        &self,
+        req: &RegisterNamespaceRequest,
+    ) -> Result<RegisterNamespaceResponse, FrontendError> {
+        self.stats
+            .namespace_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let mut namespaces = self.namespaces.write().unwrap();
         if namespaces.contains_key(&req.namespace) {
@@ -359,14 +367,22 @@ impl FrontendServiceImpl {
 
         namespaces.insert(req.namespace.clone(), state);
 
-        Ok(RegisterNamespaceResponse { namespace_id: ns_id })
+        Ok(RegisterNamespaceResponse {
+            namespace_id: ns_id,
+        })
     }
 
-    pub fn describe_namespace(&self, req: &DescribeNamespaceRequest) -> Result<DescribeNamespaceResponse, FrontendError> {
-        self.stats.namespace_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn describe_namespace(
+        &self,
+        req: &DescribeNamespaceRequest,
+    ) -> Result<DescribeNamespaceResponse, FrontendError> {
+        self.stats
+            .namespace_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let namespaces = self.namespaces.read().unwrap();
-        let state = namespaces.get(&req.namespace)
+        let state = namespaces
+            .get(&req.namespace)
             .ok_or(FrontendError::NamespaceNotFound(req.namespace.clone()))?;
 
         Ok(DescribeNamespaceResponse {
@@ -379,11 +395,17 @@ impl FrontendServiceImpl {
         })
     }
 
-    pub fn update_namespace(&self, req: &UpdateNamespaceRequest) -> Result<UpdateNamespaceResponse, FrontendError> {
-        self.stats.namespace_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn update_namespace(
+        &self,
+        req: &UpdateNamespaceRequest,
+    ) -> Result<UpdateNamespaceResponse, FrontendError> {
+        self.stats
+            .namespace_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let mut namespaces = self.namespaces.write().unwrap();
-        let state = namespaces.get_mut(&req.namespace)
+        let state = namespaces
+            .get_mut(&req.namespace)
             .ok_or(FrontendError::NamespaceNotFound(req.namespace.clone()))?;
 
         if let Some(desc) = &req.update_description {
@@ -411,28 +433,36 @@ impl FrontendServiceImpl {
         })
     }
 
-    pub fn deprecate_namespace(&self, req: &DeprecateNamespaceRequest) -> Result<(), FrontendError> {
-        self.stats.namespace_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn deprecate_namespace(
+        &self,
+        req: &DeprecateNamespaceRequest,
+    ) -> Result<(), FrontendError> {
+        self.stats
+            .namespace_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let mut namespaces = self.namespaces.write().unwrap();
-        let state = namespaces.get_mut(&req.namespace)
+        let state = namespaces
+            .get_mut(&req.namespace)
             .ok_or(FrontendError::NamespaceNotFound(req.namespace.clone()))?;
 
         state.info.state = NamespaceState::Deprecated;
         Ok(())
     }
 
-    pub fn list_namespaces(&self, req: &ListNamespacesRequest) -> Result<ListNamespacesResponse, FrontendError> {
+    pub fn list_namespaces(
+        &self,
+        req: &ListNamespacesRequest,
+    ) -> Result<ListNamespacesResponse, FrontendError> {
         self.stats.list_operations.fetch_add(1, Ordering::Relaxed);
 
         let namespaces = self.namespaces.read().unwrap();
-        let filtered: Vec<DescribeNamespaceResponse> = namespaces.values()
-            .filter(|s| {
-                match req.namespace_filter {
-                    NamespaceFilter::All => true,
-                    NamespaceFilter::Deleted => s.info.state == NamespaceState::Deleted,
-                    _ => s.info.state != NamespaceState::Deleted,
-                }
+        let filtered: Vec<DescribeNamespaceResponse> = namespaces
+            .values()
+            .filter(|s| match req.namespace_filter {
+                NamespaceFilter::All => true,
+                NamespaceFilter::Deleted => s.info.state == NamespaceState::Deleted,
+                _ => s.info.state != NamespaceState::Deleted,
             })
             .map(|s| DescribeNamespaceResponse {
                 namespace_info: s.info.clone(),
@@ -451,11 +481,15 @@ impl FrontendServiceImpl {
         })
     }
 
-    pub fn list_workflow_executions(&self, req: &ListWorkflowExecutionsRequest) -> Result<ListWorkflowExecutionsResponse, FrontendError> {
+    pub fn list_workflow_executions(
+        &self,
+        req: &ListWorkflowExecutionsRequest,
+    ) -> Result<ListWorkflowExecutionsResponse, FrontendError> {
         self.stats.list_operations.fetch_add(1, Ordering::Relaxed);
 
         let workflows = self.workflows.read().unwrap();
-        let executions: Vec<WorkflowExecutionInfo> = workflows.values()
+        let executions: Vec<WorkflowExecutionInfo> = workflows
+            .values()
             .take(req.page_size as usize)
             .cloned()
             .collect();
@@ -466,8 +500,13 @@ impl FrontendServiceImpl {
         })
     }
 
-    pub fn count_workflow_executions(&self, req: &CountWorkflowExecutionsRequest) -> Result<CountWorkflowExecutionsResponse, FrontendError> {
-        self.stats.workflow_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn count_workflow_executions(
+        &self,
+        req: &CountWorkflowExecutionsRequest,
+    ) -> Result<CountWorkflowExecutionsResponse, FrontendError> {
+        self.stats
+            .workflow_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let workflows = self.workflows.read().unwrap();
         let count = workflows.len() as i64;
@@ -475,8 +514,13 @@ impl FrontendServiceImpl {
         Ok(CountWorkflowExecutionsResponse { count })
     }
 
-    pub fn get_search_attributes(&self, req: &GetSearchAttributesRequest) -> Result<GetSearchAttributesResponse, FrontendError> {
-        self.stats.search_attribute_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn get_search_attributes(
+        &self,
+        req: &GetSearchAttributesRequest,
+    ) -> Result<GetSearchAttributesResponse, FrontendError> {
+        self.stats
+            .search_attribute_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let attrs = self.search_attrs.read().unwrap();
         let system: HashMap<String, SearchAttributeType> = attrs.clone();
@@ -487,23 +531,37 @@ impl FrontendServiceImpl {
         })
     }
 
-    pub fn register_search_attribute(&self, name: &str, attr_type: SearchAttributeType) -> Result<(), FrontendError> {
-        self.stats.search_attribute_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn register_search_attribute(
+        &self,
+        name: &str,
+        attr_type: SearchAttributeType,
+    ) -> Result<(), FrontendError> {
+        self.stats
+            .search_attribute_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let mut attrs = self.search_attrs.write().unwrap();
         if attrs.contains_key(name) {
-            return Err(FrontendError::SearchAttributeAlreadyExists(name.to_string()));
+            return Err(FrontendError::SearchAttributeAlreadyExists(
+                name.to_string(),
+            ));
         }
         attrs.insert(name.to_string(), attr_type);
         Ok(())
     }
 
-    pub fn describe_workflow_execution(&self, req: &DescribeWorkflowExecutionRequest) -> Result<DescribeWorkflowExecutionResponse, FrontendError> {
-        self.stats.workflow_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn describe_workflow_execution(
+        &self,
+        req: &DescribeWorkflowExecutionRequest,
+    ) -> Result<DescribeWorkflowExecutionResponse, FrontendError> {
+        self.stats
+            .workflow_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let key = format!("{}:{}", req.namespace, req.workflow_id);
         let workflows = self.workflows.read().unwrap();
-        let info = workflows.get(&key)
+        let info = workflows
+            .get(&key)
             .ok_or(FrontendError::WorkflowNotFound(req.workflow_id.clone()))?;
 
         Ok(DescribeWorkflowExecutionResponse {
@@ -513,19 +571,28 @@ impl FrontendServiceImpl {
         })
     }
 
-    pub fn reset_workflow_execution(&self, req: &ResetWorkflowExecutionRequest) -> Result<ResetWorkflowExecutionResponse, FrontendError> {
-        self.stats.workflow_operations.fetch_add(1, Ordering::Relaxed);
+    pub fn reset_workflow_execution(
+        &self,
+        req: &ResetWorkflowExecutionRequest,
+    ) -> Result<ResetWorkflowExecutionResponse, FrontendError> {
+        self.stats
+            .workflow_operations
+            .fetch_add(1, Ordering::Relaxed);
 
         let new_run_id = format!("run-{}", uuid_simple());
         Ok(ResetWorkflowExecutionResponse { run_id: new_run_id })
     }
 
-    pub fn stats(&self) -> &FrontendStats { &self.stats }
+    pub fn stats(&self) -> &FrontendStats {
+        &self.stats
+    }
 }
 
 fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{:x}{:x}", t.as_secs(), t.subsec_nanos())
 }
 
@@ -586,7 +653,10 @@ mod tests {
         let req = make_register_req("test-ns");
         svc.register_namespace(&req).unwrap();
 
-        let desc_req = DescribeNamespaceRequest { namespace: "test-ns".to_string(), namespace_id: None };
+        let desc_req = DescribeNamespaceRequest {
+            namespace: "test-ns".to_string(),
+            namespace_id: None,
+        };
         let resp = svc.describe_namespace(&desc_req).unwrap();
         assert_eq!(resp.namespace_info.name, "test-ns");
         assert_eq!(resp.namespace_info.state, NamespaceState::Registered);
@@ -621,10 +691,15 @@ mod tests {
         let req = make_register_req("test-ns");
         svc.register_namespace(&req).unwrap();
 
-        let dep_req = DeprecateNamespaceRequest { namespace: "test-ns".to_string() };
+        let dep_req = DeprecateNamespaceRequest {
+            namespace: "test-ns".to_string(),
+        };
         svc.deprecate_namespace(&dep_req).unwrap();
 
-        let desc_req = DescribeNamespaceRequest { namespace: "test-ns".to_string(), namespace_id: None };
+        let desc_req = DescribeNamespaceRequest {
+            namespace: "test-ns".to_string(),
+            namespace_id: None,
+        };
         let resp = svc.describe_namespace(&desc_req).unwrap();
         assert_eq!(resp.namespace_info.state, NamespaceState::Deprecated);
     }
@@ -649,7 +724,9 @@ mod tests {
     #[test]
     fn test_get_search_attributes() {
         let svc = FrontendServiceImpl::new();
-        let req = GetSearchAttributesRequest { namespace: "test-ns".to_string() };
+        let req = GetSearchAttributesRequest {
+            namespace: "test-ns".to_string(),
+        };
         let resp = svc.get_search_attributes(&req).unwrap();
         assert!(resp.system_attributes.len() >= 10);
         assert!(resp.system_attributes.contains_key("WorkflowId"));
@@ -659,9 +736,12 @@ mod tests {
     #[test]
     fn test_register_search_attribute() {
         let svc = FrontendServiceImpl::new();
-        svc.register_search_attribute("CustomField", SearchAttributeType::Keyword).unwrap();
+        svc.register_search_attribute("CustomField", SearchAttributeType::Keyword)
+            .unwrap();
 
-        let req = GetSearchAttributesRequest { namespace: "test-ns".to_string() };
+        let req = GetSearchAttributesRequest {
+            namespace: "test-ns".to_string(),
+        };
         let resp = svc.get_search_attributes(&req).unwrap();
         assert!(resp.system_attributes.contains_key("CustomField"));
     }
@@ -669,8 +749,11 @@ mod tests {
     #[test]
     fn test_register_duplicate_search_attribute() {
         let svc = FrontendServiceImpl::new();
-        svc.register_search_attribute("CustomField", SearchAttributeType::Keyword).unwrap();
-        assert!(svc.register_search_attribute("CustomField", SearchAttributeType::Keyword).is_err());
+        svc.register_search_attribute("CustomField", SearchAttributeType::Keyword)
+            .unwrap();
+        assert!(svc
+            .register_search_attribute("CustomField", SearchAttributeType::Keyword)
+            .is_err());
     }
 
     #[test]
@@ -697,7 +780,10 @@ mod tests {
 
         assert_eq!(svc.stats().namespace_operations.load(Ordering::Relaxed), 2);
 
-        let desc_req = DescribeNamespaceRequest { namespace: "ns1".to_string(), namespace_id: None };
+        let desc_req = DescribeNamespaceRequest {
+            namespace: "ns1".to_string(),
+            namespace_id: None,
+        };
         svc.describe_namespace(&desc_req).unwrap();
         assert_eq!(svc.stats().namespace_operations.load(Ordering::Relaxed), 3);
     }

@@ -4,8 +4,11 @@
 //! signal/query, record activity heartbeat, get history, replicate events, and more.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Mutex, atomic::{AtomicU64, AtomicI64, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicI64, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // History API Context
@@ -46,8 +49,16 @@ impl HistoryApiContext {
 
 fn uuid_v4() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    format!("{:x}-{:x}-{:x}-{:x}", t.as_secs(), t.subsec_nanos(), t.as_millis(), std::process::id())
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    format!(
+        "{:x}-{:x}-{:x}-{:x}",
+        t.as_secs(),
+        t.subsec_nanos(),
+        t.as_millis(),
+        std::process::id()
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -173,12 +184,23 @@ pub struct Failure {
 
 #[derive(Debug, Clone)]
 pub enum FailureType {
-    ApplicationFailureInfo { non_retryable: bool, error_type: String },
-    TimeoutFailureInfo { timeout_type: TimeoutType },
+    ApplicationFailureInfo {
+        non_retryable: bool,
+        error_type: String,
+    },
+    TimeoutFailureInfo {
+        timeout_type: TimeoutType,
+    },
     CanceledFailureInfo,
     TerminatedFailureInfo,
     ServerFailureInfo,
-    ActivityFailureInfo { scheduled_event_id: i64, started_event_id: i64, identity: String, activity_type: String, activity_id: String },
+    ActivityFailureInfo {
+        scheduled_event_id: i64,
+        started_event_id: i64,
+        identity: String,
+        activity_type: String,
+        activity_id: String,
+    },
     ChildWorkflowExecutionFailureInfo,
 }
 
@@ -336,17 +358,61 @@ pub enum EventType {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub trait HistoryApiHandler: Send + Sync {
-    fn start_workflow_execution(&self, ctx: &HistoryApiContext, req: &StartWorkflowExecutionRequest) -> Result<StartWorkflowExecutionResponse, HistoryApiError>;
-    fn record_activity_heartbeat(&self, ctx: &HistoryApiContext, req: &RecordActivityTaskHeartbeatRequest) -> Result<RecordActivityTaskHeartbeatResponse, HistoryApiError>;
-    fn poll_activity_task(&self, ctx: &HistoryApiContext, req: &PollActivityTaskQueueRequest) -> Result<PollActivityTaskQueueResponse, HistoryApiError>;
-    fn respond_activity_completed(&self, ctx: &HistoryApiContext, req: &RespondActivityTaskCompletedRequest) -> Result<(), HistoryApiError>;
-    fn respond_activity_failed(&self, ctx: &HistoryApiContext, req: &RespondActivityTaskFailedRequest) -> Result<(), HistoryApiError>;
-    fn respond_activity_canceled(&self, ctx: &HistoryApiContext, req: &RespondActivityTaskCanceledRequest) -> Result<(), HistoryApiError>;
-    fn signal_workflow(&self, ctx: &HistoryApiContext, req: &SignalWorkflowExecutionRequest) -> Result<(), HistoryApiError>;
-    fn query_workflow(&self, ctx: &HistoryApiContext, req: &QueryWorkflowRequest) -> Result<QueryWorkflowResponse, HistoryApiError>;
-    fn request_cancel(&self, ctx: &HistoryApiContext, req: &RequestCancelWorkflowExecutionRequest) -> Result<(), HistoryApiError>;
-    fn terminate_workflow(&self, ctx: &HistoryApiContext, req: &TerminateWorkflowExecutionRequest) -> Result<(), HistoryApiError>;
-    fn get_history(&self, ctx: &HistoryApiContext, req: &GetWorkflowExecutionHistoryRequest) -> Result<GetWorkflowExecutionHistoryResponse, HistoryApiError>;
+    fn start_workflow_execution(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &StartWorkflowExecutionRequest,
+    ) -> Result<StartWorkflowExecutionResponse, HistoryApiError>;
+    fn record_activity_heartbeat(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RecordActivityTaskHeartbeatRequest,
+    ) -> Result<RecordActivityTaskHeartbeatResponse, HistoryApiError>;
+    fn poll_activity_task(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &PollActivityTaskQueueRequest,
+    ) -> Result<PollActivityTaskQueueResponse, HistoryApiError>;
+    fn respond_activity_completed(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RespondActivityTaskCompletedRequest,
+    ) -> Result<(), HistoryApiError>;
+    fn respond_activity_failed(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RespondActivityTaskFailedRequest,
+    ) -> Result<(), HistoryApiError>;
+    fn respond_activity_canceled(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RespondActivityTaskCanceledRequest,
+    ) -> Result<(), HistoryApiError>;
+    fn signal_workflow(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &SignalWorkflowExecutionRequest,
+    ) -> Result<(), HistoryApiError>;
+    fn query_workflow(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &QueryWorkflowRequest,
+    ) -> Result<QueryWorkflowResponse, HistoryApiError>;
+    fn request_cancel(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RequestCancelWorkflowExecutionRequest,
+    ) -> Result<(), HistoryApiError>;
+    fn terminate_workflow(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &TerminateWorkflowExecutionRequest,
+    ) -> Result<(), HistoryApiError>;
+    fn get_history(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &GetWorkflowExecutionHistoryRequest,
+    ) -> Result<GetWorkflowExecutionHistoryResponse, HistoryApiError>;
 }
 
 pub struct HistoryApiServiceImpl {
@@ -398,7 +464,11 @@ struct SignalRecord {
 }
 
 struct QueryHandler {
-    pub handler_fn: Arc<dyn Fn(&QueryWorkflowRequest) -> Result<QueryWorkflowResponse, HistoryApiError> + Send + Sync>,
+    pub handler_fn: Arc<
+        dyn Fn(&QueryWorkflowRequest) -> Result<QueryWorkflowResponse, HistoryApiError>
+            + Send
+            + Sync,
+    >,
 }
 
 #[derive(Debug, Default)]
@@ -430,29 +500,53 @@ impl HistoryApiServiceImpl {
     }
 
     fn now_ms(&self) -> i64 {
-        SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
     }
 
     fn workflow_key(ns: &str, wf: &str) -> String {
         format!("{}:{}", ns, wf)
     }
 
-    pub fn register_query_handler(&self, query_type: &str, handler: Arc<dyn Fn(&QueryWorkflowRequest) -> Result<QueryWorkflowResponse, HistoryApiError> + Send + Sync>) {
-        self.queries.write().unwrap().insert(query_type.to_string(), QueryHandler { handler_fn: handler });
+    pub fn register_query_handler(
+        &self,
+        query_type: &str,
+        handler: Arc<
+            dyn Fn(&QueryWorkflowRequest) -> Result<QueryWorkflowResponse, HistoryApiError>
+                + Send
+                + Sync,
+        >,
+    ) {
+        self.queries.write().unwrap().insert(
+            query_type.to_string(),
+            QueryHandler {
+                handler_fn: handler,
+            },
+        );
     }
 
-    pub fn stats(&self) -> &HistoryApiStats { &self.stats }
+    pub fn stats(&self) -> &HistoryApiStats {
+        &self.stats
+    }
 }
 
 impl HistoryApiHandler for HistoryApiServiceImpl {
-    fn start_workflow_execution(&self, ctx: &HistoryApiContext, req: &StartWorkflowExecutionRequest) -> Result<StartWorkflowExecutionResponse, HistoryApiError> {
+    fn start_workflow_execution(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &StartWorkflowExecutionRequest,
+    ) -> Result<StartWorkflowExecutionResponse, HistoryApiError> {
         self.stats.start_requests.fetch_add(1, Ordering::Relaxed);
 
         let key = Self::workflow_key(&req.namespace, &req.workflow_id);
         let mut workflows = self.workflows.write().unwrap();
 
         if workflows.contains_key(&key) {
-            return Err(HistoryApiError::WorkflowAlreadyStarted(req.workflow_id.clone()));
+            return Err(HistoryApiError::WorkflowAlreadyStarted(
+                req.workflow_id.clone(),
+            ));
         }
 
         let run_id = format!("run-{}", uuid_v4());
@@ -490,9 +584,14 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
         })
     }
 
-    fn record_activity_heartbeat(&self, ctx: &HistoryApiContext, req: &RecordActivityTaskHeartbeatRequest) -> Result<RecordActivityTaskHeartbeatResponse, HistoryApiError> {
+    fn record_activity_heartbeat(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RecordActivityTaskHeartbeatRequest,
+    ) -> Result<RecordActivityTaskHeartbeatResponse, HistoryApiError> {
         let mut activities = self.activity_tokens.write().unwrap();
-        let activity = activities.get_mut(&req.task_token)
+        let activity = activities
+            .get_mut(&req.task_token)
             .ok_or(HistoryApiError::ActivityNotFound)?;
 
         activity.heartbeat_details = req.details.clone();
@@ -502,9 +601,14 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
         })
     }
 
-    fn poll_activity_task(&self, ctx: &HistoryApiContext, req: &PollActivityTaskQueueRequest) -> Result<PollActivityTaskQueueResponse, HistoryApiError> {
+    fn poll_activity_task(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &PollActivityTaskQueueRequest,
+    ) -> Result<PollActivityTaskQueueResponse, HistoryApiError> {
         let activities = self.activity_tokens.read().unwrap();
-        let activity = activities.values()
+        let activity = activities
+            .values()
             .find(|a| a.namespace == req.namespace)
             .ok_or(HistoryApiError::NoActivityAvailable)?;
 
@@ -527,40 +631,62 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
         })
     }
 
-    fn respond_activity_completed(&self, ctx: &HistoryApiContext, req: &RespondActivityTaskCompletedRequest) -> Result<(), HistoryApiError> {
-        self.stats.activity_completions.fetch_add(1, Ordering::Relaxed);
+    fn respond_activity_completed(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RespondActivityTaskCompletedRequest,
+    ) -> Result<(), HistoryApiError> {
+        self.stats
+            .activity_completions
+            .fetch_add(1, Ordering::Relaxed);
 
         let mut activities = self.activity_tokens.write().unwrap();
-        activities.remove(&req.task_token)
+        activities
+            .remove(&req.task_token)
             .ok_or(HistoryApiError::ActivityNotFound)?;
 
         Ok(())
     }
 
-    fn respond_activity_failed(&self, ctx: &HistoryApiContext, req: &RespondActivityTaskFailedRequest) -> Result<(), HistoryApiError> {
+    fn respond_activity_failed(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RespondActivityTaskFailedRequest,
+    ) -> Result<(), HistoryApiError> {
         self.stats.activity_failures.fetch_add(1, Ordering::Relaxed);
 
         let mut activities = self.activity_tokens.write().unwrap();
-        activities.remove(&req.task_token)
+        activities
+            .remove(&req.task_token)
             .ok_or(HistoryApiError::ActivityNotFound)?;
 
         Ok(())
     }
 
-    fn respond_activity_canceled(&self, ctx: &HistoryApiContext, req: &RespondActivityTaskCanceledRequest) -> Result<(), HistoryApiError> {
+    fn respond_activity_canceled(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RespondActivityTaskCanceledRequest,
+    ) -> Result<(), HistoryApiError> {
         let mut activities = self.activity_tokens.write().unwrap();
-        activities.remove(&req.task_token)
+        activities
+            .remove(&req.task_token)
             .ok_or(HistoryApiError::ActivityNotFound)?;
         Ok(())
     }
 
-    fn signal_workflow(&self, ctx: &HistoryApiContext, req: &SignalWorkflowExecutionRequest) -> Result<(), HistoryApiError> {
+    fn signal_workflow(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &SignalWorkflowExecutionRequest,
+    ) -> Result<(), HistoryApiError> {
         self.stats.signal_requests.fetch_add(1, Ordering::Relaxed);
 
         let key = Self::workflow_key(&req.namespace, &req.workflow_execution.workflow_id);
         let mut workflows = self.workflows.write().unwrap();
 
-        let workflow = workflows.get_mut(&key)
+        let workflow = workflows
+            .get_mut(&key)
             .ok_or(HistoryApiError::WorkflowNotFound)?;
 
         if workflow.status != WorkflowExecutionStatus::Running {
@@ -587,13 +713,18 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
         Ok(())
     }
 
-    fn query_workflow(&self, ctx: &HistoryApiContext, req: &QueryWorkflowRequest) -> Result<QueryWorkflowResponse, HistoryApiError> {
+    fn query_workflow(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &QueryWorkflowRequest,
+    ) -> Result<QueryWorkflowResponse, HistoryApiError> {
         self.stats.query_requests.fetch_add(1, Ordering::Relaxed);
 
         let key = Self::workflow_key(&req.namespace, &req.workflow_execution.workflow_id);
         let workflows = self.workflows.read().unwrap();
 
-        let workflow = workflows.get(&key)
+        let workflow = workflows
+            .get(&key)
             .ok_or(HistoryApiError::WorkflowNotFound)?;
 
         if workflow.status != WorkflowExecutionStatus::Running {
@@ -622,13 +753,18 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
         }
     }
 
-    fn request_cancel(&self, ctx: &HistoryApiContext, req: &RequestCancelWorkflowExecutionRequest) -> Result<(), HistoryApiError> {
+    fn request_cancel(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &RequestCancelWorkflowExecutionRequest,
+    ) -> Result<(), HistoryApiError> {
         self.stats.cancel_requests.fetch_add(1, Ordering::Relaxed);
 
         let key = Self::workflow_key(&req.namespace, &req.workflow_execution.workflow_id);
         let mut workflows = self.workflows.write().unwrap();
 
-        let workflow = workflows.get_mut(&key)
+        let workflow = workflows
+            .get_mut(&key)
             .ok_or(HistoryApiError::WorkflowNotFound)?;
 
         if workflow.status != WorkflowExecutionStatus::Running {
@@ -650,13 +786,20 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
         Ok(())
     }
 
-    fn terminate_workflow(&self, ctx: &HistoryApiContext, req: &TerminateWorkflowExecutionRequest) -> Result<(), HistoryApiError> {
-        self.stats.terminate_requests.fetch_add(1, Ordering::Relaxed);
+    fn terminate_workflow(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &TerminateWorkflowExecutionRequest,
+    ) -> Result<(), HistoryApiError> {
+        self.stats
+            .terminate_requests
+            .fetch_add(1, Ordering::Relaxed);
 
         let key = Self::workflow_key(&req.namespace, &req.workflow_execution.workflow_id);
         let mut workflows = self.workflows.write().unwrap();
 
-        let workflow = workflows.get_mut(&key)
+        let workflow = workflows
+            .get_mut(&key)
             .ok_or(HistoryApiError::WorkflowNotFound)?;
 
         if workflow.status != WorkflowExecutionStatus::Running {
@@ -677,30 +820,38 @@ impl HistoryApiHandler for HistoryApiServiceImpl {
         Ok(())
     }
 
-    fn get_history(&self, ctx: &HistoryApiContext, req: &GetWorkflowExecutionHistoryRequest) -> Result<GetWorkflowExecutionHistoryResponse, HistoryApiError> {
+    fn get_history(
+        &self,
+        ctx: &HistoryApiContext,
+        req: &GetWorkflowExecutionHistoryRequest,
+    ) -> Result<GetWorkflowExecutionHistoryResponse, HistoryApiError> {
         self.stats.history_reads.fetch_add(1, Ordering::Relaxed);
 
         let key = Self::workflow_key(&req.namespace, &req.workflow_execution.workflow_id);
         let workflows = self.workflows.read().unwrap();
 
-        let workflow = workflows.get(&key)
+        let workflow = workflows
+            .get(&key)
             .ok_or(HistoryApiError::WorkflowNotFound)?;
 
         let events = match req.history_event_filter_type {
             HistoryEventFilterType::AllEvent => workflow.history.clone(),
-            HistoryEventFilterType::CloseEvent => {
-                workflow.history.iter()
-                    .filter(|e| matches!(e.event_type,
-                        EventType::WorkflowExecutionCompleted |
-                        EventType::WorkflowExecutionFailed |
-                        EventType::WorkflowExecutionTerminated |
-                        EventType::WorkflowExecutionCanceled |
-                        EventType::WorkflowExecutionTimedOut |
-                        EventType::WorkflowExecutionContinuedAsNew
-                    ))
-                    .cloned()
-                    .collect()
-            }
+            HistoryEventFilterType::CloseEvent => workflow
+                .history
+                .iter()
+                .filter(|e| {
+                    matches!(
+                        e.event_type,
+                        EventType::WorkflowExecutionCompleted
+                            | EventType::WorkflowExecutionFailed
+                            | EventType::WorkflowExecutionTerminated
+                            | EventType::WorkflowExecutionCanceled
+                            | EventType::WorkflowExecutionTimedOut
+                            | EventType::WorkflowExecutionContinuedAsNew
+                    )
+                })
+                .cloned()
+                .collect(),
         };
 
         Ok(GetWorkflowExecutionHistoryResponse {
@@ -784,7 +935,10 @@ mod tests {
 
         let signal_req = SignalWorkflowExecutionRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             signal_name: "my-signal".to_string(),
             input: Some(b"data".to_vec()),
             identity: "test".to_string(),
@@ -806,7 +960,10 @@ mod tests {
         // Terminate first
         let term_req = TerminateWorkflowExecutionRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             reason: "test".to_string(),
             identity: "test".to_string(),
         };
@@ -815,7 +972,10 @@ mod tests {
         // Signal should fail
         let signal_req = SignalWorkflowExecutionRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             signal_name: "my-signal".to_string(),
             input: None,
             identity: "test".to_string(),
@@ -834,7 +994,10 @@ mod tests {
 
         let query_req = QueryWorkflowRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             query_type: "__open_sessions".to_string(),
             query_args: None,
             header: HashMap::new(),
@@ -853,7 +1016,10 @@ mod tests {
 
         let cancel_req = RequestCancelWorkflowExecutionRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             identity: "test".to_string(),
             request_id: "cancel-1".to_string(),
             reason: "testing".to_string(),
@@ -872,7 +1038,10 @@ mod tests {
 
         let term_req = TerminateWorkflowExecutionRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             reason: "test termination".to_string(),
             identity: "test".to_string(),
         };
@@ -891,7 +1060,10 @@ mod tests {
         // Signal to add events
         let signal_req = SignalWorkflowExecutionRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             signal_name: "test".to_string(),
             input: None,
             identity: "test".to_string(),
@@ -902,7 +1074,10 @@ mod tests {
 
         let hist_req = GetWorkflowExecutionHistoryRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             maximum_page_size: 100,
             next_page_token: None,
             wait_new_event: false,
@@ -924,7 +1099,10 @@ mod tests {
         // Terminate (adds close event)
         let term_req = TerminateWorkflowExecutionRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             reason: "test".to_string(),
             identity: "test".to_string(),
         };
@@ -932,7 +1110,10 @@ mod tests {
 
         let hist_req = GetWorkflowExecutionHistoryRequest {
             namespace: "ns1".to_string(),
-            workflow_execution: WorkflowExecution { workflow_id: "wf1".to_string(), run_id: "run1".to_string() },
+            workflow_execution: WorkflowExecution {
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            },
             maximum_page_size: 100,
             next_page_token: None,
             wait_new_event: false,
@@ -942,7 +1123,10 @@ mod tests {
 
         let resp = svc.get_history(&ctx, &hist_req).unwrap();
         assert_eq!(resp.history.events.len(), 1);
-        assert_eq!(resp.history.events[0].event_type, EventType::WorkflowExecutionTerminated);
+        assert_eq!(
+            resp.history.events[0].event_type,
+            EventType::WorkflowExecutionTerminated
+        );
     }
 
     #[test]
@@ -952,19 +1136,22 @@ mod tests {
 
         // Manually add an activity
         let token = b"test-token".to_vec();
-        svc.activity_tokens.write().unwrap().insert(token.clone(), ActivityState {
-            namespace: "ns1".to_string(),
-            workflow_id: "wf1".to_string(),
-            run_id: "run1".to_string(),
-            activity_id: "act1".to_string(),
-            activity_type: "TestActivity".to_string(),
-            input: None,
-            scheduled_time: 0,
-            started_time: 0,
-            attempt: 1,
-            heartbeat_details: None,
-            cancel_requested: false,
-        });
+        svc.activity_tokens.write().unwrap().insert(
+            token.clone(),
+            ActivityState {
+                namespace: "ns1".to_string(),
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+                activity_id: "act1".to_string(),
+                activity_type: "TestActivity".to_string(),
+                input: None,
+                scheduled_time: 0,
+                started_time: 0,
+                attempt: 1,
+                heartbeat_details: None,
+                cancel_requested: false,
+            },
+        );
 
         let hb_req = RecordActivityTaskHeartbeatRequest {
             namespace: "ns1".to_string(),
@@ -983,19 +1170,22 @@ mod tests {
         let ctx = make_ctx();
 
         let token = b"test-token".to_vec();
-        svc.activity_tokens.write().unwrap().insert(token.clone(), ActivityState {
-            namespace: "ns1".to_string(),
-            workflow_id: "wf1".to_string(),
-            run_id: "run1".to_string(),
-            activity_id: "act1".to_string(),
-            activity_type: "TestActivity".to_string(),
-            input: None,
-            scheduled_time: 0,
-            started_time: 0,
-            attempt: 1,
-            heartbeat_details: None,
-            cancel_requested: false,
-        });
+        svc.activity_tokens.write().unwrap().insert(
+            token.clone(),
+            ActivityState {
+                namespace: "ns1".to_string(),
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+                activity_id: "act1".to_string(),
+                activity_type: "TestActivity".to_string(),
+                input: None,
+                scheduled_time: 0,
+                started_time: 0,
+                attempt: 1,
+                heartbeat_details: None,
+                cancel_requested: false,
+            },
+        );
 
         let complete_req = RespondActivityTaskCompletedRequest {
             task_token: token,

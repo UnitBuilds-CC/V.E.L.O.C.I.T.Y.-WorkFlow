@@ -129,9 +129,8 @@ impl RaftNode {
     /// Create a new Raft node with the given configuration.
     pub fn new(config: RaftConfig) -> Self {
         let now = Instant::now();
-        let election_timeout = Duration::from_millis(
-            config.election_timeout_min_ms + (config.node_id % 50),
-        );
+        let election_timeout =
+            Duration::from_millis(config.election_timeout_min_ms + (config.node_id % 50));
 
         Self {
             config,
@@ -180,8 +179,10 @@ impl RaftNode {
 
         let now = Instant::now();
         let timeout = Duration::from_millis(
-            self.config.election_timeout_min_ms +
-            (self.config.node_id * 37 % (self.config.election_timeout_max_ms - self.config.election_timeout_min_ms + 1)) as u64,
+            self.config.election_timeout_min_ms
+                + (self.config.node_id * 37
+                    % (self.config.election_timeout_max_ms - self.config.election_timeout_min_ms
+                        + 1)) as u64,
         );
         self.election_deadline = now + timeout;
 
@@ -201,7 +202,12 @@ impl RaftNode {
     }
 
     /// Append a new log entry (leader only).
-    pub fn append_entry(&mut self, workflow_key: u64, event_type: RaftEventType, payload: Vec<u8>) -> Option<u64> {
+    pub fn append_entry(
+        &mut self,
+        workflow_key: u64,
+        event_type: RaftEventType,
+        payload: Vec<u8>,
+    ) -> Option<u64> {
         if self.state != RaftState::Leader {
             return None;
         }
@@ -287,7 +293,9 @@ impl RaftNode {
         }
 
         let snapshot_index = self.last_applied;
-        let entries_to_remove = self.log.iter()
+        let entries_to_remove = self
+            .log
+            .iter()
             .take_while(|e| e.index <= snapshot_index)
             .count();
 
@@ -305,8 +313,10 @@ impl RaftNode {
     /// Reset the election timer (on heartbeat from leader).
     pub fn reset_election_timer(&mut self) {
         let timeout = Duration::from_millis(
-            self.config.election_timeout_min_ms +
-            (self.config.node_id * 37 % (self.config.election_timeout_max_ms - self.config.election_timeout_min_ms + 1)) as u64,
+            self.config.election_timeout_min_ms
+                + (self.config.node_id * 37
+                    % (self.config.election_timeout_max_ms - self.config.election_timeout_min_ms
+                        + 1)) as u64,
         );
         self.election_deadline = Instant::now() + timeout;
     }
@@ -322,7 +332,9 @@ impl RaftNode {
 
         for &peer in &self.peers.clone() {
             let next = self.next_index.get(&peer).copied().unwrap_or(1);
-            let entries: Vec<RaftLogEntry> = self.log.iter()
+            let entries: Vec<RaftLogEntry> = self
+                .log
+                .iter()
                 .filter(|e| e.index >= next)
                 .cloned()
                 .collect();
@@ -340,15 +352,33 @@ impl RaftNode {
     }
 
     // Accessors
-    pub fn state(&self) -> RaftState { self.state }
-    pub fn current_term(&self) -> u64 { self.current_term }
-    pub fn commit_index(&self) -> u64 { self.commit_index }
-    pub fn last_applied(&self) -> u64 { self.last_applied }
-    pub fn log_length(&self) -> u64 { self.log.len() as u64 }
-    pub fn is_leader(&self) -> bool { self.state == RaftState::Leader }
-    pub fn node_id(&self) -> u64 { self.config.node_id }
-    pub fn peer_count(&self) -> usize { self.peers.len() }
-    pub fn pending_flush_count(&self) -> u64 { self.pending_flush.len() as u64 }
+    pub fn state(&self) -> RaftState {
+        self.state
+    }
+    pub fn current_term(&self) -> u64 {
+        self.current_term
+    }
+    pub fn commit_index(&self) -> u64 {
+        self.commit_index
+    }
+    pub fn last_applied(&self) -> u64 {
+        self.last_applied
+    }
+    pub fn log_length(&self) -> u64 {
+        self.log.len() as u64
+    }
+    pub fn is_leader(&self) -> bool {
+        self.state == RaftState::Leader
+    }
+    pub fn node_id(&self) -> u64 {
+        self.config.node_id
+    }
+    pub fn peer_count(&self) -> usize {
+        self.peers.len()
+    }
+    pub fn pending_flush_count(&self) -> u64 {
+        self.pending_flush.len() as u64
+    }
 
     pub fn stats(&self) -> RaftStats {
         RaftStats {
@@ -535,8 +565,14 @@ mod tests {
         cluster.get_node_mut(g1).unwrap().become_leader();
         cluster.get_node_mut(g2).unwrap().become_leader();
 
-        cluster.get_node_mut(g1).unwrap().append_entry(1, RaftEventType::WorkflowStarted, vec![]);
-        cluster.get_node_mut(g2).unwrap().append_entry(2, RaftEventType::WorkflowStarted, vec![]);
+        cluster
+            .get_node_mut(g1)
+            .unwrap()
+            .append_entry(1, RaftEventType::WorkflowStarted, vec![]);
+        cluster
+            .get_node_mut(g2)
+            .unwrap()
+            .append_entry(2, RaftEventType::WorkflowStarted, vec![]);
 
         let stats = cluster.aggregate_stats();
         assert_eq!(stats.entries_committed, 2);

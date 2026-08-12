@@ -3,43 +3,46 @@
 //! All state lives in Rust-owned memory — zero managed heap, zero GC.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
 use std::time::{Duration, Instant};
 
 use velocity_workflow_core::SlabHeader;
 
-use crate::task_queue::{TaskQueue, TaskItem, TaskKind};
-use crate::timer_engine::TimerEngine;
-use crate::wal::{WalManager, WalEventType};
-use crate::namespace::NamespaceRegistry;
-use crate::visibility::{VisibilityIndex, WorkflowExecutionInfo};
-use crate::cron::CronScheduler;
-use crate::batch::BatchExecutor;
-use crate::archival::{ArchiveStore, ArchiveRecord, ArchivePolicy};
-use crate::event_history::HistoryStore;
-use crate::worker_versioning::WorkerVersioning;
-use crate::rate_limiter::RateLimiter;
-use crate::payload_codec::CodecChain;
-use crate::heartbeat::HeartbeatTracker;
+use crate::archival::{ArchivePolicy, ArchiveRecord, ArchiveStore};
 use crate::auth::AuthManager;
-use crate::dynamic_config::DynamicConfig;
-use crate::query_handler::QueryRegistry;
-use crate::memo::MemoStore;
-use crate::schedules::ScheduleManager;
-use crate::workflow_reset::{WorkflowResetter, ResetReason};
-use crate::patch::PatchRegistry;
+use crate::batch::BatchExecutor;
 use crate::cluster::{ClusterManager, VersionHistoryStore};
-use crate::replication_transport::ReplicationTransport;
-use crate::sharding::ShardManager;
-use crate::nexus::NexusManager;
-use crate::metrics::MetricsRegistry;
-use crate::saga::SagaOrchestrator;
-use crate::partition::PartitionManager;
-use crate::replay::ReplayEngine;
-use crate::worker_registry::WorkerRegistry;
 use crate::cold_storage::{CloudStorageAdapter, MockS3Adapter};
-use crate::hardware_integration::HardwareAbstractionLayer;
+use crate::cron::CronScheduler;
 use crate::db_adapter::{DatabaseAdapter, WorkflowRecord};
+use crate::dynamic_config::DynamicConfig;
+use crate::event_history::HistoryStore;
+use crate::hardware_integration::HardwareAbstractionLayer;
+use crate::heartbeat::HeartbeatTracker;
+use crate::memo::MemoStore;
+use crate::metrics::MetricsRegistry;
+use crate::namespace::NamespaceRegistry;
+use crate::nexus::NexusManager;
+use crate::partition::PartitionManager;
+use crate::patch::PatchRegistry;
+use crate::payload_codec::CodecChain;
+use crate::query_handler::QueryRegistry;
+use crate::rate_limiter::RateLimiter;
+use crate::replay::ReplayEngine;
+use crate::replication_transport::ReplicationTransport;
+use crate::saga::SagaOrchestrator;
+use crate::schedules::ScheduleManager;
+use crate::sharding::ShardManager;
+use crate::task_queue::{TaskItem, TaskKind, TaskQueue};
+use crate::timer_engine::TimerEngine;
+use crate::visibility::{VisibilityIndex, WorkflowExecutionInfo};
+use crate::wal::{WalEventType, WalManager};
+use crate::worker_registry::WorkerRegistry;
+use crate::worker_versioning::WorkerVersioning;
+use crate::workflow_reset::{ResetReason, WorkflowResetter};
 
 // ─── Activity Timeouts & Retry ─────────────────────────────────────────────
 
@@ -67,7 +70,8 @@ impl ActivityRetryPolicy {
     }
 
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
-        let delay_ms = self.initial_interval.as_millis() as f64 * self.backoff_coefficient.powi(attempt as i32);
+        let delay_ms = self.initial_interval.as_millis() as f64
+            * self.backoff_coefficient.powi(attempt as i32);
         let delay = Duration::from_millis(delay_ms as u64);
         match self.max_interval {
             Some(max) => delay.min(max),
@@ -89,8 +93,12 @@ pub struct ActivityTimeouts {
 }
 
 impl ActivityTimeouts {
-    pub fn new(schedule_to_start: Option<Duration>, start_to_close: Option<Duration>, 
-               schedule_to_close: Option<Duration>, heartbeat_timeout: Option<Duration>) -> Self {
+    pub fn new(
+        schedule_to_start: Option<Duration>,
+        start_to_close: Option<Duration>,
+        schedule_to_close: Option<Duration>,
+        heartbeat_timeout: Option<Duration>,
+    ) -> Self {
         Self {
             schedule_to_start,
             start_to_close,
@@ -114,28 +122,28 @@ impl ActivityTimeouts {
 
     pub fn check_timeouts(&self) -> Option<&'static str> {
         let now = Instant::now();
-        
+
         // Check schedule_to_start
         if let Some(timeout) = self.schedule_to_start {
             if self.started_at.is_none() && now.duration_since(self.scheduled_at) > timeout {
                 return Some("ScheduleToStart");
             }
         }
-        
+
         // Check start_to_close
         if let (Some(timeout), Some(started)) = (self.start_to_close, self.started_at) {
             if now.duration_since(started) > timeout {
                 return Some("StartToClose");
             }
         }
-        
+
         // Check schedule_to_close
         if let Some(timeout) = self.schedule_to_close {
             if now.duration_since(self.scheduled_at) > timeout {
                 return Some("ScheduleToClose");
             }
         }
-        
+
         None
     }
 }
@@ -195,7 +203,13 @@ pub struct WorkflowContext {
 }
 
 impl WorkflowContext {
-    pub fn new(workflow_id: u64, run_id: u64, workflow_type_id: u64, task_queue_hash: u64, total_steps: u32) -> Self {
+    pub fn new(
+        workflow_id: u64,
+        run_id: u64,
+        workflow_type_id: u64,
+        task_queue_hash: u64,
+        total_steps: u32,
+    ) -> Self {
         Self {
             workflow_id,
             run_id,
@@ -240,36 +254,54 @@ impl WorkflowContext {
 
     /// Deliver a signal to this workflow.
     pub fn signal(&mut self, signal_name_id: u64, payload: Vec<u8>) {
-        self.signal_buffer.entry(signal_name_id).or_default().push(payload);
+        self.signal_buffer
+            .entry(signal_name_id)
+            .or_default()
+            .push(payload);
         self.event_sequence += 1;
     }
 
     /// Deliver an update to this workflow.
     pub fn update(&mut self, update_name_id: u64, payload: Vec<u8>) {
-        self.update_buffer.entry(update_name_id).or_default().push(payload);
+        self.update_buffer
+            .entry(update_name_id)
+            .or_default()
+            .push(payload);
         self.event_sequence += 1;
     }
 
     /// Check if an update is pending for a given update name.
     pub fn has_update(&self, update_name_id: u64) -> bool {
-        self.update_buffer.get(&update_name_id).map_or(false, |v| !v.is_empty())
+        self.update_buffer
+            .get(&update_name_id)
+            .map_or(false, |v| !v.is_empty())
     }
 
     /// Take the next pending update payload for a given update name.
     pub fn take_update(&mut self, update_name_id: u64) -> Option<Vec<u8>> {
         let buf = self.update_buffer.get_mut(&update_name_id)?;
-        if buf.is_empty() { None } else { Some(buf.remove(0)) }
+        if buf.is_empty() {
+            None
+        } else {
+            Some(buf.remove(0))
+        }
     }
 
     /// Check if a signal is pending for a given signal name.
     pub fn has_signal(&self, signal_name_id: u64) -> bool {
-        self.signal_buffer.get(&signal_name_id).map_or(false, |v| !v.is_empty())
+        self.signal_buffer
+            .get(&signal_name_id)
+            .map_or(false, |v| !v.is_empty())
     }
 
     /// Take the next pending signal payload for a given signal name.
     pub fn take_signal(&mut self, signal_name_id: u64) -> Option<Vec<u8>> {
         let buf = self.signal_buffer.get_mut(&signal_name_id)?;
-        if buf.is_empty() { None } else { Some(buf.remove(0)) }
+        if buf.is_empty() {
+            None
+        } else {
+            Some(buf.remove(0))
+        }
     }
 
     pub fn complete(&mut self, result: Option<Vec<u8>>) {
@@ -466,10 +498,15 @@ impl WorkflowEngine {
 
     /// Persist the current state of a workflow to the database adapter (if enabled).
     /// Returns Ok(()) if no adapter is configured (no-op).
-    pub fn persist_workflow(&self, ctx: &WorkflowContext, namespace_name: &str) -> Result<(), String> {
+    pub fn persist_workflow(
+        &self,
+        ctx: &WorkflowContext,
+        namespace_name: &str,
+    ) -> Result<(), String> {
         if let Some(adapter) = &self.db_adapter {
             let record = WorkflowRecord::from_context(ctx, namespace_name);
-            adapter.save_workflow(ctx.key(), &record)
+            adapter
+                .save_workflow(ctx.key(), &record)
                 .map_err(|e| format!("failed to persist workflow: {}", e))
         } else {
             Ok(())
@@ -492,7 +529,9 @@ impl WorkflowEngine {
     }
 
     /// Write access to workflows map (for timeout enforcement, etc).
-    pub fn workflows_write(&self) -> std::sync::RwLockWriteGuard<'_, HashMap<u64, WorkflowContext>> {
+    pub fn workflows_write(
+        &self,
+    ) -> std::sync::RwLockWriteGuard<'_, HashMap<u64, WorkflowContext>> {
         self.workflows.write().unwrap()
     }
 
@@ -513,28 +552,72 @@ impl WorkflowEngine {
 
     // ── Phase 3+ Subsystem Accessors ────────────────────────────────────────
 
-    pub fn history_store(&self) -> &Arc<HistoryStore> { &self.history_store }
-    pub fn worker_versioning(&self) -> &Arc<WorkerVersioning> { &self.worker_versioning }
-    pub fn rate_limiter(&self) -> &Arc<RateLimiter> { &self.rate_limiter }
-    pub fn codec_chain(&self) -> &Arc<CodecChain> { &self.codec_chain }
-    pub fn heartbeat_tracker(&self) -> &Arc<HeartbeatTracker> { &self.heartbeat_tracker }
-    pub fn auth_manager(&self) -> &Arc<AuthManager> { &self.auth_manager }
-    pub fn dynamic_config(&self) -> &Arc<DynamicConfig> { &self.dynamic_config }
-    pub fn query_registry(&self) -> &Arc<QueryRegistry> { &self.query_registry }
-    pub fn memo_store(&self) -> &Arc<MemoStore> { &self.memo_store }
-    pub fn schedule_manager(&self) -> &Arc<ScheduleManager> { &self.schedule_manager }
-    pub fn workflow_resetter(&self) -> &Arc<WorkflowResetter> { &self.workflow_resetter }
-    pub fn patch_registry(&self) -> &Arc<PatchRegistry> { &self.patch_registry }
-    pub fn cluster_manager(&self) -> &Arc<ClusterManager> { &self.cluster_manager }
-    pub fn shard_manager(&self) -> &Arc<ShardManager> { &self.shard_manager }
-    pub fn nexus_manager(&self) -> &Arc<NexusManager> { &self.nexus_manager }
-    pub fn metrics_registry(&self) -> &Arc<MetricsRegistry> { &self.metrics_registry }
-    pub fn saga_orchestrator(&self) -> &Arc<SagaOrchestrator> { &self.saga_orchestrator }
-    pub fn partition_manager(&self) -> &Arc<PartitionManager> { &self.partition_manager }
-    pub fn replay_engine(&self) -> &Arc<ReplayEngine> { &self.replay_engine }
-    pub fn worker_registry(&self) -> &Arc<WorkerRegistry> { &self.worker_registry }
-    pub fn version_history_store(&self) -> &Arc<VersionHistoryStore> { &self.version_history_store }
-    pub fn replication_transport(&self) -> &Arc<ReplicationTransport> { &self.replication_transport }
+    pub fn history_store(&self) -> &Arc<HistoryStore> {
+        &self.history_store
+    }
+    pub fn worker_versioning(&self) -> &Arc<WorkerVersioning> {
+        &self.worker_versioning
+    }
+    pub fn rate_limiter(&self) -> &Arc<RateLimiter> {
+        &self.rate_limiter
+    }
+    pub fn codec_chain(&self) -> &Arc<CodecChain> {
+        &self.codec_chain
+    }
+    pub fn heartbeat_tracker(&self) -> &Arc<HeartbeatTracker> {
+        &self.heartbeat_tracker
+    }
+    pub fn auth_manager(&self) -> &Arc<AuthManager> {
+        &self.auth_manager
+    }
+    pub fn dynamic_config(&self) -> &Arc<DynamicConfig> {
+        &self.dynamic_config
+    }
+    pub fn query_registry(&self) -> &Arc<QueryRegistry> {
+        &self.query_registry
+    }
+    pub fn memo_store(&self) -> &Arc<MemoStore> {
+        &self.memo_store
+    }
+    pub fn schedule_manager(&self) -> &Arc<ScheduleManager> {
+        &self.schedule_manager
+    }
+    pub fn workflow_resetter(&self) -> &Arc<WorkflowResetter> {
+        &self.workflow_resetter
+    }
+    pub fn patch_registry(&self) -> &Arc<PatchRegistry> {
+        &self.patch_registry
+    }
+    pub fn cluster_manager(&self) -> &Arc<ClusterManager> {
+        &self.cluster_manager
+    }
+    pub fn shard_manager(&self) -> &Arc<ShardManager> {
+        &self.shard_manager
+    }
+    pub fn nexus_manager(&self) -> &Arc<NexusManager> {
+        &self.nexus_manager
+    }
+    pub fn metrics_registry(&self) -> &Arc<MetricsRegistry> {
+        &self.metrics_registry
+    }
+    pub fn saga_orchestrator(&self) -> &Arc<SagaOrchestrator> {
+        &self.saga_orchestrator
+    }
+    pub fn partition_manager(&self) -> &Arc<PartitionManager> {
+        &self.partition_manager
+    }
+    pub fn replay_engine(&self) -> &Arc<ReplayEngine> {
+        &self.replay_engine
+    }
+    pub fn worker_registry(&self) -> &Arc<WorkerRegistry> {
+        &self.worker_registry
+    }
+    pub fn version_history_store(&self) -> &Arc<VersionHistoryStore> {
+        &self.version_history_store
+    }
+    pub fn replication_transport(&self) -> &Arc<ReplicationTransport> {
+        &self.replication_transport
+    }
     pub fn cloud_storage(&self) -> Arc<dyn CloudStorageAdapter> {
         self.cloud_storage.read().unwrap().clone()
     }
@@ -559,11 +642,18 @@ impl WorkflowEngine {
     /// Returns true if the task was applied successfully.
     pub fn apply_replication_task(&self, task: crate::cluster::ReplicationTask) -> bool {
         // Check version history for conflict resolution
-        if !self.version_history_store.check_incoming(task.workflow_key, task.failover_version, task.last_event_id) {
+        if !self.version_history_store.check_incoming(
+            task.workflow_key,
+            task.failover_version,
+            task.last_event_id,
+        ) {
             return false; // Stale or conflicting task
         }
         // Validate source cluster
-        if !self.cluster_manager.apply_incoming_replication(task.clone()) {
+        if !self
+            .cluster_manager
+            .apply_incoming_replication(task.clone())
+        {
             return false;
         }
         // Record the replicated event in our history store
@@ -579,11 +669,17 @@ impl WorkflowEngine {
             9 => crate::event_history::HistoryEventType::TimerFired,
             _ => crate::event_history::HistoryEventType::WorkflowStarted,
         };
-        self.history_store.record_event(task.workflow_key, event_type, task.payload);
+        self.history_store
+            .record_event(task.workflow_key, event_type, task.payload);
         // Update version history for conflict resolution
-        self.version_history_store.record_event(task.workflow_key, task.failover_version, task.last_event_id);
+        self.version_history_store.record_event(
+            task.workflow_key,
+            task.failover_version,
+            task.last_event_id,
+        );
         // Record metrics
-        self.metrics_registry.inc_counter("velocity_replication_tasks_applied_total");
+        self.metrics_registry
+            .inc_counter("velocity_replication_tasks_applied_total");
         true
     }
 
@@ -593,8 +689,13 @@ impl WorkflowEngine {
     }
 
     /// Get search attributes for a running workflow by its workflow_key.
-    pub fn get_workflow_search_attributes(&self, workflow_key: u64) -> Option<std::collections::HashMap<String, crate::visibility::SearchAttributeValue>> {
-        self.visibility.get(workflow_key).map(|info| info.search_attributes)
+    pub fn get_workflow_search_attributes(
+        &self,
+        workflow_key: u64,
+    ) -> Option<std::collections::HashMap<String, crate::visibility::SearchAttributeValue>> {
+        self.visibility
+            .get(workflow_key)
+            .map(|info| info.search_attributes)
     }
 
     /// Access the task queue (for polling from workers).
@@ -618,7 +719,15 @@ impl WorkflowEngine {
         total_steps: u32,
         input: Option<Vec<u8>>,
     ) -> u64 {
-        self.start_workflow_with_attrs(workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, input, HashMap::new())
+        self.start_workflow_with_attrs(
+            workflow_id,
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            total_steps,
+            input,
+            HashMap::new(),
+        )
     }
 
     /// Start a workflow with search attributes registered in visibility.
@@ -635,22 +744,31 @@ impl WorkflowEngine {
         let run_id = self.next_run_id.fetch_add(1, Ordering::Relaxed);
         let key = (namespace_id << 32) | workflow_id;
 
-        let mut ctx = WorkflowContext::new(workflow_id, run_id, workflow_type_id, task_queue_hash, total_steps);
+        let mut ctx = WorkflowContext::new(
+            workflow_id,
+            run_id,
+            workflow_type_id,
+            task_queue_hash,
+            total_steps,
+        );
         ctx.namespace_id = namespace_id;
         ctx.input_data = input;
 
         // Schedule the first workflow task
-        self.task_queue.enqueue(task_queue_hash, TaskItem {
-            task_id: 0,
-            kind: TaskKind::WorkflowTask,
-            workflow_key: key,
+        self.task_queue.enqueue(
             task_queue_hash,
-            step_index: 0,
-            activity_name_id: 0,
-            attempt: 1,
-            priority: 0,
-            deadline_ms: 0,
-        });
+            TaskItem {
+                task_id: 0,
+                kind: TaskKind::WorkflowTask,
+                workflow_key: key,
+                task_queue_hash,
+                step_index: 0,
+                activity_name_id: 0,
+                attempt: 1,
+                priority: 0,
+                deadline_ms: 0,
+            },
+        );
 
         let mut workflows = self.workflows.write().unwrap();
         workflows.insert(key, ctx);
@@ -671,11 +789,17 @@ impl WorkflowEngine {
         });
 
         // Record in event history
-        self.history_store.record_event(key, crate::event_history::HistoryEventType::WorkflowStarted, format!("type={};ns={}", workflow_type_id, namespace_id).into_bytes());
+        self.history_store.record_event(
+            key,
+            crate::event_history::HistoryEventType::WorkflowStarted,
+            format!("type={};ns={}", workflow_type_id, namespace_id).into_bytes(),
+        );
 
         // Record metrics
-        self.metrics_registry.inc_counter("velocity_workflow_started_total");
-        self.metrics_registry.set_gauge("velocity_workflows_running", workflows.len() as i64);
+        self.metrics_registry
+            .inc_counter("velocity_workflow_started_total");
+        self.metrics_registry
+            .set_gauge("velocity_workflows_running", workflows.len() as i64);
 
         // Persist to WAL
         if let Some(wal) = &self.wal {
@@ -694,19 +818,25 @@ impl WorkflowEngine {
     /// Get the current step for a workflow (for the runner to know where to resume).
     pub fn get_current_step(&self, workflow_key: u64) -> u32 {
         let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).map_or(0, |ctx| ctx.slab.current_step)
+        workflows
+            .get(&workflow_key)
+            .map_or(0, |ctx| ctx.slab.current_step)
     }
 
     /// Check if a step is completed (bitmask check, O(1)).
     pub fn is_step_completed(&self, workflow_key: u64, step: u32) -> bool {
         let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).map_or(false, |ctx| ctx.is_step_completed(step))
+        workflows
+            .get(&workflow_key)
+            .map_or(false, |ctx| ctx.is_step_completed(step))
     }
 
     /// Get the cached result for a completed step.
     pub fn get_step_result(&self, workflow_key: u64, step: u32) -> Option<Vec<u8>> {
         let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).and_then(|ctx| ctx.get_step_result(step).cloned())
+        workflows
+            .get(&workflow_key)
+            .and_then(|ctx| ctx.get_step_result(step).cloned())
     }
 
     /// Complete a step: store the result, update the bitmask + Merkle root, and schedule
@@ -736,52 +866,98 @@ impl WorkflowEngine {
         // Schedule next workflow task to advance the state machine
         let workflows = self.workflows.read().unwrap();
         if let Some(ctx) = workflows.get(&workflow_key) {
-            self.task_queue.enqueue(ctx.task_queue_hash, TaskItem {
-                task_id: 0,
-                kind: TaskKind::WorkflowTask,
-                workflow_key,
-                task_queue_hash: ctx.task_queue_hash,
-                step_index: step + 1,
-                activity_name_id: 0,
-                attempt: 1,
-                priority: 0,
-                deadline_ms: 0,
-            });
+            self.task_queue.enqueue(
+                ctx.task_queue_hash,
+                TaskItem {
+                    task_id: 0,
+                    kind: TaskKind::WorkflowTask,
+                    workflow_key,
+                    task_queue_hash: ctx.task_queue_hash,
+                    step_index: step + 1,
+                    activity_name_id: 0,
+                    attempt: 1,
+                    priority: 0,
+                    deadline_ms: 0,
+                },
+            );
         }
     }
 
     /// Schedule an activity for execution with timeout tracking.
-    pub fn schedule_activity_with_timeouts(&self, workflow_key: u64, step: u32, activity_name_id: u64, _args: Vec<u8>,
-        schedule_to_start_ms: u64, start_to_close_ms: u64, schedule_to_close_ms: u64, heartbeat_ms: u64) {
+    pub fn schedule_activity_with_timeouts(
+        &self,
+        workflow_key: u64,
+        step: u32,
+        activity_name_id: u64,
+        _args: Vec<u8>,
+        schedule_to_start_ms: u64,
+        start_to_close_ms: u64,
+        schedule_to_close_ms: u64,
+        heartbeat_ms: u64,
+    ) {
         let mut workflows = self.workflows.write().unwrap();
         if let Some(ctx) = workflows.get_mut(&workflow_key) {
             // Store timeout tracking
             let timeouts = ActivityTimeouts::new(
-                if schedule_to_start_ms > 0 { Some(Duration::from_millis(schedule_to_start_ms)) } else { None },
-                if start_to_close_ms > 0 { Some(Duration::from_millis(start_to_close_ms)) } else { None },
-                if schedule_to_close_ms > 0 { Some(Duration::from_millis(schedule_to_close_ms)) } else { None },
-                if heartbeat_ms > 0 { Some(Duration::from_millis(heartbeat_ms)) } else { None },
+                if schedule_to_start_ms > 0 {
+                    Some(Duration::from_millis(schedule_to_start_ms))
+                } else {
+                    None
+                },
+                if start_to_close_ms > 0 {
+                    Some(Duration::from_millis(start_to_close_ms))
+                } else {
+                    None
+                },
+                if schedule_to_close_ms > 0 {
+                    Some(Duration::from_millis(schedule_to_close_ms))
+                } else {
+                    None
+                },
+                if heartbeat_ms > 0 {
+                    Some(Duration::from_millis(heartbeat_ms))
+                } else {
+                    None
+                },
             );
             ctx.activity_timeouts.insert(step, timeouts);
-            
-            self.task_queue.enqueue(ctx.task_queue_hash, TaskItem {
-                task_id: 0,
-                kind: TaskKind::ActivityTask,
-                workflow_key,
-                task_queue_hash: ctx.task_queue_hash,
-                step_index: step,
-                activity_name_id,
-                attempt: 1,
-                priority: 0,
-                deadline_ms: 0,
-            });
+
+            self.task_queue.enqueue(
+                ctx.task_queue_hash,
+                TaskItem {
+                    task_id: 0,
+                    kind: TaskKind::ActivityTask,
+                    workflow_key,
+                    task_queue_hash: ctx.task_queue_hash,
+                    step_index: step,
+                    activity_name_id,
+                    attempt: 1,
+                    priority: 0,
+                    deadline_ms: 0,
+                },
+            );
         }
     }
 
     /// Schedule an activity for execution. The activity worker will pick this up
     /// from the task queue, execute it, and call `complete_activity` with the result.
-    pub fn schedule_activity(&self, workflow_key: u64, step: u32, activity_name_id: u64, _args: Vec<u8>) {
-        self.schedule_activity_with_timeouts(workflow_key, step, activity_name_id, _args, 0, 0, 0, 0);
+    pub fn schedule_activity(
+        &self,
+        workflow_key: u64,
+        step: u32,
+        activity_name_id: u64,
+        _args: Vec<u8>,
+    ) {
+        self.schedule_activity_with_timeouts(
+            workflow_key,
+            step,
+            activity_name_id,
+            _args,
+            0,
+            0,
+            0,
+            0,
+        );
     }
 
     /// Complete an activity: store the result and schedule a workflow task to resume.
@@ -804,20 +980,25 @@ impl WorkflowEngine {
 
                         if delay.as_millis() < 10 {
                             // Short delay — immediately re-enqueue
-                            self.task_queue.enqueue(task_queue_hash, TaskItem {
-                                task_id: 0,
-                                kind: TaskKind::ActivityTask,
-                                workflow_key,
+                            self.task_queue.enqueue(
                                 task_queue_hash,
-                                step_index: step,
-                                activity_name_id: 0,
-                                attempt,
-                                priority: 0,
-                                deadline_ms: 0,
-                            });
+                                TaskItem {
+                                    task_id: 0,
+                                    kind: TaskKind::ActivityTask,
+                                    workflow_key,
+                                    task_queue_hash,
+                                    step_index: step,
+                                    activity_name_id: 0,
+                                    attempt,
+                                    priority: 0,
+                                    deadline_ms: 0,
+                                },
+                            );
                         } else {
                             // Schedule a timer for the backoff delay
-                            self.pending_retries.lock().unwrap()
+                            self.pending_retries
+                                .lock()
+                                .unwrap()
                                 .entry(workflow_key)
                                 .or_default()
                                 .push((step, task_queue_hash));
@@ -841,22 +1022,26 @@ impl WorkflowEngine {
             for (step, task_queue_hash) in entries {
                 let attempt = {
                     let workflows = self.workflows.read().unwrap();
-                    workflows.get(&workflow_key)
+                    workflows
+                        .get(&workflow_key)
                         .and_then(|ctx| ctx.activity_timeouts.get(&step))
                         .map(|t| t.attempt)
                         .unwrap_or(1)
                 };
-                self.task_queue.enqueue(task_queue_hash, TaskItem {
-                    task_id: 0,
-                    kind: TaskKind::ActivityTask,
-                    workflow_key,
+                self.task_queue.enqueue(
                     task_queue_hash,
-                    step_index: step,
-                    activity_name_id: 0,
-                    attempt,
-                    priority: 0,
-                    deadline_ms: 0,
-                });
+                    TaskItem {
+                        task_id: 0,
+                        kind: TaskKind::ActivityTask,
+                        workflow_key,
+                        task_queue_hash,
+                        step_index: step,
+                        activity_name_id: 0,
+                        attempt,
+                        priority: 0,
+                        deadline_ms: 0,
+                    },
+                );
             }
         }
     }
@@ -866,7 +1051,9 @@ impl WorkflowEngine {
         {
             let mut workflows = self.workflows.write().unwrap();
             if let Some(ctx) = workflows.get_mut(&workflow_key) {
-                if ctx.status != WorkflowStatus::Running { return; }
+                if ctx.status != WorkflowStatus::Running {
+                    return;
+                }
                 ctx.signal(signal_name_id, payload.clone());
             }
         }
@@ -882,30 +1069,37 @@ impl WorkflowEngine {
         // Schedule a workflow task to process the signal
         let workflows = self.workflows.read().unwrap();
         if let Some(ctx) = workflows.get(&workflow_key) {
-            self.task_queue.enqueue(ctx.task_queue_hash, TaskItem {
-                task_id: 0,
-                kind: TaskKind::SignalTask,
-                workflow_key,
-                task_queue_hash: ctx.task_queue_hash,
-                step_index: 0,
-                activity_name_id: signal_name_id,
-                attempt: 1,
-                priority: 0,
-                deadline_ms: 0,
-            });
+            self.task_queue.enqueue(
+                ctx.task_queue_hash,
+                TaskItem {
+                    task_id: 0,
+                    kind: TaskKind::SignalTask,
+                    workflow_key,
+                    task_queue_hash: ctx.task_queue_hash,
+                    step_index: 0,
+                    activity_name_id: signal_name_id,
+                    attempt: 1,
+                    priority: 0,
+                    deadline_ms: 0,
+                },
+            );
         }
     }
 
     /// Check if a signal is pending for a workflow.
     pub fn has_signal(&self, workflow_key: u64, signal_name_id: u64) -> bool {
         let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).map_or(false, |ctx| ctx.has_signal(signal_name_id))
+        workflows
+            .get(&workflow_key)
+            .map_or(false, |ctx| ctx.has_signal(signal_name_id))
     }
 
     /// Take the next pending signal payload.
     pub fn take_signal(&self, workflow_key: u64, signal_name_id: u64) -> Option<Vec<u8>> {
         let mut workflows = self.workflows.write().unwrap();
-        workflows.get_mut(&workflow_key).and_then(|ctx| ctx.take_signal(signal_name_id))
+        workflows
+            .get_mut(&workflow_key)
+            .and_then(|ctx| ctx.take_signal(signal_name_id))
     }
 
     /// Complete a workflow with a result.
@@ -918,10 +1112,17 @@ impl WorkflowEngine {
                 ctx.complete(result);
             }
         }
-        self.visibility.update_status(workflow_key, WorkflowStatus::Completed, Some(0));
-        self.history_store.record_event(workflow_key, crate::event_history::HistoryEventType::WorkflowCompleted, vec![]);
-        self.metrics_registry.inc_counter("velocity_workflow_completed_total");
-        self.metrics_registry.set_gauge("velocity_workflows_running", self.workflow_count() as i64);
+        self.visibility
+            .update_status(workflow_key, WorkflowStatus::Completed, Some(0));
+        self.history_store.record_event(
+            workflow_key,
+            crate::event_history::HistoryEventType::WorkflowCompleted,
+            vec![],
+        );
+        self.metrics_registry
+            .inc_counter("velocity_workflow_completed_total");
+        self.metrics_registry
+            .set_gauge("velocity_workflows_running", self.workflow_count() as i64);
         if let Some(wal) = &self.wal {
             // Persist result payload for crash durability
             let _ = wal.append(WalEventType::WorkflowCompleted, workflow_key, wal_data);
@@ -938,8 +1139,13 @@ impl WorkflowEngine {
                 ctx.fail();
             }
         }
-        self.history_store.record_event(workflow_key, crate::event_history::HistoryEventType::WorkflowFailed, vec![]);
-        self.metrics_registry.inc_counter("velocity_workflow_failed_total");
+        self.history_store.record_event(
+            workflow_key,
+            crate::event_history::HistoryEventType::WorkflowFailed,
+            vec![],
+        );
+        self.metrics_registry
+            .inc_counter("velocity_workflow_failed_total");
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowFailed, workflow_key, vec![]);
         }
@@ -954,8 +1160,13 @@ impl WorkflowEngine {
                 ctx.cancel();
             }
         }
-        self.history_store.record_event(workflow_key, crate::event_history::HistoryEventType::WorkflowCanceled, vec![]);
-        self.metrics_registry.inc_counter("velocity_workflow_canceled_total");
+        self.history_store.record_event(
+            workflow_key,
+            crate::event_history::HistoryEventType::WorkflowCanceled,
+            vec![],
+        );
+        self.metrics_registry
+            .inc_counter("velocity_workflow_canceled_total");
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowCanceled, workflow_key, vec![]);
         }
@@ -970,8 +1181,13 @@ impl WorkflowEngine {
                 ctx.terminate();
             }
         }
-        self.history_store.record_event(workflow_key, crate::event_history::HistoryEventType::WorkflowTerminated, vec![]);
-        self.metrics_registry.inc_counter("velocity_workflow_terminated_total");
+        self.history_store.record_event(
+            workflow_key,
+            crate::event_history::HistoryEventType::WorkflowTerminated,
+            vec![],
+        );
+        self.metrics_registry
+            .inc_counter("velocity_workflow_terminated_total");
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowTerminated, workflow_key, vec![]);
         }
@@ -982,7 +1198,9 @@ impl WorkflowEngine {
     fn maybe_auto_archive(&self, workflow_key: u64) {
         let policy = self.archive_policy.read().unwrap().clone();
         let status = self.get_status(workflow_key);
-        if !policy.should_archive(status) { return; }
+        if !policy.should_archive(status) {
+            return;
+        }
 
         let workflows = self.workflows.read().unwrap();
         if let Some(ctx) = workflows.get(&workflow_key) {
@@ -1009,13 +1227,17 @@ impl WorkflowEngine {
     /// Get the status of a workflow.
     pub fn get_status(&self, workflow_key: u64) -> WorkflowStatus {
         let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).map_or(WorkflowStatus::Void, |ctx| ctx.status)
+        workflows
+            .get(&workflow_key)
+            .map_or(WorkflowStatus::Void, |ctx| ctx.status)
     }
 
     /// Get the total steps for a workflow.
     pub fn get_total_steps(&self, workflow_key: u64) -> u32 {
         let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).map_or(0, |ctx| ctx.slab.total_steps)
+        workflows
+            .get(&workflow_key)
+            .map_or(0, |ctx| ctx.slab.total_steps)
     }
 
     /// Get the slab header for a workflow (for Merkle verification).
@@ -1035,13 +1257,16 @@ impl WorkflowEngine {
 
     /// Schedule a durable timer. When it fires, a workflow task is enqueued.
     pub fn schedule_timer(&self, workflow_key: u64, delay_ms: u64) -> u64 {
-        self.timer_engine.schedule(workflow_key, Duration::from_millis(delay_ms))
+        self.timer_engine
+            .schedule(workflow_key, Duration::from_millis(delay_ms))
     }
 
     /// Get the event sequence number for a workflow.
     pub fn get_event_sequence(&self, workflow_key: u64) -> u64 {
         let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).map_or(0, |ctx| ctx.event_sequence)
+        workflows
+            .get(&workflow_key)
+            .map_or(0, |ctx| ctx.event_sequence)
     }
 
     /// Get the number of active workflows.
@@ -1060,7 +1285,14 @@ impl WorkflowEngine {
         input: Option<Vec<u8>>,
     ) -> u64 {
         let namespace_id = parent_key >> 32;
-        let child_key = self.start_workflow(child_workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, input);
+        let child_key = self.start_workflow(
+            child_workflow_id,
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            total_steps,
+            input,
+        );
 
         // Link parent → child
         let mut workflows = self.workflows.write().unwrap();
@@ -1087,7 +1319,9 @@ impl WorkflowEngine {
         {
             let mut workflows = self.workflows.write().unwrap();
             if let Some(ctx) = workflows.get_mut(&workflow_key) {
-                if ctx.status != WorkflowStatus::Running { return; }
+                if ctx.status != WorkflowStatus::Running {
+                    return;
+                }
                 ctx.update(update_name_id, payload);
             }
         }
@@ -1095,30 +1329,37 @@ impl WorkflowEngine {
         // Schedule a workflow task to process the update
         let workflows = self.workflows.read().unwrap();
         if let Some(ctx) = workflows.get(&workflow_key) {
-            self.task_queue.enqueue(ctx.task_queue_hash, TaskItem {
-                task_id: 0,
-                kind: TaskKind::SignalTask, // Reuse SignalTask kind for updates
-                workflow_key,
-                task_queue_hash: ctx.task_queue_hash,
-                step_index: 0,
-                activity_name_id: update_name_id,
-                attempt: 1,
-                priority: 0,
-                deadline_ms: 0,
-            });
+            self.task_queue.enqueue(
+                ctx.task_queue_hash,
+                TaskItem {
+                    task_id: 0,
+                    kind: TaskKind::SignalTask, // Reuse SignalTask kind for updates
+                    workflow_key,
+                    task_queue_hash: ctx.task_queue_hash,
+                    step_index: 0,
+                    activity_name_id: update_name_id,
+                    attempt: 1,
+                    priority: 0,
+                    deadline_ms: 0,
+                },
+            );
         }
     }
 
     /// Check if an update is pending for a workflow.
     pub fn has_update(&self, workflow_key: u64, update_name_id: u64) -> bool {
         let workflows = self.workflows.read().unwrap();
-        workflows.get(&workflow_key).map_or(false, |ctx| ctx.has_update(update_name_id))
+        workflows
+            .get(&workflow_key)
+            .map_or(false, |ctx| ctx.has_update(update_name_id))
     }
 
     /// Take the next pending update payload.
     pub fn take_update(&self, workflow_key: u64, update_name_id: u64) -> Option<Vec<u8>> {
         let mut workflows = self.workflows.write().unwrap();
-        workflows.get_mut(&workflow_key).and_then(|ctx| ctx.take_update(update_name_id))
+        workflows
+            .get_mut(&workflow_key)
+            .and_then(|ctx| ctx.take_update(update_name_id))
     }
 
     // ─── Cron ────────────────────────────────────────────────────────────────
@@ -1133,7 +1374,14 @@ impl WorkflowEngine {
         total_steps: u32,
         current_time_minutes: u64,
     ) -> Result<u64, crate::cron::CronError> {
-        self.cron_scheduler.register(cron_expression, workflow_type_id, namespace_id, task_queue_hash, total_steps, current_time_minutes)
+        self.cron_scheduler.register(
+            cron_expression,
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            total_steps,
+            current_time_minutes,
+        )
     }
 
     /// Process cron fires: for each fired schedule, start a new workflow execution.
@@ -1167,8 +1415,14 @@ impl WorkflowEngine {
     }
 
     /// Submit a batch signal operation. Returns the batch ID.
-    pub fn batch_signal(&self, workflow_keys: Vec<u64>, signal_name_id: u64, payload: Vec<u8>) -> u64 {
-        self.batch_executor.submit_signal(self, workflow_keys, signal_name_id, payload)
+    pub fn batch_signal(
+        &self,
+        workflow_keys: Vec<u64>,
+        signal_name_id: u64,
+        payload: Vec<u8>,
+    ) -> u64 {
+        self.batch_executor
+            .submit_signal(self, workflow_keys, signal_name_id, payload)
     }
 
     /// Get the result of a batch operation.
@@ -1183,7 +1437,7 @@ impl WorkflowEngine {
     pub fn check_activity_timeouts(&self) -> Vec<(u64, u32, String)> {
         let mut timed_out = Vec::new();
         let workflows = self.workflows.read().unwrap();
-        
+
         for (workflow_key, ctx) in workflows.iter() {
             for (step, timeouts) in &ctx.activity_timeouts {
                 if let Some(timeout_type) = timeouts.check_timeouts() {
@@ -1191,7 +1445,7 @@ impl WorkflowEngine {
                 }
             }
         }
-        
+
         timed_out
     }
 
@@ -1201,10 +1455,12 @@ impl WorkflowEngine {
         let mut timed_out = Vec::new();
         let workflows = self.workflows.read().unwrap();
         let now = Instant::now();
-        
+
         for (workflow_key, ctx) in workflows.iter() {
-            if ctx.status != WorkflowStatus::Running { continue; }
-            
+            if ctx.status != WorkflowStatus::Running {
+                continue;
+            }
+
             // Check execution timeout
             if let Some(timeout) = ctx.workflow_execution_timeout {
                 if now.duration_since(ctx.start_time) > timeout {
@@ -1212,7 +1468,7 @@ impl WorkflowEngine {
                     continue;
                 }
             }
-            
+
             // Check run timeout
             if let Some(timeout) = ctx.workflow_run_timeout {
                 if now.duration_since(ctx.start_time) > timeout {
@@ -1220,7 +1476,7 @@ impl WorkflowEngine {
                 }
             }
         }
-        
+
         // Terminate timed-out workflows
         drop(workflows);
         let count = timed_out.len() as u32;
@@ -1234,7 +1490,11 @@ impl WorkflowEngine {
     pub fn set_workflow_execution_timeout(&self, workflow_key: u64, timeout_ms: u64) {
         let mut workflows = self.workflows.write().unwrap();
         if let Some(ctx) = workflows.get_mut(&workflow_key) {
-            ctx.workflow_execution_timeout = if timeout_ms > 0 { Some(Duration::from_millis(timeout_ms)) } else { None };
+            ctx.workflow_execution_timeout = if timeout_ms > 0 {
+                Some(Duration::from_millis(timeout_ms))
+            } else {
+                None
+            };
         }
     }
 
@@ -1250,12 +1510,12 @@ impl WorkflowEngine {
                 None => return,
             }
         };
-        
+
         for child_key in child_keys {
             match policy {
                 ParentClosePolicy::Terminate => self.terminate_workflow(child_key),
                 ParentClosePolicy::Cancel => self.cancel_workflow(child_key),
-                ParentClosePolicy::Abandon => {}, // Do nothing
+                ParentClosePolicy::Abandon => {} // Do nothing
             }
         }
     }
@@ -1264,13 +1524,25 @@ impl WorkflowEngine {
 
     /// Execute a registered query handler for a workflow.
     /// Returns the query result or None if no handler is registered.
-    pub fn execute_query(&self, workflow_key: u64, query_name_id: u64, input: &[u8]) -> Option<Vec<u8>> {
-        self.query_registry.execute_query(workflow_key, query_name_id, input)
+    pub fn execute_query(
+        &self,
+        workflow_key: u64,
+        query_name_id: u64,
+        input: &[u8],
+    ) -> Option<Vec<u8>> {
+        self.query_registry
+            .execute_query(workflow_key, query_name_id, input)
     }
 
     /// Register a query handler for a workflow.
-    pub fn register_query_handler(&self, workflow_key: u64, query_name_id: u64, handler: crate::query_handler::QueryHandler) {
-        self.query_registry.register_handler(workflow_key, query_name_id, handler);
+    pub fn register_query_handler(
+        &self,
+        workflow_key: u64,
+        query_name_id: u64,
+        handler: crate::query_handler::QueryHandler,
+    ) {
+        self.query_registry
+            .register_handler(workflow_key, query_name_id, handler);
     }
 
     // ─── Workflow Reset ──────────────────────────────────────────────────────
@@ -1290,13 +1562,14 @@ impl WorkflowEngine {
             let reset_id = self.workflow_resetter.create_reset_point(
                 workflow_key,
                 reset_to_event_id,
-                ResetReason::ManualReset
+                ResetReason::ManualReset,
             );
 
             // Clear step results after the reset point
             // (In a full implementation, we'd replay from event history)
-            ctx.step_results.retain(|&step, _| (step as u64) < reset_to_event_id);
-            
+            ctx.step_results
+                .retain(|&step, _| (step as u64) < reset_to_event_id);
+
             // Reset the slab bitmask for steps after the reset point
             for step in reset_to_event_id..ctx.slab.total_steps as u64 {
                 ctx.slab.step_bitmask.clear_step(step as usize);
@@ -1308,7 +1581,8 @@ impl WorkflowEngine {
 
             // Update visibility
             drop(workflows);
-            self.visibility.update_status(workflow_key, WorkflowStatus::Running, None);
+            self.visibility
+                .update_status(workflow_key, WorkflowStatus::Running, None);
             self.history_store.record_event(
                 workflow_key,
                 crate::event_history::HistoryEventType::WorkflowReset,
@@ -1341,7 +1615,14 @@ impl WorkflowEngine {
             return (key, false);
         }
         // Start new workflow then signal it
-        let wk = self.start_workflow(workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps, None);
+        let wk = self.start_workflow(
+            workflow_id,
+            workflow_type_id,
+            namespace_id,
+            task_queue_hash,
+            total_steps,
+            None,
+        );
         self.signal_workflow(wk, signal_name_id, payload);
         (wk, true)
     }
@@ -1354,7 +1635,13 @@ impl WorkflowEngine {
         let (workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps) = {
             let workflows = self.workflows.read().unwrap();
             match workflows.get(&workflow_key) {
-                Some(ctx) => (ctx.workflow_id, ctx.workflow_type_id, ctx.namespace_id, ctx.task_queue_hash, ctx.slab.total_steps),
+                Some(ctx) => (
+                    ctx.workflow_id,
+                    ctx.workflow_type_id,
+                    ctx.namespace_id,
+                    ctx.task_queue_hash,
+                    ctx.slab.total_steps,
+                ),
                 None => return 0,
             }
         };
@@ -1366,30 +1653,60 @@ impl WorkflowEngine {
                 ctx.close_time = Some(Instant::now());
             }
         }
-        self.visibility.update_status(workflow_key, WorkflowStatus::ContinuedAsNew, Some(0));
-        self.history_store.record_event(workflow_key, crate::event_history::HistoryEventType::WorkflowContinuedAsNew, vec![]);
+        self.visibility
+            .update_status(workflow_key, WorkflowStatus::ContinuedAsNew, Some(0));
+        self.history_store.record_event(
+            workflow_key,
+            crate::event_history::HistoryEventType::WorkflowContinuedAsNew,
+            vec![],
+        );
         // Start new run with a unique workflow_id (use run_id as the new workflow_id to ensure unique key)
         let new_run_id = self.next_run_id.fetch_add(1, Ordering::Relaxed);
         let new_key = (namespace_id << 32) | new_run_id;
-        let mut ctx = WorkflowContext::new(new_run_id, new_run_id, workflow_type_id, task_queue_hash, total_steps);
+        let mut ctx = WorkflowContext::new(
+            new_run_id,
+            new_run_id,
+            workflow_type_id,
+            task_queue_hash,
+            total_steps,
+        );
         ctx.namespace_id = namespace_id;
         ctx.input_data = new_input;
         // Schedule the first workflow task
-        self.task_queue.enqueue(task_queue_hash, TaskItem {
-            task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: new_key,
-            task_queue_hash, step_index: 0, activity_name_id: 0, attempt: 1,
-            priority: 0, deadline_ms: 0,
-        });
+        self.task_queue.enqueue(
+            task_queue_hash,
+            TaskItem {
+                task_id: 0,
+                kind: TaskKind::WorkflowTask,
+                workflow_key: new_key,
+                task_queue_hash,
+                step_index: 0,
+                activity_name_id: 0,
+                attempt: 1,
+                priority: 0,
+                deadline_ms: 0,
+            },
+        );
         let mut workflows = self.workflows.write().unwrap();
         workflows.insert(new_key, ctx);
         self.visibility.register(WorkflowExecutionInfo {
-            workflow_key: new_key, workflow_id: new_run_id, run_id: new_run_id,
-            workflow_type_id, namespace_id, status: WorkflowStatus::Running,
-            start_time_ms: 0, close_time_ms: None, task_queue_hash,
+            workflow_key: new_key,
+            workflow_id: new_run_id,
+            run_id: new_run_id,
+            workflow_type_id,
+            namespace_id,
+            status: WorkflowStatus::Running,
+            start_time_ms: 0,
+            close_time_ms: None,
+            task_queue_hash,
             search_attributes: HashMap::new(),
             memo: HashMap::new(),
         });
-        self.history_store.record_event(new_key, crate::event_history::HistoryEventType::WorkflowStarted, vec![]);
+        self.history_store.record_event(
+            new_key,
+            crate::event_history::HistoryEventType::WorkflowStarted,
+            vec![],
+        );
         new_key
     }
 
@@ -1421,26 +1738,38 @@ impl WorkflowEngine {
         }
 
         // Pending children
-        let pending_children: Vec<PendingChildInfo> = ctx.child_keys.iter().map(|&child_key| {
-            let child_status = workflows.get(&child_key).map(|c| c.status).unwrap_or(WorkflowStatus::Void);
-            PendingChildInfo {
-                workflow_key: child_key,
-                status: child_status,
-            }
-        }).collect();
+        let pending_children: Vec<PendingChildInfo> = ctx
+            .child_keys
+            .iter()
+            .map(|&child_key| {
+                let child_status = workflows
+                    .get(&child_key)
+                    .map(|c| c.status)
+                    .unwrap_or(WorkflowStatus::Void);
+                PendingChildInfo {
+                    workflow_key: child_key,
+                    status: child_status,
+                }
+            })
+            .collect();
 
         // Pending signals
-        let pending_signals: Vec<PendingSignalInfo> = ctx.signal_buffer.iter().map(|(&name_id, payloads)| {
-            PendingSignalInfo {
+        let pending_signals: Vec<PendingSignalInfo> = ctx
+            .signal_buffer
+            .iter()
+            .map(|(&name_id, payloads)| PendingSignalInfo {
                 signal_name_id: name_id,
                 payload_count: payloads.len() as u32,
-            }
-        }).collect();
+            })
+            .collect();
 
         // Pending timers: count of non-fired timers from the timer engine
         let pending_timers = self.timer_engine.pending_count() as u32;
 
-        let execution_duration = ctx.close_time.unwrap_or_else(Instant::now).duration_since(ctx.start_time);
+        let execution_duration = ctx
+            .close_time
+            .unwrap_or_else(Instant::now)
+            .duration_since(ctx.start_time);
 
         Some(WorkflowExecutionDescription {
             workflow_key,
@@ -1496,13 +1825,17 @@ impl WorkflowExecutionDescription {
 
     /// Total number of pending items (activities + children + signals + timers).
     pub fn total_pending(&self) -> usize {
-        self.pending_activities.len() + self.pending_children.len()
-            + self.pending_signals.len() + self.pending_timers as usize
+        self.pending_activities.len()
+            + self.pending_children.len()
+            + self.pending_signals.len()
+            + self.pending_timers as usize
     }
 
     /// Progress as a fraction (0.0 to 1.0).
     pub fn progress(&self) -> f64 {
-        if self.total_steps == 0 { return 1.0; }
+        if self.total_steps == 0 {
+            return 1.0;
+        }
         self.completed_steps as f64 / self.total_steps as f64
     }
 }

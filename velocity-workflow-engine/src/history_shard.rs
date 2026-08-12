@@ -56,7 +56,9 @@ impl MutableState {
 
     /// Transition to a terminal state.
     pub fn transition_to_terminal(&mut self, status: WorkflowStatus) -> bool {
-        if self.is_terminal { return false; }
+        if self.is_terminal {
+            return false;
+        }
         self.status = status;
         self.is_terminal = true;
         self.generation += 1;
@@ -65,8 +67,14 @@ impl MutableState {
 
     /// Check if the workflow is in a terminal state.
     pub fn check_terminal(&self) -> bool {
-        matches!(self.status, WorkflowStatus::Completed | WorkflowStatus::Failed
-            | WorkflowStatus::Canceled | WorkflowStatus::Terminated | WorkflowStatus::ContinuedAsNew)
+        matches!(
+            self.status,
+            WorkflowStatus::Completed
+                | WorkflowStatus::Failed
+                | WorkflowStatus::Canceled
+                | WorkflowStatus::Terminated
+                | WorkflowStatus::ContinuedAsNew
+        )
     }
 
     /// Add a pending signal.
@@ -179,12 +187,18 @@ impl ShardContext {
     }
 
     /// Get or create mutable state for a workflow.
-    pub fn get_or_create_state(&self, workflow_key: u64, workflow_id: u64, run_id: u64) -> MutableState {
+    pub fn get_or_create_state(
+        &self,
+        workflow_key: u64,
+        workflow_id: u64,
+        run_id: u64,
+    ) -> MutableState {
         let mut states = self.states.write().unwrap();
         let is_new = !states.contains_key(&workflow_key);
-        let state = states.entry(workflow_key).or_insert_with(|| {
-            MutableState::new(workflow_key, workflow_id, run_id)
-        }).clone();
+        let state = states
+            .entry(workflow_key)
+            .or_insert_with(|| MutableState::new(workflow_key, workflow_id, run_id))
+            .clone();
         if is_new {
             self.stats.write().unwrap().workflow_count += 1;
         }
@@ -224,8 +238,15 @@ impl ShardContext {
     }
 
     /// Enqueue a transfer task.
-    pub fn enqueue_transfer(&self, workflow_key: u64, kind: TransferTaskKind, target_queue: &str) -> u64 {
-        let task_id = self.next_task_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    pub fn enqueue_transfer(
+        &self,
+        workflow_key: u64,
+        kind: TransferTaskKind,
+        target_queue: &str,
+    ) -> u64 {
+        let task_id = self
+            .next_task_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let task = TransferTask {
             task_id,
             workflow_key,
@@ -270,7 +291,11 @@ impl ShardContext {
 
     /// Reconstruct mutable state from a sequence of event types.
     /// Replays events to rebuild state.
-    pub fn reconstruct_state(&self, workflow_key: u64, events: &[(u64, u8)]) -> Option<MutableState> {
+    pub fn reconstruct_state(
+        &self,
+        workflow_key: u64,
+        events: &[(u64, u8)],
+    ) -> Option<MutableState> {
         let states = self.states.read().unwrap();
         let existing = states.get(&workflow_key);
         let workflow_id = existing.map(|s| s.workflow_id).unwrap_or(0);
@@ -283,11 +308,21 @@ impl ShardContext {
             state.last_first_event_id = *event_id;
             // Apply terminal transitions
             match event_type {
-                3 => { state.transition_to_terminal(WorkflowStatus::Completed); }
-                4 => { state.transition_to_terminal(WorkflowStatus::Failed); }
-                5 => { state.transition_to_terminal(WorkflowStatus::Canceled); }
-                6 => { state.transition_to_terminal(WorkflowStatus::Terminated); }
-                7 => { state.transition_to_terminal(WorkflowStatus::ContinuedAsNew); }
+                3 => {
+                    state.transition_to_terminal(WorkflowStatus::Completed);
+                }
+                4 => {
+                    state.transition_to_terminal(WorkflowStatus::Failed);
+                }
+                5 => {
+                    state.transition_to_terminal(WorkflowStatus::Canceled);
+                }
+                6 => {
+                    state.transition_to_terminal(WorkflowStatus::Terminated);
+                }
+                7 => {
+                    state.transition_to_terminal(WorkflowStatus::ContinuedAsNew);
+                }
                 _ => {}
             }
         }

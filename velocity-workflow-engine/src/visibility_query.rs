@@ -2,9 +2,9 @@
 //! Supports simple WHERE clauses: `Field = 'Value' AND Field = 'Value'`
 //! Fields: WorkflowType, Status, Namespace, TaskQueue, WorkflowId, ExecutionStatus
 
-use std::collections::HashMap;
-use crate::visibility::{VisibilityIndex, WorkflowExecutionInfo, SearchAttributeValue};
 use crate::engine::WorkflowStatus;
+use crate::visibility::{SearchAttributeValue, VisibilityIndex, WorkflowExecutionInfo};
+use std::collections::HashMap;
 
 /// A parsed visibility query with filter conditions.
 #[derive(Debug, Clone, Default)]
@@ -60,30 +60,46 @@ impl VisibilityQuery {
         // Extract LIMIT clause from anywhere in the query
         let query = if let Some(idx) = query.to_uppercase().find(" LIMIT ") {
             let after = query[idx + 7..].trim().trim_matches('\'');
-            limit = after.split_whitespace().next().and_then(|s| s.parse::<usize>().ok());
+            limit = after
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<usize>().ok());
             query[..idx].trim()
-        } else { query };
+        } else {
+            query
+        };
 
         // Extract OFFSET clause from anywhere in the query
         let query = if let Some(idx) = query.to_uppercase().find(" OFFSET ") {
             let after = query[idx + 8..].trim().trim_matches('\'');
-            offset = after.split_whitespace().next().and_then(|s| s.parse::<usize>().ok());
+            offset = after
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<usize>().ok());
             query[..idx].trim()
-        } else { query };
+        } else {
+            query
+        };
 
         // Split by AND (case-insensitive)
         let parts = split_by_and(query);
 
         for part in parts {
             let part = part.trim();
-            if part.is_empty() { continue; }
+            if part.is_empty() {
+                continue;
+            }
 
             // Parse condition: Field OP 'Value'
             let condition = parse_condition(part)?;
             conditions.push(condition);
         }
 
-        Ok(Self { conditions, limit, offset })
+        Ok(Self {
+            conditions,
+            limit,
+            offset,
+        })
     }
 
     /// Execute this query against a visibility index.
@@ -137,9 +153,14 @@ impl VisibilityQuery {
         }
         // Fallback: get all statuses
         let mut all = Vec::new();
-        for status in [WorkflowStatus::Running, WorkflowStatus::Completed,
-                       WorkflowStatus::Failed, WorkflowStatus::Canceled,
-                       WorkflowStatus::Terminated, WorkflowStatus::ContinuedAsNew] {
+        for status in [
+            WorkflowStatus::Running,
+            WorkflowStatus::Completed,
+            WorkflowStatus::Failed,
+            WorkflowStatus::Canceled,
+            WorkflowStatus::Terminated,
+            WorkflowStatus::ContinuedAsNew,
+        ] {
             all.extend(index.list_by_status(status));
         }
         all
@@ -149,13 +170,13 @@ impl VisibilityQuery {
 fn parse_condition(s: &str) -> Result<QueryCondition, QueryParseError> {
     // Try to find operator
     let (field_str, op, value_str) = if let Some(pos) = s.find("!=") {
-        (&s[..pos], QueryOp::Neq, &s[pos+2..])
+        (&s[..pos], QueryOp::Neq, &s[pos + 2..])
     } else if let Some(pos) = s.find('=') {
         // Make sure it's not part of !=
-        if pos > 0 && &s[pos-1..pos] == "!" {
+        if pos > 0 && &s[pos - 1..pos] == "!" {
             return Err(QueryParseError::InvalidOperator(s.to_string()));
         }
-        (&s[..pos], QueryOp::Eq, &s[pos+1..])
+        (&s[..pos], QueryOp::Eq, &s[pos + 1..])
     } else {
         return Err(QueryParseError::MissingOperator(s.to_string()));
     };
@@ -192,18 +213,18 @@ fn matches_condition(info: &WorkflowExecutionInfo, condition: &QueryCondition) -
         QueryField::Namespace => info.namespace_id.to_string() == condition.value,
         QueryField::TaskQueue => info.task_queue_hash.to_string() == condition.value,
         QueryField::WorkflowId => info.workflow_id.to_string() == condition.value,
-        QueryField::SearchAttribute(key) => {
-            info.search_attributes.get(key)
-                .map(|v| match v {
-                    SearchAttributeValue::String(s) => s == &condition.value,
-                    SearchAttributeValue::Keyword(s) => s == &condition.value,
-                    SearchAttributeValue::Integer(i) => i.to_string() == condition.value,
-                    SearchAttributeValue::Double(d) => d.to_string() == condition.value,
-                    SearchAttributeValue::Bool(b) => b.to_string() == condition.value,
-                    SearchAttributeValue::DateTime(dt) => dt.to_string() == condition.value,
-                })
-                .unwrap_or(false)
-        }
+        QueryField::SearchAttribute(key) => info
+            .search_attributes
+            .get(key)
+            .map(|v| match v {
+                SearchAttributeValue::String(s) => s == &condition.value,
+                SearchAttributeValue::Keyword(s) => s == &condition.value,
+                SearchAttributeValue::Integer(i) => i.to_string() == condition.value,
+                SearchAttributeValue::Double(d) => d.to_string() == condition.value,
+                SearchAttributeValue::Bool(b) => b.to_string() == condition.value,
+                SearchAttributeValue::DateTime(dt) => dt.to_string() == condition.value,
+            })
+            .unwrap_or(false),
     };
 
     match condition.op {
@@ -248,7 +269,7 @@ fn split_by_and(query: &str) -> Vec<String> {
             current.push(chars[i]);
             i += 1;
         } else if !in_quote && i + 4 < chars.len() {
-            let word: String = chars[i..i+5].iter().collect::<String>().to_uppercase();
+            let word: String = chars[i..i + 5].iter().collect::<String>().to_uppercase();
             if word == " AND " {
                 parts.push(current.trim().to_string());
                 current = String::new();
@@ -325,14 +346,30 @@ mod tests {
     fn test_execute_status_filter() {
         let index = VisibilityIndex::new();
         index.register(WorkflowExecutionInfo {
-            workflow_key: 1, workflow_id: 1, run_id: 100, workflow_type_id: 10,
-            namespace_id: 0, status: WorkflowStatus::Running, start_time_ms: 0,
-            close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(), memo: HashMap::new(),
+            workflow_key: 1,
+            workflow_id: 1,
+            run_id: 100,
+            workflow_type_id: 10,
+            namespace_id: 0,
+            status: WorkflowStatus::Running,
+            start_time_ms: 0,
+            close_time_ms: None,
+            task_queue_hash: 42,
+            search_attributes: HashMap::new(),
+            memo: HashMap::new(),
         });
         index.register(WorkflowExecutionInfo {
-            workflow_key: 2, workflow_id: 2, run_id: 200, workflow_type_id: 10,
-            namespace_id: 0, status: WorkflowStatus::Completed, start_time_ms: 0,
-            close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(), memo: HashMap::new(),
+            workflow_key: 2,
+            workflow_id: 2,
+            run_id: 200,
+            workflow_type_id: 10,
+            namespace_id: 0,
+            status: WorkflowStatus::Completed,
+            start_time_ms: 0,
+            close_time_ms: None,
+            task_queue_hash: 42,
+            search_attributes: HashMap::new(),
+            memo: HashMap::new(),
         });
 
         let q = VisibilityQuery::parse("Status = 'Running'").unwrap();
@@ -346,9 +383,17 @@ mod tests {
         let index = VisibilityIndex::new();
         for i in 0..5 {
             index.register(WorkflowExecutionInfo {
-                workflow_key: i, workflow_id: i, run_id: i + 100, workflow_type_id: 10,
-                namespace_id: 0, status: WorkflowStatus::Running, start_time_ms: 0,
-                close_time_ms: None, task_queue_hash: 42, search_attributes: HashMap::new(), memo: HashMap::new(),
+                workflow_key: i,
+                workflow_id: i,
+                run_id: i + 100,
+                workflow_type_id: 10,
+                namespace_id: 0,
+                status: WorkflowStatus::Running,
+                start_time_ms: 0,
+                close_time_ms: None,
+                task_queue_hash: 42,
+                search_attributes: HashMap::new(),
+                memo: HashMap::new(),
             });
         }
 

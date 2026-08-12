@@ -3,8 +3,8 @@
 //! and processes incoming tasks (applying replicated events from remote clusters).
 //! Runs as a background thread with configurable poll interval and batch sizes.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::cluster::ReplicationTaskType;
@@ -88,10 +88,7 @@ pub struct DeliveredTask {
 
 impl ReplicationDaemon {
     /// Create a new replication daemon.
-    pub fn new(
-        transport: Arc<ReplicationTransport>,
-        config: ReplicationDaemonConfig,
-    ) -> Self {
+    pub fn new(transport: Arc<ReplicationTransport>, config: ReplicationDaemonConfig) -> Self {
         Self {
             config,
             transport,
@@ -137,7 +134,9 @@ impl ReplicationDaemon {
             if !status.is_active {
                 continue;
             }
-            let tasks = self.transport.pull_for_cluster(status.cluster_id, self.config.outgoing_batch_size);
+            let tasks = self
+                .transport
+                .pull_for_cluster(status.cluster_id, self.config.outgoing_batch_size);
             if tasks.is_empty() {
                 continue;
             }
@@ -157,7 +156,8 @@ impl ReplicationDaemon {
                 });
             }
             delivered_total += batch_count;
-            self.outgoing_delivered.fetch_add(batch_count as u64, Ordering::Relaxed);
+            self.outgoing_delivered
+                .fetch_add(batch_count as u64, Ordering::Relaxed);
         }
 
         // Phase 2: Process incoming queues — drain and apply replicated events
@@ -165,7 +165,9 @@ impl ReplicationDaemon {
             if !status.is_active {
                 continue;
             }
-            let tasks = self.transport.drain_incoming(status.cluster_id, self.config.incoming_batch_size);
+            let tasks = self
+                .transport
+                .drain_incoming(status.cluster_id, self.config.incoming_batch_size);
             if tasks.is_empty() {
                 continue;
             }
@@ -183,11 +185,14 @@ impl ReplicationDaemon {
             }
 
             applied_total += applied;
-            self.incoming_applied.fetch_add(applied as u64, Ordering::Relaxed);
+            self.incoming_applied
+                .fetch_add(applied as u64, Ordering::Relaxed);
         }
 
         // Also drain global incoming buffer
-        let global_tasks = self.transport.drain_global_incoming(self.config.incoming_batch_size);
+        let global_tasks = self
+            .transport
+            .drain_global_incoming(self.config.incoming_batch_size);
         for task in &global_tasks {
             let result = engine.apply_replication_task(task.clone());
             if result {
@@ -231,7 +236,11 @@ impl ReplicationDaemon {
     /// Get recent delivery log entries (for audit/testing).
     pub fn recent_deliveries(&self, max_count: usize) -> Vec<DeliveredTask> {
         let log = self.delivery_log.lock().unwrap();
-        let start = if log.len() > max_count { log.len() - max_count } else { 0 };
+        let start = if log.len() > max_count {
+            log.len() - max_count
+        } else {
+            0
+        };
         log[start..].to_vec()
     }
 
@@ -275,7 +284,9 @@ mod tests {
     /// Helper: create engine with a registered source cluster (ID 0).
     fn engine_with_cluster() -> WorkflowEngine {
         let engine = WorkflowEngine::new();
-        engine.cluster_manager().register_cluster("source-cluster", "http://localhost:9090");
+        engine
+            .cluster_manager()
+            .register_cluster("source-cluster", "http://localhost:9090");
         engine
     }
 
@@ -332,7 +343,7 @@ mod tests {
 
         let (delivered, applied) = daemon.poll_once(&engine);
         assert_eq!(delivered, 0); // No outgoing tasks
-        assert_eq!(applied, 3);   // All incoming applied
+        assert_eq!(applied, 3); // All incoming applied
 
         let stats = daemon.stats();
         assert_eq!(stats.total_incoming_applied, 3);

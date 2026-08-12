@@ -5,8 +5,11 @@
 //! retry policies, and service registration.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RPC Server Configuration
@@ -137,7 +140,9 @@ pub struct InterceptorChain {
 
 impl InterceptorChain {
     pub fn new() -> Self {
-        Self { interceptors: vec![] }
+        Self {
+            interceptors: vec![],
+        }
     }
 
     pub fn add(&mut self, interceptor: Arc<dyn RpcInterceptor>) {
@@ -152,7 +157,9 @@ impl InterceptorChain {
         Ok(req)
     }
 
-    pub fn interceptor_count(&self) -> usize { self.interceptors.len() }
+    pub fn interceptor_count(&self) -> usize {
+        self.interceptors.len()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -164,10 +171,14 @@ pub struct AuthInterceptor {
 }
 
 impl RpcInterceptor for AuthInterceptor {
-    fn name(&self) -> &str { "auth" }
+    fn name(&self) -> &str {
+        "auth"
+    }
     fn intercept_unary(&self, request: &RpcRequest) -> Result<RpcRequest, RpcError> {
         if !request.metadata.contains_key("authorization") {
-            return Err(RpcError::Unauthenticated("missing authorization".to_string()));
+            return Err(RpcError::Unauthenticated(
+                "missing authorization".to_string(),
+            ));
         }
         Ok(request.clone())
     }
@@ -179,11 +190,15 @@ pub struct RateLimitInterceptor {
 }
 
 impl RpcInterceptor for RateLimitInterceptor {
-    fn name(&self) -> &str { "rate_limit" }
+    fn name(&self) -> &str {
+        "rate_limit"
+    }
     fn intercept_unary(&self, request: &RpcRequest) -> Result<RpcRequest, RpcError> {
         let load = self.current_load.fetch_add(1, Ordering::Relaxed);
         if load > (self.requests_per_second * 2.0) as u64 {
-            return Err(RpcError::ResourceExhausted("rate limit exceeded".to_string()));
+            return Err(RpcError::ResourceExhausted(
+                "rate limit exceeded".to_string(),
+            ));
         }
         Ok(request.clone())
     }
@@ -194,7 +209,9 @@ pub struct TelemetryInterceptor {
 }
 
 impl RpcInterceptor for TelemetryInterceptor {
-    fn name(&self) -> &str { "telemetry" }
+    fn name(&self) -> &str {
+        "telemetry"
+    }
     fn intercept_unary(&self, request: &RpcRequest) -> Result<RpcRequest, RpcError> {
         Ok(request.clone())
     }
@@ -203,7 +220,9 @@ impl RpcInterceptor for TelemetryInterceptor {
 pub struct ValidationInterceptor;
 
 impl RpcInterceptor for ValidationInterceptor {
-    fn name(&self) -> &str { "validation" }
+    fn name(&self) -> &str {
+        "validation"
+    }
     fn intercept_unary(&self, request: &RpcRequest) -> Result<RpcRequest, RpcError> {
         if request.method.is_empty() {
             return Err(RpcError::InvalidArgument("method is required".to_string()));
@@ -218,7 +237,9 @@ pub struct RetryInterceptor {
 }
 
 impl RpcInterceptor for RetryInterceptor {
-    fn name(&self) -> &str { "retry" }
+    fn name(&self) -> &str {
+        "retry"
+    }
     fn intercept_unary(&self, request: &RpcRequest) -> Result<RpcRequest, RpcError> {
         Ok(request.clone())
     }
@@ -229,7 +250,9 @@ pub struct TimeoutInterceptor {
 }
 
 impl RpcInterceptor for TimeoutInterceptor {
-    fn name(&self) -> &str { "timeout" }
+    fn name(&self) -> &str {
+        "timeout"
+    }
     fn intercept_unary(&self, request: &RpcRequest) -> Result<RpcRequest, RpcError> {
         let mut req = request.clone();
         if req.deadline.is_none() {
@@ -242,10 +265,14 @@ impl RpcInterceptor for TimeoutInterceptor {
 pub struct NamespaceValidationInterceptor;
 
 impl RpcInterceptor for NamespaceValidationInterceptor {
-    fn name(&self) -> &str { "namespace_validation" }
+    fn name(&self) -> &str {
+        "namespace_validation"
+    }
     fn intercept_unary(&self, request: &RpcRequest) -> Result<RpcRequest, RpcError> {
         if !request.metadata.contains_key("namespace") {
-            return Err(RpcError::InvalidArgument("namespace is required".to_string()));
+            return Err(RpcError::InvalidArgument(
+                "namespace is required".to_string(),
+            ));
         }
         Ok(request.clone())
     }
@@ -254,7 +281,9 @@ impl RpcInterceptor for NamespaceValidationInterceptor {
 pub struct RedirectionInterceptor;
 
 impl RpcInterceptor for RedirectionInterceptor {
-    fn name(&self) -> &str { "redirection" }
+    fn name(&self) -> &str {
+        "redirection"
+    }
     fn intercept_unary(&self, request: &RpcRequest) -> Result<RpcRequest, RpcError> {
         Ok(request.clone())
     }
@@ -302,9 +331,16 @@ impl ServiceRegistry {
 
     pub fn register_service(&self, descriptor: ServiceDescriptor) {
         let method_count = descriptor.methods.len() as u64;
-        self.services.write().unwrap().insert(descriptor.name.clone(), descriptor);
-        self.stats.registered_services.fetch_add(1, Ordering::Relaxed);
-        self.stats.registered_methods.fetch_add(method_count, Ordering::Relaxed);
+        self.services
+            .write()
+            .unwrap()
+            .insert(descriptor.name.clone(), descriptor);
+        self.stats
+            .registered_services
+            .fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .registered_methods
+            .fetch_add(method_count, Ordering::Relaxed);
     }
 
     pub fn get_service(&self, name: &str) -> Option<ServiceDescriptor> {
@@ -317,12 +353,14 @@ impl ServiceRegistry {
 
     pub fn resolve_method(&self, service: &str, method: &str) -> Option<MethodDescriptor> {
         let services = self.services.read().unwrap();
-        services.get(service).and_then(|s| {
-            s.methods.iter().find(|m| m.name == method).cloned()
-        })
+        services
+            .get(service)
+            .and_then(|s| s.methods.iter().find(|m| m.name == method).cloned())
     }
 
-    pub fn stats(&self) -> &RegistryStats { &self.stats }
+    pub fn stats(&self) -> &RegistryStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -391,7 +429,9 @@ impl ConnectionManager {
         }
 
         if conns.len() >= self.config.max_connections {
-            return Err(RpcError::ResourceExhausted("max connections reached".to_string()));
+            return Err(RpcError::ResourceExhausted(
+                "max connections reached".to_string(),
+            ));
         }
 
         let state = ConnectionState {
@@ -406,7 +446,9 @@ impl ConnectionManager {
 
         conns.insert(address.to_string(), state);
         self.stats.total_connections.fetch_add(1, Ordering::Relaxed);
-        self.stats.active_connections.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .active_connections
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok(address.to_string())
     }
@@ -414,7 +456,9 @@ impl ConnectionManager {
     pub fn disconnect(&self, address: &str) {
         let mut conns = self.connections.write().unwrap();
         if conns.remove(address).is_some() {
-            self.stats.active_connections.fetch_sub(1, Ordering::Relaxed);
+            self.stats
+                .active_connections
+                .fetch_sub(1, Ordering::Relaxed);
         }
     }
 
@@ -425,16 +469,25 @@ impl ConnectionManager {
         conns.retain(|_, c| c.last_used.elapsed() < timeout || c.active_streams > 0);
         let removed = before - conns.len();
         if removed > 0 {
-            self.stats.active_connections.fetch_sub(removed as u64, Ordering::Relaxed);
+            self.stats
+                .active_connections
+                .fetch_sub(removed as u64, Ordering::Relaxed);
         }
         removed
     }
 
     pub fn active_count(&self) -> usize {
-        self.connections.read().unwrap().values().filter(|c| c.connected).count()
+        self.connections
+            .read()
+            .unwrap()
+            .values()
+            .filter(|c| c.connected)
+            .count()
     }
 
-    pub fn stats(&self) -> &ConnectionManagerStats { &self.stats }
+    pub fn stats(&self) -> &ConnectionManagerStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -484,35 +537,48 @@ impl RpcLoadBalancer {
     }
 
     pub fn remove_backend(&self, address: &str) {
-        self.backends.write().unwrap().retain(|b| b.address != address);
+        self.backends
+            .write()
+            .unwrap()
+            .retain(|b| b.address != address);
     }
 
     pub fn select_backend(&self) -> Option<String> {
         let backends = self.backends.read().unwrap();
         let healthy: Vec<&BackendInfo> = backends.iter().filter(|b| b.healthy).collect();
-        if healthy.is_empty() { return None; }
+        if healthy.is_empty() {
+            return None;
+        }
 
         match self.strategy {
             LoadBalanceStrategy::RoundRobin => {
-                let idx = self.round_robin_idx.fetch_add(1, Ordering::Relaxed) as usize % healthy.len();
+                let idx =
+                    self.round_robin_idx.fetch_add(1, Ordering::Relaxed) as usize % healthy.len();
                 Some(healthy[idx].address.clone())
             }
-            LoadBalanceStrategy::LeastConnections => {
-                healthy.iter().min_by_key(|b| b.active_connections)
-                    .map(|b| b.address.clone())
-            }
+            LoadBalanceStrategy::LeastConnections => healthy
+                .iter()
+                .min_by_key(|b| b.active_connections)
+                .map(|b| b.address.clone()),
             LoadBalanceStrategy::WeightedRoundRobin => {
                 let total_weight: u32 = healthy.iter().map(|b| b.weight).sum();
-                let idx = self.round_robin_idx.fetch_add(1, Ordering::Relaxed) as u32 % total_weight;
+                let idx =
+                    self.round_robin_idx.fetch_add(1, Ordering::Relaxed) as u32 % total_weight;
                 let mut cumulative = 0;
                 for b in &healthy {
                     cumulative += b.weight;
-                    if idx < cumulative { return Some(b.address.clone()); }
+                    if idx < cumulative {
+                        return Some(b.address.clone());
+                    }
                 }
                 Some(healthy[0].address.clone())
             }
             LoadBalanceStrategy::Random => {
-                let idx = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().subsec_nanos() as usize % healthy.len();
+                let idx = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .subsec_nanos() as usize
+                    % healthy.len();
                 Some(healthy[idx].address.clone())
             }
         }
@@ -533,8 +599,17 @@ impl RpcLoadBalancer {
         }
     }
 
-    pub fn backend_count(&self) -> usize { self.backends.read().unwrap().len() }
-    pub fn healthy_count(&self) -> usize { self.backends.read().unwrap().iter().filter(|b| b.healthy).count() }
+    pub fn backend_count(&self) -> usize {
+        self.backends.read().unwrap().len()
+    }
+    pub fn healthy_count(&self) -> usize {
+        self.backends
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|b| b.healthy)
+            .count()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -585,7 +660,9 @@ mod tests {
     fn test_interceptor_chain() {
         let mut chain = InterceptorChain::new();
         chain.add(Arc::new(ValidationInterceptor));
-        chain.add(Arc::new(TelemetryInterceptor { service_name: "test".to_string() }));
+        chain.add(Arc::new(TelemetryInterceptor {
+            service_name: "test".to_string(),
+        }));
 
         let req = make_request();
         let result = chain.execute(req);
@@ -606,7 +683,9 @@ mod tests {
 
     #[test]
     fn test_auth_interceptor() {
-        let interceptor = AuthInterceptor { required_claims: vec![] };
+        let interceptor = AuthInterceptor {
+            required_claims: vec![],
+        };
         let req = make_request();
         assert!(interceptor.intercept_unary(&req).is_ok());
 
@@ -617,7 +696,9 @@ mod tests {
 
     #[test]
     fn test_timeout_interceptor() {
-        let interceptor = TimeoutInterceptor { default_timeout_ms: 5000 };
+        let interceptor = TimeoutInterceptor {
+            default_timeout_ms: 5000,
+        };
         let req = make_request();
         assert!(req.deadline.is_none());
         let result = interceptor.intercept_unary(&req).unwrap();
@@ -630,8 +711,20 @@ mod tests {
         registry.register_service(ServiceDescriptor {
             name: "WorkflowService".to_string(),
             methods: vec![
-                MethodDescriptor { name: "StartWorkflowExecution".to_string(), input_type: "StartWorkflowRequest".to_string(), output_type: "StartWorkflowResponse".to_string(), is_streaming: false, is_client_streaming: false },
-                MethodDescriptor { name: "SignalWorkflowExecution".to_string(), input_type: "SignalRequest".to_string(), output_type: "SignalResponse".to_string(), is_streaming: false, is_client_streaming: false },
+                MethodDescriptor {
+                    name: "StartWorkflowExecution".to_string(),
+                    input_type: "StartWorkflowRequest".to_string(),
+                    output_type: "StartWorkflowResponse".to_string(),
+                    is_streaming: false,
+                    is_client_streaming: false,
+                },
+                MethodDescriptor {
+                    name: "SignalWorkflowExecution".to_string(),
+                    input_type: "SignalRequest".to_string(),
+                    output_type: "SignalResponse".to_string(),
+                    is_streaming: false,
+                    is_client_streaming: false,
+                },
             ],
             version: "v1".to_string(),
             metadata: HashMap::new(),
@@ -639,9 +732,16 @@ mod tests {
 
         assert_eq!(registry.list_services().len(), 1);
         assert!(registry.get_service("WorkflowService").is_some());
-        assert!(registry.resolve_method("WorkflowService", "StartWorkflowExecution").is_some());
-        assert!(registry.resolve_method("WorkflowService", "NonExistent").is_none());
-        assert_eq!(registry.stats().registered_methods.load(Ordering::Relaxed), 2);
+        assert!(registry
+            .resolve_method("WorkflowService", "StartWorkflowExecution")
+            .is_some());
+        assert!(registry
+            .resolve_method("WorkflowService", "NonExistent")
+            .is_none());
+        assert_eq!(
+            registry.stats().registered_methods.load(Ordering::Relaxed),
+            2
+        );
     }
 
     #[test]
@@ -661,7 +761,10 @@ mod tests {
 
     #[test]
     fn test_connection_manager_max() {
-        let config = ConnectionManagerConfig { max_connections: 2, ..Default::default() };
+        let config = ConnectionManagerConfig {
+            max_connections: 2,
+            ..Default::default()
+        };
         let mgr = ConnectionManager::new(config);
 
         mgr.get_or_connect("host1:7233").unwrap();

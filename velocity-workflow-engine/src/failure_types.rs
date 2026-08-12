@@ -197,7 +197,9 @@ impl FailureInfo {
             FailureInfo::Server(info) => info.non_retryable,
             FailureInfo::Timeout(_) => true,
             FailureInfo::Canceled(_) => true,
-            FailureInfo::ChildWorkflowExecution(info) => info.retry_state == RetryState::NonRetryable,
+            FailureInfo::ChildWorkflowExecution(info) => {
+                info.retry_state == RetryState::NonRetryable
+            }
             FailureInfo::ResetWorkflow(_) => true,
             FailureInfo::ActivityTaskNotFound(_) => false,
         }
@@ -223,7 +225,11 @@ pub struct WorkflowFailure {
 
 impl WorkflowFailure {
     /// Create a new application failure.
-    pub fn application(message: impl Into<String>, error_type: impl Into<String>, non_retryable: bool) -> Self {
+    pub fn application(
+        message: impl Into<String>,
+        error_type: impl Into<String>,
+        non_retryable: bool,
+    ) -> Self {
         Self {
             message: message.into(),
             source: String::new(),
@@ -268,7 +274,9 @@ impl WorkflowFailure {
             message: message.into(),
             source: String::new(),
             stack_trace: String::new(),
-            info: FailureInfo::Canceled(CanceledFailureInfo { details: Vec::new() }),
+            info: FailureInfo::Canceled(CanceledFailureInfo {
+                details: Vec::new(),
+            }),
             cause: None,
         }
     }
@@ -392,7 +400,9 @@ impl WorkflowFailure {
 
         if remaining > 4 && max_depth > 0 {
             if let Some(cause) = self.cause.take() {
-                self.cause = Some(Box::new(cause.truncate_with_depth(remaining - 4, max_depth - 1)));
+                self.cause = Some(Box::new(
+                    cause.truncate_with_depth(remaining - 4, max_depth - 1),
+                ));
             }
         } else {
             self.cause = None;
@@ -470,7 +480,9 @@ impl fmt::Display for WorkflowIdReusePolicy {
         match self {
             WorkflowIdReusePolicy::AllowDuplicate => write!(f, "AllowDuplicate"),
             WorkflowIdReusePolicy::RejectDuplicate => write!(f, "RejectDuplicate"),
-            WorkflowIdReusePolicy::AllowDuplicateFailedOnly => write!(f, "AllowDuplicateFailedOnly"),
+            WorkflowIdReusePolicy::AllowDuplicateFailedOnly => {
+                write!(f, "AllowDuplicateFailedOnly")
+            }
             WorkflowIdReusePolicy::TerminateIfRunning => write!(f, "TerminateIfRunning"),
         }
     }
@@ -490,13 +502,22 @@ pub enum WorkflowFinalStatus {
 
 impl WorkflowIdReusePolicy {
     /// Check if a new workflow start is allowed given the existing workflow state.
-    pub fn allows_start(&self, existing_running: bool, existing_status: WorkflowFinalStatus) -> bool {
+    pub fn allows_start(
+        &self,
+        existing_running: bool,
+        existing_status: WorkflowFinalStatus,
+    ) -> bool {
         match self {
             WorkflowIdReusePolicy::AllowDuplicate => true,
             WorkflowIdReusePolicy::RejectDuplicate => false,
             WorkflowIdReusePolicy::AllowDuplicateFailedOnly => {
-                !existing_running && matches!(existing_status,
-                    WorkflowFinalStatus::Failed | WorkflowFinalStatus::Terminated | WorkflowFinalStatus::TimedOut)
+                !existing_running
+                    && matches!(
+                        existing_status,
+                        WorkflowFinalStatus::Failed
+                            | WorkflowFinalStatus::Terminated
+                            | WorkflowFinalStatus::TimedOut
+                    )
             }
             WorkflowIdReusePolicy::TerminateIfRunning => true,
         }
@@ -519,18 +540,39 @@ pub struct FailureBuilder {
 
 impl FailureBuilder {
     pub fn new() -> Self {
-        Self { message: String::new(), source: String::new(), stack_trace: String::new() }
+        Self {
+            message: String::new(),
+            source: String::new(),
+            stack_trace: String::new(),
+        }
     }
 
-    pub fn message(mut self, msg: impl Into<String>) -> Self { self.message = msg.into(); self }
-    pub fn source(mut self, src: impl Into<String>) -> Self { self.source = src.into(); self }
-    pub fn stack_trace(mut self, trace: impl Into<String>) -> Self { self.stack_trace = trace.into(); self }
+    pub fn message(mut self, msg: impl Into<String>) -> Self {
+        self.message = msg.into();
+        self
+    }
+    pub fn source(mut self, src: impl Into<String>) -> Self {
+        self.source = src.into();
+        self
+    }
+    pub fn stack_trace(mut self, trace: impl Into<String>) -> Self {
+        self.stack_trace = trace.into();
+        self
+    }
 
-    pub fn application(self, error_type: impl Into<String>, non_retryable: bool) -> WorkflowFailure {
+    pub fn application(
+        self,
+        error_type: impl Into<String>,
+        non_retryable: bool,
+    ) -> WorkflowFailure {
         WorkflowFailure {
-            message: self.message, source: self.source, stack_trace: self.stack_trace,
+            message: self.message,
+            source: self.source,
+            stack_trace: self.stack_trace,
             info: FailureInfo::Application(ApplicationFailureInfo {
-                error_type: error_type.into(), non_retryable, details: Vec::new(),
+                error_type: error_type.into(),
+                non_retryable,
+                details: Vec::new(),
             }),
             cause: None,
         }
@@ -539,7 +581,11 @@ impl FailureBuilder {
     pub fn server(self, non_retryable: bool) -> WorkflowFailure {
         WorkflowFailure {
             message: self.message,
-            source: if self.source.is_empty() { "Server".to_string() } else { self.source },
+            source: if self.source.is_empty() {
+                "Server".to_string()
+            } else {
+                self.source
+            },
             stack_trace: self.stack_trace,
             info: FailureInfo::Server(ServerFailureInfo { non_retryable }),
             cause: None,
@@ -549,10 +595,15 @@ impl FailureBuilder {
     pub fn timeout(self, timeout_type: TimeoutType) -> WorkflowFailure {
         WorkflowFailure {
             message: self.message,
-            source: if self.source.is_empty() { "Server".to_string() } else { self.source },
+            source: if self.source.is_empty() {
+                "Server".to_string()
+            } else {
+                self.source
+            },
             stack_trace: self.stack_trace,
             info: FailureInfo::Timeout(TimeoutFailureInfo {
-                timeout_type, last_heartbeat_details: Vec::new(),
+                timeout_type,
+                last_heartbeat_details: Vec::new(),
             }),
             cause: None,
         }
@@ -560,15 +611,21 @@ impl FailureBuilder {
 
     pub fn canceled(self) -> WorkflowFailure {
         WorkflowFailure {
-            message: self.message, source: self.source, stack_trace: self.stack_trace,
-            info: FailureInfo::Canceled(CanceledFailureInfo { details: Vec::new() }),
+            message: self.message,
+            source: self.source,
+            stack_trace: self.stack_trace,
+            info: FailureInfo::Canceled(CanceledFailureInfo {
+                details: Vec::new(),
+            }),
             cause: None,
         }
     }
 }
 
 impl Default for FailureBuilder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Failure Stats ─────────────────────────────────────────────────────────
@@ -657,7 +714,14 @@ mod tests {
 
     #[test]
     fn test_child_workflow_failure() {
-        let f = WorkflowFailure::child_workflow("child failed", "default-ns", 42, 1, "ChildWorkflow", RetryState::MaxAttemptsReached);
+        let f = WorkflowFailure::child_workflow(
+            "child failed",
+            "default-ns",
+            42,
+            1,
+            "ChildWorkflow",
+            RetryState::MaxAttemptsReached,
+        );
         assert_eq!(f.failure_type(), FailureType::ChildWorkflowExecution);
     }
 
@@ -674,7 +738,8 @@ mod tests {
     #[test]
     fn test_with_source_and_trace() {
         let f = WorkflowFailure::application("err", "TypeError", false)
-            .with_source("worker-1").with_stack_trace("at line 42\nat line 10");
+            .with_source("worker-1")
+            .with_stack_trace("at line 42\nat line 10");
         assert_eq!(f.source, "worker-1");
         assert_eq!(f.stack_trace, "at line 42\nat line 10");
     }
@@ -684,15 +749,20 @@ mod tests {
         let f = WorkflowFailure::application("err", "TypeError", false).with_details(vec![1, 2, 3]);
         if let FailureInfo::Application(info) = &f.info {
             assert_eq!(info.details, vec![1, 2, 3]);
-        } else { panic!("expected Application info"); }
+        } else {
+            panic!("expected Application info");
+        }
     }
 
     #[test]
     fn test_with_heartbeat_details() {
-        let f = WorkflowFailure::timeout("hb timeout", TimeoutType::Heartbeat).with_heartbeat_details(vec![10, 20]);
+        let f = WorkflowFailure::timeout("hb timeout", TimeoutType::Heartbeat)
+            .with_heartbeat_details(vec![10, 20]);
         if let FailureInfo::Timeout(info) = &f.info {
             assert_eq!(info.last_heartbeat_details, vec![10, 20]);
-        } else { panic!("expected Timeout info"); }
+        } else {
+            panic!("expected Timeout info");
+        }
     }
 
     #[test]
@@ -706,7 +776,8 @@ mod tests {
     fn test_truncate_cause_chain_depth() {
         let mut chain = WorkflowFailure::application("leaf", "T", false);
         for i in (0..25).rev() {
-            chain = WorkflowFailure::application(format!("level {}", i), "T", false).with_cause(chain);
+            chain =
+                WorkflowFailure::application(format!("level {}", i), "T", false).with_cause(chain);
         }
         let truncated = chain.truncate_with_depth(10000, 5);
         assert!(truncated.cause_depth() <= 5);
@@ -714,7 +785,9 @@ mod tests {
 
     #[test]
     fn test_byte_size() {
-        let f = WorkflowFailure::application("msg", "Type", false).with_source("src").with_details(vec![0; 100]);
+        let f = WorkflowFailure::application("msg", "Type", false)
+            .with_source("src")
+            .with_details(vec![0; 100]);
         assert!(f.byte_size() > 100);
     }
 
@@ -736,8 +809,11 @@ mod tests {
 
     #[test]
     fn test_builder_application() {
-        let f = FailureBuilder::new().message("error occurred").source("worker-5")
-            .stack_trace("at main.go:42").application("TypeError", true);
+        let f = FailureBuilder::new()
+            .message("error occurred")
+            .source("worker-5")
+            .stack_trace("at main.go:42")
+            .application("TypeError", true);
         assert_eq!(f.failure_type(), FailureType::Application);
         assert!(f.is_non_retryable());
         assert_eq!(f.source, "worker-5");
@@ -752,7 +828,9 @@ mod tests {
 
     #[test]
     fn test_builder_timeout() {
-        let f = FailureBuilder::new().message("timed out").timeout(TimeoutType::Heartbeat);
+        let f = FailureBuilder::new()
+            .message("timed out")
+            .timeout(TimeoutType::Heartbeat);
         assert_eq!(f.failure_type(), FailureType::Timeout);
     }
 
@@ -799,14 +877,20 @@ mod tests {
 
     #[test]
     fn test_reuse_policy_default() {
-        assert_eq!(WorkflowIdReusePolicy::default(), WorkflowIdReusePolicy::AllowDuplicate);
+        assert_eq!(
+            WorkflowIdReusePolicy::default(),
+            WorkflowIdReusePolicy::AllowDuplicate
+        );
     }
 
     #[test]
     fn test_retry_state_display() {
         assert_eq!(format!("{}", RetryState::InProgress), "InProgress");
         assert_eq!(format!("{}", RetryState::NonRetryable), "NonRetryable");
-        assert_eq!(format!("{}", RetryState::MaxAttemptsReached), "MaxAttemptsReached");
+        assert_eq!(
+            format!("{}", RetryState::MaxAttemptsReached),
+            "MaxAttemptsReached"
+        );
     }
 
     #[test]
@@ -819,7 +903,10 @@ mod tests {
     fn test_failure_stats_record() {
         let mut stats = FailureStats::default();
         stats.record(&WorkflowFailure::application("err", "T", false));
-        stats.record(&WorkflowFailure::timeout("timeout", TimeoutType::StartToClose));
+        stats.record(&WorkflowFailure::timeout(
+            "timeout",
+            TimeoutType::StartToClose,
+        ));
         stats.record(&WorkflowFailure::server("server", true));
         assert_eq!(stats.total_failures, 3);
         assert_eq!(stats.application_failures, 1);
@@ -840,18 +927,52 @@ mod tests {
 
     #[test]
     fn test_failure_info_types() {
-        assert_eq!(FailureInfo::Application(ApplicationFailureInfo { error_type: "T".into(), non_retryable: false, details: vec![] }).failure_type(), FailureType::Application);
-        assert_eq!(FailureInfo::Server(ServerFailureInfo { non_retryable: false }).failure_type(), FailureType::Server);
-        assert_eq!(FailureInfo::Timeout(TimeoutFailureInfo { timeout_type: TimeoutType::Heartbeat, last_heartbeat_details: vec![] }).failure_type(), FailureType::Timeout);
-        assert_eq!(FailureInfo::Canceled(CanceledFailureInfo { details: vec![] }).failure_type(), FailureType::Canceled);
-        assert_eq!(FailureInfo::ActivityTaskNotFound(ActivityTaskNotFoundInfo { schedule_event_id: 1 }).failure_type(), FailureType::ActivityTaskNotFound);
+        assert_eq!(
+            FailureInfo::Application(ApplicationFailureInfo {
+                error_type: "T".into(),
+                non_retryable: false,
+                details: vec![]
+            })
+            .failure_type(),
+            FailureType::Application
+        );
+        assert_eq!(
+            FailureInfo::Server(ServerFailureInfo {
+                non_retryable: false
+            })
+            .failure_type(),
+            FailureType::Server
+        );
+        assert_eq!(
+            FailureInfo::Timeout(TimeoutFailureInfo {
+                timeout_type: TimeoutType::Heartbeat,
+                last_heartbeat_details: vec![]
+            })
+            .failure_type(),
+            FailureType::Timeout
+        );
+        assert_eq!(
+            FailureInfo::Canceled(CanceledFailureInfo { details: vec![] }).failure_type(),
+            FailureType::Canceled
+        );
+        assert_eq!(
+            FailureInfo::ActivityTaskNotFound(ActivityTaskNotFoundInfo {
+                schedule_event_id: 1
+            })
+            .failure_type(),
+            FailureType::ActivityTaskNotFound
+        );
     }
 
     #[test]
     fn test_reset_workflow_failure() {
         let f = WorkflowFailure {
-            message: "reset".into(), source: "Server".into(), stack_trace: String::new(),
-            info: FailureInfo::ResetWorkflow(ResetWorkflowFailureInfo { last_heartbeat_details: vec![1, 2, 3] }),
+            message: "reset".into(),
+            source: "Server".into(),
+            stack_trace: String::new(),
+            info: FailureInfo::ResetWorkflow(ResetWorkflowFailureInfo {
+                last_heartbeat_details: vec![1, 2, 3],
+            }),
             cause: None,
         };
         assert_eq!(f.failure_type(), FailureType::ResetWorkflow);
@@ -861,8 +982,12 @@ mod tests {
     #[test]
     fn test_activity_task_not_found() {
         let f = WorkflowFailure {
-            message: "not found".into(), source: String::new(), stack_trace: String::new(),
-            info: FailureInfo::ActivityTaskNotFound(ActivityTaskNotFoundInfo { schedule_event_id: 42 }),
+            message: "not found".into(),
+            source: String::new(),
+            stack_trace: String::new(),
+            info: FailureInfo::ActivityTaskNotFound(ActivityTaskNotFoundInfo {
+                schedule_event_id: 42,
+            }),
             cause: None,
         };
         assert_eq!(f.failure_type(), FailureType::ActivityTaskNotFound);
@@ -871,16 +996,34 @@ mod tests {
 
     #[test]
     fn test_display_all_types() {
-        assert_eq!(format!("{}", WorkflowIdReusePolicy::AllowDuplicate), "AllowDuplicate");
-        assert_eq!(format!("{}", WorkflowIdReusePolicy::RejectDuplicate), "RejectDuplicate");
-        assert_eq!(format!("{}", WorkflowIdReusePolicy::AllowDuplicateFailedOnly), "AllowDuplicateFailedOnly");
-        assert_eq!(format!("{}", WorkflowIdReusePolicy::TerminateIfRunning), "TerminateIfRunning");
+        assert_eq!(
+            format!("{}", WorkflowIdReusePolicy::AllowDuplicate),
+            "AllowDuplicate"
+        );
+        assert_eq!(
+            format!("{}", WorkflowIdReusePolicy::RejectDuplicate),
+            "RejectDuplicate"
+        );
+        assert_eq!(
+            format!("{}", WorkflowIdReusePolicy::AllowDuplicateFailedOnly),
+            "AllowDuplicateFailedOnly"
+        );
+        assert_eq!(
+            format!("{}", WorkflowIdReusePolicy::TerminateIfRunning),
+            "TerminateIfRunning"
+        );
         assert_eq!(format!("{}", FailureType::Application), "Application");
         assert_eq!(format!("{}", FailureType::Server), "Server");
         assert_eq!(format!("{}", FailureType::Timeout), "Timeout");
         assert_eq!(format!("{}", FailureType::Canceled), "Canceled");
-        assert_eq!(format!("{}", FailureType::ChildWorkflowExecution), "ChildWorkflowExecution");
+        assert_eq!(
+            format!("{}", FailureType::ChildWorkflowExecution),
+            "ChildWorkflowExecution"
+        );
         assert_eq!(format!("{}", FailureType::ResetWorkflow), "ResetWorkflow");
-        assert_eq!(format!("{}", FailureType::ActivityTaskNotFound), "ActivityTaskNotFound");
+        assert_eq!(
+            format!("{}", FailureType::ActivityTaskNotFound),
+            "ActivityTaskNotFound"
+        );
     }
 }

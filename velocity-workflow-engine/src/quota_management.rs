@@ -4,8 +4,11 @@
 //! quota calculator, priority-based quotas, and quota tracking.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Duration, Instant};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Quota Policy
@@ -80,7 +83,9 @@ impl QuotaBucket {
         if *tokens >= count as f64 {
             *tokens -= count as f64;
             self.stats.requests_allowed.fetch_add(1, Ordering::Relaxed);
-            self.stats.tokens_consumed.fetch_add(count as u64, Ordering::Relaxed);
+            self.stats
+                .tokens_consumed
+                .fetch_add(count as u64, Ordering::Relaxed);
             true
         } else {
             self.stats.requests_denied.fetch_add(1, Ordering::Relaxed);
@@ -109,8 +114,12 @@ impl QuotaBucket {
         *self.tokens.read().unwrap()
     }
 
-    pub fn policy(&self) -> &QuotaPolicy { &self.policy }
-    pub fn stats(&self) -> &BucketStats { &self.stats }
+    pub fn policy(&self) -> &QuotaPolicy {
+        &self.policy
+    }
+    pub fn stats(&self) -> &BucketStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -153,21 +162,34 @@ impl NamespaceQuotaTracker {
         // Create new bucket
         let policy = {
             let overrides = self.overrides.read().unwrap();
-            overrides.get(namespace).cloned()
+            overrides
+                .get(namespace)
+                .cloned()
                 .unwrap_or_else(|| self.default_policy.read().unwrap().clone())
         };
 
         let bucket = Arc::new(QuotaBucket::new(policy));
-        self.namespaces.write().unwrap().insert(namespace.to_string(), bucket.clone());
-        self.stats.namespaces_tracked.fetch_add(1, Ordering::Relaxed);
+        self.namespaces
+            .write()
+            .unwrap()
+            .insert(namespace.to_string(), bucket.clone());
+        self.stats
+            .namespaces_tracked
+            .fetch_add(1, Ordering::Relaxed);
         bucket
     }
 
     pub fn set_namespace_quota(&self, namespace: &str, rate: f64, burst: u32) {
         let policy = QuotaPolicy::new(namespace, rate, burst);
-        self.overrides.write().unwrap().insert(namespace.to_string(), policy.clone());
+        self.overrides
+            .write()
+            .unwrap()
+            .insert(namespace.to_string(), policy.clone());
         let bucket = Arc::new(QuotaBucket::new(policy));
-        self.namespaces.write().unwrap().insert(namespace.to_string(), bucket);
+        self.namespaces
+            .write()
+            .unwrap()
+            .insert(namespace.to_string(), bucket);
     }
 
     pub fn check_quota(&self, namespace: &str, count: u32) -> bool {
@@ -194,7 +216,9 @@ impl NamespaceQuotaTracker {
         self.namespaces.read().unwrap().len()
     }
 
-    pub fn stats(&self) -> &NamespaceQuotaStats { &self.stats }
+    pub fn stats(&self) -> &NamespaceQuotaStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -224,7 +248,10 @@ impl QuotaCalculator {
     }
 
     pub fn set_namespace_weight(&self, namespace: &str, weight: f64) {
-        self.namespace_weights.write().unwrap().insert(namespace.to_string(), weight);
+        self.namespace_weights
+            .write()
+            .unwrap()
+            .insert(namespace.to_string(), weight);
         let count = self.namespace_weights.read().unwrap().len() as u64;
         self.total_namespaces.store(count, Ordering::Relaxed);
     }
@@ -250,12 +277,17 @@ pub struct OperationQuotaTracker {
 
 impl OperationQuotaTracker {
     pub fn new() -> Self {
-        Self { operations: RwLock::new(HashMap::new()) }
+        Self {
+            operations: RwLock::new(HashMap::new()),
+        }
     }
 
     pub fn register_operation(&self, operation: &str, rate: f64, burst: u32) {
         let policy = QuotaPolicy::new(operation, rate, burst);
-        self.operations.write().unwrap().insert(operation.to_string(), Arc::new(QuotaBucket::new(policy)));
+        self.operations
+            .write()
+            .unwrap()
+            .insert(operation.to_string(), Arc::new(QuotaBucket::new(policy)));
     }
 
     pub fn check_operation_quota(&self, operation: &str) -> bool {

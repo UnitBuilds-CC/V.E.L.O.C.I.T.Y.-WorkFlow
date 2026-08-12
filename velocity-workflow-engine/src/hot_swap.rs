@@ -3,7 +3,10 @@
 //! and patching step handlers in-place, using a versioned patch table.
 
 use std::collections::HashMap;
-use std::sync::{atomic::{AtomicU64, Ordering}, RwLock};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    RwLock,
+};
 
 // ─── Hot-Swap Patch ──────────────────────────────────────────────────────────
 
@@ -35,9 +38,15 @@ pub enum HotSwapResult {
     /// Patch applied successfully to all matching workflows.
     Applied { patched_count: u64 },
     /// Patch applied but some workflows were skipped (e.g., already completed).
-    PartiallyApplied { patched_count: u64, skipped_count: u64 },
+    PartiallyApplied {
+        patched_count: u64,
+        skipped_count: u64,
+    },
     /// Patch rejected — version conflict.
-    VersionConflict { current_version: u64, requested_version: u64 },
+    VersionConflict {
+        current_version: u64,
+        requested_version: u64,
+    },
     /// Patch rejected — no matching workflows found.
     NoMatchingWorkflows,
 }
@@ -109,7 +118,9 @@ impl HotSwapRegistry {
         };
 
         self.patches.write().unwrap().insert(patch_id, patch);
-        self.stats.total_patches_registered.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_patches_registered
+            .fetch_add(1, Ordering::Relaxed);
         patch_id
     }
 
@@ -155,8 +166,12 @@ impl HotSwapRegistry {
                 .unwrap_or(0);
         }
 
-        self.stats.total_patches_applied.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_workflows_patched.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_patches_applied
+            .fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_workflows_patched
+            .fetch_add(1, Ordering::Relaxed);
 
         HotSwapResult::Applied { patched_count: 1 }
     }
@@ -187,7 +202,9 @@ impl HotSwapRegistry {
                 skipped_count: matching_workflow_keys.len() as u64 - patched,
             }
         } else {
-            HotSwapResult::Applied { patched_count: patched }
+            HotSwapResult::Applied {
+                patched_count: patched,
+            }
         }
     }
 
@@ -200,7 +217,9 @@ impl HotSwapRegistry {
                 if let Some(p) = all_patches.get_mut(&patch_id) {
                     p.patched_count = p.patched_count.saturating_sub(1);
                 }
-                self.stats.total_rollback_count.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .total_rollback_count
+                    .fetch_add(1, Ordering::Relaxed);
                 return true;
             }
         }
@@ -211,20 +230,32 @@ impl HotSwapRegistry {
     pub fn patch_history(&self, workflow_key: u64) -> Vec<HotSwapPatch> {
         let applied = self.applied_patches.read().unwrap();
         let patches = self.patches.read().unwrap();
-        applied.get(&workflow_key)
-            .map(|ids| ids.iter().filter_map(|id| patches.get(id).cloned()).collect())
+        applied
+            .get(&workflow_key)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| patches.get(id).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
     /// Get the latest patch version for a workflow type.
     pub fn latest_version(&self, workflow_type_id: u64) -> u64 {
-        self.latest_versions.read().unwrap()
-            .get(&workflow_type_id).copied().unwrap_or(0)
+        self.latest_versions
+            .read()
+            .unwrap()
+            .get(&workflow_type_id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Get all active patches for a workflow type.
     pub fn active_patches(&self, workflow_type_id: u64) -> Vec<HotSwapPatch> {
-        self.patches.read().unwrap().values()
+        self.patches
+            .read()
+            .unwrap()
+            .values()
             .filter(|p| p.workflow_type_id == workflow_type_id && p.is_active)
             .cloned()
             .collect()
@@ -255,17 +286,27 @@ impl HotSwapRegistry {
     pub fn stats(&self) -> HotSwapStats {
         // Return a snapshot
         HotSwapStats {
-            total_patches_registered: AtomicU64::new(self.stats.total_patches_registered.load(Ordering::Relaxed)),
-            total_patches_applied: AtomicU64::new(self.stats.total_patches_applied.load(Ordering::Relaxed)),
-            total_workflows_patched: AtomicU64::new(self.stats.total_workflows_patched.load(Ordering::Relaxed)),
-            total_rollback_count: AtomicU64::new(self.stats.total_rollback_count.load(Ordering::Relaxed)),
+            total_patches_registered: AtomicU64::new(
+                self.stats.total_patches_registered.load(Ordering::Relaxed),
+            ),
+            total_patches_applied: AtomicU64::new(
+                self.stats.total_patches_applied.load(Ordering::Relaxed),
+            ),
+            total_workflows_patched: AtomicU64::new(
+                self.stats.total_workflows_patched.load(Ordering::Relaxed),
+            ),
+            total_rollback_count: AtomicU64::new(
+                self.stats.total_rollback_count.load(Ordering::Relaxed),
+            ),
             version_conflicts: AtomicU64::new(self.stats.version_conflicts.load(Ordering::Relaxed)),
         }
     }
 }
 
 impl Default for HotSwapRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

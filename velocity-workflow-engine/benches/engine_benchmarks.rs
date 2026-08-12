@@ -8,17 +8,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use velocity_workflow_engine::engine::WorkflowEngine;
-use velocity_workflow_engine::task_queue::{TaskQueue, TaskItem, TaskKind};
-use velocity_workflow_engine::timer_engine::TimerEngine;
-use velocity_workflow_engine::namespace::NamespaceRegistry;
 use velocity_workflow_engine::namespace::NamespaceConfig;
-use velocity_workflow_engine::search_index::SearchAttributeIndex;
-use velocity_workflow_engine::visibility::SearchAttributeValue;
+use velocity_workflow_engine::namespace::NamespaceRegistry;
 use velocity_workflow_engine::payload_codec::{CodecChain, XorCodec};
 use velocity_workflow_engine::query_handler::QueryRegistry;
+use velocity_workflow_engine::search_index::SearchAttributeIndex;
+use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
+use velocity_workflow_engine::timer_engine::TimerEngine;
+use velocity_workflow_engine::visibility::SearchAttributeValue;
 
-use velocity_workflow_core::SlabHeader;
 use velocity_workflow_core::Bitmask256;
+use velocity_workflow_core::SlabHeader;
 
 // ─── Benchmark Harness ────────────────────────────────────────────────────────
 
@@ -146,89 +146,126 @@ fn bench_indexed(
 fn bench_workflow_creation() -> BenchResult {
     let engine = WorkflowEngine::new();
     let mut counter = 0u64;
-    bench("workflow_creation", 5_000, Duration::from_millis(100), || {
-        counter += 1;
-        engine.start_workflow(counter, 1, 0, 100, 10, None);
-    })
+    bench(
+        "workflow_creation",
+        5_000,
+        Duration::from_millis(100),
+        || {
+            counter += 1;
+            engine.start_workflow(counter, 1, 0, 100, 10, None);
+        },
+    )
 }
 
 fn bench_step_completion() -> BenchResult {
     let engine = WorkflowEngine::new();
     let key = engine.start_workflow(1, 1, 0, 100, 200, None);
     let mut step = 0u32;
-    bench("step_completion", 10_000, Duration::from_millis(100), || {
-        let s = step % 200;
-        engine.complete_step(black_box(key), black_box(s), vec![0u8; 64]);
-        step += 1;
-    })
+    bench(
+        "step_completion",
+        10_000,
+        Duration::from_millis(100),
+        || {
+            let s = step % 200;
+            engine.complete_step(black_box(key), black_box(s), vec![0u8; 64]);
+            step += 1;
+        },
+    )
 }
 
 fn bench_signal_delivery() -> BenchResult {
     let engine = WorkflowEngine::new();
     let key = engine.start_workflow(1, 1, 0, 100, 10, None);
     let mut sig = 0u64;
-    bench("signal_delivery", 10_000, Duration::from_millis(100), || {
-        engine.signal_workflow(black_box(key), sig % 100, vec![0u8; 32]);
-        sig += 1;
-    })
+    bench(
+        "signal_delivery",
+        10_000,
+        Duration::from_millis(100),
+        || {
+            engine.signal_workflow(black_box(key), sig % 100, vec![0u8; 32]);
+            sig += 1;
+        },
+    )
 }
 
 fn bench_query_execution() -> BenchResult {
     let registry = QueryRegistry::new();
     // Register handlers for 100 workflows
     for wk in 1..=100u64 {
-        registry.register_handler(wk, 1, Box::new(|input| {
-            let mut out = input.to_vec();
-            out.push(0xFF);
-            out
-        }));
+        registry.register_handler(
+            wk,
+            1,
+            Box::new(|input| {
+                let mut out = input.to_vec();
+                out.push(0xFF);
+                out
+            }),
+        );
     }
     let mut wk = 1u64;
-    bench("query_execution", 10_000, Duration::from_millis(100), || {
-        let _ = registry.execute_query(black_box(wk), 1, black_box(&[1, 2, 3, 4]));
-        wk = (wk % 100) + 1;
-    })
+    bench(
+        "query_execution",
+        10_000,
+        Duration::from_millis(100),
+        || {
+            let _ = registry.execute_query(black_box(wk), 1, black_box(&[1, 2, 3, 4]));
+            wk = (wk % 100) + 1;
+        },
+    )
 }
 
 fn bench_task_queue_enqueue() -> BenchResult {
     let tq = TaskQueue::new();
     let mut counter = 0u64;
-    bench("task_queue_enqueue", 10_000, Duration::from_millis(100), || {
-        let task = TaskItem {
-            task_id: 0,
-            kind: TaskKind::WorkflowTask,
-            workflow_key: counter,
-            task_queue_hash: 42,
-            step_index: 0,
-            activity_name_id: 0,
-            attempt: 1,
-            priority: 0,
-            deadline_ms: 0,
-        };
-        tq.enqueue(black_box(42), task);
-        counter += 1;
-    })
+    bench(
+        "task_queue_enqueue",
+        10_000,
+        Duration::from_millis(100),
+        || {
+            let task = TaskItem {
+                task_id: 0,
+                kind: TaskKind::WorkflowTask,
+                workflow_key: counter,
+                task_queue_hash: 42,
+                step_index: 0,
+                activity_name_id: 0,
+                attempt: 1,
+                priority: 0,
+                deadline_ms: 0,
+            };
+            tq.enqueue(black_box(42), task);
+            counter += 1;
+        },
+    )
 }
 
 fn bench_task_queue_poll() -> BenchResult {
     let tq = TaskQueue::new();
     // Pre-fill the queue
     for i in 0..10_000u64 {
-        tq.enqueue(42, TaskItem {
-            task_id: 0,
-            kind: TaskKind::WorkflowTask,
-            workflow_key: i,
-            task_queue_hash: 42,
-            step_index: 0,
-            activity_name_id: 0,
-            attempt: 1,
-            priority: 0,
-            deadline_ms: 0,
-        });
+        tq.enqueue(
+            42,
+            TaskItem {
+                task_id: 0,
+                kind: TaskKind::WorkflowTask,
+                workflow_key: i,
+                task_queue_hash: 42,
+                step_index: 0,
+                activity_name_id: 0,
+                attempt: 1,
+                priority: 0,
+                deadline_ms: 0,
+            },
+        );
     }
-    bench("task_queue_poll", 10_000, Duration::from_millis(100), || {
-        let _ = black_box(tq.try_poll(42));
-    })
+    bench(
+        "task_queue_poll",
+        10_000,
+        Duration::from_millis(100),
+        || {
+            let _ = black_box(tq.try_poll(42));
+        },
+    )
 }
 
 fn bench_timer_schedule() -> BenchResult {
@@ -243,21 +280,31 @@ fn bench_timer_schedule() -> BenchResult {
 fn bench_namespace_register() -> BenchResult {
     let registry = NamespaceRegistry::new();
     let mut id = 1000u64;
-    bench("namespace_register", 5_000, Duration::from_millis(100), || {
-        id += 1;
-        let config = NamespaceConfig::new(id, format!("bench-ns-{}", id));
-        let _ = registry.register(config);
-    })
+    bench(
+        "namespace_register",
+        5_000,
+        Duration::from_millis(100),
+        || {
+            id += 1;
+            let config = NamespaceConfig::new(id, format!("bench-ns-{}", id));
+            let _ = registry.register(config);
+        },
+    )
 }
 
 fn bench_search_index_write() -> BenchResult {
     let index = SearchAttributeIndex::new();
     let mut wk = 0u64;
     let val = SearchAttributeValue::Keyword("benchmark".to_string());
-    bench("search_index_write", 10_000, Duration::from_millis(100), || {
-        index.index_attribute(black_box(wk), "bench_attr", &val);
-        wk += 1;
-    })
+    bench(
+        "search_index_write",
+        10_000,
+        Duration::from_millis(100),
+        || {
+            index.index_attribute(black_box(wk), "bench_attr", &val);
+            wk += 1;
+        },
+    )
 }
 
 fn bench_search_index_query() -> BenchResult {
@@ -268,9 +315,14 @@ fn bench_search_index_query() -> BenchResult {
         index.index_attribute(i, "query_attr", &val);
     }
     let query_val = SearchAttributeValue::Integer(42);
-    bench("search_index_query", 5_000, Duration::from_millis(100), || {
-        let _ = index.exact_match("query_attr", &query_val);
-    })
+    bench(
+        "search_index_query",
+        5_000,
+        Duration::from_millis(100),
+        || {
+            let _ = index.exact_match("query_attr", &query_val);
+        },
+    )
 }
 
 fn bench_merkle_compute() -> BenchResult {
@@ -285,23 +337,28 @@ fn bench_merkle_compute() -> BenchResult {
 }
 
 fn bench_bitmask_operations() -> BenchResult {
-    bench_indexed("bitmask_operations", 10_000, Duration::from_millis(100), |i| {
-        let mut mask = Bitmask256::new();
-        // Set 32 bits
-        for b in 0..32 {
-            mask.set_step((i.wrapping_add(b)) % 256);
-        }
-        black_box(mask.count_completed());
-        // Clear half
-        for b in 0..16 {
-            mask.clear_step((i.wrapping_add(b)) % 256);
-        }
-        black_box(mask.count_completed());
-        // Check membership
-        for b in 0..32 {
-            black_box(mask.is_step_set((i.wrapping_add(b)) % 256));
-        }
-    })
+    bench_indexed(
+        "bitmask_operations",
+        10_000,
+        Duration::from_millis(100),
+        |i| {
+            let mut mask = Bitmask256::new();
+            // Set 32 bits
+            for b in 0..32 {
+                mask.set_step((i.wrapping_add(b)) % 256);
+            }
+            black_box(mask.count_completed());
+            // Clear half
+            for b in 0..16 {
+                mask.clear_step((i.wrapping_add(b)) % 256);
+            }
+            black_box(mask.count_completed());
+            // Check membership
+            for b in 0..32 {
+                black_box(mask.is_step_set((i.wrapping_add(b)) % 256));
+            }
+        },
+    )
 }
 
 fn bench_slab_creation() -> BenchResult {
@@ -316,11 +373,16 @@ fn bench_payload_encode_decode() -> BenchResult {
     chain.add(Arc::new(XorCodec { key: 0xAB }));
     chain.add(Arc::new(XorCodec { key: 0xCD }));
     let payload = vec![0x42u8; 1024]; // 1 KB payload
-    bench("payload_encode_decode", 5_000, Duration::from_millis(100), || {
-        let encoded = chain.encode(black_box(&payload)).unwrap();
-        let decoded = chain.decode(black_box(&encoded)).unwrap();
-        black_box(decoded);
-    })
+    bench(
+        "payload_encode_decode",
+        5_000,
+        Duration::from_millis(100),
+        || {
+            let encoded = chain.encode(black_box(&payload)).unwrap();
+            let decoded = chain.decode(black_box(&encoded)).unwrap();
+            black_box(decoded);
+        },
+    )
 }
 
 fn bench_concurrent_workflow_creation() -> BenchResult {
@@ -365,7 +427,10 @@ fn main() {
     println!("╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
     println!("║                                         Velocity Workflow Engine — Benchmark Suite                                                     ║");
     println!("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣");
-    println!("║ {:<42} │ {:>10} │ {:>12} │ {:>10} │ {:>10} │ {:>10} ║", "Benchmark", "Iterations", "Ops/sec", "p50", "p99", "Total");
+    println!(
+        "║ {:<42} │ {:>10} │ {:>12} │ {:>10} │ {:>10} │ {:>10} ║",
+        "Benchmark", "Iterations", "Ops/sec", "p50", "p99", "Total"
+    );
     println!("╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣");
 
     let results: Vec<BenchResult> = vec![
@@ -392,6 +457,9 @@ fn main() {
 
     println!("╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
     println!();
-    println!("All benchmarks completed. {} benchmarks executed.", results.len());
+    println!(
+        "All benchmarks completed. {} benchmarks executed.",
+        results.len()
+    );
     println!();
 }

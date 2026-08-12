@@ -5,7 +5,7 @@
 //! workflow interaction primitive.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 /// Wait policy for update completion.
@@ -96,7 +96,10 @@ impl UpdateHandler {
                 update_id: request.update_id.clone(),
                 status: UpdateStatus::Rejected,
                 result: None,
-                failure: Some(format!("No handler registered for update '{}'", request.update_name)),
+                failure: Some(format!(
+                    "No handler registered for update '{}'",
+                    request.update_name
+                )),
             },
         }
     }
@@ -301,9 +304,7 @@ mod tests {
     #[test]
     fn test_update_handler_rejection() {
         let mut handler = UpdateHandler::new();
-        handler.register_handler("validate", |_args| {
-            Err("validation failed".to_string())
-        });
+        handler.register_handler("validate", |_args| Err("validation failed".to_string()));
 
         let request = UpdateRequest {
             workflow_key: 1,
@@ -407,7 +408,8 @@ mod tests {
     fn test_update_with_binary_payload() {
         let mut handler = UpdateHandler::new();
         handler.register_handler("binary-op", |args| {
-            let sum: u32 = args.chunks(4)
+            let sum: u32 = args
+                .chunks(4)
                 .map(|chunk| {
                     let mut arr = [0u8; 4];
                     arr.copy_from_slice(chunk);

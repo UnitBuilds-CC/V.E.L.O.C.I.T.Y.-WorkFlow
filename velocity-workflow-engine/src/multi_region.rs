@@ -2,8 +2,11 @@
 //! Provides active/standby region topology with replication lag tracking and graceful failover.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
-use std::time::{SystemTime, Duration, UNIX_EPOCH};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // ─── Region Configuration ────────────────────────────────────────────────────
 
@@ -20,7 +23,10 @@ pub struct RegionConfig {
 impl RegionConfig {
     pub fn new(region_id: String, endpoint: String) -> Self {
         Self {
-            region_id, endpoint, priority: 0, is_active: false,
+            region_id,
+            endpoint,
+            priority: 0,
+            is_active: false,
             replication_lag_tolerance_ms: 5000,
         }
     }
@@ -66,9 +72,20 @@ pub struct RegionInfo {
 /// Outcome of a replication operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplicationResult {
-    Success { workflow_key: u64, region_id: String, latency_ms: u64 },
-    Pending { workflow_key: u64, region_id: String },
-    Failed { workflow_key: u64, region_id: String, reason: String },
+    Success {
+        workflow_key: u64,
+        region_id: String,
+        latency_ms: u64,
+    },
+    Pending {
+        workflow_key: u64,
+        region_id: String,
+    },
+    Failed {
+        workflow_key: u64,
+        region_id: String,
+        reason: String,
+    },
 }
 
 /// Outcome of a region sync operation.
@@ -104,13 +121,16 @@ impl MultiRegionReplicator {
     pub fn new(local_region: RegionConfig) -> Self {
         let id = local_region.region_id.clone();
         let mut regions = HashMap::new();
-        regions.insert(id.clone(), RegionEntry {
-            config: local_region,
-            state: RegionState::Active,
-            replication_lag_ms: 0,
-            last_sync_ms: now_ms(),
-            pending_sync: 0,
-        });
+        regions.insert(
+            id.clone(),
+            RegionEntry {
+                config: local_region,
+                state: RegionState::Active,
+                replication_lag_ms: 0,
+                last_sync_ms: now_ms(),
+                pending_sync: 0,
+            },
+        );
         Self {
             local_region: id,
             regions: Mutex::new(regions),
@@ -121,19 +141,24 @@ impl MultiRegionReplicator {
     /// Add a remote region. Returns its region ID.
     pub fn add_remote_region(&self, config: RegionConfig) -> String {
         let id = config.region_id.clone();
-        self.regions.lock().unwrap().insert(id.clone(), RegionEntry {
-            config,
-            state: RegionState::Standby,
-            replication_lag_ms: 0,
-            last_sync_ms: now_ms(),
-            pending_sync: 0,
-        });
+        self.regions.lock().unwrap().insert(
+            id.clone(),
+            RegionEntry {
+                config,
+                state: RegionState::Standby,
+                replication_lag_ms: 0,
+                last_sync_ms: now_ms(),
+                pending_sync: 0,
+            },
+        );
         id
     }
 
     /// Remove a region. Returns true if it existed (and was not the local region).
     pub fn remove_region(&self, id: &str) -> bool {
-        if id == self.local_region { return false; }
+        if id == self.local_region {
+            return false;
+        }
         self.regions.lock().unwrap().remove(id).is_some()
     }
 
@@ -143,17 +168,23 @@ impl MultiRegionReplicator {
         if let Some(entry) = regions.get_mut(id) {
             entry.state = RegionState::Active;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Demote a region to Standby state.
     pub fn demote_region(&self, id: &str) -> bool {
         let mut regions = self.regions.lock().unwrap();
         if let Some(entry) = regions.get_mut(id) {
-            if entry.config.region_id == self.local_region { return false; } // can't demote local
+            if entry.config.region_id == self.local_region {
+                return false;
+            } // can't demote local
             entry.state = RegionState::Standby;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Set the state of any region directly (used by failover controller).
@@ -162,13 +193,16 @@ impl MultiRegionReplicator {
         if let Some(entry) = regions.get_mut(id) {
             entry.state = state;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Get the currently active region ID.
     pub fn get_active_region(&self) -> String {
         let regions = self.regions.lock().unwrap();
-        regions.iter()
+        regions
+            .iter()
             .find(|(_, e)| e.state == RegionState::Active)
             .map(|(id, _)| id.clone())
             .unwrap_or_else(|| self.local_region.clone())
@@ -176,14 +210,19 @@ impl MultiRegionReplicator {
 
     /// Get info for all tracked regions.
     pub fn get_all_regions(&self) -> Vec<RegionInfo> {
-        self.regions.lock().unwrap().values().map(|e| RegionInfo {
-            region_id: e.config.region_id.clone(),
-            endpoint: e.config.endpoint.clone(),
-            state: e.state,
-            priority: e.config.priority,
-            replication_lag_ms: e.replication_lag_ms,
-            last_sync_ms: e.last_sync_ms,
-        }).collect()
+        self.regions
+            .lock()
+            .unwrap()
+            .values()
+            .map(|e| RegionInfo {
+                region_id: e.config.region_id.clone(),
+                endpoint: e.config.endpoint.clone(),
+                state: e.state,
+                priority: e.config.priority,
+                replication_lag_ms: e.replication_lag_ms,
+                last_sync_ms: e.last_sync_ms,
+            })
+            .collect()
     }
 
     /// Replicate a workflow to a target region.
@@ -193,7 +232,8 @@ impl MultiRegionReplicator {
             Some(entry) => {
                 if entry.state == RegionState::Failed {
                     return ReplicationResult::Failed {
-                        workflow_key, region_id: target_region.to_string(),
+                        workflow_key,
+                        region_id: target_region.to_string(),
                         reason: "Region is in Failed state".into(),
                     };
                 }
@@ -208,7 +248,8 @@ impl MultiRegionReplicator {
                 }
             }
             None => ReplicationResult::Failed {
-                workflow_key, region_id: target_region.to_string(),
+                workflow_key,
+                region_id: target_region.to_string(),
                 reason: "Region not found".into(),
             },
         }
@@ -232,24 +273,32 @@ impl MultiRegionReplicator {
             }
             None => SyncResult {
                 region_id: region_id.to_string(),
-                synced_count: 0, failed_count: 0, lag_ms: u64::MAX,
+                synced_count: 0,
+                failed_count: 0,
+                lag_ms: u64::MAX,
             },
         }
     }
 
     /// Get the current replication lag for a region in milliseconds.
     pub fn get_replication_lag(&self, region_id: &str) -> u64 {
-        self.regions.lock().unwrap()
+        self.regions
+            .lock()
+            .unwrap()
             .get(region_id)
             .map(|e| e.replication_lag_ms)
             .unwrap_or(u64::MAX)
     }
 
     /// Get the local region ID.
-    pub fn local_region_id(&self) -> &str { &self.local_region }
+    pub fn local_region_id(&self) -> &str {
+        &self.local_region
+    }
 
     /// Number of tracked regions.
-    pub fn region_count(&self) -> usize { self.regions.lock().unwrap().len() }
+    pub fn region_count(&self) -> usize {
+        self.regions.lock().unwrap().len()
+    }
 }
 
 // ─── Conflict Resolution ────────────────────────────────────────────────────
@@ -288,13 +337,24 @@ pub enum ResolvedValue {
 impl ReplicationConflict {
     /// Create a new conflict.
     pub fn new(
-        workflow_key: u64, region_a: String, region_b: String,
-        field: String, value_a: Vec<u8>, value_b: Vec<u8>,
-        timestamp_a_ms: u64, timestamp_b_ms: u64,
+        workflow_key: u64,
+        region_a: String,
+        region_b: String,
+        field: String,
+        value_a: Vec<u8>,
+        value_b: Vec<u8>,
+        timestamp_a_ms: u64,
+        timestamp_b_ms: u64,
     ) -> Self {
         Self {
-            workflow_key, region_a, region_b, field,
-            value_a, value_b, timestamp_a_ms, timestamp_b_ms,
+            workflow_key,
+            region_a,
+            region_b,
+            field,
+            value_a,
+            value_b,
+            timestamp_a_ms,
+            timestamp_b_ms,
         }
     }
 
@@ -315,12 +375,10 @@ impl ReplicationConflict {
                 ResolvedValue::Merged(merged)
             }
             ConflictResolutionStrategy::Skip => ResolvedValue::Skipped,
-            ConflictResolutionStrategy::Error => {
-                ResolvedValue::Unresolved(format!(
-                    "Conflict on field '{}' for workflow {} between {} and {}",
-                    self.field, self.workflow_key, self.region_a, self.region_b,
-                ))
-            }
+            ConflictResolutionStrategy::Error => ResolvedValue::Unresolved(format!(
+                "Conflict on field '{}' for workflow {} between {} and {}",
+                self.field, self.workflow_key, self.region_a, self.region_b,
+            )),
         }
     }
 }
@@ -330,9 +388,20 @@ impl ReplicationConflict {
 /// Result of a failover operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FailoverResult {
-    Success { from_region: String, to_region: String, completed_ms: u64 },
-    InProgress { from_region: String, to_region: String },
-    Failed { from_region: String, to_region: String, reason: String },
+    Success {
+        from_region: String,
+        to_region: String,
+        completed_ms: u64,
+    },
+    InProgress {
+        from_region: String,
+        to_region: String,
+    },
+    Failed {
+        from_region: String,
+        to_region: String,
+        reason: String,
+    },
 }
 
 /// Health status of a region.
@@ -383,13 +452,15 @@ impl FailoverController {
 
         if !from_exists {
             return FailoverResult::Failed {
-                from_region: from_region.into(), to_region: to_region.into(),
+                from_region: from_region.into(),
+                to_region: to_region.into(),
                 reason: "Source region not found".into(),
             };
         }
         if !to_exists {
             return FailoverResult::Failed {
-                from_region: from_region.into(), to_region: to_region.into(),
+                from_region: from_region.into(),
+                to_region: to_region.into(),
                 reason: "Target region not found".into(),
             };
         }
@@ -398,7 +469,8 @@ impl FailoverController {
         let target_health = self.check_health(to_region);
         if target_health == HealthStatus::Unhealthy {
             return FailoverResult::Failed {
-                from_region: from_region.into(), to_region: to_region.into(),
+                from_region: from_region.into(),
+                to_region: to_region.into(),
                 reason: "Target region is unhealthy".into(),
             };
         }
@@ -412,7 +484,11 @@ impl FailoverController {
             to_region: to_region.into(),
             timestamp_ms: now_ms(),
             success: demoted && promoted,
-            reason: if demoted && promoted { "OK".into() } else { "Partial failure".into() },
+            reason: if demoted && promoted {
+                "OK".into()
+            } else {
+                "Partial failure".into()
+            },
         };
         self.history.lock().unwrap().push(event);
 
@@ -424,7 +500,8 @@ impl FailoverController {
             }
         } else {
             FailoverResult::Failed {
-                from_region: from_region.into(), to_region: to_region.into(),
+                from_region: from_region.into(),
+                to_region: to_region.into(),
                 reason: "Could not transition both regions".into(),
             }
         }
@@ -440,7 +517,10 @@ impl FailoverController {
 
     /// Override the health status for testing or external monitoring.
     pub fn set_health(&self, region_id: &str, status: HealthStatus) {
-        self.health_overrides.lock().unwrap().insert(region_id.to_string(), status);
+        self.health_overrides
+            .lock()
+            .unwrap()
+            .insert(region_id.to_string(), status);
     }
 
     /// Get the failover history.
@@ -454,12 +534,19 @@ impl FailoverController {
     }
 }
 
-impl Default for FailoverController { fn default() -> Self { Self::new() } }
+impl Default for FailoverController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_millis() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis() as u64
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -590,8 +677,14 @@ mod tests {
 
     fn make_conflict() -> ReplicationConflict {
         ReplicationConflict::new(
-            42, "us-east-1".into(), "eu-west-1".into(), "status".into(),
-            vec![1, 2, 3], vec![4, 5, 6], 1000, 2000,
+            42,
+            "us-east-1".into(),
+            "eu-west-1".into(),
+            "status".into(),
+            vec![1, 2, 3],
+            vec![4, 5, 6],
+            1000,
+            2000,
         )
     }
 
@@ -605,8 +698,14 @@ mod tests {
     #[test]
     fn test_last_write_wins_first_newer() {
         let c = ReplicationConflict::new(
-            42, "a".into(), "b".into(), "f".into(),
-            vec![1], vec![2], 5000, 1000,
+            42,
+            "a".into(),
+            "b".into(),
+            "f".into(),
+            vec![1],
+            vec![2],
+            5000,
+            1000,
         );
         let resolved = c.resolve(ConflictResolutionStrategy::LastWriteWins);
         assert_eq!(resolved, ResolvedValue::Value(vec![1]));
@@ -713,7 +812,10 @@ mod tests {
         // Promote eu-west-1, now two actives — get_active returns first found.
         r.promote_region("eu-west-1");
         let infos = r.get_all_regions();
-        let active_count = infos.iter().filter(|i| i.state == RegionState::Active).count();
+        let active_count = infos
+            .iter()
+            .filter(|i| i.state == RegionState::Active)
+            .count();
         assert_eq!(active_count, 2);
     }
 

@@ -4,7 +4,10 @@
 //! pinned entries, and concurrent access patterns.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -251,17 +254,24 @@ impl<K: Clone + Eq + std::hash::Hash + Ord, V: Clone> LruCache<K, V> {
     pub fn values(&self) -> Vec<V> {
         let order = self.order.read().unwrap();
         let entries = self.entries.read().unwrap();
-        order.iter()
+        order
+            .iter()
             .filter_map(|k| entries.get(k).map(|n| n.value.clone()))
             .collect()
     }
 
-    pub fn stats(&self) -> &CacheStats { &self.stats }
+    pub fn stats(&self) -> &CacheStats {
+        &self.stats
+    }
 
     pub fn hit_rate(&self) -> f64 {
         let hits = self.stats.hits.load(Ordering::Relaxed) as f64;
         let total = hits + self.stats.misses.load(Ordering::Relaxed) as f64;
-        if total > 0.0 { hits / total } else { 0.0 }
+        if total > 0.0 {
+            hits / total
+        } else {
+            0.0
+        }
     }
 }
 

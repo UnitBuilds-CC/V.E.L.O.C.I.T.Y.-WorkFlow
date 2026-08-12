@@ -8,7 +8,10 @@
 //! - Deployment tracking
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
@@ -58,7 +61,10 @@ pub struct WorkerVersioning {
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 impl WorkerVersioning {
@@ -75,26 +81,41 @@ impl WorkerVersioning {
 
     pub fn create_version_set(&self) -> u64 {
         let id = self.next_set_id.fetch_add(1, Ordering::Relaxed);
-        self.version_sets.lock().unwrap().insert(id, VersionSet {
-            set_id: id, build_ids: Vec::new(), current_build_id: None, is_default: false,
-        });
+        self.version_sets.lock().unwrap().insert(
+            id,
+            VersionSet {
+                set_id: id,
+                build_ids: Vec::new(),
+                current_build_id: None,
+                is_default: false,
+            },
+        );
         id
     }
 
     pub fn add_build_id(&self, set_id: u64, build_id: &str) -> bool {
         let mut sets = self.version_sets.lock().unwrap();
         if let Some(set) = sets.get_mut(&set_id) {
-            if set.build_ids.iter().any(|b| b.id == build_id) { return false; }
+            if set.build_ids.iter().any(|b| b.id == build_id) {
+                return false;
+            }
             set.build_ids.push(BuildId {
-                id: build_id.to_string(), created_at_ms: now_ms(),
-                is_current: false, compatible_with: Vec::new(),
+                id: build_id.to_string(),
+                created_at_ms: now_ms(),
+                is_current: false,
+                compatible_with: Vec::new(),
             });
             if set.current_build_id.is_none() {
                 set.current_build_id = Some(build_id.to_string());
             }
-            self.build_id_to_set.lock().unwrap().insert(build_id.to_string(), set_id);
+            self.build_id_to_set
+                .lock()
+                .unwrap()
+                .insert(build_id.to_string(), set_id);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn set_current_build_id(&self, set_id: u64, build_id: &str) -> bool {
@@ -102,14 +123,24 @@ impl WorkerVersioning {
         if let Some(set) = sets.get_mut(&set_id) {
             if set.build_ids.iter().any(|b| b.id == build_id) {
                 set.current_build_id = Some(build_id.to_string());
-                for b in &mut set.build_ids { b.is_current = b.id == build_id; }
+                for b in &mut set.build_ids {
+                    b.is_current = b.id == build_id;
+                }
                 true
-            } else { false }
-        } else { false }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     pub fn get_current_build_id(&self, set_id: u64) -> Option<String> {
-        self.version_sets.lock().unwrap().get(&set_id).and_then(|s| s.current_build_id.clone())
+        self.version_sets
+            .lock()
+            .unwrap()
+            .get(&set_id)
+            .and_then(|s| s.current_build_id.clone())
     }
 
     pub fn get_set_for_build_id(&self, build_id: &str) -> Option<u64> {
@@ -118,23 +149,34 @@ impl WorkerVersioning {
 
     pub fn add_routing_rule(&self, task_queue: &str, build_id: &str, percentage: u32) {
         self.routing_rules.lock().unwrap().push(RoutingRule {
-            task_queue: task_queue.to_string(), target_build_id: build_id.to_string(), percentage,
+            task_queue: task_queue.to_string(),
+            target_build_id: build_id.to_string(),
+            percentage,
         });
     }
 
     pub fn resolve_build_id(&self, task_queue: &str) -> Option<String> {
         let rules = self.routing_rules.lock().unwrap();
-        rules.iter().find(|r| r.task_queue == task_queue).map(|r| r.target_build_id.clone())
+        rules
+            .iter()
+            .find(|r| r.task_queue == task_queue)
+            .map(|r| r.target_build_id.clone())
     }
 
-    pub fn version_set_count(&self) -> usize { self.version_sets.lock().unwrap().len() }
-    pub fn routing_rule_count(&self) -> usize { self.routing_rules.lock().unwrap().len() }
+    pub fn version_set_count(&self) -> usize {
+        self.version_sets.lock().unwrap().len()
+    }
+    pub fn routing_rule_count(&self) -> usize {
+        self.routing_rules.lock().unwrap().len()
+    }
 
     // ─── Compatibility Graph ─────────────────────────────────────────────
 
     /// Mark two build IDs as compatible (can process each other's tasks).
     pub fn add_compatibility(&self, from_build_id: &str, to_build_id: &str) {
-        self.compatibility.lock().unwrap()
+        self.compatibility
+            .lock()
+            .unwrap()
             .insert((from_build_id.to_string(), to_build_id.to_string()));
         // Also update the BuildId's compatible_with list
         let mut sets = self.version_sets.lock().unwrap();
@@ -160,13 +202,19 @@ impl WorkerVersioning {
         let compat = self.compatibility.lock().unwrap();
         let mut result = Vec::new();
         for (from, to) in compat.iter() {
-            if from == build_id { result.push(to.clone()); }
-            if to == build_id { result.push(from.clone()); }
+            if from == build_id {
+                result.push(to.clone());
+            }
+            if to == build_id {
+                result.push(from.clone());
+            }
         }
         result
     }
 
-    pub fn compatibility_edge_count(&self) -> usize { self.compatibility.lock().unwrap().len() }
+    pub fn compatibility_edge_count(&self) -> usize {
+        self.compatibility.lock().unwrap().len()
+    }
 
     // ─── Deployment Tracking ─────────────────────────────────────────────
 
@@ -175,7 +223,9 @@ impl WorkerVersioning {
         let mut deployments = self.deployments.lock().unwrap();
         let entry = deployments.entry(task_queue.to_string()).or_default();
         // Check if already deployed
-        if entry.iter().any(|d| d.build_id == build_id) { return; }
+        if entry.iter().any(|d| d.build_id == build_id) {
+            return;
+        }
         entry.push(DeploymentInfo {
             build_id: build_id.to_string(),
             task_queue: task_queue.to_string(),
@@ -193,12 +243,16 @@ impl WorkerVersioning {
                 d.is_current = d.build_id == build_id;
             }
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Get current deployment for a task queue.
     pub fn get_current_deployment(&self, task_queue: &str) -> Option<DeploymentInfo> {
-        self.deployments.lock().unwrap()
+        self.deployments
+            .lock()
+            .unwrap()
             .get(task_queue)?
             .iter()
             .find(|d| d.is_current)
@@ -207,18 +261,29 @@ impl WorkerVersioning {
 
     /// Get all deployments for a task queue.
     pub fn get_deployments(&self, task_queue: &str) -> Vec<DeploymentInfo> {
-        self.deployments.lock().unwrap().get(task_queue).cloned().unwrap_or_default()
+        self.deployments
+            .lock()
+            .unwrap()
+            .get(task_queue)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn deployment_count(&self, task_queue: &str) -> usize {
-        self.deployments.lock().unwrap().get(task_queue).map_or(0, |d| d.len())
+        self.deployments
+            .lock()
+            .unwrap()
+            .get(task_queue)
+            .map_or(0, |d| d.len())
     }
 
     // ─── Version Set Queries ─────────────────────────────────────────────
 
     /// Get all build IDs in a version set.
     pub fn get_build_ids(&self, set_id: u64) -> Vec<String> {
-        self.version_sets.lock().unwrap()
+        self.version_sets
+            .lock()
+            .unwrap()
             .get(&set_id)
             .map(|s| s.build_ids.iter().map(|b| b.id.clone()).collect())
             .unwrap_or_default()
@@ -230,7 +295,11 @@ impl WorkerVersioning {
     }
 }
 
-impl Default for WorkerVersioning { fn default() -> Self { Self::new() } }
+impl Default for WorkerVersioning {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -260,7 +329,10 @@ mod tests {
     fn test_routing_rules() {
         let wv = WorkerVersioning::new();
         wv.add_routing_rule("my-queue", "build-abc", 100);
-        assert_eq!(wv.resolve_build_id("my-queue"), Some("build-abc".to_string()));
+        assert_eq!(
+            wv.resolve_build_id("my-queue"),
+            Some("build-abc".to_string())
+        );
         assert_eq!(wv.resolve_build_id("other-queue"), None);
     }
 

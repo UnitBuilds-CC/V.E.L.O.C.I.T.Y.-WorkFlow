@@ -8,7 +8,10 @@
 //! - Last failure detection for auto-reset
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // ─── Reset Reason ────────────────────────────────────────────────────────────
@@ -89,7 +92,11 @@ impl HistoryBranch {
 
     /// Depth of this branch (1 for root, 2 for first fork, etc.)
     pub fn depth(&self) -> u32 {
-        if self.parent_branch_id.is_none() { 1 } else { 1 } // simplified
+        if self.parent_branch_id.is_none() {
+            1
+        } else {
+            1
+        } // simplified
     }
 }
 
@@ -144,8 +151,14 @@ impl ResetSpec {
         }
     }
 
-    pub fn with_signal_reapply(mut self, reapply: bool) -> Self { self.reapply_signals = reapply; self }
-    pub fn with_target_build_id(mut self, bid: &str) -> Self { self.target_build_id = Some(bid.to_string()); self }
+    pub fn with_signal_reapply(mut self, reapply: bool) -> Self {
+        self.reapply_signals = reapply;
+        self
+    }
+    pub fn with_target_build_id(mut self, bid: &str) -> Self {
+        self.target_build_id = Some(bid.to_string());
+        self
+    }
 }
 
 // ─── Reset Result ────────────────────────────────────────────────────────────
@@ -197,7 +210,11 @@ pub struct LastFailureResetPolicy {
 
 impl LastFailureResetPolicy {
     pub fn disabled() -> Self {
-        Self { enabled: false, max_auto_resets: 0, reason: ResetReason::ManualReset }
+        Self {
+            enabled: false,
+            max_auto_resets: 0,
+            reason: ResetReason::ManualReset,
+        }
     }
 
     pub fn enabled(max_resets: u32) -> Self {
@@ -258,7 +275,9 @@ impl WorkflowResetter {
     /// Create a reset point at the given event ID.
     pub fn create_reset_point(&self, workflow_key: u64, event_id: u64, reason: ResetReason) -> u64 {
         let reset_id = self.next_reset_id.fetch_add(1, Ordering::Relaxed);
-        self.reset_points.lock().unwrap()
+        self.reset_points
+            .lock()
+            .unwrap()
             .entry(workflow_key)
             .or_default()
             .push(ResetPoint {
@@ -275,17 +294,31 @@ impl WorkflowResetter {
 
     /// Get all reset points for a workflow.
     pub fn get_reset_points(&self, workflow_key: u64) -> Vec<ResetPoint> {
-        self.reset_points.lock().unwrap().get(&workflow_key).cloned().unwrap_or_default()
+        self.reset_points
+            .lock()
+            .unwrap()
+            .get(&workflow_key)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Get the latest reset point.
     pub fn get_latest_reset(&self, workflow_key: u64) -> Option<ResetPoint> {
-        self.reset_points.lock().unwrap().get(&workflow_key)?.last().cloned()
+        self.reset_points
+            .lock()
+            .unwrap()
+            .get(&workflow_key)?
+            .last()
+            .cloned()
     }
 
     /// Number of reset points for a workflow.
     pub fn reset_count(&self, workflow_key: u64) -> usize {
-        self.reset_points.lock().unwrap().get(&workflow_key).map_or(0, |v| v.len())
+        self.reset_points
+            .lock()
+            .unwrap()
+            .get(&workflow_key)
+            .map_or(0, |v| v.len())
     }
 
     // ─── Reset Execution ─────────────────────────────────────────────────
@@ -318,7 +351,9 @@ impl WorkflowResetter {
                 events_truncated: 0,
                 signals_reapplied: 0,
                 success: false,
-                error: Some("reset_to_event_id must be less than current last event ID".to_string()),
+                error: Some(
+                    "reset_to_event_id must be less than current last event ID".to_string(),
+                ),
             };
         }
 
@@ -358,13 +393,19 @@ impl WorkflowResetter {
 
         // Reapply signals
         let signals_reapplied = if spec.reapply_signals {
-            self.reapply_signals(spec.workflow_key, spec.reset_to_event_id, &spec.signal_ids_to_reapply)
+            self.reapply_signals(
+                spec.workflow_key,
+                spec.reset_to_event_id,
+                &spec.signal_ids_to_reapply,
+            )
         } else {
             0
         };
 
         // Record the reset point
-        self.reset_points.lock().unwrap()
+        self.reset_points
+            .lock()
+            .unwrap()
             .entry(spec.workflow_key)
             .or_default()
             .push(ResetPoint {
@@ -389,7 +430,8 @@ impl WorkflowResetter {
 
         self.reset_results.lock().unwrap().push(result.clone());
         self.total_resets.fetch_add(1, Ordering::Relaxed);
-        self.total_signals_reapplied.fetch_add(signals_reapplied, Ordering::Relaxed);
+        self.total_signals_reapplied
+            .fetch_add(signals_reapplied, Ordering::Relaxed);
 
         result
     }
@@ -398,14 +440,21 @@ impl WorkflowResetter {
 
     /// Register a pending signal for potential reapplication.
     pub fn register_pending_signal(&self, workflow_key: u64, signal: PendingSignal) {
-        self.pending_signals.lock().unwrap()
+        self.pending_signals
+            .lock()
+            .unwrap()
             .entry(workflow_key)
             .or_default()
             .push(signal);
     }
 
     /// Reapply signals after reset. Returns count of signals reapplied.
-    fn reapply_signals(&self, workflow_key: u64, reset_to_event_id: u64, specific_ids: &HashSet<u64>) -> u64 {
+    fn reapply_signals(
+        &self,
+        workflow_key: u64,
+        reset_to_event_id: u64,
+        specific_ids: &HashSet<u64>,
+    ) -> u64 {
         let mut signals = self.pending_signals.lock().unwrap();
         if let Some(pending) = signals.get_mut(&workflow_key) {
             let mut count = 0;
@@ -426,12 +475,19 @@ impl WorkflowResetter {
 
     /// Get pending signals for a workflow.
     pub fn get_pending_signals(&self, workflow_key: u64) -> Vec<PendingSignal> {
-        self.pending_signals.lock().unwrap().get(&workflow_key).cloned().unwrap_or_default()
+        self.pending_signals
+            .lock()
+            .unwrap()
+            .get(&workflow_key)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Count of unapplied signals.
     pub fn unapplied_signal_count(&self, workflow_key: u64) -> usize {
-        self.pending_signals.lock().unwrap()
+        self.pending_signals
+            .lock()
+            .unwrap()
             .get(&workflow_key)
             .map_or(0, |sigs| sigs.iter().filter(|s| !s.reapplied).count())
     }
@@ -440,12 +496,19 @@ impl WorkflowResetter {
 
     /// Get all branches for a workflow.
     pub fn get_branches(&self, workflow_key: u64) -> Vec<HistoryBranch> {
-        self.branches.lock().unwrap().get(&workflow_key).cloned().unwrap_or_default()
+        self.branches
+            .lock()
+            .unwrap()
+            .get(&workflow_key)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Get the active branch for a workflow.
     pub fn get_active_branch(&self, workflow_key: u64) -> Option<HistoryBranch> {
-        self.branches.lock().unwrap()
+        self.branches
+            .lock()
+            .unwrap()
             .get(&workflow_key)?
             .iter()
             .find(|b| b.is_active)
@@ -454,36 +517,57 @@ impl WorkflowResetter {
 
     /// Count of branches for a workflow.
     pub fn branch_count(&self, workflow_key: u64) -> usize {
-        self.branches.lock().unwrap().get(&workflow_key).map_or(0, |b| b.len())
+        self.branches
+            .lock()
+            .unwrap()
+            .get(&workflow_key)
+            .map_or(0, |b| b.len())
     }
 
     // ─── Auto-Reset Policy ───────────────────────────────────────────────
 
     /// Set auto-reset policy for a workflow type.
     pub fn set_auto_reset_policy(&self, workflow_type_id: u64, policy: LastFailureResetPolicy) {
-        self.auto_reset_policies.lock().unwrap().insert(workflow_type_id, policy);
+        self.auto_reset_policies
+            .lock()
+            .unwrap()
+            .insert(workflow_type_id, policy);
     }
 
     /// Get auto-reset policy for a workflow type.
     pub fn get_auto_reset_policy(&self, workflow_type_id: u64) -> LastFailureResetPolicy {
-        self.auto_reset_policies.lock().unwrap()
+        self.auto_reset_policies
+            .lock()
+            .unwrap()
             .get(&workflow_type_id)
             .cloned()
             .unwrap_or_else(LastFailureResetPolicy::disabled)
     }
 
     /// Check if auto-reset should be triggered and execute it.
-    pub fn maybe_auto_reset(&self, workflow_key: u64, workflow_type_id: u64, current_last_event_id: u64) -> Option<ResetResult> {
+    pub fn maybe_auto_reset(
+        &self,
+        workflow_key: u64,
+        workflow_type_id: u64,
+        current_last_event_id: u64,
+    ) -> Option<ResetResult> {
         let policy = self.get_auto_reset_policy(workflow_type_id);
-        if !policy.enabled { return None; }
+        if !policy.enabled {
+            return None;
+        }
 
         // Check if we've exceeded max auto-resets
-        let auto_reset_count = self.reset_results.lock().unwrap()
+        let auto_reset_count = self
+            .reset_results
+            .lock()
+            .unwrap()
             .iter()
             .filter(|r| r.success && r.new_run_id > 0)
             .count() as u32;
 
-        if auto_reset_count >= policy.max_auto_resets { return None; }
+        if auto_reset_count >= policy.max_auto_resets {
+            return None;
+        }
 
         // Reset to the first event (start of workflow)
         let spec = ResetSpec::new(workflow_key, 1, policy.reason);
@@ -497,13 +581,19 @@ impl WorkflowResetter {
     // ─── Stats ───────────────────────────────────────────────────────────
 
     /// Total resets performed.
-    pub fn total_reset_count(&self) -> u64 { self.total_resets.load(Ordering::Relaxed) }
+    pub fn total_reset_count(&self) -> u64 {
+        self.total_resets.load(Ordering::Relaxed)
+    }
 
     /// Total signals reapplied across all resets.
-    pub fn total_signals_reapplied(&self) -> u64 { self.total_signals_reapplied.load(Ordering::Relaxed) }
+    pub fn total_signals_reapplied(&self) -> u64 {
+        self.total_signals_reapplied.load(Ordering::Relaxed)
+    }
 
     /// Total auto-resets triggered.
-    pub fn total_auto_resets(&self) -> u64 { self.total_auto_resets.load(Ordering::Relaxed) }
+    pub fn total_auto_resets(&self) -> u64 {
+        self.total_auto_resets.load(Ordering::Relaxed)
+    }
 
     /// Get all reset results.
     pub fn get_reset_results(&self) -> Vec<ResetResult> {
@@ -512,16 +602,25 @@ impl WorkflowResetter {
 
     /// Total resets for a specific workflow.
     pub fn total_resets(&self, workflow_key: u64) -> usize {
-        self.reset_points.lock().unwrap().get(&workflow_key).map_or(0, |v| v.len())
+        self.reset_points
+            .lock()
+            .unwrap()
+            .get(&workflow_key)
+            .map_or(0, |v| v.len())
     }
 }
 
 impl Default for WorkflowResetter {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -611,18 +710,36 @@ mod tests {
         let resetter = WorkflowResetter::new();
 
         // Register some pending signals
-        resetter.register_pending_signal(42, PendingSignal {
-            signal_id: 1, signal_name: "sig-a".into(), input: vec![],
-            event_id: 3, reapplied: false,
-        });
-        resetter.register_pending_signal(42, PendingSignal {
-            signal_id: 2, signal_name: "sig-b".into(), input: vec![],
-            event_id: 7, reapplied: false,
-        });
-        resetter.register_pending_signal(42, PendingSignal {
-            signal_id: 3, signal_name: "sig-c".into(), input: vec![],
-            event_id: 9, reapplied: false,
-        });
+        resetter.register_pending_signal(
+            42,
+            PendingSignal {
+                signal_id: 1,
+                signal_name: "sig-a".into(),
+                input: vec![],
+                event_id: 3,
+                reapplied: false,
+            },
+        );
+        resetter.register_pending_signal(
+            42,
+            PendingSignal {
+                signal_id: 2,
+                signal_name: "sig-b".into(),
+                input: vec![],
+                event_id: 7,
+                reapplied: false,
+            },
+        );
+        resetter.register_pending_signal(
+            42,
+            PendingSignal {
+                signal_id: 3,
+                signal_name: "sig-c".into(),
+                input: vec![],
+                event_id: 9,
+                reapplied: false,
+            },
+        );
 
         assert_eq!(resetter.unapplied_signal_count(42), 3);
 
@@ -637,10 +754,16 @@ mod tests {
     #[test]
     fn test_signal_reapply_disabled() {
         let resetter = WorkflowResetter::new();
-        resetter.register_pending_signal(42, PendingSignal {
-            signal_id: 1, signal_name: "sig".into(), input: vec![],
-            event_id: 7, reapplied: false,
-        });
+        resetter.register_pending_signal(
+            42,
+            PendingSignal {
+                signal_id: 1,
+                signal_name: "sig".into(),
+                input: vec![],
+                event_id: 7,
+                reapplied: false,
+            },
+        );
 
         let spec = ResetSpec::new(42, 5, ResetReason::ManualReset).with_signal_reapply(false);
         let result = resetter.execute_reset(&spec, 10);

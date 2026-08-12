@@ -5,8 +5,11 @@
 //! namespace store, visibility store, queue store implementations.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant, Duration};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SQL Query Builder
@@ -282,63 +285,78 @@ impl SelectBuilder {
         sql.push_str(&self.table);
 
         for join in &self.joins {
-            sql.push_str(&format!(" LEFT JOIN {} ON {} = {}",
-                join.table, join.on_column, join.equals_column));
+            sql.push_str(&format!(
+                " LEFT JOIN {} ON {} = {}",
+                join.table, join.on_column, join.equals_column
+            ));
         }
 
         if !self.conditions.is_empty() {
             sql.push_str(" WHERE ");
-            let cond_strs: Vec<String> = self.conditions.iter().map(|c| {
-                let op_str = match c.op {
-                    ComparisonOp::Eq => "=",
-                    ComparisonOp::Ne => "!=",
-                    ComparisonOp::Lt => "<",
-                    ComparisonOp::Le => "<=",
-                    ComparisonOp::Gt => ">",
-                    ComparisonOp::Ge => ">=",
-                    ComparisonOp::Like => "LIKE",
-                    ComparisonOp::In => "IN",
-                    ComparisonOp::IsNull => "IS NULL",
-                    ComparisonOp::IsNotNull => "IS NOT NULL",
-                };
-                match c.op {
-                    ComparisonOp::IsNull | ComparisonOp::IsNotNull => {
-                        format!("{} {}", c.column, op_str)
-                    }
-                    ComparisonOp::In => {
-                        if let SqlValue::List(vals) = &c.value {
-                            let placeholders: Vec<String> = vals.iter().map(|_| {
-                                let p = match self.dialect {
-                                    SqlDialect::Postgres => format!("${}", param_idx + 1),
-                                    _ => "?".to_string(),
-                                };
-                                param_idx += 1;
-                                p
-                            }).collect();
-                            params.extend(vals.iter().cloned());
-                            format!("{} {} ({})", c.column, op_str, placeholders.join(", "))
-                        } else {
-                            format!("{} {} ()", c.column, op_str)
+            let cond_strs: Vec<String> = self
+                .conditions
+                .iter()
+                .map(|c| {
+                    let op_str = match c.op {
+                        ComparisonOp::Eq => "=",
+                        ComparisonOp::Ne => "!=",
+                        ComparisonOp::Lt => "<",
+                        ComparisonOp::Le => "<=",
+                        ComparisonOp::Gt => ">",
+                        ComparisonOp::Ge => ">=",
+                        ComparisonOp::Like => "LIKE",
+                        ComparisonOp::In => "IN",
+                        ComparisonOp::IsNull => "IS NULL",
+                        ComparisonOp::IsNotNull => "IS NOT NULL",
+                    };
+                    match c.op {
+                        ComparisonOp::IsNull | ComparisonOp::IsNotNull => {
+                            format!("{} {}", c.column, op_str)
+                        }
+                        ComparisonOp::In => {
+                            if let SqlValue::List(vals) = &c.value {
+                                let placeholders: Vec<String> = vals
+                                    .iter()
+                                    .map(|_| {
+                                        let p = match self.dialect {
+                                            SqlDialect::Postgres => format!("${}", param_idx + 1),
+                                            _ => "?".to_string(),
+                                        };
+                                        param_idx += 1;
+                                        p
+                                    })
+                                    .collect();
+                                params.extend(vals.iter().cloned());
+                                format!("{} {} ({})", c.column, op_str, placeholders.join(", "))
+                            } else {
+                                format!("{} {} ()", c.column, op_str)
+                            }
+                        }
+                        _ => {
+                            params.push(c.value.clone());
+                            let placeholder = match self.dialect {
+                                SqlDialect::Postgres => format!("${}", param_idx + 1),
+                                _ => "?".to_string(),
+                            };
+                            param_idx += 1;
+                            format!("{} {} {}", c.column, op_str, placeholder)
                         }
                     }
-                    _ => {
-                        params.push(c.value.clone());
-                        let placeholder = match self.dialect {
-                            SqlDialect::Postgres => format!("${}", param_idx + 1),
-                            _ => "?".to_string(),
-                        };
-                        param_idx += 1;
-                        format!("{} {} {}", c.column, op_str, placeholder)
-                    }
-                }
-            }).collect();
+                })
+                .collect();
             sql.push_str(&cond_strs.join(" AND "));
         }
 
         for (i, order) in self.order_by.iter().enumerate() {
-            if i == 0 { sql.push_str(" ORDER BY "); } else { sql.push_str(", "); }
+            if i == 0 {
+                sql.push_str(" ORDER BY ");
+            } else {
+                sql.push_str(", ");
+            }
             sql.push_str(&order.column);
-            if order.descending { sql.push_str(" DESC"); }
+            if order.descending {
+                sql.push_str(" DESC");
+            }
         }
 
         if let Some(limit) = self.limit {
@@ -389,13 +407,17 @@ impl InsertBuilder {
 
         let mut row_strs = Vec::new();
         for row in &self.values {
-            let placeholders: Vec<String> = row.iter().enumerate().map(|(i, v)| {
-                params.push(v.clone());
-                match self.dialect {
-                    SqlDialect::Postgres => format!("${}", params.len()),
-                    _ => "?".to_string(),
-                }
-            }).collect();
+            let placeholders: Vec<String> = row
+                .iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    params.push(v.clone());
+                    match self.dialect {
+                        SqlDialect::Postgres => format!("${}", params.len()),
+                        _ => "?".to_string(),
+                    }
+                })
+                .collect();
             row_strs.push(format!("({})", placeholders.join(", ")));
         }
         sql.push_str(&row_strs.join(", "));
@@ -449,28 +471,36 @@ impl UpdateBuilder {
         sql.push_str(&self.table);
         sql.push_str(" SET ");
 
-        let set_strs: Vec<String> = self.assignments.iter().map(|a| {
-            params.push(a.value.clone());
-            let placeholder = match self.dialect {
-                SqlDialect::Postgres => format!("${}", param_idx + 1),
-                _ => "?".to_string(),
-            };
-            param_idx += 1;
-            format!("{} = {}", a.column, placeholder)
-        }).collect();
-        sql.push_str(&set_strs.join(", "));
-
-        if !self.conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            let cond_strs: Vec<String> = self.conditions.iter().map(|c| {
-                params.push(c.value.clone());
+        let set_strs: Vec<String> = self
+            .assignments
+            .iter()
+            .map(|a| {
+                params.push(a.value.clone());
                 let placeholder = match self.dialect {
                     SqlDialect::Postgres => format!("${}", param_idx + 1),
                     _ => "?".to_string(),
                 };
                 param_idx += 1;
-                format!("{} = {}", c.column, placeholder)
-            }).collect();
+                format!("{} = {}", a.column, placeholder)
+            })
+            .collect();
+        sql.push_str(&set_strs.join(", "));
+
+        if !self.conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            let cond_strs: Vec<String> = self
+                .conditions
+                .iter()
+                .map(|c| {
+                    params.push(c.value.clone());
+                    let placeholder = match self.dialect {
+                        SqlDialect::Postgres => format!("${}", param_idx + 1),
+                        _ => "?".to_string(),
+                    };
+                    param_idx += 1;
+                    format!("{} = {}", c.column, placeholder)
+                })
+                .collect();
             sql.push_str(&cond_strs.join(" AND "));
         }
 
@@ -508,14 +538,19 @@ impl DeleteBuilder {
 
         if !self.conditions.is_empty() {
             sql.push_str(" WHERE ");
-            let cond_strs: Vec<String> = self.conditions.iter().enumerate().map(|(i, c)| {
-                params.push(c.value.clone());
-                let placeholder = match self.dialect {
-                    SqlDialect::Postgres => format!("${}", i + 1),
-                    _ => "?".to_string(),
-                };
-                format!("{} = {}", c.column, placeholder)
-            }).collect();
+            let cond_strs: Vec<String> = self
+                .conditions
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    params.push(c.value.clone());
+                    let placeholder = match self.dialect {
+                        SqlDialect::Postgres => format!("${}", i + 1),
+                        _ => "?".to_string(),
+                    };
+                    format!("{} = {}", c.column, placeholder)
+                })
+                .collect();
             sql.push_str(&cond_strs.join(" AND "));
         }
 
@@ -662,7 +697,10 @@ impl SchemaManager {
 
     pub fn get_pending_migrations(&self) -> Vec<SchemaMigration> {
         let current = self.current_version.load(Ordering::Relaxed) as i64;
-        self.migrations.read().unwrap().iter()
+        self.migrations
+            .read()
+            .unwrap()
+            .iter()
             .filter(|m| m.version > current)
             .cloned()
             .collect()
@@ -670,7 +708,8 @@ impl SchemaManager {
 
     pub fn apply_migration(&self, version: i64) -> Result<Vec<String>, SchemaError> {
         let mut migrations = self.migrations.write().unwrap();
-        let migration = migrations.iter_mut()
+        let migration = migrations
+            .iter_mut()
             .find(|m| m.version == version)
             .ok_or_else(|| SchemaError::MigrationNotFound(version))?;
 
@@ -678,15 +717,22 @@ impl SchemaManager {
             return Err(SchemaError::AlreadyApplied(version));
         }
 
-        migration.applied_at = Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64);
-        self.current_version.store(version as u64, Ordering::Relaxed);
+        migration.applied_at = Some(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
+        );
+        self.current_version
+            .store(version as u64, Ordering::Relaxed);
 
         Ok(migration.up_sql.clone())
     }
 
     pub fn rollback_migration(&self, version: i64) -> Result<Vec<String>, SchemaError> {
         let mut migrations = self.migrations.write().unwrap();
-        let migration = migrations.iter_mut()
+        let migration = migrations
+            .iter_mut()
             .find(|m| m.version == version)
             .ok_or_else(|| SchemaError::MigrationNotFound(version))?;
 
@@ -696,7 +742,8 @@ impl SchemaManager {
 
         migration.applied_at = None;
         if version > 1 {
-            self.current_version.store((version - 1) as u64, Ordering::Relaxed);
+            self.current_version
+                .store((version - 1) as u64, Ordering::Relaxed);
         } else {
             self.current_version.store(0, Ordering::Relaxed);
         }
@@ -791,8 +838,12 @@ impl ConnectionPool {
                 });
             }
         }
-        pool.stats.total_connections.store(min_conns as u64, Ordering::Relaxed);
-        pool.stats.idle_connections.store(min_conns as u64, Ordering::Relaxed);
+        pool.stats
+            .total_connections
+            .store(min_conns as u64, Ordering::Relaxed);
+        pool.stats
+            .idle_connections
+            .store(min_conns as u64, Ordering::Relaxed);
 
         pool
     }
@@ -804,7 +855,9 @@ impl ConnectionPool {
         if let Some(conn) = conns.iter_mut().find(|c| !c.in_use) {
             conn.in_use = true;
             conn.last_used = Instant::now();
-            self.stats.active_connections.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .active_connections
+                .fetch_add(1, Ordering::Relaxed);
             self.stats.idle_connections.fetch_sub(1, Ordering::Relaxed);
             return Ok(conn.id);
         }
@@ -821,7 +874,9 @@ impl ConnectionPool {
                 transaction_depth: 0,
             });
             self.stats.total_connections.fetch_add(1, Ordering::Relaxed);
-            self.stats.active_connections.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .active_connections
+                .fetch_add(1, Ordering::Relaxed);
             return Ok(id);
         }
 
@@ -834,7 +889,9 @@ impl ConnectionPool {
         if let Some(conn) = conns.iter_mut().find(|c| c.id == conn_id) {
             conn.in_use = false;
             conn.last_used = Instant::now();
-            self.stats.active_connections.fetch_sub(1, Ordering::Relaxed);
+            self.stats
+                .active_connections
+                .fetch_sub(1, Ordering::Relaxed);
             self.stats.idle_connections.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -854,13 +911,19 @@ impl ConnectionPool {
 
         let removed = before - conns.len();
         if removed > 0 {
-            self.stats.total_connections.fetch_sub(removed as u64, Ordering::Relaxed);
-            self.stats.idle_connections.fetch_sub(removed as u64, Ordering::Relaxed);
+            self.stats
+                .total_connections
+                .fetch_sub(removed as u64, Ordering::Relaxed);
+            self.stats
+                .idle_connections
+                .fetch_sub(removed as u64, Ordering::Relaxed);
         }
         removed
     }
 
-    pub fn stats(&self) -> &PoolStats { &self.stats }
+    pub fn stats(&self) -> &PoolStats {
+        &self.stats
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -941,7 +1004,9 @@ impl SqlTransactionManager {
         txn.committed = true;
         let duration = txn.started_at.elapsed().as_millis() as u64;
         self.stats.committed.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_duration_ms.fetch_add(duration, Ordering::Relaxed);
+        self.stats
+            .total_duration_ms
+            .fetch_add(duration, Ordering::Relaxed);
         txns.remove(&txn_id);
         Ok(())
     }
@@ -955,7 +1020,9 @@ impl SqlTransactionManager {
         txn.rolled_back = true;
         let duration = txn.started_at.elapsed().as_millis() as u64;
         self.stats.rolled_back.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_duration_ms.fetch_add(duration, Ordering::Relaxed);
+        self.stats
+            .total_duration_ms
+            .fetch_add(duration, Ordering::Relaxed);
         txns.remove(&txn_id);
         Ok(())
     }
@@ -971,7 +1038,9 @@ impl SqlTransactionManager {
         self.active_txns.read().unwrap().len()
     }
 
-    pub fn stats(&self) -> &TransactionStats { &self.stats }
+    pub fn stats(&self) -> &TransactionStats {
+        &self.stats
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1007,7 +1076,8 @@ mod tests {
     #[test]
     fn test_select_builder_with_where() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
-        let (sql, params) = qb.select("users")
+        let (sql, params) = qb
+            .select("users")
             .where_eq("id", SqlValue::Integer(42))
             .build();
         assert!(sql.contains("WHERE id = $1"));
@@ -1017,7 +1087,8 @@ mod tests {
     #[test]
     fn test_select_builder_mysql() {
         let qb = SqlQueryBuilder::new(SqlDialect::MySql);
-        let (sql, params) = qb.select("users")
+        let (sql, params) = qb
+            .select("users")
             .where_eq("name", SqlValue::Text("alice".to_string()))
             .build();
         assert!(sql.contains("WHERE name = ?"));
@@ -1027,7 +1098,8 @@ mod tests {
     #[test]
     fn test_select_builder_with_order_limit() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
-        let (sql, _) = qb.select("users")
+        let (sql, _) = qb
+            .select("users")
             .order_by("created_at", true)
             .limit(10)
             .offset(20)
@@ -1040,7 +1112,8 @@ mod tests {
     #[test]
     fn test_select_builder_with_join() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
-        let (sql, _) = qb.select("orders")
+        let (sql, _) = qb
+            .select("orders")
             .left_join("users", "orders.user_id", "users.id")
             .build();
         assert!(sql.contains("LEFT JOIN users ON orders.user_id = users.id"));
@@ -1049,9 +1122,13 @@ mod tests {
     #[test]
     fn test_insert_builder() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
-        let (sql, params) = qb.insert("users")
+        let (sql, params) = qb
+            .insert("users")
             .columns(&["name", "email"])
-            .values(vec![SqlValue::Text("alice".to_string()), SqlValue::Text("alice@test.com".to_string())])
+            .values(vec![
+                SqlValue::Text("alice".to_string()),
+                SqlValue::Text("alice@test.com".to_string()),
+            ])
             .returning(&["id"])
             .build();
         assert!(sql.contains("INSERT INTO users"));
@@ -1062,7 +1139,8 @@ mod tests {
     #[test]
     fn test_update_builder() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
-        let (sql, params) = qb.update("users")
+        let (sql, params) = qb
+            .update("users")
             .set("name", SqlValue::Text("bob".to_string()))
             .where_eq("id", SqlValue::Integer(1))
             .build();
@@ -1074,7 +1152,8 @@ mod tests {
     #[test]
     fn test_delete_builder() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
-        let (sql, params) = qb.delete("users")
+        let (sql, params) = qb
+            .delete("users")
             .where_eq("id", SqlValue::Integer(1))
             .build();
         assert!(sql.contains("DELETE FROM users"));
@@ -1190,7 +1269,8 @@ mod tests {
     fn test_sql_value_types() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
 
-        let (_, params) = qb.select("t")
+        let (_, params) = qb
+            .select("t")
             .where_eq("a", SqlValue::Integer(42))
             .where_eq("b", SqlValue::Text("hello".to_string()))
             .where_eq("c", SqlValue::Boolean(true))
@@ -1204,8 +1284,16 @@ mod tests {
     #[test]
     fn test_select_with_in_clause() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
-        let (sql, params) = qb.select("users")
-            .where_in("id", vec![SqlValue::Integer(1), SqlValue::Integer(2), SqlValue::Integer(3)])
+        let (sql, params) = qb
+            .select("users")
+            .where_in(
+                "id",
+                vec![
+                    SqlValue::Integer(1),
+                    SqlValue::Integer(2),
+                    SqlValue::Integer(3),
+                ],
+            )
             .build();
         assert!(sql.contains("IN ($1, $2, $3)"));
         assert_eq!(params.len(), 3);
@@ -1214,9 +1302,7 @@ mod tests {
     #[test]
     fn test_select_with_is_not_null() {
         let qb = SqlQueryBuilder::new(SqlDialect::Postgres);
-        let (sql, params) = qb.select("users")
-            .where_is_not_null("email")
-            .build();
+        let (sql, params) = qb.select("users").where_is_not_null("email").build();
         assert!(sql.contains("email IS NOT NULL"));
         assert!(params.is_empty());
     }

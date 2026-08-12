@@ -5,9 +5,12 @@
 //! shard persistence, namespace replication queue, visibility store, DLQ persistence,
 //! XDC cache, and pagination token handling.
 
-use std::collections::{HashMap, BTreeMap, HashSet, VecDeque};
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicUsize, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::sync::{
+    atomic::{AtomicU64, AtomicUsize, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ─── Creation / Update / Conflict-Resolve Modes ─────────────────────────────
 
@@ -170,11 +173,17 @@ pub struct VersionHistory {
 
 impl VersionHistory {
     pub fn new(branch_id: impl Into<String>) -> Self {
-        Self { branch_id: branch_id.into(), items: Vec::new() }
+        Self {
+            branch_id: branch_id.into(),
+            items: Vec::new(),
+        }
     }
 
     pub fn add_item(&mut self, event_id: i64, transition_count: i64) {
-        self.items.push(VersionHistoryItem { event_id, transition_count });
+        self.items.push(VersionHistoryItem {
+            event_id,
+            transition_count,
+        });
     }
 
     pub fn last_item(&self) -> Option<&VersionHistoryItem> {
@@ -184,7 +193,11 @@ impl VersionHistory {
     pub fn lca_version(&self, other: &VersionHistory) -> Option<i64> {
         let mut lca = None;
         for item in &self.items {
-            if other.items.iter().any(|o| o.event_id == item.event_id && o.transition_count == item.transition_count) {
+            if other
+                .items
+                .iter()
+                .any(|o| o.event_id == item.event_id && o.transition_count == item.transition_count)
+            {
                 lca = Some(item.event_id);
             }
         }
@@ -217,11 +230,13 @@ impl VersionHistories {
     }
 
     pub fn current(&self) -> Option<&VersionHistory> {
-        self.histories.get(self.current_version_history_index as usize)
+        self.histories
+            .get(self.current_version_history_index as usize)
     }
 
     pub fn current_mut(&mut self) -> Option<&mut VersionHistory> {
-        self.histories.get_mut(self.current_version_history_index as usize)
+        self.histories
+            .get_mut(self.current_version_history_index as usize)
     }
 
     pub fn add_history(&mut self, history: VersionHistory) -> i32 {
@@ -238,7 +253,8 @@ impl VersionHistories {
 
     pub fn find_lca(&self, other_event_id: i64) -> Option<i64> {
         self.current().and_then(|vh| {
-            vh.items.iter()
+            vh.items
+                .iter()
                 .rev()
                 .find(|item| item.event_id <= other_event_id)
                 .map(|item| item.event_id)
@@ -373,9 +389,15 @@ pub struct PageToken {
 }
 
 impl PageToken {
-    pub fn empty() -> Self { Self { data: Vec::new() } }
-    pub fn is_empty(&self) -> bool { self.data.is_empty() }
-    pub fn from_bytes(data: Vec<u8>) -> Self { Self { data } }
+    pub fn empty() -> Self {
+        Self { data: Vec::new() }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+    pub fn from_bytes(data: Vec<u8>) -> Self {
+        Self { data }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -387,7 +409,10 @@ pub struct HistoryPagingToken {
 
 impl HistoryPagingToken {
     pub fn serialize(&self) -> PageToken {
-        let json = format!(r#"{{"branch":"{}","node":{},"txn":{}}}"#, self.branch_id, self.node_id, self.txn_id);
+        let json = format!(
+            r#"{{"branch":"{}","node":{},"txn":{}}}"#,
+            self.branch_id, self.node_id, self.txn_id
+        );
         PageToken::from_bytes(json.into_bytes())
     }
 
@@ -397,33 +422,73 @@ impl HistoryPagingToken {
         let branch = s.split('"').nth(5)?.to_string();
         let node: i64 = s.split('"').nth(9)?.trim_end_matches(',').parse().ok()?;
         let txn: i64 = s.split('"').nth(13)?.trim_end_matches('}').parse().ok()?;
-        Some(Self { branch_id: branch, node_id: node, txn_id: txn })
+        Some(Self {
+            branch_id: branch,
+            node_id: node,
+            txn_id: txn,
+        })
     }
 }
 
 // ─── Store Interfaces ────────────────────────────────────────────────────────
 
 pub trait ExecutionStore: Send + Sync {
-    fn create_workflow_execution(&self, req: &CreateWorkflowRequest) -> Result<CreateWorkflowResponse, PersistenceError>;
-    fn get_workflow_execution(&self, req: &GetWorkflowRequest) -> Result<GetWorkflowResponse, PersistenceError>;
-    fn update_workflow_execution(&self, req: &UpdateWorkflowRequest) -> Result<UpdateWorkflowResponse, PersistenceError>;
-    fn delete_workflow_execution(&self, req: &DeleteWorkflowRequest) -> Result<(), PersistenceError>;
-    fn get_current_execution(&self, req: &GetCurrentRequest) -> Result<GetCurrentResponse, PersistenceError>;
-    fn list_workflow_executions(&self, req: &ListWorkflowsRequest) -> Result<ListWorkflowsResponse, PersistenceError>;
+    fn create_workflow_execution(
+        &self,
+        req: &CreateWorkflowRequest,
+    ) -> Result<CreateWorkflowResponse, PersistenceError>;
+    fn get_workflow_execution(
+        &self,
+        req: &GetWorkflowRequest,
+    ) -> Result<GetWorkflowResponse, PersistenceError>;
+    fn update_workflow_execution(
+        &self,
+        req: &UpdateWorkflowRequest,
+    ) -> Result<UpdateWorkflowResponse, PersistenceError>;
+    fn delete_workflow_execution(
+        &self,
+        req: &DeleteWorkflowRequest,
+    ) -> Result<(), PersistenceError>;
+    fn get_current_execution(
+        &self,
+        req: &GetCurrentRequest,
+    ) -> Result<GetCurrentResponse, PersistenceError>;
+    fn list_workflow_executions(
+        &self,
+        req: &ListWorkflowsRequest,
+    ) -> Result<ListWorkflowsResponse, PersistenceError>;
 }
 
 pub trait HistoryStore: Send + Sync {
-    fn append_history_nodes(&self, req: &AppendHistoryRequest) -> Result<AppendHistoryResponse, PersistenceError>;
-    fn read_history_branch(&self, req: &ReadHistoryRequest) -> Result<ReadHistoryResponse, PersistenceError>;
+    fn append_history_nodes(
+        &self,
+        req: &AppendHistoryRequest,
+    ) -> Result<AppendHistoryResponse, PersistenceError>;
+    fn read_history_branch(
+        &self,
+        req: &ReadHistoryRequest,
+    ) -> Result<ReadHistoryResponse, PersistenceError>;
     fn delete_history_branch(&self, req: &DeleteHistoryRequest) -> Result<(), PersistenceError>;
-    fn get_all_history_tree_info(&self, tree_id: &str) -> Result<Vec<HistoryTreeInfo>, PersistenceError>;
+    fn get_all_history_tree_info(
+        &self,
+        tree_id: &str,
+    ) -> Result<Vec<HistoryTreeInfo>, PersistenceError>;
 }
 
 pub trait TaskStore: Send + Sync {
     fn create_tasks(&self, tasks: &[PersistentTask]) -> Result<(), PersistenceError>;
-    fn get_tasks(&self, queue_type: PersistentTaskType, page_size: i32, token: &PageToken) -> Result<(Vec<PersistentTask>, PageToken), PersistenceError>;
+    fn get_tasks(
+        &self,
+        queue_type: PersistentTaskType,
+        page_size: i32,
+        token: &PageToken,
+    ) -> Result<(Vec<PersistentTask>, PageToken), PersistenceError>;
     fn complete_task(&self, task_id: i64) -> Result<(), PersistenceError>;
-    fn range_complete_tasks(&self, queue_type: PersistentTaskType, range: &TaskRange) -> Result<i64, PersistenceError>;
+    fn range_complete_tasks(
+        &self,
+        queue_type: PersistentTaskType,
+        range: &TaskRange,
+    ) -> Result<i64, PersistenceError>;
 }
 
 pub trait ShardStore: Send + Sync {
@@ -434,12 +499,33 @@ pub trait ShardStore: Send + Sync {
 }
 
 pub trait VisibilityStore: Send + Sync {
-    fn record_workflow_started(&self, info: &WorkflowExecutionInfo) -> Result<(), PersistenceError>;
-    fn upsert_workflow_execution(&self, info: &WorkflowExecutionInfo) -> Result<(), PersistenceError>;
-    fn delete_workflow_execution(&self, namespace_id: &str, workflow_id: &str, run_id: &str) -> Result<(), PersistenceError>;
-    fn list_open_workflows(&self, req: &ListOpenRequest) -> Result<ListVisibilityResponse, PersistenceError>;
-    fn list_closed_workflows(&self, req: &ListClosedRequest) -> Result<ListVisibilityResponse, PersistenceError>;
-    fn list_workflow_by_type(&self, namespace_id: &str, workflow_type: &str, page_size: i32, token: &PageToken) -> Result<ListVisibilityResponse, PersistenceError>;
+    fn record_workflow_started(&self, info: &WorkflowExecutionInfo)
+        -> Result<(), PersistenceError>;
+    fn upsert_workflow_execution(
+        &self,
+        info: &WorkflowExecutionInfo,
+    ) -> Result<(), PersistenceError>;
+    fn delete_workflow_execution(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<(), PersistenceError>;
+    fn list_open_workflows(
+        &self,
+        req: &ListOpenRequest,
+    ) -> Result<ListVisibilityResponse, PersistenceError>;
+    fn list_closed_workflows(
+        &self,
+        req: &ListClosedRequest,
+    ) -> Result<ListVisibilityResponse, PersistenceError>;
+    fn list_workflow_by_type(
+        &self,
+        namespace_id: &str,
+        workflow_type: &str,
+        page_size: i32,
+        token: &PageToken,
+    ) -> Result<ListVisibilityResponse, PersistenceError>;
     fn count_workflows(&self, namespace_id: &str, query: &str) -> Result<i64, PersistenceError>;
 }
 
@@ -448,15 +534,37 @@ pub trait NamespaceStore: Send + Sync {
     fn get_namespace(&self, id: &str) -> Result<NamespaceDetail, PersistenceError>;
     fn update_namespace(&self, ns: &NamespaceDetail) -> Result<(), PersistenceError>;
     fn delete_namespace(&self, id: &str) -> Result<(), PersistenceError>;
-    fn list_namespaces(&self, page_size: i32, token: &PageToken) -> Result<(Vec<NamespaceDetail>, PageToken), PersistenceError>;
+    fn list_namespaces(
+        &self,
+        page_size: i32,
+        token: &PageToken,
+    ) -> Result<(Vec<NamespaceDetail>, PageToken), PersistenceError>;
     fn get_namespace_by_name(&self, name: &str) -> Result<NamespaceDetail, PersistenceError>;
 }
 
 pub trait QueueStore: Send + Sync {
-    fn enqueue_message(&self, queue_type: QueueType, payload: &[u8]) -> Result<i64, PersistenceError>;
-    fn read_messages(&self, queue_type: QueueType, max_count: i32, last_message_id: i64) -> Result<Vec<QueueMessage>, PersistenceError>;
-    fn delete_messages_before(&self, queue_type: QueueType, message_id: i64) -> Result<i64, PersistenceError>;
-    fn update_ack_level(&self, queue_type: QueueType, ack_level: i64, cluster: &str) -> Result<(), PersistenceError>;
+    fn enqueue_message(
+        &self,
+        queue_type: QueueType,
+        payload: &[u8],
+    ) -> Result<i64, PersistenceError>;
+    fn read_messages(
+        &self,
+        queue_type: QueueType,
+        max_count: i32,
+        last_message_id: i64,
+    ) -> Result<Vec<QueueMessage>, PersistenceError>;
+    fn delete_messages_before(
+        &self,
+        queue_type: QueueType,
+        message_id: i64,
+    ) -> Result<i64, PersistenceError>;
+    fn update_ack_level(
+        &self,
+        queue_type: QueueType,
+        ack_level: i64,
+        cluster: &str,
+    ) -> Result<(), PersistenceError>;
     fn get_ack_level(&self, queue_type: QueueType, cluster: &str) -> Result<i64, PersistenceError>;
 }
 
@@ -687,9 +795,15 @@ impl std::fmt::Display for PersistenceError {
             Self::AlreadyExists(msg) => write!(f, "already exists: {}", msg),
             Self::ConditionFailed(msg) => write!(f, "condition failed: {}", msg),
             Self::Timeout(msg) => write!(f, "timeout: {}", msg),
-            Self::ShardOwnershipLost { shard_id, owner } => write!(f, "shard {} ownership lost by {}", shard_id, owner),
-            Self::CurrentWorkflowConditionFailed(msg) => write!(f, "current workflow condition failed: {}", msg),
-            Self::TransactionSizeExceeded { size, limit } => write!(f, "transaction size {} exceeds limit {}", size, limit),
+            Self::ShardOwnershipLost { shard_id, owner } => {
+                write!(f, "shard {} ownership lost by {}", shard_id, owner)
+            }
+            Self::CurrentWorkflowConditionFailed(msg) => {
+                write!(f, "current workflow condition failed: {}", msg)
+            }
+            Self::TransactionSizeExceeded { size, limit } => {
+                write!(f, "transaction size {} exceeds limit {}", size, limit)
+            }
             Self::Internal(msg) => write!(f, "internal error: {}", msg),
         }
     }
@@ -700,12 +814,18 @@ impl std::fmt::Display for PersistenceError {
 pub struct OperationModeValidator;
 
 impl OperationModeValidator {
-    pub fn validate_create(mode: CreateWorkflowMode, current_exists: bool, current_run_id: &str, new_run_id: &str) -> Result<(), PersistenceError> {
+    pub fn validate_create(
+        mode: CreateWorkflowMode,
+        current_exists: bool,
+        current_run_id: &str,
+        new_run_id: &str,
+    ) -> Result<(), PersistenceError> {
         match mode {
             CreateWorkflowMode::BrandNew => {
                 if current_exists {
                     return Err(PersistenceError::AlreadyExists(format!(
-                        "workflow already exists with run_id={}", current_run_id
+                        "workflow already exists with run_id={}",
+                        current_run_id
                     )));
                 }
             }
@@ -721,19 +841,25 @@ impl OperationModeValidator {
         Ok(())
     }
 
-    pub fn validate_update(mode: UpdateWorkflowMode, current_run_id: &str, target_run_id: &str, is_current_running: bool) -> Result<(), PersistenceError> {
+    pub fn validate_update(
+        mode: UpdateWorkflowMode,
+        current_run_id: &str,
+        target_run_id: &str,
+        is_current_running: bool,
+    ) -> Result<(), PersistenceError> {
         match mode {
             UpdateWorkflowMode::UpdateCurrent => {
                 if current_run_id != target_run_id {
                     return Err(PersistenceError::CurrentWorkflowConditionFailed(format!(
-                        "current run_id {} != target run_id {}", current_run_id, target_run_id
+                        "current run_id {} != target run_id {}",
+                        current_run_id, target_run_id
                     )));
                 }
             }
             UpdateWorkflowMode::BypassCurrent => {
                 if current_run_id == target_run_id && is_current_running {
                     return Err(PersistenceError::CurrentWorkflowConditionFailed(
-                        "bypass current but workflow is current and running".to_string()
+                        "bypass current but workflow is current and running".to_string(),
                     ));
                 }
             }
@@ -744,12 +870,17 @@ impl OperationModeValidator {
         Ok(())
     }
 
-    pub fn validate_conflict_resolve(mode: ConflictResolveMode, current_run_id: &str, target_run_id: &str) -> Result<(), PersistenceError> {
+    pub fn validate_conflict_resolve(
+        mode: ConflictResolveMode,
+        current_run_id: &str,
+        target_run_id: &str,
+    ) -> Result<(), PersistenceError> {
         match mode {
             ConflictResolveMode::UpdateCurrent => {
                 if current_run_id != target_run_id {
                     return Err(PersistenceError::CurrentWorkflowConditionFailed(format!(
-                        "conflict resolve: current {} != target {}", current_run_id, target_run_id
+                        "conflict resolve: current {} != target {}",
+                        current_run_id, target_run_id
                     )));
                 }
             }
@@ -805,7 +936,8 @@ impl XDCCache {
         let mut cache = self.cache.write().unwrap();
         if cache.len() >= self.max_size {
             // Evict oldest
-            if let Some(oldest_key) = cache.iter()
+            if let Some(oldest_key) = cache
+                .iter()
                 .min_by_key(|(_, v)| v.created_at)
                 .map(|(k, _)| k.clone())
             {
@@ -813,12 +945,15 @@ impl XDCCache {
                 self.evictions.fetch_add(1, Ordering::Relaxed);
             }
         }
-        cache.insert(key, XDCCacheEntry {
-            data,
-            encoding,
-            created_at: Instant::now(),
-            access_count: AtomicU64::new(0),
-        });
+        cache.insert(
+            key,
+            XDCCacheEntry {
+                data,
+                encoding,
+                created_at: Instant::now(),
+                access_count: AtomicU64::new(0),
+            },
+        );
     }
 
     pub fn get(&self, key: &str) -> Option<XDCCacheEntry> {
@@ -896,7 +1031,10 @@ impl ExecutionManager {
         }
     }
 
-    pub fn create_workflow(&self, req: &CreateWorkflowRequest) -> Result<CreateWorkflowResponse, PersistenceError> {
+    pub fn create_workflow(
+        &self,
+        req: &CreateWorkflowRequest,
+    ) -> Result<CreateWorkflowResponse, PersistenceError> {
         self.stats.creates.fetch_add(1, Ordering::Relaxed);
         match self.store.create_workflow_execution(req) {
             Ok(resp) => Ok(resp),
@@ -907,7 +1045,10 @@ impl ExecutionManager {
         }
     }
 
-    pub fn get_workflow(&self, req: &GetWorkflowRequest) -> Result<GetWorkflowResponse, PersistenceError> {
+    pub fn get_workflow(
+        &self,
+        req: &GetWorkflowRequest,
+    ) -> Result<GetWorkflowResponse, PersistenceError> {
         self.stats.reads.fetch_add(1, Ordering::Relaxed);
         match self.store.get_workflow_execution(req) {
             Ok(resp) => Ok(resp),
@@ -918,7 +1059,10 @@ impl ExecutionManager {
         }
     }
 
-    pub fn update_workflow(&self, req: &UpdateWorkflowRequest) -> Result<UpdateWorkflowResponse, PersistenceError> {
+    pub fn update_workflow(
+        &self,
+        req: &UpdateWorkflowRequest,
+    ) -> Result<UpdateWorkflowResponse, PersistenceError> {
         self.stats.updates.fetch_add(1, Ordering::Relaxed);
         // Check transaction size
         let estimated_size = req.execution.history_size_bytes;
@@ -948,11 +1092,17 @@ impl ExecutionManager {
         }
     }
 
-    pub fn get_current_execution(&self, req: &GetCurrentRequest) -> Result<GetCurrentResponse, PersistenceError> {
+    pub fn get_current_execution(
+        &self,
+        req: &GetCurrentRequest,
+    ) -> Result<GetCurrentResponse, PersistenceError> {
         self.store.get_current_execution(req)
     }
 
-    pub fn list_workflows(&self, req: &ListWorkflowsRequest) -> Result<ListWorkflowsResponse, PersistenceError> {
+    pub fn list_workflows(
+        &self,
+        req: &ListWorkflowsRequest,
+    ) -> Result<ListWorkflowsResponse, PersistenceError> {
         self.store.list_workflow_executions(req)
     }
 
@@ -980,30 +1130,47 @@ pub struct HistoryManagerStats {
 
 impl HistoryManager {
     pub fn new(store: Arc<dyn HistoryStore>, xdc_cache: Arc<XDCCache>) -> Self {
-        Self { store, xdc_cache, stats: HistoryManagerStats::default() }
+        Self {
+            store,
+            xdc_cache,
+            stats: HistoryManagerStats::default(),
+        }
     }
 
-    pub fn append_history(&self, req: &AppendHistoryRequest) -> Result<AppendHistoryResponse, PersistenceError> {
+    pub fn append_history(
+        &self,
+        req: &AppendHistoryRequest,
+    ) -> Result<AppendHistoryResponse, PersistenceError> {
         self.stats.appends.fetch_add(1, Ordering::Relaxed);
         let total_size: i64 = req.new_events.iter().map(|e| e.data.len() as i64).sum();
-        self.stats.total_bytes_appended.fetch_add(total_size as u64, Ordering::Relaxed);
+        self.stats
+            .total_bytes_appended
+            .fetch_add(total_size as u64, Ordering::Relaxed);
 
         // Cache the events
         let cache_key = format!("{}:{}", req.tree_id, req.branch_id);
         for event in &req.new_events {
-            self.xdc_cache.put(cache_key.clone(), event.data.clone(), event.encoding);
+            self.xdc_cache
+                .put(cache_key.clone(), event.data.clone(), event.encoding);
         }
 
         self.store.append_history_nodes(req)
     }
 
-    pub fn read_history(&self, req: &ReadHistoryRequest) -> Result<ReadHistoryResponse, PersistenceError> {
+    pub fn read_history(
+        &self,
+        req: &ReadHistoryRequest,
+    ) -> Result<ReadHistoryResponse, PersistenceError> {
         self.stats.reads.fetch_add(1, Ordering::Relaxed);
         let resp = self.store.read_history_branch(req)?;
-        let total_read: i64 = resp.history_event_batches.iter()
+        let total_read: i64 = resp
+            .history_event_batches
+            .iter()
             .map(|b| b.events.iter().map(|e| e.data.len() as i64).sum::<i64>())
             .sum();
-        self.stats.total_bytes_read.fetch_add(total_read as u64, Ordering::Relaxed);
+        self.stats
+            .total_bytes_read
+            .fetch_add(total_read as u64, Ordering::Relaxed);
         Ok(resp)
     }
 
@@ -1014,7 +1181,10 @@ impl HistoryManager {
         self.store.delete_history_branch(req)
     }
 
-    pub fn get_all_tree_info(&self, tree_id: &str) -> Result<Vec<HistoryTreeInfo>, PersistenceError> {
+    pub fn get_all_tree_info(
+        &self,
+        tree_id: &str,
+    ) -> Result<Vec<HistoryTreeInfo>, PersistenceError> {
         self.store.get_all_history_tree_info(tree_id)
     }
 
@@ -1026,7 +1196,16 @@ impl HistoryManager {
 // ─── In-Memory Store Implementations ─────────────────────────────────────────
 
 pub struct InMemoryExecutionStore {
-    executions: RwLock<HashMap<String, (WorkflowExecutionInfo, WorkflowExecutionState, VersionHistories)>>,
+    executions: RwLock<
+        HashMap<
+            String,
+            (
+                WorkflowExecutionInfo,
+                WorkflowExecutionState,
+                VersionHistories,
+            ),
+        >,
+    >,
     current_by_wf: RwLock<HashMap<String, String>>, // workflow_id -> run_id
 }
 
@@ -1044,8 +1223,15 @@ impl InMemoryExecutionStore {
 }
 
 impl ExecutionStore for InMemoryExecutionStore {
-    fn create_workflow_execution(&self, req: &CreateWorkflowRequest) -> Result<CreateWorkflowResponse, PersistenceError> {
-        let key = Self::key(&req.new_execution.namespace_id, &req.new_execution.workflow_id, &req.new_execution.run_id);
+    fn create_workflow_execution(
+        &self,
+        req: &CreateWorkflowRequest,
+    ) -> Result<CreateWorkflowResponse, PersistenceError> {
+        let key = Self::key(
+            &req.new_execution.namespace_id,
+            &req.new_execution.workflow_id,
+            &req.new_execution.run_id,
+        );
         let mut execs = self.executions.write().unwrap();
 
         match req.mode {
@@ -1055,12 +1241,22 @@ impl ExecutionStore for InMemoryExecutionStore {
                 }
             }
             CreateWorkflowMode::UpdateCurrent => {
-                let wf_key = format!("{}/{}", req.new_execution.namespace_id, req.new_execution.workflow_id);
+                let wf_key = format!(
+                    "{}/{}",
+                    req.new_execution.namespace_id, req.new_execution.workflow_id
+                );
                 let currents = self.current_by_wf.read().unwrap();
                 if let Some(current_run) = currents.get(&wf_key) {
-                    if let Some((_, state, _)) = execs.get(&Self::key(&req.new_execution.namespace_id, &req.new_execution.workflow_id, current_run)) {
+                    if let Some((_, state, _)) = execs.get(&Self::key(
+                        &req.new_execution.namespace_id,
+                        &req.new_execution.workflow_id,
+                        current_run,
+                    )) {
                         if state.status == WorkflowExecutionStatus::Running {
-                            return Err(PersistenceError::AlreadyExists(format!("running workflow: {}", current_run)));
+                            return Err(PersistenceError::AlreadyExists(format!(
+                                "running workflow: {}",
+                                current_run
+                            )));
                         }
                     }
                 }
@@ -1068,13 +1264,29 @@ impl ExecutionStore for InMemoryExecutionStore {
             CreateWorkflowMode::BypassCurrent => {}
         }
 
-        execs.insert(key, (req.new_execution.clone(), req.new_state.clone(), req.new_version_histories.clone()));
-        let wf_key = format!("{}/{}", req.new_execution.namespace_id, req.new_execution.workflow_id);
-        self.current_by_wf.write().unwrap().insert(wf_key, req.new_execution.run_id.clone());
+        execs.insert(
+            key,
+            (
+                req.new_execution.clone(),
+                req.new_state.clone(),
+                req.new_version_histories.clone(),
+            ),
+        );
+        let wf_key = format!(
+            "{}/{}",
+            req.new_execution.namespace_id, req.new_execution.workflow_id
+        );
+        self.current_by_wf
+            .write()
+            .unwrap()
+            .insert(wf_key, req.new_execution.run_id.clone());
         Ok(CreateWorkflowResponse { created: true })
     }
 
-    fn get_workflow_execution(&self, req: &GetWorkflowRequest) -> Result<GetWorkflowResponse, PersistenceError> {
+    fn get_workflow_execution(
+        &self,
+        req: &GetWorkflowRequest,
+    ) -> Result<GetWorkflowResponse, PersistenceError> {
         let key = Self::key(&req.namespace_id, &req.workflow_id, &req.run_id);
         let execs = self.executions.read().unwrap();
         match execs.get(&key) {
@@ -1087,19 +1299,30 @@ impl ExecutionStore for InMemoryExecutionStore {
         }
     }
 
-    fn update_workflow_execution(&self, req: &UpdateWorkflowRequest) -> Result<UpdateWorkflowResponse, PersistenceError> {
-        let key = Self::key(&req.execution.namespace_id, &req.execution.workflow_id, &req.execution.run_id);
+    fn update_workflow_execution(
+        &self,
+        req: &UpdateWorkflowRequest,
+    ) -> Result<UpdateWorkflowResponse, PersistenceError> {
+        let key = Self::key(
+            &req.execution.namespace_id,
+            &req.execution.workflow_id,
+            &req.execution.run_id,
+        );
         let mut execs = self.executions.write().unwrap();
 
         match req.mode {
             UpdateWorkflowMode::UpdateCurrent => {
-                let wf_key = format!("{}/{}", req.execution.namespace_id, req.execution.workflow_id);
+                let wf_key = format!(
+                    "{}/{}",
+                    req.execution.namespace_id, req.execution.workflow_id
+                );
                 let currents = self.current_by_wf.read().unwrap();
                 if let Some(current_run) = currents.get(&wf_key) {
                     if current_run != &req.execution.run_id {
-                        return Err(PersistenceError::CurrentWorkflowConditionFailed(
-                            format!("current={} target={}", current_run, req.execution.run_id)
-                        ));
+                        return Err(PersistenceError::CurrentWorkflowConditionFailed(format!(
+                            "current={} target={}",
+                            current_run, req.execution.run_id
+                        )));
                     }
                 }
             }
@@ -1111,11 +1334,21 @@ impl ExecutionStore for InMemoryExecutionStore {
             return Err(PersistenceError::NotFound(key));
         }
 
-        execs.insert(key, (req.execution.clone(), req.state.clone(), req.version_histories.clone()));
+        execs.insert(
+            key,
+            (
+                req.execution.clone(),
+                req.state.clone(),
+                req.version_histories.clone(),
+            ),
+        );
         Ok(UpdateWorkflowResponse { updated: true })
     }
 
-    fn delete_workflow_execution(&self, req: &DeleteWorkflowRequest) -> Result<(), PersistenceError> {
+    fn delete_workflow_execution(
+        &self,
+        req: &DeleteWorkflowRequest,
+    ) -> Result<(), PersistenceError> {
         let key = Self::key(&req.namespace_id, &req.workflow_id, &req.run_id);
         self.executions.write().unwrap().remove(&key);
         let wf_key = format!("{}/{}", req.namespace_id, req.workflow_id);
@@ -1128,7 +1361,10 @@ impl ExecutionStore for InMemoryExecutionStore {
         Ok(())
     }
 
-    fn get_current_execution(&self, req: &GetCurrentRequest) -> Result<GetCurrentResponse, PersistenceError> {
+    fn get_current_execution(
+        &self,
+        req: &GetCurrentRequest,
+    ) -> Result<GetCurrentResponse, PersistenceError> {
         let wf_key = format!("{}/{}", req.namespace_id, req.workflow_id);
         let currents = self.current_by_wf.read().unwrap();
         match currents.get(&wf_key) {
@@ -1136,7 +1372,10 @@ impl ExecutionStore for InMemoryExecutionStore {
                 let key = Self::key(&req.namespace_id, &req.workflow_id, run_id);
                 let execs = self.executions.read().unwrap();
                 if let Some((_, state, _)) = execs.get(&key) {
-                    Ok(GetCurrentResponse { run_id: run_id.clone(), state: state.clone() })
+                    Ok(GetCurrentResponse {
+                        run_id: run_id.clone(),
+                        state: state.clone(),
+                    })
                 } else {
                     Err(PersistenceError::NotFound(key))
                 }
@@ -1145,9 +1384,13 @@ impl ExecutionStore for InMemoryExecutionStore {
         }
     }
 
-    fn list_workflow_executions(&self, req: &ListWorkflowsRequest) -> Result<ListWorkflowsResponse, PersistenceError> {
+    fn list_workflow_executions(
+        &self,
+        req: &ListWorkflowsRequest,
+    ) -> Result<ListWorkflowsResponse, PersistenceError> {
         let execs = self.executions.read().unwrap();
-        let matching: Vec<_> = execs.values()
+        let matching: Vec<_> = execs
+            .values()
             .filter(|(e, _, _)| e.namespace_id == req.namespace_id)
             .map(|(e, _, _)| e.clone())
             .collect();
@@ -1175,7 +1418,10 @@ impl InMemoryHistoryStore {
 }
 
 impl HistoryStore for InMemoryHistoryStore {
-    fn append_history_nodes(&self, req: &AppendHistoryRequest) -> Result<AppendHistoryResponse, PersistenceError> {
+    fn append_history_nodes(
+        &self,
+        req: &AppendHistoryRequest,
+    ) -> Result<AppendHistoryResponse, PersistenceError> {
         let key = format!("{}:{}", req.tree_id, req.branch_id);
         let mut nodes = self.nodes.write().unwrap();
         let mut total_size = 0i64;
@@ -1195,19 +1441,29 @@ impl HistoryStore for InMemoryHistoryStore {
         Ok(AppendHistoryResponse { size: total_size })
     }
 
-    fn read_history_branch(&self, req: &ReadHistoryRequest) -> Result<ReadHistoryResponse, PersistenceError> {
+    fn read_history_branch(
+        &self,
+        req: &ReadHistoryRequest,
+    ) -> Result<ReadHistoryResponse, PersistenceError> {
         let key = format!("{}:{}", req.tree_id, req.branch_id);
         let nodes = self.nodes.read().unwrap();
         let entries = nodes.get(&key).cloned().unwrap_or_default();
-        let batches: Vec<SerializedEventBatch> = entries.iter()
+        let batches: Vec<SerializedEventBatch> = entries
+            .iter()
             .filter(|e| e.node_id >= req.min_node_id && e.node_id < req.max_node_id)
             .map(|e| SerializedEventBatch {
                 node_id: e.node_id,
-                events: vec![DataBlob { data: e.data.clone(), encoding: e.data_encoding }],
+                events: vec![DataBlob {
+                    data: e.data.clone(),
+                    encoding: e.data_encoding,
+                }],
                 event_count: 1,
             })
             .collect();
-        let size: i64 = batches.iter().map(|b| b.events.iter().map(|e| e.data.len() as i64).sum::<i64>()).sum();
+        let size: i64 = batches
+            .iter()
+            .map(|b| b.events.iter().map(|e| e.data.len() as i64).sum::<i64>())
+            .sum();
         Ok(ReadHistoryResponse {
             history_event_batches: batches,
             next_page_token: PageToken::empty(),
@@ -1221,8 +1477,17 @@ impl HistoryStore for InMemoryHistoryStore {
         Ok(())
     }
 
-    fn get_all_history_tree_info(&self, tree_id: &str) -> Result<Vec<HistoryTreeInfo>, PersistenceError> {
-        Ok(self.trees.read().unwrap().get(tree_id).cloned().unwrap_or_default())
+    fn get_all_history_tree_info(
+        &self,
+        tree_id: &str,
+    ) -> Result<Vec<HistoryTreeInfo>, PersistenceError> {
+        Ok(self
+            .trees
+            .read()
+            .unwrap()
+            .get(tree_id)
+            .cloned()
+            .unwrap_or_default())
     }
 }
 
@@ -1231,28 +1496,42 @@ pub struct InMemoryShardStore {
 }
 
 impl InMemoryShardStore {
-    pub fn new() -> Self { Self { shards: RwLock::new(HashMap::new()) } }
+    pub fn new() -> Self {
+        Self {
+            shards: RwLock::new(HashMap::new()),
+        }
+    }
 }
 
 impl ShardStore for InMemoryShardStore {
     fn create_shard(&self, info: &ShardInfo) -> Result<(), PersistenceError> {
         let mut shards = self.shards.write().unwrap();
         if shards.contains_key(&info.shard_id) {
-            return Err(PersistenceError::AlreadyExists(format!("shard {}", info.shard_id)));
+            return Err(PersistenceError::AlreadyExists(format!(
+                "shard {}",
+                info.shard_id
+            )));
         }
         shards.insert(info.shard_id, info.clone());
         Ok(())
     }
 
     fn get_shard(&self, shard_id: i32) -> Result<ShardInfo, PersistenceError> {
-        self.shards.read().unwrap().get(&shard_id).cloned()
+        self.shards
+            .read()
+            .unwrap()
+            .get(&shard_id)
+            .cloned()
             .ok_or_else(|| PersistenceError::NotFound(format!("shard {}", shard_id)))
     }
 
     fn update_shard(&self, info: &ShardInfo) -> Result<(), PersistenceError> {
         let mut shards = self.shards.write().unwrap();
         if !shards.contains_key(&info.shard_id) {
-            return Err(PersistenceError::NotFound(format!("shard {}", info.shard_id)));
+            return Err(PersistenceError::NotFound(format!(
+                "shard {}",
+                info.shard_id
+            )));
         }
         shards.insert(info.shard_id, info.clone());
         Ok(())
@@ -1269,18 +1548,32 @@ pub struct InMemoryVisibilityStore {
 }
 
 impl InMemoryVisibilityStore {
-    pub fn new() -> Self { Self { records: RwLock::new(Vec::new()) } }
+    pub fn new() -> Self {
+        Self {
+            records: RwLock::new(Vec::new()),
+        }
+    }
 }
 
 impl VisibilityStore for InMemoryVisibilityStore {
-    fn record_workflow_started(&self, info: &WorkflowExecutionInfo) -> Result<(), PersistenceError> {
+    fn record_workflow_started(
+        &self,
+        info: &WorkflowExecutionInfo,
+    ) -> Result<(), PersistenceError> {
         self.records.write().unwrap().push(info.clone());
         Ok(())
     }
 
-    fn upsert_workflow_execution(&self, info: &WorkflowExecutionInfo) -> Result<(), PersistenceError> {
+    fn upsert_workflow_execution(
+        &self,
+        info: &WorkflowExecutionInfo,
+    ) -> Result<(), PersistenceError> {
         let mut records = self.records.write().unwrap();
-        if let Some(pos) = records.iter().position(|r| r.namespace_id == info.namespace_id && r.workflow_id == info.workflow_id && r.run_id == info.run_id) {
+        if let Some(pos) = records.iter().position(|r| {
+            r.namespace_id == info.namespace_id
+                && r.workflow_id == info.workflow_id
+                && r.run_id == info.run_id
+        }) {
             records[pos] = info.clone();
         } else {
             records.push(info.clone());
@@ -1288,52 +1581,94 @@ impl VisibilityStore for InMemoryVisibilityStore {
         Ok(())
     }
 
-    fn delete_workflow_execution(&self, namespace_id: &str, workflow_id: &str, run_id: &str) -> Result<(), PersistenceError> {
+    fn delete_workflow_execution(
+        &self,
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<(), PersistenceError> {
         let mut records = self.records.write().unwrap();
-        records.retain(|r| !(r.namespace_id == namespace_id && r.workflow_id == workflow_id && r.run_id == run_id));
+        records.retain(|r| {
+            !(r.namespace_id == namespace_id && r.workflow_id == workflow_id && r.run_id == run_id)
+        });
         Ok(())
     }
 
-    fn list_open_workflows(&self, req: &ListOpenRequest) -> Result<ListVisibilityResponse, PersistenceError> {
+    fn list_open_workflows(
+        &self,
+        req: &ListOpenRequest,
+    ) -> Result<ListVisibilityResponse, PersistenceError> {
         let records = self.records.read().unwrap();
-        let open: Vec<_> = records.iter()
-            .filter(|r| r.namespace_id == req.namespace_id && r.status == WorkflowExecutionStatus::Running)
+        let open: Vec<_> = records
+            .iter()
+            .filter(|r| {
+                r.namespace_id == req.namespace_id && r.status == WorkflowExecutionStatus::Running
+            })
             .take(req.max_page_size.max(1) as usize)
             .cloned()
             .collect();
-        Ok(ListVisibilityResponse { executions: open, next_page_token: PageToken::empty() })
+        Ok(ListVisibilityResponse {
+            executions: open,
+            next_page_token: PageToken::empty(),
+        })
     }
 
-    fn list_closed_workflows(&self, req: &ListClosedRequest) -> Result<ListVisibilityResponse, PersistenceError> {
+    fn list_closed_workflows(
+        &self,
+        req: &ListClosedRequest,
+    ) -> Result<ListVisibilityResponse, PersistenceError> {
         let records = self.records.read().unwrap();
-        let closed: Vec<_> = records.iter()
+        let closed: Vec<_> = records
+            .iter()
             .filter(|r| {
-                if r.namespace_id != req.namespace_id { return false; }
-                if r.status == WorkflowExecutionStatus::Running { return false; }
+                if r.namespace_id != req.namespace_id {
+                    return false;
+                }
+                if r.status == WorkflowExecutionStatus::Running {
+                    return false;
+                }
                 if let Some(status) = req.status_filter {
-                    if r.status != status { return false; }
+                    if r.status != status {
+                        return false;
+                    }
                 }
                 true
             })
             .take(req.max_page_size.max(1) as usize)
             .cloned()
             .collect();
-        Ok(ListVisibilityResponse { executions: closed, next_page_token: PageToken::empty() })
+        Ok(ListVisibilityResponse {
+            executions: closed,
+            next_page_token: PageToken::empty(),
+        })
     }
 
-    fn list_workflow_by_type(&self, namespace_id: &str, workflow_type: &str, page_size: i32, _token: &PageToken) -> Result<ListVisibilityResponse, PersistenceError> {
+    fn list_workflow_by_type(
+        &self,
+        namespace_id: &str,
+        workflow_type: &str,
+        page_size: i32,
+        _token: &PageToken,
+    ) -> Result<ListVisibilityResponse, PersistenceError> {
         let records = self.records.read().unwrap();
-        let matching: Vec<_> = records.iter()
+        let matching: Vec<_> = records
+            .iter()
             .filter(|r| r.namespace_id == namespace_id && r.workflow_type_name == workflow_type)
             .take(page_size.max(1) as usize)
             .cloned()
             .collect();
-        Ok(ListVisibilityResponse { executions: matching, next_page_token: PageToken::empty() })
+        Ok(ListVisibilityResponse {
+            executions: matching,
+            next_page_token: PageToken::empty(),
+        })
     }
 
     fn count_workflows(&self, namespace_id: &str, _query: &str) -> Result<i64, PersistenceError> {
         let records = self.records.read().unwrap();
-        Ok(records.iter().filter(|r| r.namespace_id == namespace_id).count() as i64)
+        Ok(records
+            .iter()
+            .filter(|r| r.namespace_id == namespace_id)
+            .count() as i64)
     }
 }
 
@@ -1357,13 +1692,20 @@ impl NamespaceStore for InMemoryNamespaceStore {
         if namespaces.contains_key(&ns.id) {
             return Err(PersistenceError::AlreadyExists(ns.id.clone()));
         }
-        self.by_name.write().unwrap().insert(ns.name.clone(), ns.id.clone());
+        self.by_name
+            .write()
+            .unwrap()
+            .insert(ns.name.clone(), ns.id.clone());
         namespaces.insert(ns.id.clone(), ns.clone());
         Ok(())
     }
 
     fn get_namespace(&self, id: &str) -> Result<NamespaceDetail, PersistenceError> {
-        self.namespaces.read().unwrap().get(id).cloned()
+        self.namespaces
+            .read()
+            .unwrap()
+            .get(id)
+            .cloned()
             .ok_or_else(|| PersistenceError::NotFound(id.to_string()))
     }
 
@@ -1383,16 +1725,28 @@ impl NamespaceStore for InMemoryNamespaceStore {
         Ok(())
     }
 
-    fn list_namespaces(&self, page_size: i32, _token: &PageToken) -> Result<(Vec<NamespaceDetail>, PageToken), PersistenceError> {
+    fn list_namespaces(
+        &self,
+        page_size: i32,
+        _token: &PageToken,
+    ) -> Result<(Vec<NamespaceDetail>, PageToken), PersistenceError> {
         let namespaces = self.namespaces.read().unwrap();
-        let list: Vec<_> = namespaces.values().take(page_size.max(1) as usize).cloned().collect();
+        let list: Vec<_> = namespaces
+            .values()
+            .take(page_size.max(1) as usize)
+            .cloned()
+            .collect();
         Ok((list, PageToken::empty()))
     }
 
     fn get_namespace_by_name(&self, name: &str) -> Result<NamespaceDetail, PersistenceError> {
         let by_name = self.by_name.read().unwrap();
         if let Some(id) = by_name.get(name) {
-            self.namespaces.read().unwrap().get(id).cloned()
+            self.namespaces
+                .read()
+                .unwrap()
+                .get(id)
+                .cloned()
                 .ok_or_else(|| PersistenceError::NotFound(name.to_string()))
         } else {
             Err(PersistenceError::NotFound(name.to_string()))
@@ -1417,39 +1771,68 @@ impl InMemoryQueueStore {
 }
 
 impl QueueStore for InMemoryQueueStore {
-    fn enqueue_message(&self, _queue_type: QueueType, payload: &[u8]) -> Result<i64, PersistenceError> {
+    fn enqueue_message(
+        &self,
+        _queue_type: QueueType,
+        payload: &[u8],
+    ) -> Result<i64, PersistenceError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed) as i64;
         self.messages.write().unwrap().push_back(QueueMessage {
             id,
             queue_type: _queue_type,
             payload: payload.to_vec(),
-            enqueue_time_ms: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64,
+            enqueue_time_ms: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
         });
         Ok(id)
     }
 
-    fn read_messages(&self, _queue_type: QueueType, max_count: i32, last_message_id: i64) -> Result<Vec<QueueMessage>, PersistenceError> {
+    fn read_messages(
+        &self,
+        _queue_type: QueueType,
+        max_count: i32,
+        last_message_id: i64,
+    ) -> Result<Vec<QueueMessage>, PersistenceError> {
         let messages = self.messages.read().unwrap();
-        Ok(messages.iter()
+        Ok(messages
+            .iter()
             .filter(|m| m.id > last_message_id)
             .take(max_count.max(1) as usize)
             .cloned()
             .collect())
     }
 
-    fn delete_messages_before(&self, _queue_type: QueueType, message_id: i64) -> Result<i64, PersistenceError> {
+    fn delete_messages_before(
+        &self,
+        _queue_type: QueueType,
+        message_id: i64,
+    ) -> Result<i64, PersistenceError> {
         let mut messages = self.messages.write().unwrap();
         let before = messages.len();
         messages.retain(|m| m.id >= message_id);
         Ok((before - messages.len()) as i64)
     }
 
-    fn update_ack_level(&self, _queue_type: QueueType, ack_level: i64, cluster: &str) -> Result<(), PersistenceError> {
-        self.ack_levels.write().unwrap().insert(cluster.to_string(), ack_level);
+    fn update_ack_level(
+        &self,
+        _queue_type: QueueType,
+        ack_level: i64,
+        cluster: &str,
+    ) -> Result<(), PersistenceError> {
+        self.ack_levels
+            .write()
+            .unwrap()
+            .insert(cluster.to_string(), ack_level);
         Ok(())
     }
 
-    fn get_ack_level(&self, _queue_type: QueueType, cluster: &str) -> Result<i64, PersistenceError> {
+    fn get_ack_level(
+        &self,
+        _queue_type: QueueType,
+        cluster: &str,
+    ) -> Result<i64, PersistenceError> {
         Ok(*self.ack_levels.read().unwrap().get(cluster).unwrap_or(&0))
     }
 }
@@ -1468,7 +1851,12 @@ impl PersistenceFactory {
         let queue_store = Arc::new(InMemoryQueueStore::new());
         let xdc_cache = Arc::new(XDCCache::new(1000));
 
-        let exec_manager = ExecutionManager::new(exec_store.clone(), hist_store.clone(), xdc_cache.clone(), 4 * 1024 * 1024);
+        let exec_manager = ExecutionManager::new(
+            exec_store.clone(),
+            hist_store.clone(),
+            xdc_cache.clone(),
+            4 * 1024 * 1024,
+        );
         let hist_manager = HistoryManager::new(hist_store.clone(), xdc_cache.clone());
 
         PersistenceStack {
@@ -1562,23 +1950,29 @@ mod tests {
         let state = make_state("ns1", "wf1", "run1");
         let vh = VersionHistories::new();
 
-        let resp = stack.execution_manager.create_workflow(&CreateWorkflowRequest {
-            shard_id: 1,
-            mode: CreateWorkflowMode::BrandNew,
-            new_execution: exec,
-            new_state: state,
-            new_version_histories: vh,
-            new_tasks: vec![],
-            condition: None,
-        }).unwrap();
+        let resp = stack
+            .execution_manager
+            .create_workflow(&CreateWorkflowRequest {
+                shard_id: 1,
+                mode: CreateWorkflowMode::BrandNew,
+                new_execution: exec,
+                new_state: state,
+                new_version_histories: vh,
+                new_tasks: vec![],
+                condition: None,
+            })
+            .unwrap();
         assert!(resp.created);
 
-        let get_resp = stack.execution_manager.get_workflow(&GetWorkflowRequest {
-            shard_id: 1,
-            namespace_id: "ns1".to_string(),
-            workflow_id: "wf1".to_string(),
-            run_id: "run1".to_string(),
-        }).unwrap();
+        let get_resp = stack
+            .execution_manager
+            .get_workflow(&GetWorkflowRequest {
+                shard_id: 1,
+                namespace_id: "ns1".to_string(),
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            })
+            .unwrap();
         assert_eq!(get_resp.execution.workflow_id, "wf1");
         assert_eq!(get_resp.execution.run_id, "run1");
     }
@@ -1590,17 +1984,30 @@ mod tests {
         let state = make_state("ns1", "wf1", "run1");
         let vh = VersionHistories::new();
 
-        stack.execution_manager.create_workflow(&CreateWorkflowRequest {
-            shard_id: 1, mode: CreateWorkflowMode::BrandNew,
-            new_execution: exec.clone(), new_state: state.clone(),
-            new_version_histories: vh.clone(), new_tasks: vec![], condition: None,
-        }).unwrap();
+        stack
+            .execution_manager
+            .create_workflow(&CreateWorkflowRequest {
+                shard_id: 1,
+                mode: CreateWorkflowMode::BrandNew,
+                new_execution: exec.clone(),
+                new_state: state.clone(),
+                new_version_histories: vh.clone(),
+                new_tasks: vec![],
+                condition: None,
+            })
+            .unwrap();
 
-        let result = stack.execution_manager.create_workflow(&CreateWorkflowRequest {
-            shard_id: 1, mode: CreateWorkflowMode::BrandNew,
-            new_execution: exec, new_state: state,
-            new_version_histories: vh, new_tasks: vec![], condition: None,
-        });
+        let result = stack
+            .execution_manager
+            .create_workflow(&CreateWorkflowRequest {
+                shard_id: 1,
+                mode: CreateWorkflowMode::BrandNew,
+                new_execution: exec,
+                new_state: state,
+                new_version_histories: vh,
+                new_tasks: vec![],
+                condition: None,
+            });
         assert!(result.is_err());
     }
 
@@ -1611,28 +2018,47 @@ mod tests {
         let state = make_state("ns1", "wf1", "run1");
         let vh = VersionHistories::new();
 
-        stack.execution_manager.create_workflow(&CreateWorkflowRequest {
-            shard_id: 1, mode: CreateWorkflowMode::BrandNew,
-            new_execution: exec.clone(), new_state: state.clone(),
-            new_version_histories: vh.clone(), new_tasks: vec![], condition: None,
-        }).unwrap();
+        stack
+            .execution_manager
+            .create_workflow(&CreateWorkflowRequest {
+                shard_id: 1,
+                mode: CreateWorkflowMode::BrandNew,
+                new_execution: exec.clone(),
+                new_state: state.clone(),
+                new_version_histories: vh.clone(),
+                new_tasks: vec![],
+                condition: None,
+            })
+            .unwrap();
 
         let mut updated_exec = exec.clone();
         updated_exec.signal_count = 5;
         updated_exec.next_event_id = 10;
 
-        let resp = stack.execution_manager.update_workflow(&UpdateWorkflowRequest {
-            shard_id: 1, mode: UpdateWorkflowMode::UpdateCurrent,
-            execution: updated_exec.clone(), state: state.clone(),
-            version_histories: vh.clone(), new_tasks: vec![],
-            delete_tasks: vec![], condition: 1,
-        }).unwrap();
+        let resp = stack
+            .execution_manager
+            .update_workflow(&UpdateWorkflowRequest {
+                shard_id: 1,
+                mode: UpdateWorkflowMode::UpdateCurrent,
+                execution: updated_exec.clone(),
+                state: state.clone(),
+                version_histories: vh.clone(),
+                new_tasks: vec![],
+                delete_tasks: vec![],
+                condition: 1,
+            })
+            .unwrap();
         assert!(resp.updated);
 
-        let get_resp = stack.execution_manager.get_workflow(&GetWorkflowRequest {
-            shard_id: 1, namespace_id: "ns1".to_string(),
-            workflow_id: "wf1".to_string(), run_id: "run1".to_string(),
-        }).unwrap();
+        let get_resp = stack
+            .execution_manager
+            .get_workflow(&GetWorkflowRequest {
+                shard_id: 1,
+                namespace_id: "ns1".to_string(),
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            })
+            .unwrap();
         assert_eq!(get_resp.execution.signal_count, 5);
     }
 
@@ -1643,20 +2069,34 @@ mod tests {
         let state = make_state("ns1", "wf1", "run1");
         let vh = VersionHistories::new();
 
-        stack.execution_manager.create_workflow(&CreateWorkflowRequest {
-            shard_id: 1, mode: CreateWorkflowMode::BrandNew,
-            new_execution: exec, new_state: state,
-            new_version_histories: vh, new_tasks: vec![], condition: None,
-        }).unwrap();
+        stack
+            .execution_manager
+            .create_workflow(&CreateWorkflowRequest {
+                shard_id: 1,
+                mode: CreateWorkflowMode::BrandNew,
+                new_execution: exec,
+                new_state: state,
+                new_version_histories: vh,
+                new_tasks: vec![],
+                condition: None,
+            })
+            .unwrap();
 
-        stack.execution_manager.delete_workflow(&DeleteWorkflowRequest {
-            shard_id: 1, namespace_id: "ns1".to_string(),
-            workflow_id: "wf1".to_string(), run_id: "run1".to_string(),
-        }).unwrap();
+        stack
+            .execution_manager
+            .delete_workflow(&DeleteWorkflowRequest {
+                shard_id: 1,
+                namespace_id: "ns1".to_string(),
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            })
+            .unwrap();
 
         let result = stack.execution_manager.get_workflow(&GetWorkflowRequest {
-            shard_id: 1, namespace_id: "ns1".to_string(),
-            workflow_id: "wf1".to_string(), run_id: "run1".to_string(),
+            shard_id: 1,
+            namespace_id: "ns1".to_string(),
+            workflow_id: "wf1".to_string(),
+            run_id: "run1".to_string(),
         });
         assert!(result.is_err());
     }
@@ -1668,16 +2108,27 @@ mod tests {
         let state = make_state("ns1", "wf1", "run1");
         let vh = VersionHistories::new();
 
-        stack.execution_manager.create_workflow(&CreateWorkflowRequest {
-            shard_id: 1, mode: CreateWorkflowMode::BrandNew,
-            new_execution: exec, new_state: state,
-            new_version_histories: vh, new_tasks: vec![], condition: None,
-        }).unwrap();
+        stack
+            .execution_manager
+            .create_workflow(&CreateWorkflowRequest {
+                shard_id: 1,
+                mode: CreateWorkflowMode::BrandNew,
+                new_execution: exec,
+                new_state: state,
+                new_version_histories: vh,
+                new_tasks: vec![],
+                condition: None,
+            })
+            .unwrap();
 
-        let current = stack.execution_manager.get_current_execution(&GetCurrentRequest {
-            shard_id: 1, namespace_id: "ns1".to_string(),
-            workflow_id: "wf1".to_string(),
-        }).unwrap();
+        let current = stack
+            .execution_manager
+            .get_current_execution(&GetCurrentRequest {
+                shard_id: 1,
+                namespace_id: "ns1".to_string(),
+                workflow_id: "wf1".to_string(),
+            })
+            .unwrap();
         assert_eq!(current.run_id, "run1");
     }
 
@@ -1716,25 +2167,42 @@ mod tests {
     fn test_history_append_and_read() {
         let stack = PersistenceFactory::create_in_memory();
 
-        let resp = stack.history_manager.append_history(&AppendHistoryRequest {
-            shard_id: 1,
-            tree_id: "tree1".to_string(),
-            branch_id: "branch1".to_string(),
-            new_events: vec![
-                DataBlob { data: vec![1, 2, 3], encoding: EncodingType::Proto3 },
-                DataBlob { data: vec![4, 5, 6], encoding: EncodingType::Proto3 },
-            ],
-            condition: 0,
-            prev_txn_id: 0,
-            new_txn_id: 1,
-        }).unwrap();
+        let resp = stack
+            .history_manager
+            .append_history(&AppendHistoryRequest {
+                shard_id: 1,
+                tree_id: "tree1".to_string(),
+                branch_id: "branch1".to_string(),
+                new_events: vec![
+                    DataBlob {
+                        data: vec![1, 2, 3],
+                        encoding: EncodingType::Proto3,
+                    },
+                    DataBlob {
+                        data: vec![4, 5, 6],
+                        encoding: EncodingType::Proto3,
+                    },
+                ],
+                condition: 0,
+                prev_txn_id: 0,
+                new_txn_id: 1,
+            })
+            .unwrap();
         assert_eq!(resp.size, 6);
 
-        let read_resp = stack.history_manager.read_history(&ReadHistoryRequest {
-            shard_id: 1, tree_id: "tree1".to_string(), branch_id: "branch1".to_string(),
-            min_node_id: 0, max_node_id: 100, page_size: 10,
-            next_page_token: PageToken::empty(), shard_id_for_rate_limit: 1,
-        }).unwrap();
+        let read_resp = stack
+            .history_manager
+            .read_history(&ReadHistoryRequest {
+                shard_id: 1,
+                tree_id: "tree1".to_string(),
+                branch_id: "branch1".to_string(),
+                min_node_id: 0,
+                max_node_id: 100,
+                page_size: 10,
+                next_page_token: PageToken::empty(),
+                shard_id_for_rate_limit: 1,
+            })
+            .unwrap();
         assert_eq!(read_resp.history_event_batches.len(), 2);
         assert_eq!(read_resp.size, 6);
     }
@@ -1758,12 +2226,20 @@ mod tests {
     fn test_shard_store() {
         let stack = PersistenceFactory::create_in_memory();
         let info = ShardInfo {
-            shard_id: 1, range_id: 1, owner: "host-1".to_string(),
-            replication_dlq_ack_level: HashMap::new(), stolen_since_renew: 0,
-            update_time_ms: 1000, transfer_ack_level: 0, timer_ack_level: 0,
-            replication_ack_level: 0, visibility_ack_level: 0,
-            transfer_failover_levels: HashMap::new(), timer_failover_levels: HashMap::new(),
-            cluster_replication_level: HashMap::new(), queue_states: HashMap::new(),
+            shard_id: 1,
+            range_id: 1,
+            owner: "host-1".to_string(),
+            replication_dlq_ack_level: HashMap::new(),
+            stolen_since_renew: 0,
+            update_time_ms: 1000,
+            transfer_ack_level: 0,
+            timer_ack_level: 0,
+            replication_ack_level: 0,
+            visibility_ack_level: 0,
+            transfer_failover_levels: HashMap::new(),
+            timer_failover_levels: HashMap::new(),
+            cluster_replication_level: HashMap::new(),
+            queue_states: HashMap::new(),
         };
 
         stack.shard_store.create_shard(&info).unwrap();
@@ -1782,12 +2258,21 @@ mod tests {
     fn test_visibility_store() {
         let stack = PersistenceFactory::create_in_memory();
         let exec = make_execution("ns1", "wf1", "run1");
-        stack.visibility_store.record_workflow_started(&exec).unwrap();
+        stack
+            .visibility_store
+            .record_workflow_started(&exec)
+            .unwrap();
 
-        let open = stack.visibility_store.list_open_workflows(&ListOpenRequest {
-            namespace_id: "ns1".to_string(), max_page_size: 10,
-            next_page_token: PageToken::empty(), execution_filter: None, type_filter: None,
-        }).unwrap();
+        let open = stack
+            .visibility_store
+            .list_open_workflows(&ListOpenRequest {
+                namespace_id: "ns1".to_string(),
+                max_page_size: 10,
+                next_page_token: PageToken::empty(),
+                execution_filter: None,
+                type_filter: None,
+            })
+            .unwrap();
         assert_eq!(open.executions.len(), 1);
 
         let count = stack.visibility_store.count_workflows("ns1", "*").unwrap();
@@ -1798,14 +2283,23 @@ mod tests {
     fn test_namespace_store() {
         let stack = PersistenceFactory::create_in_memory();
         let ns = NamespaceDetail {
-            id: "ns-1".to_string(), name: "test-ns".to_string(),
-            description: "Test namespace".to_string(), owner_email: "test@test.com".to_string(),
-            status: NamespaceState::Registered, retention_days: 7,
-            history_archival_state: ArchivalState::Disabled, history_archival_uri: String::new(),
-            visibility_archival_state: ArchivalState::Disabled, visibility_archival_uri: String::new(),
-            active_cluster: "cluster1".to_string(), clusters: vec!["cluster1".to_string()],
-            failover_version: 0, failover_notification_version: 0, is_global_namespace: false,
-            config: HashMap::new(), data: HashMap::new(),
+            id: "ns-1".to_string(),
+            name: "test-ns".to_string(),
+            description: "Test namespace".to_string(),
+            owner_email: "test@test.com".to_string(),
+            status: NamespaceState::Registered,
+            retention_days: 7,
+            history_archival_state: ArchivalState::Disabled,
+            history_archival_uri: String::new(),
+            visibility_archival_state: ArchivalState::Disabled,
+            visibility_archival_uri: String::new(),
+            active_cluster: "cluster1".to_string(),
+            clusters: vec!["cluster1".to_string()],
+            failover_version: 0,
+            failover_notification_version: 0,
+            is_global_namespace: false,
+            config: HashMap::new(),
+            data: HashMap::new(),
             replication_config: NamespaceReplicationConfig {
                 active_cluster_name: "cluster1".to_string(),
                 cluster_names: vec!["cluster1".to_string()],
@@ -1817,25 +2311,46 @@ mod tests {
         let got = stack.namespace_store.get_namespace("ns-1").unwrap();
         assert_eq!(got.name, "test-ns");
 
-        let by_name = stack.namespace_store.get_namespace_by_name("test-ns").unwrap();
+        let by_name = stack
+            .namespace_store
+            .get_namespace_by_name("test-ns")
+            .unwrap();
         assert_eq!(by_name.id, "ns-1");
     }
 
     #[test]
     fn test_queue_store() {
         let stack = PersistenceFactory::create_in_memory();
-        let id1 = stack.queue_store.enqueue_message(QueueType::NamespaceReplication, b"msg1").unwrap();
-        let id2 = stack.queue_store.enqueue_message(QueueType::NamespaceReplication, b"msg2").unwrap();
+        let id1 = stack
+            .queue_store
+            .enqueue_message(QueueType::NamespaceReplication, b"msg1")
+            .unwrap();
+        let id2 = stack
+            .queue_store
+            .enqueue_message(QueueType::NamespaceReplication, b"msg2")
+            .unwrap();
         assert!(id2 > id1);
 
-        let msgs = stack.queue_store.read_messages(QueueType::NamespaceReplication, 10, 0).unwrap();
+        let msgs = stack
+            .queue_store
+            .read_messages(QueueType::NamespaceReplication, 10, 0)
+            .unwrap();
         assert_eq!(msgs.len(), 2);
 
-        stack.queue_store.update_ack_level(QueueType::NamespaceReplication, id1, "cluster1").unwrap();
-        let ack = stack.queue_store.get_ack_level(QueueType::NamespaceReplication, "cluster1").unwrap();
+        stack
+            .queue_store
+            .update_ack_level(QueueType::NamespaceReplication, id1, "cluster1")
+            .unwrap();
+        let ack = stack
+            .queue_store
+            .get_ack_level(QueueType::NamespaceReplication, "cluster1")
+            .unwrap();
         assert_eq!(ack, id1);
 
-        let deleted = stack.queue_store.delete_messages_before(QueueType::NamespaceReplication, id2).unwrap();
+        let deleted = stack
+            .queue_store
+            .delete_messages_before(QueueType::NamespaceReplication, id2)
+            .unwrap();
         assert_eq!(deleted, 1);
     }
 
@@ -1843,23 +2358,39 @@ mod tests {
     fn test_operation_mode_validator() {
         // BrandNew with existing workflow should fail
         assert!(OperationModeValidator::validate_create(
-            CreateWorkflowMode::BrandNew, true, "run1", "run2"
-        ).is_err());
+            CreateWorkflowMode::BrandNew,
+            true,
+            "run1",
+            "run2"
+        )
+        .is_err());
 
         // BrandNew with no existing workflow should succeed
         assert!(OperationModeValidator::validate_create(
-            CreateWorkflowMode::BrandNew, false, "", "run1"
-        ).is_ok());
+            CreateWorkflowMode::BrandNew,
+            false,
+            "",
+            "run1"
+        )
+        .is_ok());
 
         // UpdateCurrent with wrong run_id should fail
         assert!(OperationModeValidator::validate_update(
-            UpdateWorkflowMode::UpdateCurrent, "run1", "run2", true
-        ).is_err());
+            UpdateWorkflowMode::UpdateCurrent,
+            "run1",
+            "run2",
+            true
+        )
+        .is_err());
 
         // UpdateCurrent with correct run_id should succeed
         assert!(OperationModeValidator::validate_update(
-            UpdateWorkflowMode::UpdateCurrent, "run1", "run1", true
-        ).is_ok());
+            UpdateWorkflowMode::UpdateCurrent,
+            "run1",
+            "run1",
+            true
+        )
+        .is_ok());
     }
 
     #[test]
@@ -1869,16 +2400,28 @@ mod tests {
         let state = make_state("ns1", "wf1", "run1");
         let vh = VersionHistories::new();
 
-        stack.execution_manager.create_workflow(&CreateWorkflowRequest {
-            shard_id: 1, mode: CreateWorkflowMode::BrandNew,
-            new_execution: exec.clone(), new_state: state.clone(),
-            new_version_histories: vh.clone(), new_tasks: vec![], condition: None,
-        }).unwrap();
+        stack
+            .execution_manager
+            .create_workflow(&CreateWorkflowRequest {
+                shard_id: 1,
+                mode: CreateWorkflowMode::BrandNew,
+                new_execution: exec.clone(),
+                new_state: state.clone(),
+                new_version_histories: vh.clone(),
+                new_tasks: vec![],
+                condition: None,
+            })
+            .unwrap();
 
-        stack.execution_manager.get_workflow(&GetWorkflowRequest {
-            shard_id: 1, namespace_id: "ns1".to_string(),
-            workflow_id: "wf1".to_string(), run_id: "run1".to_string(),
-        }).unwrap();
+        stack
+            .execution_manager
+            .get_workflow(&GetWorkflowRequest {
+                shard_id: 1,
+                namespace_id: "ns1".to_string(),
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+            })
+            .unwrap();
 
         let stats = stack.execution_manager.stats();
         assert_eq!(stats.creates.load(Ordering::Relaxed), 1);
@@ -1904,38 +2447,73 @@ mod tests {
         for i in 0..5 {
             let exec = make_execution("ns1", &format!("wf{}", i), &format!("run{}", i));
             let state = make_state("ns1", &format!("wf{}", i), &format!("run{}", i));
-            stack.execution_manager.create_workflow(&CreateWorkflowRequest {
-                shard_id: 1, mode: CreateWorkflowMode::BrandNew,
-                new_execution: exec, new_state: state,
-                new_version_histories: VersionHistories::new(), new_tasks: vec![], condition: None,
-            }).unwrap();
+            stack
+                .execution_manager
+                .create_workflow(&CreateWorkflowRequest {
+                    shard_id: 1,
+                    mode: CreateWorkflowMode::BrandNew,
+                    new_execution: exec,
+                    new_state: state,
+                    new_version_histories: VersionHistories::new(),
+                    new_tasks: vec![],
+                    condition: None,
+                })
+                .unwrap();
         }
 
-        let resp = stack.execution_manager.list_workflows(&ListWorkflowsRequest {
-            shard_id: 1, namespace_id: "ns1".to_string(),
-            page_size: 3, page_token: PageToken::empty(),
-        }).unwrap();
+        let resp = stack
+            .execution_manager
+            .list_workflows(&ListWorkflowsRequest {
+                shard_id: 1,
+                namespace_id: "ns1".to_string(),
+                page_size: 3,
+                page_token: PageToken::empty(),
+            })
+            .unwrap();
         assert_eq!(resp.executions.len(), 3);
     }
 
     #[test]
     fn test_history_delete() {
         let stack = PersistenceFactory::create_in_memory();
-        stack.history_manager.append_history(&AppendHistoryRequest {
-            shard_id: 1, tree_id: "tree1".to_string(), branch_id: "branch1".to_string(),
-            new_events: vec![DataBlob { data: vec![1, 2, 3], encoding: EncodingType::Proto3 }],
-            condition: 0, prev_txn_id: 0, new_txn_id: 1,
-        }).unwrap();
+        stack
+            .history_manager
+            .append_history(&AppendHistoryRequest {
+                shard_id: 1,
+                tree_id: "tree1".to_string(),
+                branch_id: "branch1".to_string(),
+                new_events: vec![DataBlob {
+                    data: vec![1, 2, 3],
+                    encoding: EncodingType::Proto3,
+                }],
+                condition: 0,
+                prev_txn_id: 0,
+                new_txn_id: 1,
+            })
+            .unwrap();
 
-        stack.history_manager.delete_history(&DeleteHistoryRequest {
-            shard_id: 1, tree_id: "tree1".to_string(), branch_id: "branch1".to_string(),
-        }).unwrap();
+        stack
+            .history_manager
+            .delete_history(&DeleteHistoryRequest {
+                shard_id: 1,
+                tree_id: "tree1".to_string(),
+                branch_id: "branch1".to_string(),
+            })
+            .unwrap();
 
-        let resp = stack.history_manager.read_history(&ReadHistoryRequest {
-            shard_id: 1, tree_id: "tree1".to_string(), branch_id: "branch1".to_string(),
-            min_node_id: 0, max_node_id: 100, page_size: 10,
-            next_page_token: PageToken::empty(), shard_id_for_rate_limit: 1,
-        }).unwrap();
+        let resp = stack
+            .history_manager
+            .read_history(&ReadHistoryRequest {
+                shard_id: 1,
+                tree_id: "tree1".to_string(),
+                branch_id: "branch1".to_string(),
+                min_node_id: 0,
+                max_node_id: 100,
+                page_size: 10,
+                next_page_token: PageToken::empty(),
+                shard_id_for_rate_limit: 1,
+            })
+            .unwrap();
         assert_eq!(resp.history_event_batches.len(), 0);
     }
 }

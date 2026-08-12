@@ -2,7 +2,7 @@
 //! Enables horizontal scaling with minimal remapping on cluster changes.
 //! Uses a hash ring with configurable replica points per host.
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 /// Number of virtual nodes (replica points) per physical host on the ring.
@@ -37,7 +37,9 @@ impl HashRing {
 
     /// Add a host with a specific number of virtual nodes.
     pub fn add_host_with_points(&mut self, host: &str, points: u32) {
-        if self.hosts.contains_key(host) { return; }
+        if self.hosts.contains_key(host) {
+            return;
+        }
         self.hosts.insert(host.to_string(), points);
         for i in 0..points {
             let key = Self::hash_virtual_node(host, i);
@@ -61,7 +63,9 @@ impl HashRing {
     /// Look up which host owns a given key using the hash ring.
     /// Finds the first virtual node clockwise from the key's hash.
     pub fn get_host(&self, key: u64) -> Option<&str> {
-        if self.ring.is_empty() { return None; }
+        if self.ring.is_empty() {
+            return None;
+        }
         let hash = Self::hash_key(key);
         // Find the first ring position >= hash
         let mut range = self.ring.range(hash..);
@@ -91,7 +95,10 @@ impl HashRing {
 
     /// Compute a rebalance plan: which shards need to move from which host to which.
     /// Returns Vec<(shard_id, from_host, to_host)>.
-    pub fn compute_rebalance(&self, shard_owners: &HashMap<u32, String>) -> Vec<(u32, String, String)> {
+    pub fn compute_rebalance(
+        &self,
+        shard_owners: &HashMap<u32, String>,
+    ) -> Vec<(u32, String, String)> {
         let mut plan = Vec::new();
         for (&shard_id, current_host) in shard_owners {
             if let Some(correct_host) = self.get_host(shard_id as u64) {
@@ -109,13 +116,19 @@ impl HashRing {
     }
 
     /// Get the number of physical hosts.
-    pub fn host_count(&self) -> usize { self.hosts.len() }
+    pub fn host_count(&self) -> usize {
+        self.hosts.len()
+    }
 
     /// Get the total number of virtual nodes on the ring.
-    pub fn ring_size(&self) -> usize { self.ring.len() }
+    pub fn ring_size(&self) -> usize {
+        self.ring.len()
+    }
 
     /// Check if the ring is empty.
-    pub fn is_empty(&self) -> bool { self.ring.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.ring.is_empty()
+    }
 
     /// Get the distribution of virtual nodes across hosts.
     pub fn distribution(&self) -> HashMap<&str, u32> {
@@ -197,8 +210,13 @@ impl ShardManager {
 
     /// Assign a shard to a host.
     pub fn assign_shard(&self, shard_id: u32, host: &str) -> bool {
-        if shard_id >= self.shard_count { return false; }
-        self.shard_owners.lock().unwrap().insert(shard_id, host.to_string());
+        if shard_id >= self.shard_count {
+            return false;
+        }
+        self.shard_owners
+            .lock()
+            .unwrap()
+            .insert(shard_id, host.to_string());
         true
     }
 
@@ -207,12 +225,19 @@ impl ShardManager {
         self.shard_owners.lock().unwrap().get(&shard_id).cloned()
     }
 
-    pub fn shard_count(&self) -> u32 { self.shard_count }
-    pub fn assigned_count(&self) -> usize { self.shard_owners.lock().unwrap().len() }
+    pub fn shard_count(&self) -> u32 {
+        self.shard_count
+    }
+    pub fn assigned_count(&self) -> usize {
+        self.shard_owners.lock().unwrap().len()
+    }
 
     /// Get all shards assigned to a host.
     pub fn get_shards_for_host(&self, host: &str) -> Vec<u32> {
-        self.shard_owners.lock().unwrap().iter()
+        self.shard_owners
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|(_, h)| h.as_str() == host)
             .map(|(s, _)| *s)
             .collect()
@@ -242,8 +267,16 @@ impl ShardManager {
     }
 }
 
-impl Default for ShardManager { fn default() -> Self { Self::new(256) } }
-impl Default for HashRing { fn default() -> Self { Self::new(DEFAULT_REPLICA_POINTS) } }
+impl Default for ShardManager {
+    fn default() -> Self {
+        Self::new(256)
+    }
+}
+impl Default for HashRing {
+    fn default() -> Self {
+        Self::new(DEFAULT_REPLICA_POINTS)
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -310,11 +343,17 @@ mod tests {
         let mut changed = 0;
         for key in 0..1000 {
             let after = ring.get_host(key).unwrap();
-            if before[&key] != after { changed += 1; }
+            if before[&key] != after {
+                changed += 1;
+            }
         }
 
         // With consistent hashing, only ~50% of keys should move (loose bound)
-        assert!(changed < 800, "Too many keys remapped: {} (expected < 800)", changed);
+        assert!(
+            changed < 800,
+            "Too many keys remapped: {} (expected < 800)",
+            changed
+        );
     }
 
     #[test]
@@ -353,7 +392,9 @@ mod tests {
     #[test]
     fn test_shards_for_host() {
         let mgr = ShardManager::new(8);
-        mgr.assign_shard(0, "a"); mgr.assign_shard(2, "a"); mgr.assign_shard(1, "b");
+        mgr.assign_shard(0, "a");
+        mgr.assign_shard(2, "a");
+        mgr.assign_shard(1, "b");
         assert_eq!(mgr.get_shards_for_host("a").len(), 2);
     }
 
@@ -371,7 +412,9 @@ mod tests {
         mgr.add_host("host-a");
         mgr.add_host("host-b");
         // Assign all to host-a
-        for i in 0..4 { mgr.assign_shard(i, "host-a"); }
+        for i in 0..4 {
+            mgr.assign_shard(i, "host-a");
+        }
         // Compute rebalance — plan may or may not be empty depending on ring positions
         let plan = mgr.compute_rebalance_plan();
         // Just verify it returns a valid plan (some shards may need migration)

@@ -43,24 +43,37 @@ pub enum ServiceErrorStatus {
 
 impl ServiceErrorStatus {
     pub fn is_retryable(&self) -> bool {
-        matches!(self,
-            Self::Unavailable | Self::ResourceExhausted | Self::Aborted |
-            Self::DeadlineExceeded | Self::ShardOwnershipLost
+        matches!(
+            self,
+            Self::Unavailable
+                | Self::ResourceExhausted
+                | Self::Aborted
+                | Self::DeadlineExceeded
+                | Self::ShardOwnershipLost
         )
     }
 
     pub fn is_client_error(&self) -> bool {
-        matches!(self,
-            Self::InvalidArgument | Self::NotFound | Self::AlreadyExists |
-            Self::PermissionDenied | Self::OutOfRange | Self::Unauthenticated |
-            Self::NamespaceNotFound | Self::NamespaceAlreadyExists |
-            Self::WorkflowNotFound | Self::WorkflowAlreadyStarted |
-            Self::ActivityNotFound | Self::CancellationAlreadyRequested
+        matches!(
+            self,
+            Self::InvalidArgument
+                | Self::NotFound
+                | Self::AlreadyExists
+                | Self::PermissionDenied
+                | Self::OutOfRange
+                | Self::Unauthenticated
+                | Self::NamespaceNotFound
+                | Self::NamespaceAlreadyExists
+                | Self::WorkflowNotFound
+                | Self::WorkflowAlreadyStarted
+                | Self::ActivityNotFound
+                | Self::CancellationAlreadyRequested
         )
     }
 
     pub fn is_server_error(&self) -> bool {
-        matches!(self,
+        matches!(
+            self,
             Self::Internal | Self::Unimplemented | Self::DataLoss | Self::Unknown
         )
     }
@@ -112,7 +125,12 @@ pub struct ServiceError {
 
 impl ServiceError {
     pub fn new(status: ServiceErrorStatus, message: &str) -> Self {
-        Self { status, message: message.to_string(), details: HashMap::new(), cause: None }
+        Self {
+            status,
+            message: message.to_string(),
+            details: HashMap::new(),
+            cause: None,
+        }
     }
 
     pub fn with_detail(mut self, key: &str, value: &str) -> Self {
@@ -130,42 +148,85 @@ impl ServiceError {
     }
 
     // Convenience constructors
-    pub fn not_found(msg: &str) -> Self { Self::new(ServiceErrorStatus::NotFound, msg) }
-    pub fn already_exists(msg: &str) -> Self { Self::new(ServiceErrorStatus::AlreadyExists, msg) }
-    pub fn invalid_argument(msg: &str) -> Self { Self::new(ServiceErrorStatus::InvalidArgument, msg) }
-    pub fn internal(msg: &str) -> Self { Self::new(ServiceErrorStatus::Internal, msg) }
-    pub fn unavailable(msg: &str) -> Self { Self::new(ServiceErrorStatus::Unavailable, msg) }
-    pub fn permission_denied(msg: &str) -> Self { Self::new(ServiceErrorStatus::PermissionDenied, msg) }
-    pub fn resource_exhausted(msg: &str) -> Self { Self::new(ServiceErrorStatus::ResourceExhausted, msg) }
-    pub fn unauthenticated(msg: &str) -> Self { Self::new(ServiceErrorStatus::Unauthenticated, msg) }
-    pub fn deadline_exceeded(msg: &str) -> Self { Self::new(ServiceErrorStatus::DeadlineExceeded, msg) }
-    pub fn cancelled(msg: &str) -> Self { Self::new(ServiceErrorStatus::Cancelled, msg) }
-    pub fn unimplemented(msg: &str) -> Self { Self::new(ServiceErrorStatus::Unimplemented, msg) }
-    pub fn aborted(msg: &str) -> Self { Self::new(ServiceErrorStatus::Aborted, msg) }
-    pub fn data_loss(msg: &str) -> Self { Self::new(ServiceErrorStatus::DataLoss, msg) }
+    pub fn not_found(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::NotFound, msg)
+    }
+    pub fn already_exists(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::AlreadyExists, msg)
+    }
+    pub fn invalid_argument(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::InvalidArgument, msg)
+    }
+    pub fn internal(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::Internal, msg)
+    }
+    pub fn unavailable(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::Unavailable, msg)
+    }
+    pub fn permission_denied(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::PermissionDenied, msg)
+    }
+    pub fn resource_exhausted(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::ResourceExhausted, msg)
+    }
+    pub fn unauthenticated(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::Unauthenticated, msg)
+    }
+    pub fn deadline_exceeded(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::DeadlineExceeded, msg)
+    }
+    pub fn cancelled(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::Cancelled, msg)
+    }
+    pub fn unimplemented(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::Unimplemented, msg)
+    }
+    pub fn aborted(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::Aborted, msg)
+    }
+    pub fn data_loss(msg: &str) -> Self {
+        Self::new(ServiceErrorStatus::DataLoss, msg)
+    }
 
     // Domain-specific constructors
     pub fn namespace_not_found(ns: &str) -> Self {
-        Self::new(ServiceErrorStatus::NamespaceNotFound, &format!("namespace not found: {}", ns))
+        Self::new(
+            ServiceErrorStatus::NamespaceNotFound,
+            &format!("namespace not found: {}", ns),
+        )
     }
     pub fn namespace_already_exists(ns: &str) -> Self {
-        Self::new(ServiceErrorStatus::NamespaceAlreadyExists, &format!("namespace already exists: {}", ns))
+        Self::new(
+            ServiceErrorStatus::NamespaceAlreadyExists,
+            &format!("namespace already exists: {}", ns),
+        )
     }
     pub fn workflow_not_found(wf_id: &str, run_id: &str) -> Self {
-        Self::new(ServiceErrorStatus::WorkflowNotFound,
-            &format!("workflow not found: {} / {}", wf_id, run_id))
+        Self::new(
+            ServiceErrorStatus::WorkflowNotFound,
+            &format!("workflow not found: {} / {}", wf_id, run_id),
+        )
     }
     pub fn workflow_already_started(wf_id: &str) -> Self {
-        Self::new(ServiceErrorStatus::WorkflowAlreadyStarted,
-            &format!("workflow already started: {}", wf_id))
+        Self::new(
+            ServiceErrorStatus::WorkflowAlreadyStarted,
+            &format!("workflow already started: {}", wf_id),
+        )
     }
     pub fn shard_ownership_lost(shard_id: u32, owner: &str) -> Self {
-        Self::new(ServiceErrorStatus::ShardOwnershipLost,
-            &format!("shard {} ownership lost, current owner: {}", shard_id, owner))
+        Self::new(
+            ServiceErrorStatus::ShardOwnershipLost,
+            &format!(
+                "shard {} ownership lost, current owner: {}",
+                shard_id, owner
+            ),
+        )
     }
     pub fn activity_not_found(activity_id: &str) -> Self {
-        Self::new(ServiceErrorStatus::ActivityNotFound,
-            &format!("activity not found: {}", activity_id))
+        Self::new(
+            ServiceErrorStatus::ActivityNotFound,
+            &format!("activity not found: {}", activity_id),
+        )
     }
 }
 
@@ -191,7 +252,9 @@ pub struct ErrorCounter {
 
 impl ErrorCounter {
     pub fn new() -> Self {
-        Self { counts: std::sync::RwLock::new(HashMap::new()) }
+        Self {
+            counts: std::sync::RwLock::new(HashMap::new()),
+        }
     }
 
     pub fn record(&self, error: &ServiceError) {
@@ -200,7 +263,12 @@ impl ErrorCounter {
     }
 
     pub fn count(&self, status: ServiceErrorStatus) -> u64 {
-        self.counts.read().unwrap().get(&status).copied().unwrap_or(0)
+        self.counts
+            .read()
+            .unwrap()
+            .get(&status)
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn total(&self) -> u64 {
@@ -314,6 +382,9 @@ mod tests {
     fn test_status_name() {
         assert_eq!(ServiceErrorStatus::NotFound.name(), "NotFound");
         assert_eq!(ServiceErrorStatus::Internal.name(), "Internal");
-        assert_eq!(ServiceErrorStatus::ShardOwnershipLost.name(), "ShardOwnershipLost");
+        assert_eq!(
+            ServiceErrorStatus::ShardOwnershipLost.name(),
+            "ShardOwnershipLost"
+        );
     }
 }

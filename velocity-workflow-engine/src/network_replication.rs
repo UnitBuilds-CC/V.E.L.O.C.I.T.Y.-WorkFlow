@@ -4,7 +4,7 @@
 
 use std::collections::VecDeque;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream, UdpSocket, SocketAddr};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
@@ -65,11 +65,17 @@ impl WireFrame {
     }
 
     pub fn decode(data: &[u8]) -> Option<Self> {
-        if data.len() < 9 { return None; }
-        if &data[0..4] != &FRAME_MAGIC { return None; }
+        if data.len() < 9 {
+            return None;
+        }
+        if &data[0..4] != &FRAME_MAGIC {
+            return None;
+        }
         let frame_type = FrameType::from_u8(data[4])?;
         let payload_len = u32::from_be_bytes([data[5], data[6], data[7], data[8]]) as usize;
-        if data.len() < 9 + payload_len { return None; }
+        if data.len() < 9 + payload_len {
+            return None;
+        }
         Some(Self {
             frame_type,
             payload: data[9..9 + payload_len].to_vec(),
@@ -161,8 +167,10 @@ impl TcpReplicationServer {
             Ok((stream, addr)) => {
                 // Make the accepted stream blocking with timeout
                 let _ = stream.set_nonblocking(false);
-                let _ = stream.set_read_timeout(Some(Duration::from_millis(self.config.read_timeout_ms)));
-                let _ = stream.set_write_timeout(Some(Duration::from_millis(self.config.write_timeout_ms)));
+                let _ = stream
+                    .set_read_timeout(Some(Duration::from_millis(self.config.read_timeout_ms)));
+                let _ = stream
+                    .set_write_timeout(Some(Duration::from_millis(self.config.write_timeout_ms)));
                 self.connected_peers.lock().unwrap().push(addr);
                 self.stats.write().unwrap().connections_accepted += 1;
                 self.stats.write().unwrap().connections_active += 1;
@@ -190,7 +198,11 @@ impl TcpReplicationServer {
     }
 
     /// Send a batch of replication tasks to a connected peer.
-    pub fn send_task_batch(&self, stream: &mut TcpStream, tasks: &[ReplicationTask]) -> Result<usize, std::io::Error> {
+    pub fn send_task_batch(
+        &self,
+        stream: &mut TcpStream,
+        tasks: &[ReplicationTask],
+    ) -> Result<usize, std::io::Error> {
         let payload = encode_tasks(tasks);
         let frame = WireFrame {
             frame_type: FrameType::TaskBatch,
@@ -211,7 +223,9 @@ impl TcpReplicationServer {
             Ok(_) => {}
             Err(_) => return None,
         }
-        if &header[0..4] != &FRAME_MAGIC { return None; }
+        if &header[0..4] != &FRAME_MAGIC {
+            return None;
+        }
         let frame_type = FrameType::from_u8(header[4])?;
         let payload_len = u32::from_be_bytes([header[5], header[6], header[7], header[8]]) as usize;
 
@@ -226,7 +240,10 @@ impl TcpReplicationServer {
         self.stats.write().unwrap().frames_received += 1;
         self.stats.write().unwrap().bytes_received += (9 + payload_len) as u64;
 
-        Some(WireFrame { frame_type, payload })
+        Some(WireFrame {
+            frame_type,
+            payload,
+        })
     }
 
     /// Enqueue a task for outgoing delivery.
@@ -409,40 +426,46 @@ pub fn encode_tasks(tasks: &[ReplicationTask]) -> Vec<u8> {
 
 /// Decode replication tasks from a binary payload.
 pub fn decode_tasks(data: &[u8]) -> Vec<ReplicationTask> {
-    if data.len() < 4 { return Vec::new(); }
+    if data.len() < 4 {
+        return Vec::new();
+    }
     let count = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
     let mut tasks = Vec::with_capacity(count);
     let mut offset = 4;
 
     for _ in 0..count {
-        if offset + 72 > data.len() { break; } // minimum task size
+        if offset + 72 > data.len() {
+            break;
+        } // minimum task size
 
-        let task_id = u64::from_be_bytes(data[offset..offset+8].try_into().unwrap());
+        let task_id = u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap());
         offset += 8;
-        let source_cluster_id = u64::from_be_bytes(data[offset..offset+8].try_into().unwrap());
+        let source_cluster_id = u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap());
         offset += 8;
-        let target_cluster_id = u64::from_be_bytes(data[offset..offset+8].try_into().unwrap());
+        let target_cluster_id = u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap());
         offset += 8;
-        let workflow_key = u64::from_be_bytes(data[offset..offset+8].try_into().unwrap());
+        let workflow_key = u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap());
         offset += 8;
-        let event_type = u32::from_be_bytes(data[offset..offset+4].try_into().unwrap());
+        let event_type = u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap());
         offset += 4;
-        let payload_len = u32::from_be_bytes(data[offset..offset+4].try_into().unwrap()) as usize;
+        let payload_len = u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
         offset += 4;
 
-        if offset + payload_len + 32 > data.len() { break; }
+        if offset + payload_len + 32 > data.len() {
+            break;
+        }
 
-        let payload = data[offset..offset+payload_len].to_vec();
+        let payload = data[offset..offset + payload_len].to_vec();
         offset += payload_len;
-        let failover_version = u64::from_be_bytes(data[offset..offset+8].try_into().unwrap());
+        let failover_version = u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap());
         offset += 8;
         let task_type_byte = data[offset];
         offset += 1;
-        let first_event_id = u64::from_be_bytes(data[offset..offset+8].try_into().unwrap());
+        let first_event_id = u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap());
         offset += 8;
-        let last_event_id = u64::from_be_bytes(data[offset..offset+8].try_into().unwrap());
+        let last_event_id = u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap());
         offset += 8;
-        let created_ms = u64::from_be_bytes(data[offset..offset+8].try_into().unwrap());
+        let created_ms = u64::from_be_bytes(data[offset..offset + 8].try_into().unwrap());
         offset += 8;
 
         let task_type = match task_type_byte {
@@ -523,11 +546,7 @@ mod tests {
 
     #[test]
     fn test_encode_decode_tasks() {
-        let tasks = vec![
-            make_task(100, 1),
-            make_task(200, 2),
-            make_task(300, 3),
-        ];
+        let tasks = vec![make_task(100, 1), make_task(200, 2), make_task(300, 3)];
         let encoded = encode_tasks(&tasks);
         let decoded = decode_tasks(&encoded);
         assert_eq!(decoded.len(), 3);
@@ -605,8 +624,12 @@ mod tests {
 
         // Client connects
         let mut client = TcpStream::connect(addr).unwrap();
-        client.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-        client.set_write_timeout(Some(Duration::from_secs(2))).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        client
+            .set_write_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
 
         // Brief pause to ensure connection is in the accept queue
         std::thread::sleep(Duration::from_millis(50));
@@ -648,8 +671,12 @@ mod tests {
         let addr = server.local_addr().unwrap();
 
         let mut client = TcpStream::connect(addr).unwrap();
-        client.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-        client.set_write_timeout(Some(Duration::from_secs(2))).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        client
+            .set_write_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
 
         std::thread::sleep(Duration::from_millis(50));
         let accepted = server.accept_one();
@@ -735,8 +762,14 @@ mod tests {
 
     #[test]
     fn test_frame_type_roundtrip() {
-        for ft in [FrameType::Handshake, FrameType::TaskBatch, FrameType::Ack,
-                   FrameType::Ping, FrameType::Pong, FrameType::Shutdown] {
+        for ft in [
+            FrameType::Handshake,
+            FrameType::TaskBatch,
+            FrameType::Ack,
+            FrameType::Ping,
+            FrameType::Pong,
+            FrameType::Shutdown,
+        ] {
             assert_eq!(FrameType::from_u8(ft as u8), Some(ft));
         }
         assert_eq!(FrameType::from_u8(255), None);

@@ -10,14 +10,14 @@ pub const SLAB_HEADER_SIZE: usize = 128;
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct SlabHeader {
-    pub magic: u32,               // 4 Bytes: "VLCT"
-    pub schema_version: u32,      // 4 Bytes: Version ID
-    pub workflow_id: u64,         // 8 Bytes: Unique workflow instance ID
-    pub run_id: u64,              // 8 Bytes: Unique run ID
-    pub current_step: u32,        // 4 Bytes: Current step index
-    pub total_steps: u32,         // 4 Bytes: Total planned steps
-    pub merkle_root: [u8; 32],    // 32 Bytes: Cryptographic SHA-256 state proof
-    pub step_bitmask: Bitmask256, // 32 Bytes: O(1) step completion flags
+    pub magic: u32,                 // 4 Bytes: "VLCT"
+    pub schema_version: u32,        // 4 Bytes: Version ID
+    pub workflow_id: u64,           // 8 Bytes: Unique workflow instance ID
+    pub run_id: u64,                // 8 Bytes: Unique run ID
+    pub current_step: u32,          // 4 Bytes: Current step index
+    pub total_steps: u32,           // 4 Bytes: Total planned steps
+    pub merkle_root: [u8; 32],      // 32 Bytes: Cryptographic SHA-256 state proof
+    pub step_bitmask: Bitmask256,   // 32 Bytes: O(1) step completion flags
     pub reserved_padding: [u8; 32], // 32 Bytes: Reserved slot padding for schema migrations
 }
 

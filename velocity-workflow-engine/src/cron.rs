@@ -3,7 +3,10 @@
 //! and integrates with the timer engine for durable recurring triggers.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 
 // ─── Cron Expression ──────────────────────────────────────────────────────────
 
@@ -25,7 +28,8 @@ impl CronExpression {
         let fields: Vec<&str> = expr.trim().split_whitespace().collect();
         if fields.len() != 5 {
             return Err(CronError::InvalidFormat(format!(
-                "Expected 5 fields, got {}", fields.len()
+                "Expected 5 fields, got {}",
+                fields.len()
             )));
         }
 
@@ -84,7 +88,9 @@ fn parse_field(field: &str, min: u8, max: u8) -> Result<Vec<u8>, CronError> {
             values.extend(min..=max);
         } else if let Some(star_step) = part.strip_prefix("*/") {
             // Step values: */5
-            let step: u8 = star_step.parse().map_err(|_| CronError::InvalidValue(part.to_string()))?;
+            let step: u8 = star_step
+                .parse()
+                .map_err(|_| CronError::InvalidValue(part.to_string()))?;
             if step == 0 {
                 return Err(CronError::InvalidValue("Step cannot be zero".to_string()));
             }
@@ -99,15 +105,21 @@ fn parse_field(field: &str, min: u8, max: u8) -> Result<Vec<u8>, CronError> {
             if bounds.len() != 2 {
                 return Err(CronError::InvalidValue(part.to_string()));
             }
-            let start: u8 = bounds[0].parse().map_err(|_| CronError::InvalidValue(part.to_string()))?;
-            let end: u8 = bounds[1].parse().map_err(|_| CronError::InvalidValue(part.to_string()))?;
+            let start: u8 = bounds[0]
+                .parse()
+                .map_err(|_| CronError::InvalidValue(part.to_string()))?;
+            let end: u8 = bounds[1]
+                .parse()
+                .map_err(|_| CronError::InvalidValue(part.to_string()))?;
             if start > max || end > max {
                 return Err(CronError::OutOfRange(part.to_string(), min, max));
             }
             values.extend(start..=end);
         } else {
             // Single value
-            let v: u8 = part.parse().map_err(|_| CronError::InvalidValue(part.to_string()))?;
+            let v: u8 = part
+                .parse()
+                .map_err(|_| CronError::InvalidValue(part.to_string()))?;
             if v < min || v > max {
                 return Err(CronError::OutOfRange(part.to_string(), min, max));
             }
@@ -134,7 +146,9 @@ impl std::fmt::Display for CronError {
         match self {
             CronError::InvalidFormat(msg) => write!(f, "Invalid cron format: {}", msg),
             CronError::InvalidValue(val) => write!(f, "Invalid cron value: {}", val),
-            CronError::OutOfRange(val, min, max) => write!(f, "Value {} out of range [{}-{}]", val, min, max),
+            CronError::OutOfRange(val, min, max) => {
+                write!(f, "Value {} out of range [{}-{}]", val, min, max)
+            }
         }
     }
 }
@@ -228,7 +242,9 @@ impl CronScheduler {
         let mut fires = Vec::new();
 
         for entry in entries.values_mut() {
-            if entry.paused { continue; }
+            if entry.paused {
+                continue;
+            }
             if entry.next_fire_time <= current_time_minutes {
                 fires.push(CronFireEvent {
                     schedule_id: entry.schedule_id,
@@ -250,7 +266,9 @@ impl CronScheduler {
 
     /// Get the next fire time for a schedule.
     pub fn next_fire_time(&self, schedule_id: u64) -> Option<u64> {
-        self.entries.lock().unwrap()
+        self.entries
+            .lock()
+            .unwrap()
             .get(&schedule_id)
             .map(|e| e.next_fire_time)
     }
@@ -262,14 +280,18 @@ impl CronScheduler {
 
     /// Get the fire count for a schedule.
     pub fn fire_count(&self, schedule_id: u64) -> Option<u64> {
-        self.entries.lock().unwrap()
+        self.entries
+            .lock()
+            .unwrap()
             .get(&schedule_id)
             .map(|e| e.fire_count)
     }
 
     /// Check if a schedule is paused.
     pub fn is_paused(&self, schedule_id: u64) -> Option<bool> {
-        self.entries.lock().unwrap()
+        self.entries
+            .lock()
+            .unwrap()
             .get(&schedule_id)
             .map(|e| e.paused)
     }

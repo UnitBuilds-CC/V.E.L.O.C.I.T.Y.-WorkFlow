@@ -6,17 +6,17 @@
 //!
 //! Run with: `cargo test --test chaos_load_tests --release -- --nocapture`
 
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
-use velocity_workflow_engine::task_queue::{TaskQueue, TaskItem, TaskKind};
-use velocity_workflow_engine::timer_engine::TimerEngine;
-use velocity_workflow_engine::wal::{WalManager, WalEventType};
-use velocity_workflow_engine::namespace::{NamespaceRegistry, NamespaceConfig};
+use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
 use velocity_workflow_engine::rate_limiter::RateLimiter;
+use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
+use velocity_workflow_engine::timer_engine::TimerEngine;
+use velocity_workflow_engine::wal::{WalEventType, WalManager};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Chaos Configuration
@@ -112,13 +112,18 @@ fn print_chaos_result(result: &ChaosTestResult) {
     println!("│  Integrity OK: {:<42}│", result.data_integrity_ok);
     println!("│  Corruption:   {:<42}│", result.corruption_detected);
     println!("│  Ops/sec:      {:<42.1}│", result.operations_per_second);
-    println!("│  Elapsed:      {:<42.3}│", format!("{:.3}s", result.elapsed.as_secs_f64()));
+    println!(
+        "│  Elapsed:      {:<42.3}│",
+        format!("{:.3}s", result.elapsed.as_secs_f64())
+    );
     println!("└─────────────────────────────────────────────────────────────┘");
 }
 
 /// Simple pseudo-random number generator for chaos tests (no external deps).
 fn simple_rng(state: &mut u64) -> f64 {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*state >> 33) as f64 / (u32::MAX as f64)
 }
 
@@ -206,8 +211,10 @@ fn run_chaos_soak(config: &ChaosConfig) -> ChaosTestResult {
     result.workflows_failed = failed.load(Ordering::Relaxed);
     result.signals_delivered = signals.load(Ordering::Relaxed);
     result.errors = errors.load(Ordering::Relaxed);
-    let total_ops = result.workflows_started + result.workflows_completed
-        + result.workflows_failed + result.signals_delivered;
+    let total_ops = result.workflows_started
+        + result.workflows_completed
+        + result.workflows_failed
+        + result.signals_delivered;
     result.operations_per_second = total_ops as f64 / elapsed.as_secs_f64();
 
     // Verify data integrity: all started workflows should be in a terminal state
@@ -359,7 +366,14 @@ fn run_resource_exhaustion(config: &ChaosConfig) -> ChaosTestResult {
     let mut keys = Vec::with_capacity(total_workflows);
 
     for i in 0..total_workflows {
-        let key = engine.start_workflow(1, 1, 0, 8_000_000 + i as u64, config.steps_per_workflow, None);
+        let key = engine.start_workflow(
+            1,
+            1,
+            0,
+            8_000_000 + i as u64,
+            config.steps_per_workflow,
+            None,
+        );
         if engine.get_status(key) == WorkflowStatus::Running {
             started.fetch_add(1, Ordering::Relaxed);
             keys.push(key);
@@ -415,8 +429,14 @@ fn test_chaos_soak_low_failure_rate() {
     let result = run_chaos_soak(&config);
     print_chaos_result(&result);
     assert!(result.workflows_started > 0);
-    assert!(result.data_integrity_ok, "Data integrity must be maintained");
-    assert!(!result.corruption_detected, "No corruption should be detected");
+    assert!(
+        result.data_integrity_ok,
+        "Data integrity must be maintained"
+    );
+    assert!(
+        !result.corruption_detected,
+        "No corruption should be detected"
+    );
 }
 
 #[test]
@@ -431,7 +451,10 @@ fn test_chaos_soak_high_failure_rate() {
     let result = run_chaos_soak(&config);
     print_chaos_result(&result);
     assert!(result.workflows_started > 0);
-    assert!(result.workflows_failed > 0, "Should have some failures at 50% rate");
+    assert!(
+        result.workflows_failed > 0,
+        "Should have some failures at 50% rate"
+    );
     assert!(result.data_integrity_ok);
     assert!(!result.corruption_detected);
 }
@@ -461,8 +484,14 @@ fn test_crash_recovery_basic() {
     let result = run_crash_recovery(&config);
     print_chaos_result(&result);
     assert!(result.workflows_started > 0);
-    assert!(result.data_integrity_ok, "Engine should recover without data loss");
-    assert!(!result.corruption_detected, "No corruption after crash recovery");
+    assert!(
+        result.data_integrity_ok,
+        "Engine should recover without data loss"
+    );
+    assert!(
+        !result.corruption_detected,
+        "No corruption after crash recovery"
+    );
 }
 
 #[test]
@@ -490,7 +519,10 @@ fn test_network_partition_recovery() {
     print_chaos_result(&result);
     assert!(result.workflows_started > 0);
     assert!(result.workflows_completed > 0);
-    assert!(result.data_integrity_ok, "No errors expected during partition");
+    assert!(
+        result.data_integrity_ok,
+        "No errors expected during partition"
+    );
 }
 
 #[test]
@@ -503,7 +535,10 @@ fn test_resource_exhaustion_many_workflows() {
     let result = run_resource_exhaustion(&config);
     print_chaos_result(&result);
     assert!(result.workflows_started > 0);
-    assert!(result.data_integrity_ok, "Engine should recover after resource exhaustion");
+    assert!(
+        result.data_integrity_ok,
+        "Engine should recover after resource exhaustion"
+    );
     assert!(!result.corruption_detected);
 }
 
@@ -517,7 +552,10 @@ fn test_resource_exhaustion_extreme() {
     let result = run_resource_exhaustion(&config);
     print_chaos_result(&result);
     assert!(result.workflows_started > 0);
-    assert!(result.data_integrity_ok, "Engine should handle extreme load");
+    assert!(
+        result.data_integrity_ok,
+        "Engine should handle extreme load"
+    );
 }
 
 #[test]
@@ -586,8 +624,12 @@ fn test_chaos_task_queue_under_failure() {
     let enqueued = total_enqueued.load(Ordering::Relaxed);
     let dequeued = total_dequeued.load(Ordering::Relaxed);
 
-    println!("Task queue chaos: enqueued={}, dequeued={}, pending={}",
-        enqueued, dequeued, tq.total_pending());
+    println!(
+        "Task queue chaos: enqueued={}, dequeued={}, pending={}",
+        enqueued,
+        dequeued,
+        tq.total_pending()
+    );
     assert!(enqueued > 0, "Should enqueue tasks");
     // Dequeued may be less than enqueued due to remaining in queue — that's OK
 }
@@ -610,18 +652,33 @@ fn test_chaos_wal_under_failure() {
             continue;
         }
 
-        if wal.append(WalEventType::WorkflowStarted, 1000 + i as u64, format!("wal-chaos-{}", i).into_bytes()).is_ok() {
+        if wal
+            .append(
+                WalEventType::WorkflowStarted,
+                1000 + i as u64,
+                format!("wal-chaos-{}", i).into_bytes(),
+            )
+            .is_ok()
+        {
             written += 1;
         }
     }
 
     // Verify WAL is still readable
     let records = wal.replay().unwrap();
-    println!("WAL chaos: written={}, failed={}, replayed={}", 
-        written, failed_writes, records.len());
+    println!(
+        "WAL chaos: written={}, failed={}, replayed={}",
+        written,
+        failed_writes,
+        records.len()
+    );
 
     assert!(written > 0, "Should write some records");
-    assert_eq!(records.len() as u64, written, "All written records should replay");
+    assert_eq!(
+        records.len() as u64,
+        written,
+        "All written records should replay"
+    );
 
     // Clean up
     let _ = std::fs::remove_file(wal_path);
@@ -664,8 +721,12 @@ fn test_chaos_rate_limiter_under_stress() {
     let allowed = total_allowed.load(Ordering::Relaxed);
     let elapsed = start_time.elapsed();
 
-    println!("Rate limiter stress: requests={}, allowed={}, rate={:.0}/sec",
-        requests, allowed, allowed as f64 / elapsed.as_secs_f64());
+    println!(
+        "Rate limiter stress: requests={}, allowed={}, rate={:.0}/sec",
+        requests,
+        allowed,
+        allowed as f64 / elapsed.as_secs_f64()
+    );
 
     assert!(requests > 0);
     assert!(allowed > 0);
@@ -692,8 +753,12 @@ fn test_chaos_namespace_registry_under_load() {
                 counter += 1;
                 let config = NamespaceConfig::new(counter as u64, format!("chaos-ns-{}", counter));
                 match reg.register(config) {
-                    Ok(_) => { reg_registered.fetch_add(1, Ordering::Relaxed); },
-                    Err(_) => { reg_errors.fetch_add(1, Ordering::Relaxed); }
+                    Ok(_) => {
+                        reg_registered.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(_) => {
+                        reg_errors.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
             }
         }));
@@ -709,6 +774,9 @@ fn test_chaos_namespace_registry_under_load() {
     let total_registered = registered.load(Ordering::Relaxed);
     let total_errors = errors.load(Ordering::Relaxed);
 
-    println!("Namespace chaos: registered={}, errors={}", total_registered, total_errors);
+    println!(
+        "Namespace chaos: registered={}, errors={}",
+        total_registered, total_errors
+    );
     assert!(total_registered > 0, "Should register some namespaces");
 }

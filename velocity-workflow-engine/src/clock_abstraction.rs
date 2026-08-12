@@ -4,8 +4,11 @@
 //! hybrid logical clock, timer handles, and scheduled timers.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicI64, AtomicU64, Ordering}};
-use std::time::{Duration, SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicI64, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Time Source Trait
@@ -17,7 +20,9 @@ pub trait TimeSource: Send + Sync {
     fn sleep(&self, duration: Duration);
     fn new_timer(&self, duration: Duration) -> TimerHandle;
     fn since_unix_epoch(&self) -> Duration {
-        self.now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default()
+        self.now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
     }
     fn unix_nanos(&self) -> i64 {
         self.since_unix_epoch().as_nanos() as i64
@@ -149,7 +154,10 @@ impl MockTimeSource {
     }
 
     pub fn pending_timer_count(&self) -> usize {
-        self.timers.read().unwrap().iter()
+        self.timers
+            .read()
+            .unwrap()
+            .iter()
             .filter(|t| !t.cancelled.load(Ordering::SeqCst) && !t.fired.load(Ordering::SeqCst))
             .count()
     }
@@ -182,7 +190,12 @@ impl TimeSource for MockTimeSource {
             cancelled: cancelled.clone(),
         });
 
-        TimerHandle { id, fire_at: now + duration, cancelled, fired }
+        TimerHandle {
+            id,
+            fire_at: now + duration,
+            cancelled,
+            fired,
+        }
     }
 }
 
@@ -207,7 +220,8 @@ impl TimeSkippingTimeSource {
 
     pub fn skip_to_next_timer(&self) {
         let timers = self.inner.timers.read().unwrap();
-        let next_fire = timers.iter()
+        let next_fire = timers
+            .iter()
             .filter(|t| !t.cancelled.load(Ordering::SeqCst) && !t.fired.load(Ordering::SeqCst))
             .map(|t| t.fire_at)
             .min();
@@ -215,7 +229,10 @@ impl TimeSkippingTimeSource {
         if let Some(fire_at) = next_fire {
             let max_skip = *self.max_skip_duration.read().unwrap();
             let now = self.inner.now();
-            let skip_dur = fire_at.duration_since(now).unwrap_or_default().min(max_skip);
+            let skip_dur = fire_at
+                .duration_since(now)
+                .unwrap_or_default()
+                .min(max_skip);
             self.inner.advance(skip_dur);
             self.skip_count.fetch_add(1, Ordering::Relaxed);
         }
@@ -231,10 +248,18 @@ impl TimeSkippingTimeSource {
 }
 
 impl TimeSource for TimeSkippingTimeSource {
-    fn now(&self) -> SystemTime { self.inner.now() }
-    fn elapsed_since(&self, since: SystemTime) -> Duration { self.inner.elapsed_since(since) }
-    fn sleep(&self, duration: Duration) { self.inner.sleep(duration) }
-    fn new_timer(&self, duration: Duration) -> TimerHandle { self.inner.new_timer(duration) }
+    fn now(&self) -> SystemTime {
+        self.inner.now()
+    }
+    fn elapsed_since(&self, since: SystemTime) -> Duration {
+        self.inner.elapsed_since(since)
+    }
+    fn sleep(&self, duration: Duration) {
+        self.inner.sleep(duration)
+    }
+    fn new_timer(&self, duration: Duration) -> TimerHandle {
+        self.inner.new_timer(duration)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -254,7 +279,11 @@ impl HybridLogicalClock {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        Self { wall_time_ms: now_ms, logical_counter: 0, node_id }
+        Self {
+            wall_time_ms: now_ms,
+            logical_counter: 0,
+            node_id,
+        }
     }
 
     pub fn now(&mut self) -> Self {
@@ -302,11 +331,17 @@ impl HybridLogicalClock {
     }
 
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
-        if data.len() < 14 { return None; }
+        if data.len() < 14 {
+            return None;
+        }
         let wall_time_ms = i64::from_be_bytes(data[0..8].try_into().ok()?);
         let logical_counter = u32::from_be_bytes(data[8..12].try_into().ok()?);
         let node_id = u16::from_be_bytes(data[12..14].try_into().ok()?);
-        Some(Self { wall_time_ms, logical_counter, node_id })
+        Some(Self {
+            wall_time_ms,
+            logical_counter,
+            node_id,
+        })
     }
 
     pub fn as_i64(&self) -> i64 {
@@ -316,7 +351,11 @@ impl HybridLogicalClock {
 
 impl std::fmt::Display for HybridLogicalClock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "HLC({}, {}, {})", self.wall_time_ms, self.logical_counter, self.node_id)
+        write!(
+            f,
+            "HLC({}, {}, {})",
+            self.wall_time_ms, self.logical_counter, self.node_id
+        )
     }
 }
 
@@ -475,7 +514,11 @@ mod tests {
 
     #[test]
     fn test_hlc_display() {
-        let hlc = HybridLogicalClock { wall_time_ms: 1000, logical_counter: 5, node_id: 3 };
+        let hlc = HybridLogicalClock {
+            wall_time_ms: 1000,
+            logical_counter: 5,
+            node_id: 3,
+        };
         let s = format!("{}", hlc);
         assert!(s.contains("1000"));
         assert!(s.contains("5"));
@@ -484,9 +527,21 @@ mod tests {
 
     #[test]
     fn test_hlc_ordering() {
-        let a = HybridLogicalClock { wall_time_ms: 100, logical_counter: 0, node_id: 1 };
-        let b = HybridLogicalClock { wall_time_ms: 100, logical_counter: 1, node_id: 1 };
-        let c = HybridLogicalClock { wall_time_ms: 101, logical_counter: 0, node_id: 1 };
+        let a = HybridLogicalClock {
+            wall_time_ms: 100,
+            logical_counter: 0,
+            node_id: 1,
+        };
+        let b = HybridLogicalClock {
+            wall_time_ms: 100,
+            logical_counter: 1,
+            node_id: 1,
+        };
+        let c = HybridLogicalClock {
+            wall_time_ms: 101,
+            logical_counter: 0,
+            node_id: 1,
+        };
         assert!(a < b);
         assert!(b < c);
     }

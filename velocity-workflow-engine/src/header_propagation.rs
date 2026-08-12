@@ -4,7 +4,10 @@
 //! header interceptors, and propagation rules.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Header
@@ -16,7 +19,11 @@ pub struct Header {
 }
 
 impl Header {
-    pub fn new() -> Self { Self { fields: HashMap::new() } }
+    pub fn new() -> Self {
+        Self {
+            fields: HashMap::new(),
+        }
+    }
 
     pub fn set(&mut self, key: &str, value: Vec<u8>) {
         self.fields.insert(key.to_string(), value);
@@ -38,8 +45,12 @@ impl Header {
         self.fields.keys().cloned().collect()
     }
 
-    pub fn len(&self) -> usize { self.fields.len() }
-    pub fn is_empty(&self) -> bool { self.fields.is_empty() }
+    pub fn len(&self) -> usize {
+        self.fields.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.fields.is_empty()
+    }
 
     pub fn merge(&mut self, other: &Header) {
         for (k, v) in &other.fields {
@@ -62,22 +73,43 @@ impl Header {
     }
 
     pub fn decode(data: &[u8]) -> Result<Self, HeaderError> {
-        if data.len() < 4 { return Err(HeaderError::InvalidFormat); }
+        if data.len() < 4 {
+            return Err(HeaderError::InvalidFormat);
+        }
         let count = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
         let mut fields = HashMap::new();
         let mut offset = 4;
         for _ in 0..count {
-            if offset + 4 > data.len() { return Err(HeaderError::InvalidFormat); }
-            let key_len = u32::from_be_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]]) as usize;
+            if offset + 4 > data.len() {
+                return Err(HeaderError::InvalidFormat);
+            }
+            let key_len = u32::from_be_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]) as usize;
             offset += 4;
-            if offset + key_len > data.len() { return Err(HeaderError::InvalidFormat); }
-            let key = String::from_utf8(data[offset..offset+key_len].to_vec()).map_err(|_| HeaderError::InvalidUtf8)?;
+            if offset + key_len > data.len() {
+                return Err(HeaderError::InvalidFormat);
+            }
+            let key = String::from_utf8(data[offset..offset + key_len].to_vec())
+                .map_err(|_| HeaderError::InvalidUtf8)?;
             offset += key_len;
-            if offset + 4 > data.len() { return Err(HeaderError::InvalidFormat); }
-            let val_len = u32::from_be_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]]) as usize;
+            if offset + 4 > data.len() {
+                return Err(HeaderError::InvalidFormat);
+            }
+            let val_len = u32::from_be_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]) as usize;
             offset += 4;
-            if offset + val_len > data.len() { return Err(HeaderError::InvalidFormat); }
-            fields.insert(key, data[offset..offset+val_len].to_vec());
+            if offset + val_len > data.len() {
+                return Err(HeaderError::InvalidFormat);
+            }
+            fields.insert(key, data[offset..offset + val_len].to_vec());
             offset += val_len;
         }
         Ok(Self { fields })
@@ -93,23 +125,39 @@ pub struct ContextPropagator {
 }
 
 impl ContextPropagator {
-    pub fn new(name: &str) -> Self { Self { name: name.to_string() } }
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+        }
+    }
 
     pub fn inject(&self, context: &PropagationContext, header: &mut Header) {
         if let Some(trace_id) = &context.trace_id {
-            header.set(&format!("{}-trace-id", self.name), trace_id.as_bytes().to_vec());
+            header.set(
+                &format!("{}-trace-id", self.name),
+                trace_id.as_bytes().to_vec(),
+            );
         }
         if let Some(span_id) = &context.span_id {
-            header.set(&format!("{}-span-id", self.name), span_id.as_bytes().to_vec());
+            header.set(
+                &format!("{}-span-id", self.name),
+                span_id.as_bytes().to_vec(),
+            );
         }
     }
 
     pub fn extract(&self, header: &Header) -> PropagationContext {
-        let trace_id = header.get(&format!("{}-trace-id", self.name))
+        let trace_id = header
+            .get(&format!("{}-trace-id", self.name))
             .and_then(|v| String::from_utf8(v.clone()).ok());
-        let span_id = header.get(&format!("{}-span-id", self.name))
+        let span_id = header
+            .get(&format!("{}-span-id", self.name))
             .and_then(|v| String::from_utf8(v.clone()).ok());
-        PropagationContext { trace_id, span_id, baggage: HashMap::new() }
+        PropagationContext {
+            trace_id,
+            span_id,
+            baggage: HashMap::new(),
+        }
     }
 }
 
@@ -162,8 +210,12 @@ impl PropagationChain {
         self.propagators.iter().map(|p| p.extract(header)).collect()
     }
 
-    pub fn propagator_count(&self) -> usize { self.propagators.len() }
-    pub fn stats(&self) -> &PropagationStats { &self.stats }
+    pub fn propagator_count(&self) -> usize {
+        self.propagators.len()
+    }
+    pub fn stats(&self) -> &PropagationStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -189,9 +241,11 @@ pub struct JsonHeaderCodec;
 impl HeaderCodec for JsonHeaderCodec {
     fn encode_header(&self, header: &Header) -> Result<Vec<u8>, HeaderError> {
         let mut json = String::from("{");
-        let entries: Vec<String> = header.fields.iter().map(|(k, v)| {
-            format!("\"{}\":\"{}\"", k, base64_encode(v))
-        }).collect();
+        let entries: Vec<String> = header
+            .fields
+            .iter()
+            .map(|(k, v)| format!("\"{}\":\"{}\"", k, base64_encode(v)))
+            .collect();
         json.push_str(&entries.join(","));
         json.push('}');
         Ok(json.into_bytes())
@@ -211,8 +265,16 @@ fn base64_encode(data: &[u8]) -> String {
         let triple = (b0 << 16) | (b1 << 8) | b2;
         result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
         result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
-        if chunk.len() > 1 { result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char); } else { result.push('='); }
-        if chunk.len() > 2 { result.push(CHARS[(triple & 0x3F) as usize] as char); } else { result.push('='); }
+        if chunk.len() > 1 {
+            result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(CHARS[(triple & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
     }
     result
 }

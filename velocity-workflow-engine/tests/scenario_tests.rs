@@ -31,9 +31,12 @@ fn test_payment_processing_saga() {
 
     // Saga: charge card → debit bank → send receipt
     let steps = vec![
-        SagaStepDefinition::new("charge_card", 100).with_compensation(200, Some(b"refund_card".to_vec())),
-        SagaStepDefinition::new("debit_bank", 101).with_compensation(201, Some(b"refund_bank".to_vec())),
-        SagaStepDefinition::new("send_receipt", 102).with_compensation(202, Some(b"cancel_receipt".to_vec())),
+        SagaStepDefinition::new("charge_card", 100)
+            .with_compensation(200, Some(b"refund_card".to_vec())),
+        SagaStepDefinition::new("debit_bank", 101)
+            .with_compensation(201, Some(b"refund_bank".to_vec())),
+        SagaStepDefinition::new("send_receipt", 102)
+            .with_compensation(202, Some(b"cancel_receipt".to_vec())),
     ];
     let saga_id = orchestrator.create_saga(42, steps);
 
@@ -48,7 +51,11 @@ fn test_payment_processing_saga() {
 
     // Third step fails — triggers compensation
     let compensations = orchestrator.fail_step(saga_id, 2);
-    assert_eq!(compensations.len(), 2, "Should compensate 2 completed steps");
+    assert_eq!(
+        compensations.len(),
+        2,
+        "Should compensate 2 completed steps"
+    );
     assert_eq!(compensations[0].0, 201); // refund_bank (reverse order)
     assert_eq!(compensations[1].0, 200); // refund_card
 
@@ -61,8 +68,11 @@ fn test_payment_processing_saga() {
 
     engine.fail_workflow(wf_key);
     assert_eq!(engine.get_status(wf_key), WorkflowStatus::Failed);
-    println!("  payment saga compensated in {:?} — {} workflows created",
-        start.elapsed(), engine.workflow_count());
+    println!(
+        "  payment saga compensated in {:?} — {} workflows created",
+        start.elapsed(),
+        engine.workflow_count()
+    );
     engine.shutdown();
 }
 
@@ -72,7 +82,8 @@ fn test_order_fulfillment_workflow() {
     println!("test_order_fulfillment_workflow: order → payment → shipping → notification");
     let engine = WorkflowEngine::new();
 
-    let order_key = engine.start_workflow(2001, 1, 0, 42, 4, Some(b"order:SKU-12345,qty=2".to_vec()));
+    let order_key =
+        engine.start_workflow(2001, 1, 0, 42, 4, Some(b"order:SKU-12345,qty=2".to_vec()));
 
     // Step 0: Validate order
     engine.complete_step(order_key, 0, b"order_validated".to_vec());
@@ -98,7 +109,8 @@ fn test_user_signup_with_verification() {
     println!("test_user_signup_with_verification: signup → email verification → activation");
     let engine = WorkflowEngine::new();
 
-    let signup_key = engine.start_workflow(3001, 1, 0, 42, 3, Some(b"signup:user@example.com".to_vec()));
+    let signup_key =
+        engine.start_workflow(3001, 1, 0, 42, 3, Some(b"signup:user@example.com".to_vec()));
 
     // Step 0: Create account
     engine.complete_step(signup_key, 0, b"account_created:UID-100".to_vec());
@@ -133,15 +145,29 @@ fn test_batch_processing_pipeline() {
     let parent_key = engine.start_workflow(4001, 1, 0, 42, 4, Some(b"batch:file.csv".to_vec()));
 
     // Step 0: Ingest
-    engine.complete_step(parent_key, 0, format!("ingested:{} records", batch_size).into_bytes());
+    engine.complete_step(
+        parent_key,
+        0,
+        format!("ingested:{} records", batch_size).into_bytes(),
+    );
     // Step 1: Validate — spawn child workflows for each record
     for i in 0..batch_size {
-        let child_key = engine.start_child_workflow(parent_key, 4100 + i, 2, 42, 1,
-            Some(format!("record-{}", i).into_bytes()));
+        let child_key = engine.start_child_workflow(
+            parent_key,
+            4100 + i,
+            2,
+            42,
+            1,
+            Some(format!("record-{}", i).into_bytes()),
+        );
         engine.complete_step(child_key, 0, b"valid".to_vec());
         engine.complete_workflow(child_key, None);
     }
-    engine.complete_step(parent_key, 1, format!("validated:{} records", batch_size).into_bytes());
+    engine.complete_step(
+        parent_key,
+        1,
+        format!("validated:{} records", batch_size).into_bytes(),
+    );
     // Step 2: Transform
     engine.complete_step(parent_key, 2, b"transformed".to_vec());
     // Step 3: Load
@@ -149,7 +175,11 @@ fn test_batch_processing_pipeline() {
 
     engine.complete_workflow(parent_key, Some(b"batch_complete".to_vec()));
     assert_eq!(engine.get_status(parent_key), WorkflowStatus::Completed);
-    println!("  batch of {} records processed, {} total workflows", batch_size, engine.workflow_count());
+    println!(
+        "  batch of {} records processed, {} total workflows",
+        batch_size,
+        engine.workflow_count()
+    );
     engine.shutdown();
 }
 
@@ -159,7 +189,9 @@ fn test_scheduled_report_generation() {
     let engine = WorkflowEngine::new();
 
     // Register a cron schedule that fires every minute
-    let schedule_id = engine.register_cron("* * * * *", 5001, 0, 42, 3, 0).unwrap();
+    let schedule_id = engine
+        .register_cron("* * * * *", 5001, 0, 42, 3, 0)
+        .unwrap();
     assert!(schedule_id > 0);
 
     // Advance time to trigger the cron
@@ -174,7 +206,10 @@ fn test_scheduled_report_generation() {
         engine.complete_workflow(*key, Some(b"report_complete".to_vec()));
         assert_eq!(engine.get_status(*key), WorkflowStatus::Completed);
     }
-    println!("  scheduled report generated, {} fires processed", fired_keys.len());
+    println!(
+        "  scheduled report generated, {} fires processed",
+        fired_keys.len()
+    );
     engine.shutdown();
 }
 
@@ -183,8 +218,14 @@ fn test_approval_workflow() {
     println!("test_approval_workflow: submit → review → approve/reject with timeout");
     let engine = WorkflowEngine::new();
 
-    let approval_key = engine.start_workflow(6001, 1, 0, 42, 3,
-        Some(b"approval:request-001,amount=5000".to_vec()));
+    let approval_key = engine.start_workflow(
+        6001,
+        1,
+        0,
+        42,
+        3,
+        Some(b"approval:request-001,amount=5000".to_vec()),
+    );
 
     // Step 0: Submit request
     engine.complete_step(approval_key, 0, b"submitted".to_vec());
@@ -213,8 +254,14 @@ fn test_inventory_management() {
     println!("test_inventory_management: stock check → reserve → fulfill → reorder");
     let engine = WorkflowEngine::new();
 
-    let inv_key = engine.start_workflow(7001, 1, 0, 42, 4,
-        Some(b"inventory:SKU-ABC,qty=10".to_vec()));
+    let inv_key = engine.start_workflow(
+        7001,
+        1,
+        0,
+        42,
+        4,
+        Some(b"inventory:SKU-ABC,qty=10".to_vec()),
+    );
 
     // Step 0: Check stock
     engine.complete_step(inv_key, 0, b"stock_available:100".to_vec());
@@ -251,8 +298,8 @@ fn test_customer_onboarding() {
     ];
     let saga_id = orchestrator.create_saga(42, steps);
 
-    let onboard_key = engine.start_workflow(8001, 1, 0, 42, 3,
-        Some(b"onboarding:customer-123".to_vec()));
+    let onboard_key =
+        engine.start_workflow(8001, 1, 0, 42, 3, Some(b"onboarding:customer-123".to_vec()));
 
     // KYC passes
     orchestrator.complete_step(saga_id, 0, Some(b"kyc_passed".to_vec()));
@@ -277,22 +324,52 @@ fn test_data_pipeline_orchestration() {
     println!("test_data_pipeline_orchestration: extract → transform → load with retries");
     let engine = WorkflowEngine::new();
 
-    let pipeline_key = engine.start_workflow(9001, 1, 0, 42, 3,
-        Some(b"pipeline:source=db,target=warehouse".to_vec()));
+    let pipeline_key = engine.start_workflow(
+        9001,
+        1,
+        0,
+        42,
+        3,
+        Some(b"pipeline:source=db,target=warehouse".to_vec()),
+    );
 
     // Step 0: Extract — schedule with activity timeouts
-    engine.schedule_activity_with_timeouts(pipeline_key, 0, 300, b"extract".to_vec(),
-        5000, 30000, 60000, 10000);
+    engine.schedule_activity_with_timeouts(
+        pipeline_key,
+        0,
+        300,
+        b"extract".to_vec(),
+        5000,
+        30000,
+        60000,
+        10000,
+    );
     engine.complete_step(pipeline_key, 0, b"extracted:10000_rows".to_vec());
 
     // Step 1: Transform
-    engine.schedule_activity_with_timeouts(pipeline_key, 1, 301, b"transform".to_vec(),
-        5000, 60000, 120000, 10000);
+    engine.schedule_activity_with_timeouts(
+        pipeline_key,
+        1,
+        301,
+        b"transform".to_vec(),
+        5000,
+        60000,
+        120000,
+        10000,
+    );
     engine.complete_step(pipeline_key, 1, b"transformed:10000_rows".to_vec());
 
     // Step 2: Load
-    engine.schedule_activity_with_timeouts(pipeline_key, 2, 302, b"load".to_vec(),
-        5000, 120000, 300000, 10000);
+    engine.schedule_activity_with_timeouts(
+        pipeline_key,
+        2,
+        302,
+        b"load".to_vec(),
+        5000,
+        120000,
+        300000,
+        10000,
+    );
     engine.complete_step(pipeline_key, 2, b"loaded:10000_rows".to_vec());
 
     engine.complete_workflow(pipeline_key, Some(b"pipeline_complete".to_vec()));
@@ -306,14 +383,36 @@ fn test_microservice_choreography() {
     println!("test_microservice_choreography: multi-service coordination via signals");
     let engine = WorkflowEngine::new();
 
-    let coord_key = engine.start_workflow(10001, 1, 0, 42, 4,
-        Some(b"choreography:order-123".to_vec()));
+    let coord_key =
+        engine.start_workflow(10001, 1, 0, 42, 4, Some(b"choreography:order-123".to_vec()));
 
     // Start child workflows for each service
-    let order_svc = engine.start_child_workflow(coord_key, 10101, 2, 42, 1, Some(b"process_order".to_vec()));
-    let payment_svc = engine.start_child_workflow(coord_key, 10102, 3, 42, 1, Some(b"process_payment".to_vec()));
-    let inventory_svc = engine.start_child_workflow(coord_key, 10103, 4, 42, 1, Some(b"reserve_inventory".to_vec()));
-    let shipping_svc = engine.start_child_workflow(coord_key, 10104, 5, 42, 1, Some(b"schedule_shipping".to_vec()));
+    let order_svc =
+        engine.start_child_workflow(coord_key, 10101, 2, 42, 1, Some(b"process_order".to_vec()));
+    let payment_svc = engine.start_child_workflow(
+        coord_key,
+        10102,
+        3,
+        42,
+        1,
+        Some(b"process_payment".to_vec()),
+    );
+    let inventory_svc = engine.start_child_workflow(
+        coord_key,
+        10103,
+        4,
+        42,
+        1,
+        Some(b"reserve_inventory".to_vec()),
+    );
+    let shipping_svc = engine.start_child_workflow(
+        coord_key,
+        10104,
+        5,
+        42,
+        1,
+        Some(b"schedule_shipping".to_vec()),
+    );
 
     // Each service completes and signals the coordinator
     engine.complete_step(order_svc, 0, b"order_processed".to_vec());
@@ -339,12 +438,22 @@ fn test_microservice_choreography() {
     assert!(engine.has_signal(coord_key, 53));
 
     // Coordinator completes all steps
-    complete_all_steps(&engine, coord_key, &[
-        b"order_done", b"payment_done", b"inventory_done", b"shipping_done",
-    ]);
+    complete_all_steps(
+        &engine,
+        coord_key,
+        &[
+            b"order_done",
+            b"payment_done",
+            b"inventory_done",
+            b"shipping_done",
+        ],
+    );
     engine.complete_workflow(coord_key, Some(b"choreography_complete".to_vec()));
     assert_eq!(engine.get_status(coord_key), WorkflowStatus::Completed);
-    println!("  microservice choreography completed, {} workflows", engine.workflow_count());
+    println!(
+        "  microservice choreography completed, {} workflows",
+        engine.workflow_count()
+    );
     engine.shutdown();
 }
 
@@ -353,11 +462,21 @@ fn test_deployment_pipeline() {
     println!("test_deployment_pipeline: build → test → stage → promote → rollback");
     let engine = WorkflowEngine::new();
 
-    let deploy_key = engine.start_workflow(11001, 1, 0, 42, 5,
-        Some(b"deploy:service-api,v2.1.0".to_vec()));
+    let deploy_key = engine.start_workflow(
+        11001,
+        1,
+        0,
+        42,
+        5,
+        Some(b"deploy:service-api,v2.1.0".to_vec()),
+    );
 
     // Step 0: Build
-    engine.complete_step(deploy_key, 0, b"build_success:docker-image-sha256:abc123".to_vec());
+    engine.complete_step(
+        deploy_key,
+        0,
+        b"build_success:docker-image-sha256:abc123".to_vec(),
+    );
     // Step 1: Test
     engine.complete_step(deploy_key, 1, b"tests_passed:142/142".to_vec());
     // Step 2: Stage
@@ -385,8 +504,14 @@ fn test_subscription_lifecycle() {
     println!("test_subscription_lifecycle: subscribe → renew → upgrade → cancel");
     let engine = WorkflowEngine::new();
 
-    let sub_key = engine.start_workflow(12001, 1, 0, 42, 4,
-        Some(b"subscription:user-456,plan=basic".to_vec()));
+    let sub_key = engine.start_workflow(
+        12001,
+        1,
+        0,
+        42,
+        4,
+        Some(b"subscription:user-456,plan=basic".to_vec()),
+    );
 
     // Step 0: Subscribe
     engine.complete_step(sub_key, 0, b"subscribed:basic,$9.99/mo".to_vec());
@@ -431,8 +556,14 @@ fn test_travel_booking() {
             .with_compensation(202, Some(b"cancel_car".to_vec())),
     ];
     let saga_id = orchestrator.create_saga(42, steps);
-    let travel_key = engine.start_workflow(13001, 1, 0, 42, 3,
-        Some(b"travel:NYC,dates=2025-03-01_to_2025-03-05".to_vec()));
+    let travel_key = engine.start_workflow(
+        13001,
+        1,
+        0,
+        42,
+        3,
+        Some(b"travel:NYC,dates=2025-03-01_to_2025-03-05".to_vec()),
+    );
 
     // Book flight — success
     orchestrator.complete_step(saga_id, 0, Some(b"flight_booked:AA-123".to_vec()));
@@ -464,8 +595,14 @@ fn test_loan_origination() {
     println!("test_loan_origination: application → underwriting → approval → funding");
     let engine = WorkflowEngine::new();
 
-    let loan_key = engine.start_workflow(14001, 1, 0, 42, 4,
-        Some(b"loan:applicant=Borrower-789,amount=250000".to_vec()));
+    let loan_key = engine.start_workflow(
+        14001,
+        1,
+        0,
+        42,
+        4,
+        Some(b"loan:applicant=Borrower-789,amount=250000".to_vec()),
+    );
 
     // Step 0: Application received
     engine.complete_step(loan_key, 0, b"application_received:APP-001".to_vec());
@@ -493,8 +630,14 @@ fn test_incident_response() {
     println!("test_incident_response: detect → page → investigate → resolve → postmortem");
     let engine = WorkflowEngine::new();
 
-    let incident_key = engine.start_workflow(15001, 1, 0, 42, 5,
-        Some(b"incident:severity=SEV1,service=payments".to_vec()));
+    let incident_key = engine.start_workflow(
+        15001,
+        1,
+        0,
+        42,
+        5,
+        Some(b"incident:severity=SEV1,service=payments".to_vec()),
+    );
 
     // Step 0: Detection
     engine.complete_step(incident_key, 0, b"detected:high_latency,p99=5s".to_vec());
@@ -506,13 +649,21 @@ fn test_incident_response() {
     engine.signal_workflow(incident_key, 90, b"metric:cpu_usage=95%".to_vec());
     engine.signal_workflow(incident_key, 90, b"metric:memory_usage=88%".to_vec());
     engine.signal_workflow(incident_key, 91, b"log:oom_killer_triggered".to_vec());
-    engine.complete_step(incident_key, 2, b"root_cause:memory_leak_in_service-v3.2.1".to_vec());
+    engine.complete_step(
+        incident_key,
+        2,
+        b"root_cause:memory_leak_in_service-v3.2.1".to_vec(),
+    );
 
     // Step 3: Resolution
     engine.complete_step(incident_key, 3, b"resolved:rolled_back_to_v3.2.0".to_vec());
 
     // Step 4: Postmortem
-    engine.complete_step(incident_key, 4, b"postmortem:action_items=5,severity=SEV1".to_vec());
+    engine.complete_step(
+        incident_key,
+        4,
+        b"postmortem:action_items=5,severity=SEV1".to_vec(),
+    );
 
     engine.complete_workflow(incident_key, Some(b"incident_closed:MTTR=45min".to_vec()));
     assert_eq!(engine.get_status(incident_key), WorkflowStatus::Completed);

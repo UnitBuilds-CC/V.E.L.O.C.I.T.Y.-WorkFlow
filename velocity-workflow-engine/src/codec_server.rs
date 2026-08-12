@@ -60,21 +60,26 @@ impl PayloadCodec for Base64Codec {
 
     fn decode(&self, payload: &[u8]) -> Result<Vec<u8>, String> {
         let mut result = Vec::new();
-        let filtered: Vec<u8> = payload.iter().copied().filter(|&b| b != b'=' && b != b'\n' && b != b'\r').collect();
+        let filtered: Vec<u8> = payload
+            .iter()
+            .copied()
+            .filter(|&b| b != b'=' && b != b'\n' && b != b'\r')
+            .collect();
         for chunk in filtered.chunks(4) {
             if chunk.len() < 2 {
                 break;
             }
-            let vals: Vec<u32> = chunk.iter().map(|&c| {
-                match c {
+            let vals: Vec<u32> = chunk
+                .iter()
+                .map(|&c| match c {
                     b'A'..=b'Z' => (c - b'A') as u32,
                     b'a'..=b'z' => (c - b'a' + 26) as u32,
                     b'0'..=b'9' => (c - b'0' + 52) as u32,
                     b'+' => 62,
                     b'/' => 63,
                     _ => 0,
-                }
-            }).collect();
+                })
+                .collect();
 
             let b0 = (vals[0] << 2) | (vals[1] >> 4);
             result.push(b0 as u8);
@@ -162,10 +167,12 @@ impl CodecServer {
                 for payload in &request.payloads {
                     match codec.encode(payload) {
                         Ok(e) => encoded.push(e),
-                        Err(e) => return CodecResponse {
-                            payloads: vec![],
-                            error: Some(e),
-                        },
+                        Err(e) => {
+                            return CodecResponse {
+                                payloads: vec![],
+                                error: Some(e),
+                            }
+                        }
                     }
                 }
                 CodecResponse {
@@ -188,10 +195,12 @@ impl CodecServer {
                 for payload in &request.payloads {
                     match codec.decode(payload) {
                         Ok(d) => decoded.push(d),
-                        Err(e) => return CodecResponse {
-                            payloads: vec![],
-                            error: Some(e),
-                        },
+                        Err(e) => {
+                            return CodecResponse {
+                                payloads: vec![],
+                                error: Some(e),
+                            }
+                        }
                     }
                 }
                 CodecResponse {

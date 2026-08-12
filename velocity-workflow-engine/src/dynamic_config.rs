@@ -8,7 +8,10 @@
 //! - Typed config keys with defaults and descriptions
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── Config Value ────────────────────────────────────────────────────────────
@@ -25,11 +28,38 @@ pub enum ConfigValue {
 }
 
 impl ConfigValue {
-    pub fn as_bool(&self) -> Option<bool> { match self { ConfigValue::Bool(v) => Some(*v), _ => None } }
-    pub fn as_int(&self) -> Option<i64> { match self { ConfigValue::Int(v) => Some(*v), _ => None } }
-    pub fn as_float(&self) -> Option<f64> { match self { ConfigValue::Float(v) => Some(*v), ConfigValue::Int(v) => Some(*v as f64), _ => None } }
-    pub fn as_string(&self) -> Option<&str> { match self { ConfigValue::String(v) => Some(v), _ => None } }
-    pub fn as_duration(&self) -> Option<Duration> { match self { ConfigValue::Duration(v) => Some(*v), ConfigValue::Int(v) => Some(Duration::from_millis(*v as u64)), _ => None } }
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            ConfigValue::Bool(v) => Some(*v),
+            _ => None,
+        }
+    }
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            ConfigValue::Int(v) => Some(*v),
+            _ => None,
+        }
+    }
+    pub fn as_float(&self) -> Option<f64> {
+        match self {
+            ConfigValue::Float(v) => Some(*v),
+            ConfigValue::Int(v) => Some(*v as f64),
+            _ => None,
+        }
+    }
+    pub fn as_string(&self) -> Option<&str> {
+        match self {
+            ConfigValue::String(v) => Some(v),
+            _ => None,
+        }
+    }
+    pub fn as_duration(&self) -> Option<Duration> {
+        match self {
+            ConfigValue::Duration(v) => Some(*v),
+            ConfigValue::Int(v) => Some(Duration::from_millis(*v as u64)),
+            _ => None,
+        }
+    }
 }
 
 // ─── Constraints ─────────────────────────────────────────────────────────────
@@ -49,10 +79,15 @@ pub struct Constraints {
 }
 
 impl Constraints {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn for_namespace(ns: &str) -> Self {
-        Self { namespace: Some(ns.to_string()), ..Default::default() }
+        Self {
+            namespace: Some(ns.to_string()),
+            ..Default::default()
+        }
     }
 
     pub fn for_task_queue(ns: &str, tq: &str, tq_type: u32) -> Self {
@@ -65,17 +100,28 @@ impl Constraints {
     }
 
     pub fn for_shard(shard_id: i32) -> Self {
-        Self { shard_id: Some(shard_id), ..Default::default() }
+        Self {
+            shard_id: Some(shard_id),
+            ..Default::default()
+        }
     }
 
     /// Calculate the specificity score of these constraints.
     /// Higher = more specific. Used for precedence matching.
     pub fn specificity(&self) -> u32 {
         let mut score = 0;
-        if self.namespace.is_some() { score += 1; }
-        if self.task_queue_name.is_some() { score += 2; }
-        if self.task_queue_type.is_some() { score += 1; }
-        if self.shard_id.is_some() { score += 4; }
+        if self.namespace.is_some() {
+            score += 1;
+        }
+        if self.task_queue_name.is_some() {
+            score += 2;
+        }
+        if self.task_queue_type.is_some() {
+            score += 1;
+        }
+        if self.shard_id.is_some() {
+            score += 4;
+        }
         score
     }
 
@@ -83,24 +129,34 @@ impl Constraints {
     /// A constraint matches if it's None (unspecified) or equals the query value.
     pub fn matches(&self, query: &Constraints) -> bool {
         if let Some(ref ns) = self.namespace {
-            if query.namespace.as_ref() != Some(ns) { return false; }
+            if query.namespace.as_ref() != Some(ns) {
+                return false;
+            }
         }
         if let Some(ref tq) = self.task_queue_name {
-            if query.task_queue_name.as_ref() != Some(tq) { return false; }
+            if query.task_queue_name.as_ref() != Some(tq) {
+                return false;
+            }
         }
         if let Some(ref tqt) = self.task_queue_type {
-            if query.task_queue_type.as_ref() != Some(tqt) { return false; }
+            if query.task_queue_type.as_ref() != Some(tqt) {
+                return false;
+            }
         }
         if let Some(ref sid) = self.shard_id {
-            if query.shard_id.as_ref() != Some(sid) { return false; }
+            if query.shard_id.as_ref() != Some(sid) {
+                return false;
+            }
         }
         true
     }
 
     /// Is this the empty (global/unconstrained) constraint?
     pub fn is_global(&self) -> bool {
-        self.namespace.is_none() && self.task_queue_name.is_none()
-            && self.task_queue_type.is_none() && self.shard_id.is_none()
+        self.namespace.is_none()
+            && self.task_queue_name.is_none()
+            && self.task_queue_type.is_none()
+            && self.shard_id.is_none()
     }
 }
 
@@ -151,11 +207,22 @@ impl ConfigKey {
         }
     }
 
-    pub fn with_precedence(mut self, p: Precedence) -> Self { self.precedence = p; self }
-    pub fn name(&self) -> &str { &self.name }
-    pub fn description(&self) -> &str { &self.description }
-    pub fn default_value(&self) -> &ConfigValue { &self.default }
-    pub fn precedence(&self) -> Precedence { self.precedence }
+    pub fn with_precedence(mut self, p: Precedence) -> Self {
+        self.precedence = p;
+        self
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+    pub fn default_value(&self) -> &ConfigValue {
+        &self.default
+    }
+    pub fn precedence(&self) -> Precedence {
+        self.precedence
+    }
 }
 
 // ─── Config Client trait ─────────────────────────────────────────────────────
@@ -189,7 +256,10 @@ impl MemoryConfigClient {
     }
 
     /// Subscribe to config changes. Returns a subscription ID.
-    pub fn subscribe(&self, callback: Arc<dyn Fn(&str, &[ConstrainedValue]) + Send + Sync>) -> usize {
+    pub fn subscribe(
+        &self,
+        callback: Arc<dyn Fn(&str, &[ConstrainedValue]) + Send + Sync>,
+    ) -> usize {
         let mut subs = self.subscribers.lock().unwrap();
         let id = subs.len();
         subs.push(callback);
@@ -204,16 +274,25 @@ impl MemoryConfigClient {
         }
     }
 
-    pub fn update_count(&self) -> u64 { self.update_count.load(Ordering::Relaxed) }
+    pub fn update_count(&self) -> u64 {
+        self.update_count.load(Ordering::Relaxed)
+    }
 }
 
 impl Default for MemoryConfigClient {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConfigClient for MemoryConfigClient {
     fn get_value(&self, key: &str) -> Vec<ConstrainedValue> {
-        self.values.read().unwrap().get(&key.to_lowercase()).cloned().unwrap_or_default()
+        self.values
+            .read()
+            .unwrap()
+            .get(&key.to_lowercase())
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn set_value(&self, key: &str, cv: ConstrainedValue) -> bool {
@@ -222,7 +301,10 @@ impl ConfigClient for MemoryConfigClient {
         let entry = values.entry(key_lower.clone()).or_insert_with(Vec::new);
 
         // Replace existing constrained value with same constraints, or add new
-        if let Some(existing) = entry.iter_mut().find(|cv2| cv2.constraints == cv.constraints) {
+        if let Some(existing) = entry
+            .iter_mut()
+            .find(|cv2| cv2.constraints == cv.constraints)
+        {
             existing.value = cv.value;
         } else {
             entry.push(cv);
@@ -230,7 +312,13 @@ impl ConfigClient for MemoryConfigClient {
         drop(values);
 
         self.update_count.fetch_add(1, Ordering::Relaxed);
-        let vals = self.values.read().unwrap().get(&key_lower).cloned().unwrap_or_default();
+        let vals = self
+            .values
+            .read()
+            .unwrap()
+            .get(&key_lower)
+            .cloned()
+            .unwrap_or_default();
         self.notify(&key_lower, &vals);
         true
     }
@@ -255,10 +343,15 @@ impl StaticConfigClient {
 
 impl ConfigClient for StaticConfigClient {
     fn get_value(&self, key: &str) -> Vec<ConstrainedValue> {
-        self.values.get(&key.to_lowercase()).cloned().unwrap_or_default()
+        self.values
+            .get(&key.to_lowercase())
+            .cloned()
+            .unwrap_or_default()
     }
 
-    fn set_value(&self, _key: &str, _cv: ConstrainedValue) -> bool { false } // Read-only
+    fn set_value(&self, _key: &str, _cv: ConstrainedValue) -> bool {
+        false
+    } // Read-only
 
     fn list_keys(&self) -> Vec<String> {
         self.values.keys().cloned().collect()
@@ -331,57 +424,62 @@ impl ConfigCollection {
 
     /// Get a bool config value.
     pub fn get_bool(&self, key: &ConfigKey) -> bool {
-        key.default_value().as_bool().unwrap_or(false)
-            .then(|| true).unwrap_or_else(|| {
-                self.get(key).as_bool().unwrap_or(false)
-            })
+        key.default_value()
+            .as_bool()
+            .unwrap_or(false)
+            .then(|| true)
+            .unwrap_or_else(|| self.get(key).as_bool().unwrap_or(false))
     }
 
     /// Get a bool with constraints.
     pub fn get_bool_with(&self, key: &ConfigKey, constraints: &Constraints) -> bool {
-        self.get_with_constraints(key, constraints).as_bool().unwrap_or_else(|| {
-            key.default_value().as_bool().unwrap_or(false)
-        })
+        self.get_with_constraints(key, constraints)
+            .as_bool()
+            .unwrap_or_else(|| key.default_value().as_bool().unwrap_or(false))
     }
 
     /// Get an int config value.
     pub fn get_int(&self, key: &ConfigKey) -> i64 {
-        self.get(key).as_int().unwrap_or_else(|| {
-            key.default_value().as_int().unwrap_or(0)
-        })
+        self.get(key)
+            .as_int()
+            .unwrap_or_else(|| key.default_value().as_int().unwrap_or(0))
     }
 
     /// Get an int with constraints.
     pub fn get_int_with(&self, key: &ConfigKey, constraints: &Constraints) -> i64 {
-        self.get_with_constraints(key, constraints).as_int().unwrap_or_else(|| {
-            key.default_value().as_int().unwrap_or(0)
-        })
+        self.get_with_constraints(key, constraints)
+            .as_int()
+            .unwrap_or_else(|| key.default_value().as_int().unwrap_or(0))
     }
 
     /// Get a float config value.
     pub fn get_float(&self, key: &ConfigKey) -> f64 {
-        self.get(key).as_float().unwrap_or_else(|| {
-            key.default_value().as_float().unwrap_or(0.0)
-        })
+        self.get(key)
+            .as_float()
+            .unwrap_or_else(|| key.default_value().as_float().unwrap_or(0.0))
     }
 
     /// Get a string config value.
     pub fn get_string(&self, key: &ConfigKey) -> String {
-        self.get(key).as_string().map(|s| s.to_string()).unwrap_or_else(|| {
-            key.default_value().as_string().unwrap_or("").to_string()
-        })
+        self.get(key)
+            .as_string()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| key.default_value().as_string().unwrap_or("").to_string())
     }
 
     /// Get a duration config value.
     pub fn get_duration(&self, key: &ConfigKey) -> Duration {
-        self.get(key).as_duration().unwrap_or_else(|| {
-            key.default_value().as_duration().unwrap_or(Duration::ZERO)
-        })
+        self.get(key)
+            .as_duration()
+            .unwrap_or_else(|| key.default_value().as_duration().unwrap_or(Duration::ZERO))
     }
 
     /// Register a callback for when a key changes.
     pub fn on_change(&self, key: &str, callback: Box<dyn Fn(&ConfigValue) + Send + Sync>) {
-        self.callbacks.lock().unwrap().push((key.to_string(), callback));
+        self.callbacks
+            .lock()
+            .unwrap()
+            .push((key.to_string(), callback));
     }
 
     /// Invalidate the cache (e.g., after a config update).
@@ -390,10 +488,14 @@ impl ConfigCollection {
     }
 
     /// Cache hit count.
-    pub fn cache_hits(&self) -> u64 { self.hit_count.load(Ordering::Relaxed) }
+    pub fn cache_hits(&self) -> u64 {
+        self.hit_count.load(Ordering::Relaxed)
+    }
 
     /// Cache miss count.
-    pub fn cache_misses(&self) -> u64 { self.miss_count.load(Ordering::Relaxed) }
+    pub fn cache_misses(&self) -> u64 {
+        self.miss_count.load(Ordering::Relaxed)
+    }
 }
 
 // ─── Gradual Change ──────────────────────────────────────────────────────────
@@ -442,14 +544,26 @@ impl GradualChange {
                     let interpolated = *from + ((*to - *from) as f64 * progress) as i64;
                     // We can't return a reference to a temporary, so we use the to_value
                     // In a real impl, we'd cache this. For now, use majority vote.
-                    if progress >= 0.5 { &self.to_value } else { &self.from_value }
+                    if progress >= 0.5 {
+                        &self.to_value
+                    } else {
+                        &self.from_value
+                    }
                 }
                 (ConfigValue::Float(from), ConfigValue::Float(to)) => {
-                    if progress >= 0.5 { &self.to_value } else { &self.from_value }
+                    if progress >= 0.5 {
+                        &self.to_value
+                    } else {
+                        &self.from_value
+                    }
                 }
                 _ => {
                     // Non-numeric: switch at halfway point
-                    if progress >= 0.5 { &self.to_value } else { &self.from_value }
+                    if progress >= 0.5 {
+                        &self.to_value
+                    } else {
+                        &self.from_value
+                    }
                 }
             }
         }
@@ -465,8 +579,12 @@ impl GradualChange {
         (self.start_time.elapsed().as_secs_f64() / self.duration.as_secs_f64()).min(1.0)
     }
 
-    pub fn key(&self) -> &str { &self.key }
-    pub fn target_namespace(&self) -> Option<&str> { self.target_namespace.as_deref() }
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+    pub fn target_namespace(&self) -> Option<&str> {
+        self.target_namespace.as_deref()
+    }
 }
 
 // ─── Config Registry ─────────────────────────────────────────────────────────
@@ -478,7 +596,9 @@ pub struct ConfigRegistry {
 
 impl ConfigRegistry {
     pub fn new() -> Self {
-        Self { keys: HashMap::new() }
+        Self {
+            keys: HashMap::new(),
+        }
     }
 
     /// Register a config key.
@@ -497,55 +617,119 @@ impl ConfigRegistry {
     }
 
     /// Number of registered keys.
-    pub fn key_count(&self) -> usize { self.keys.len() }
+    pub fn key_count(&self) -> usize {
+        self.keys.len()
+    }
 
     /// Create a default registry with common Temporal config keys.
     pub fn with_defaults() -> Self {
         let mut reg = Self::new();
-        reg.register(ConfigKey::new("workflow.maxConcurrent", ConfigValue::Int(1000),
-            "Maximum concurrent workflow executions per namespace")
-            .with_precedence(Precedence::Namespace));
-        reg.register(ConfigKey::new("workflow.executionTimeoutMs", ConfigValue::Int(60000),
-            "Default workflow execution timeout in milliseconds"));
-        reg.register(ConfigKey::new("workflow.retentionDays", ConfigValue::Int(7),
-            "Default workflow history retention in days")
-            .with_precedence(Precedence::Namespace));
-        reg.register(ConfigKey::new("activity.maxRetries", ConfigValue::Int(3),
-            "Maximum number of activity retries"));
-        reg.register(ConfigKey::new("activity.heartbeatTimeoutMs", ConfigValue::Int(30000),
-            "Activity heartbeat timeout in milliseconds"));
-        reg.register(ConfigKey::new("activity.maxScheduleTimeoutMs", ConfigValue::Int(60000),
-            "Maximum timeout for scheduling an activity"));
-        reg.register(ConfigKey::new("matching.forwardRate", ConfigValue::Float(0.8),
-            "Rate of task forwarding between partitions")
-            .with_precedence(Precedence::TaskQueue));
-        reg.register(ConfigKey::new("matching.numPartitions", ConfigValue::Int(4),
-            "Number of task queue partitions")
-            .with_precedence(Precedence::TaskQueue));
-        reg.register(ConfigKey::new("namespace.maxWorkflows", ConfigValue::Int(10000),
-            "Maximum concurrent workflows per namespace")
-            .with_precedence(Precedence::Namespace));
-        reg.register(ConfigKey::new("rateLimit.globalRps", ConfigValue::Int(10000),
-            "Global rate limit in requests per second"));
-        reg.register(ConfigKey::new("history.shardCount", ConfigValue::Int(512),
-            "Number of history shards"));
-        reg.register(ConfigKey::new("history.maxPageSize", ConfigValue::Int(1000),
-            "Maximum page size for history API responses"));
-        reg.register(ConfigKey::new("persistence.maxQPS", ConfigValue::Int(5000),
-            "Maximum persistence queries per second")
-            .with_precedence(Precedence::ShardID));
-        reg.register(ConfigKey::new("frontend.rps", ConfigValue::Int(2400),
-            "Frontend API rate limit per second"));
-        reg.register(ConfigKey::new("archival.enabled", ConfigValue::Bool(false),
-            "Whether archival is enabled"));
-        reg.register(ConfigKey::new("replication.enabled", ConfigValue::Bool(false),
-            "Whether multi-cluster replication is enabled"));
+        reg.register(
+            ConfigKey::new(
+                "workflow.maxConcurrent",
+                ConfigValue::Int(1000),
+                "Maximum concurrent workflow executions per namespace",
+            )
+            .with_precedence(Precedence::Namespace),
+        );
+        reg.register(ConfigKey::new(
+            "workflow.executionTimeoutMs",
+            ConfigValue::Int(60000),
+            "Default workflow execution timeout in milliseconds",
+        ));
+        reg.register(
+            ConfigKey::new(
+                "workflow.retentionDays",
+                ConfigValue::Int(7),
+                "Default workflow history retention in days",
+            )
+            .with_precedence(Precedence::Namespace),
+        );
+        reg.register(ConfigKey::new(
+            "activity.maxRetries",
+            ConfigValue::Int(3),
+            "Maximum number of activity retries",
+        ));
+        reg.register(ConfigKey::new(
+            "activity.heartbeatTimeoutMs",
+            ConfigValue::Int(30000),
+            "Activity heartbeat timeout in milliseconds",
+        ));
+        reg.register(ConfigKey::new(
+            "activity.maxScheduleTimeoutMs",
+            ConfigValue::Int(60000),
+            "Maximum timeout for scheduling an activity",
+        ));
+        reg.register(
+            ConfigKey::new(
+                "matching.forwardRate",
+                ConfigValue::Float(0.8),
+                "Rate of task forwarding between partitions",
+            )
+            .with_precedence(Precedence::TaskQueue),
+        );
+        reg.register(
+            ConfigKey::new(
+                "matching.numPartitions",
+                ConfigValue::Int(4),
+                "Number of task queue partitions",
+            )
+            .with_precedence(Precedence::TaskQueue),
+        );
+        reg.register(
+            ConfigKey::new(
+                "namespace.maxWorkflows",
+                ConfigValue::Int(10000),
+                "Maximum concurrent workflows per namespace",
+            )
+            .with_precedence(Precedence::Namespace),
+        );
+        reg.register(ConfigKey::new(
+            "rateLimit.globalRps",
+            ConfigValue::Int(10000),
+            "Global rate limit in requests per second",
+        ));
+        reg.register(ConfigKey::new(
+            "history.shardCount",
+            ConfigValue::Int(512),
+            "Number of history shards",
+        ));
+        reg.register(ConfigKey::new(
+            "history.maxPageSize",
+            ConfigValue::Int(1000),
+            "Maximum page size for history API responses",
+        ));
+        reg.register(
+            ConfigKey::new(
+                "persistence.maxQPS",
+                ConfigValue::Int(5000),
+                "Maximum persistence queries per second",
+            )
+            .with_precedence(Precedence::ShardID),
+        );
+        reg.register(ConfigKey::new(
+            "frontend.rps",
+            ConfigValue::Int(2400),
+            "Frontend API rate limit per second",
+        ));
+        reg.register(ConfigKey::new(
+            "archival.enabled",
+            ConfigValue::Bool(false),
+            "Whether archival is enabled",
+        ));
+        reg.register(ConfigKey::new(
+            "replication.enabled",
+            ConfigValue::Bool(false),
+            "Whether multi-cluster replication is enabled",
+        ));
         reg
     }
 }
 
 impl Default for ConfigRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── DynamicConfig (legacy compat) ──────────────────────────────────────────
@@ -560,27 +744,63 @@ impl DynamicConfig {
     pub fn new() -> Self {
         let mut defaults = HashMap::new();
         defaults.insert("workflow.maxConcurrent".into(), ConfigValue::Int(1000));
-        defaults.insert("workflow.executionTimeoutMs".into(), ConfigValue::Int(60000));
+        defaults.insert(
+            "workflow.executionTimeoutMs".into(),
+            ConfigValue::Int(60000),
+        );
         defaults.insert("activity.maxRetries".into(), ConfigValue::Int(3));
-        defaults.insert("activity.heartbeatTimeoutMs".into(), ConfigValue::Int(30000));
+        defaults.insert(
+            "activity.heartbeatTimeoutMs".into(),
+            ConfigValue::Int(30000),
+        );
         defaults.insert("matching.forwardRate".into(), ConfigValue::Float(0.8));
         defaults.insert("namespace.maxWorkflows".into(), ConfigValue::Int(10000));
         defaults.insert("rateLimit.globalRps".into(), ConfigValue::Int(10000));
-        Self { values: RwLock::new(HashMap::new()), defaults: RwLock::new(defaults) }
+        Self {
+            values: RwLock::new(HashMap::new()),
+            defaults: RwLock::new(defaults),
+        }
     }
-    pub fn set(&self, key: &str, value: ConfigValue) { self.values.write().unwrap().insert(key.to_string(), value); }
+    pub fn set(&self, key: &str, value: ConfigValue) {
+        self.values.write().unwrap().insert(key.to_string(), value);
+    }
     pub fn get(&self, key: &str) -> Option<ConfigValue> {
-        if let Some(v) = self.values.read().unwrap().get(key) { return Some(v.clone()); }
+        if let Some(v) = self.values.read().unwrap().get(key) {
+            return Some(v.clone());
+        }
         self.defaults.read().unwrap().get(key).cloned()
     }
-    pub fn get_int(&self, key: &str) -> i64 { match self.get(key) { Some(ConfigValue::Int(v)) => v, _ => 0 } }
-    pub fn get_bool(&self, key: &str) -> bool { matches!(self.get(key), Some(ConfigValue::Bool(true))) }
-    pub fn get_float(&self, key: &str) -> f64 { match self.get(key) { Some(ConfigValue::Float(v)) => v, _ => 0.0 } }
-    pub fn get_string(&self, key: &str) -> Option<String> { match self.get(key) { Some(ConfigValue::String(v)) => Some(v), _ => None } }
-    pub fn key_count(&self) -> usize { self.values.read().unwrap().len() + self.defaults.read().unwrap().len() }
+    pub fn get_int(&self, key: &str) -> i64 {
+        match self.get(key) {
+            Some(ConfigValue::Int(v)) => v,
+            _ => 0,
+        }
+    }
+    pub fn get_bool(&self, key: &str) -> bool {
+        matches!(self.get(key), Some(ConfigValue::Bool(true)))
+    }
+    pub fn get_float(&self, key: &str) -> f64 {
+        match self.get(key) {
+            Some(ConfigValue::Float(v)) => v,
+            _ => 0.0,
+        }
+    }
+    pub fn get_string(&self, key: &str) -> Option<String> {
+        match self.get(key) {
+            Some(ConfigValue::String(v)) => Some(v),
+            _ => None,
+        }
+    }
+    pub fn key_count(&self) -> usize {
+        self.values.read().unwrap().len() + self.defaults.read().unwrap().len()
+    }
 
     pub fn list_keys(&self) -> Vec<String> {
-        let mut keys: Vec<String> = self.values.read().unwrap().keys()
+        let mut keys: Vec<String> = self
+            .values
+            .read()
+            .unwrap()
+            .keys()
             .chain(self.defaults.read().unwrap().keys())
             .cloned()
             .collect();
@@ -590,7 +810,11 @@ impl DynamicConfig {
     }
 }
 
-impl Default for DynamicConfig { fn default() -> Self { Self::new() } }
+impl Default for DynamicConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -685,10 +909,13 @@ mod tests {
     #[test]
     fn test_memory_client_set_get() {
         let client = MemoryConfigClient::new();
-        client.set_value("test.key", ConstrainedValue {
-            constraints: Constraints::new(),
-            value: ConfigValue::Int(42),
-        });
+        client.set_value(
+            "test.key",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Int(42),
+            },
+        );
         let values = client.get_value("test.key");
         assert_eq!(values.len(), 1);
         assert_eq!(values[0].value, ConfigValue::Int(42));
@@ -697,14 +924,20 @@ mod tests {
     #[test]
     fn test_memory_client_constrained() {
         let client = MemoryConfigClient::new();
-        client.set_value("test.key", ConstrainedValue {
-            constraints: Constraints::new(),
-            value: ConfigValue::Int(10),
-        });
-        client.set_value("test.key", ConstrainedValue {
-            constraints: Constraints::for_namespace("ns-1"),
-            value: ConfigValue::Int(20),
-        });
+        client.set_value(
+            "test.key",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Int(10),
+            },
+        );
+        client.set_value(
+            "test.key",
+            ConstrainedValue {
+                constraints: Constraints::for_namespace("ns-1"),
+                value: ConfigValue::Int(20),
+            },
+        );
         let values = client.get_value("test.key");
         assert_eq!(values.len(), 2);
     }
@@ -717,26 +950,47 @@ mod tests {
         client.subscribe(Arc::new(move |_key, _values| {
             *notified_clone.lock().unwrap() = true;
         }));
-        client.set_value("test.key", ConstrainedValue {
-            constraints: Constraints::new(),
-            value: ConfigValue::Int(1),
-        });
+        client.set_value(
+            "test.key",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Int(1),
+            },
+        );
         assert!(*notified.lock().unwrap());
     }
 
     #[test]
     fn test_memory_client_update_count() {
         let client = MemoryConfigClient::new();
-        client.set_value("k1", ConstrainedValue { constraints: Constraints::new(), value: ConfigValue::Int(1) });
-        client.set_value("k2", ConstrainedValue { constraints: Constraints::new(), value: ConfigValue::Int(2) });
+        client.set_value(
+            "k1",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Int(1),
+            },
+        );
+        client.set_value(
+            "k2",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Int(2),
+            },
+        );
         assert_eq!(client.update_count(), 2);
     }
 
     #[test]
     fn test_memory_client_replace_existing() {
         let client = MemoryConfigClient::new();
-        let cv1 = ConstrainedValue { constraints: Constraints::new(), value: ConfigValue::Int(1) };
-        let cv2 = ConstrainedValue { constraints: Constraints::new(), value: ConfigValue::Int(2) };
+        let cv1 = ConstrainedValue {
+            constraints: Constraints::new(),
+            value: ConfigValue::Int(1),
+        };
+        let cv2 = ConstrainedValue {
+            constraints: Constraints::new(),
+            value: ConfigValue::Int(2),
+        };
         client.set_value("k", cv1);
         client.set_value("k", cv2); // Same constraints → replaces
         let values = client.get_value("k");
@@ -749,14 +1003,23 @@ mod tests {
     #[test]
     fn test_static_client() {
         let mut values = HashMap::new();
-        values.insert("key1".to_string(), vec![ConstrainedValue {
-            constraints: Constraints::new(),
-            value: ConfigValue::Bool(true),
-        }]);
+        values.insert(
+            "key1".to_string(),
+            vec![ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Bool(true),
+            }],
+        );
         let client = StaticConfigClient::new(values);
         assert_eq!(client.get_value("key1").len(), 1);
         assert_eq!(client.get_value("nonexistent").len(), 0);
-        assert!(!client.set_value("key1", ConstrainedValue { constraints: Constraints::new(), value: ConfigValue::Bool(false) }));
+        assert!(!client.set_value(
+            "key1",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Bool(false)
+            }
+        ));
     }
 
     // --- ConfigCollection ---
@@ -773,15 +1036,21 @@ mod tests {
     fn test_collection_constrained_lookup() {
         let client = Arc::new(MemoryConfigClient::new());
         // Global value
-        client.set_value("test.key", ConstrainedValue {
-            constraints: Constraints::new(),
-            value: ConfigValue::Int(10),
-        });
+        client.set_value(
+            "test.key",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Int(10),
+            },
+        );
         // Namespace-specific value
-        client.set_value("test.key", ConstrainedValue {
-            constraints: Constraints::for_namespace("ns-1"),
-            value: ConfigValue::Int(20),
-        });
+        client.set_value(
+            "test.key",
+            ConstrainedValue {
+                constraints: Constraints::for_namespace("ns-1"),
+                value: ConfigValue::Int(20),
+            },
+        );
 
         let collection = ConfigCollection::new(client);
         let key = ConfigKey::new("test.key", ConfigValue::Int(0), "test");
@@ -789,18 +1058,27 @@ mod tests {
         // Global query → gets global value
         assert_eq!(collection.get_int_with(&key, &Constraints::new()), 10);
         // ns-1 query → gets namespace-specific value (higher specificity)
-        assert_eq!(collection.get_int_with(&key, &Constraints::for_namespace("ns-1")), 20);
+        assert_eq!(
+            collection.get_int_with(&key, &Constraints::for_namespace("ns-1")),
+            20
+        );
         // ns-2 query → gets global value (no ns-2 specific value)
-        assert_eq!(collection.get_int_with(&key, &Constraints::for_namespace("ns-2")), 10);
+        assert_eq!(
+            collection.get_int_with(&key, &Constraints::for_namespace("ns-2")),
+            10
+        );
     }
 
     #[test]
     fn test_collection_caching() {
         let client = Arc::new(MemoryConfigClient::new());
-        client.set_value("test.key", ConstrainedValue {
-            constraints: Constraints::new(),
-            value: ConfigValue::Int(42),
-        });
+        client.set_value(
+            "test.key",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Int(42),
+            },
+        );
         let collection = ConfigCollection::new(client);
         let key = ConfigKey::new("test.key", ConfigValue::Int(0), "test");
 
@@ -815,10 +1093,13 @@ mod tests {
     #[test]
     fn test_collection_invalidate_cache() {
         let client = Arc::new(MemoryConfigClient::new());
-        client.set_value("test.key", ConstrainedValue {
-            constraints: Constraints::new(),
-            value: ConfigValue::Int(42),
-        });
+        client.set_value(
+            "test.key",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Int(42),
+            },
+        );
         let collection = ConfigCollection::new(client);
         let key = ConfigKey::new("test.key", ConfigValue::Int(0), "test");
         collection.get_int(&key); // miss + cache
@@ -834,10 +1115,13 @@ mod tests {
     #[test]
     fn test_collection_bool() {
         let client = Arc::new(MemoryConfigClient::new());
-        client.set_value("test.flag", ConstrainedValue {
-            constraints: Constraints::new(),
-            value: ConfigValue::Bool(true),
-        });
+        client.set_value(
+            "test.flag",
+            ConstrainedValue {
+                constraints: Constraints::new(),
+                value: ConfigValue::Bool(true),
+            },
+        );
         let collection = ConfigCollection::new(client);
         let key = ConfigKey::new("test.flag", ConfigValue::Bool(false), "test");
         assert!(collection.get_bool(&key));
@@ -847,7 +1131,12 @@ mod tests {
 
     #[test]
     fn test_gradual_change_complete() {
-        let gc = GradualChange::new("key", ConfigValue::Int(10), ConfigValue::Int(20), Duration::from_millis(1));
+        let gc = GradualChange::new(
+            "key",
+            ConfigValue::Int(10),
+            ConfigValue::Int(20),
+            Duration::from_millis(1),
+        );
         std::thread::sleep(Duration::from_millis(5));
         assert!(gc.is_complete());
         assert_eq!(gc.progress(), 1.0);
@@ -855,15 +1144,25 @@ mod tests {
 
     #[test]
     fn test_gradual_change_in_progress() {
-        let gc = GradualChange::new("key", ConfigValue::Int(10), ConfigValue::Int(20), Duration::from_secs(60));
+        let gc = GradualChange::new(
+            "key",
+            ConfigValue::Int(10),
+            ConfigValue::Int(20),
+            Duration::from_secs(60),
+        );
         assert!(!gc.is_complete());
         assert!(gc.progress() < 0.1); // Just started
     }
 
     #[test]
     fn test_gradual_change_with_namespace() {
-        let gc = GradualChange::new("key", ConfigValue::Int(10), ConfigValue::Int(20), Duration::from_secs(60))
-            .with_namespace("test-ns");
+        let gc = GradualChange::new(
+            "key",
+            ConfigValue::Int(10),
+            ConfigValue::Int(20),
+            Duration::from_secs(60),
+        )
+        .with_namespace("test-ns");
         assert_eq!(gc.target_namespace(), Some("test-ns"));
     }
 
@@ -910,8 +1209,17 @@ mod tests {
         assert_eq!(ConfigValue::Int(42).as_int(), Some(42));
         assert_eq!(ConfigValue::Float(3.14).as_float(), Some(3.14));
         assert_eq!(ConfigValue::Int(42).as_float(), Some(42.0)); // Int → Float
-        assert_eq!(ConfigValue::String("hello".into()).as_string(), Some("hello"));
-        assert_eq!(ConfigValue::Duration(Duration::from_secs(5)).as_duration(), Some(Duration::from_secs(5)));
-        assert_eq!(ConfigValue::Int(1000).as_duration(), Some(Duration::from_millis(1000))); // Int → Duration
+        assert_eq!(
+            ConfigValue::String("hello".into()).as_string(),
+            Some("hello")
+        );
+        assert_eq!(
+            ConfigValue::Duration(Duration::from_secs(5)).as_duration(),
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(
+            ConfigValue::Int(1000).as_duration(),
+            Some(Duration::from_millis(1000))
+        ); // Int → Duration
     }
 }

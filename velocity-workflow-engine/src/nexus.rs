@@ -4,7 +4,10 @@
 //! and persistent endpoint registry.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NexusOperationState {
@@ -86,24 +89,36 @@ impl NexusManager {
 
     /// Register a Nexus endpoint with metadata.
     pub fn register_service(&self, name: &str, endpoint: &str) {
-        self.endpoints.lock().unwrap().insert(name.to_string(), NexusEndpoint {
-            name: name.to_string(),
-            url: endpoint.to_string(),
-            description: None,
-            max_concurrent: 100,
-            active_operations: 0,
-        });
+        self.endpoints.lock().unwrap().insert(
+            name.to_string(),
+            NexusEndpoint {
+                name: name.to_string(),
+                url: endpoint.to_string(),
+                description: None,
+                max_concurrent: 100,
+                active_operations: 0,
+            },
+        );
     }
 
     /// Register an endpoint with full configuration.
-    pub fn register_endpoint(&self, name: &str, url: &str, description: &str, max_concurrent: u32) -> bool {
-        self.endpoints.lock().unwrap().insert(name.to_string(), NexusEndpoint {
-            name: name.to_string(),
-            url: url.to_string(),
-            description: Some(description.to_string()),
-            max_concurrent,
-            active_operations: 0,
-        });
+    pub fn register_endpoint(
+        &self,
+        name: &str,
+        url: &str,
+        description: &str,
+        max_concurrent: u32,
+    ) -> bool {
+        self.endpoints.lock().unwrap().insert(
+            name.to_string(),
+            NexusEndpoint {
+                name: name.to_string(),
+                url: url.to_string(),
+                description: Some(description.to_string()),
+                max_concurrent,
+                active_operations: 0,
+            },
+        );
         true
     }
 
@@ -111,7 +126,9 @@ impl NexusManager {
     pub fn unregister_endpoint(&self, name: &str) -> bool {
         let mut endpoints = self.endpoints.lock().unwrap();
         if let Some(ep) = endpoints.get(name) {
-            if ep.active_operations > 0 { return false; }
+            if ep.active_operations > 0 {
+                return false;
+            }
             endpoints.remove(name);
             true
         } else {
@@ -121,21 +138,35 @@ impl NexusManager {
 
     /// Start a Nexus operation. Returns the operation ID.
     /// Validates the service exists and has capacity.
-    pub fn start_operation(&self, service: &str, operation: &str, workflow_key: u64, input: Option<Vec<u8>>, callback: Option<String>) -> Option<u64> {
+    pub fn start_operation(
+        &self,
+        service: &str,
+        operation: &str,
+        workflow_key: u64,
+        input: Option<Vec<u8>>,
+        callback: Option<String>,
+    ) -> Option<u64> {
         self.start_operation_with_config(service, operation, workflow_key, input, callback, 0, 3)
     }
 
     /// Start a Nexus operation with full configuration (timeout, max_attempts).
     pub fn start_operation_with_config(
-        &self, service: &str, operation: &str, workflow_key: u64,
-        input: Option<Vec<u8>>, callback: Option<String>,
-        timeout_ms: u64, max_attempts: u32,
+        &self,
+        service: &str,
+        operation: &str,
+        workflow_key: u64,
+        input: Option<Vec<u8>>,
+        callback: Option<String>,
+        timeout_ms: u64,
+        max_attempts: u32,
     ) -> Option<u64> {
         // Validate service exists and has capacity
         {
             let mut endpoints = self.endpoints.lock().unwrap();
             let ep = endpoints.get_mut(service)?;
-            if ep.active_operations >= ep.max_concurrent { return None; }
+            if ep.active_operations >= ep.max_concurrent {
+                return None;
+            }
             ep.active_operations += 1;
         }
 
@@ -143,23 +174,26 @@ impl NexusManager {
         let token_id = self.next_token.fetch_add(1, Ordering::Relaxed);
         let token = format!("nexus-token-{}", token_id);
 
-        self.operations.lock().unwrap().insert(id, NexusOperation {
-            operation_id: id,
-            service_name: service.to_string(),
-            operation_name: operation.to_string(),
-            workflow_key,
-            state: NexusOperationState::Scheduled,
-            input,
-            result: None,
-            callback_url: callback,
-            operation_token: Some(token),
-            attempt: 1,
-            max_attempts,
-            timeout_ms,
-            started_at_ms: 0,
-            routing_key: None,
-            error_message: None,
-        });
+        self.operations.lock().unwrap().insert(
+            id,
+            NexusOperation {
+                operation_id: id,
+                service_name: service.to_string(),
+                operation_name: operation.to_string(),
+                workflow_key,
+                state: NexusOperationState::Scheduled,
+                input,
+                result: None,
+                callback_url: callback,
+                operation_token: Some(token),
+                attempt: 1,
+                max_attempts,
+                timeout_ms,
+                started_at_ms: 0,
+                routing_key: None,
+                error_message: None,
+            },
+        );
         Some(id)
     }
 
@@ -167,7 +201,9 @@ impl NexusManager {
     pub fn mark_started(&self, op_id: u64, operation_token: Option<String>) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state != NexusOperationState::Scheduled { return false; }
+            if op.state != NexusOperationState::Scheduled {
+                return false;
+            }
             op.state = NexusOperationState::Started;
             if let Some(token) = operation_token {
                 op.operation_token = Some(token);
@@ -182,7 +218,9 @@ impl NexusManager {
     pub fn complete_operation(&self, op_id: u64, result: Vec<u8>) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state != NexusOperationState::Started && op.state != NexusOperationState::Scheduled {
+            if op.state != NexusOperationState::Started
+                && op.state != NexusOperationState::Scheduled
+            {
                 return false;
             }
             op.state = NexusOperationState::Completed;
@@ -205,7 +243,9 @@ impl NexusManager {
     pub fn fail_operation_with_error(&self, op_id: u64, error: Option<String>) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state == NexusOperationState::Completed || op.state == NexusOperationState::Canceled {
+            if op.state == NexusOperationState::Completed
+                || op.state == NexusOperationState::Canceled
+            {
                 return false;
             }
             op.state = NexusOperationState::Failed;
@@ -223,7 +263,9 @@ impl NexusManager {
     pub fn cancel_operation(&self, op_id: u64) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state == NexusOperationState::Completed || op.state == NexusOperationState::Canceled {
+            if op.state == NexusOperationState::Completed
+                || op.state == NexusOperationState::Canceled
+            {
                 return false;
             }
             op.state = NexusOperationState::Canceled;
@@ -240,7 +282,9 @@ impl NexusManager {
     pub fn timeout_operation(&self, op_id: u64) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state == NexusOperationState::Completed || op.state == NexusOperationState::Canceled {
+            if op.state == NexusOperationState::Completed
+                || op.state == NexusOperationState::Canceled
+            {
                 return false;
             }
             op.state = NexusOperationState::TimedOut;
@@ -258,10 +302,13 @@ impl NexusManager {
     pub fn retry_operation(&self, op_id: u64) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state != NexusOperationState::Failed && op.state != NexusOperationState::TimedOut {
+            if op.state != NexusOperationState::Failed && op.state != NexusOperationState::TimedOut
+            {
                 return false;
             }
-            if op.attempt >= op.max_attempts { return false; }
+            if op.attempt >= op.max_attempts {
+                return false;
+            }
             op.attempt += 1;
             op.state = NexusOperationState::Scheduled;
             op.result = None;
@@ -281,7 +328,9 @@ impl NexusManager {
     pub fn deliver_callback(&self, result: CallbackResult) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&result.operation_id) {
-            if op.state != NexusOperationState::Started { return false; }
+            if op.state != NexusOperationState::Started {
+                return false;
+            }
             if result.success {
                 op.state = NexusOperationState::Completed;
                 op.result = result.payload;
@@ -315,8 +364,9 @@ impl NexusManager {
         let mut ops = self.operations.lock().unwrap();
         for op in ops.values_mut() {
             if op.timeout_ms > 0 && op.started_at_ms > 0 {
-                if op.state == NexusOperationState::Started &&
-                   current_time_ms.saturating_sub(op.started_at_ms) > op.timeout_ms {
+                if op.state == NexusOperationState::Started
+                    && current_time_ms.saturating_sub(op.started_at_ms) > op.timeout_ms
+                {
                     op.state = NexusOperationState::TimedOut;
                     timed_out.push(op.operation_id);
                 }
@@ -340,12 +390,21 @@ impl NexusManager {
         self.operations.lock().unwrap().get(&op_id).cloned()
     }
 
-    pub fn operation_count(&self) -> usize { self.operations.lock().unwrap().len() }
-    pub fn service_count(&self) -> usize { self.endpoints.lock().unwrap().len() }
+    pub fn operation_count(&self) -> usize {
+        self.operations.lock().unwrap().len()
+    }
+    pub fn service_count(&self) -> usize {
+        self.endpoints.lock().unwrap().len()
+    }
 
     /// Count operations in a specific state.
     pub fn count_by_state(&self, state: NexusOperationState) -> usize {
-        self.operations.lock().unwrap().values().filter(|op| op.state == state).count()
+        self.operations
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|op| op.state == state)
+            .count()
     }
 
     /// List all operation IDs.
@@ -378,7 +437,11 @@ impl NexusManager {
     }
 }
 
-impl Default for NexusManager { fn default() -> Self { Self::new() } }
+impl Default for NexusManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -388,16 +451,27 @@ mod tests {
     fn test_nexus_lifecycle() {
         let mgr = NexusManager::new();
         mgr.register_service("payments", "http://payments:8080");
-        let op_id = mgr.start_operation("payments", "charge", 42, Some(vec![1]), None).unwrap();
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::Scheduled);
+        let op_id = mgr
+            .start_operation("payments", "charge", 42, Some(vec![1]), None)
+            .unwrap();
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::Scheduled
+        );
 
         // Transition to Started
         assert!(mgr.mark_started(op_id, None));
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::Started);
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::Started
+        );
 
         // Complete
         assert!(mgr.complete_operation(op_id, vec![2, 3]));
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::Completed);
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::Completed
+        );
     }
 
     #[test]
@@ -406,7 +480,10 @@ mod tests {
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr.start_operation("svc", "op", 1, None, None).unwrap();
         assert!(mgr.cancel_operation(op_id));
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::Canceled);
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::Canceled
+        );
         // Can't cancel again
         assert!(!mgr.cancel_operation(op_id));
     }
@@ -415,25 +492,38 @@ mod tests {
     fn test_nexus_timeout() {
         let mgr = NexusManager::new();
         mgr.register_service("svc", "http://svc:8080");
-        let op_id = mgr.start_operation_with_config("svc", "op", 1, None, None, 1000, 1).unwrap();
+        let op_id = mgr
+            .start_operation_with_config("svc", "op", 1, None, None, 1000, 1)
+            .unwrap();
         assert!(mgr.mark_started(op_id, None));
         assert!(mgr.timeout_operation(op_id));
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::TimedOut);
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::TimedOut
+        );
     }
 
     #[test]
     fn test_nexus_retry() {
         let mgr = NexusManager::new();
         mgr.register_service("svc", "http://svc:8080");
-        let op_id = mgr.start_operation_with_config("svc", "op", 1, None, None, 0, 3).unwrap();
+        let op_id = mgr
+            .start_operation_with_config("svc", "op", 1, None, None, 0, 3)
+            .unwrap();
         assert!(mgr.mark_started(op_id, None));
         assert!(mgr.fail_operation(op_id));
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::Failed);
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::Failed
+        );
         assert_eq!(mgr.get_operation(op_id).unwrap().attempt, 1);
 
         // Retry
         assert!(mgr.retry_operation(op_id));
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::Scheduled);
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::Scheduled
+        );
         assert_eq!(mgr.get_operation(op_id).unwrap().attempt, 2);
     }
 
@@ -441,7 +531,9 @@ mod tests {
     fn test_nexus_max_retries() {
         let mgr = NexusManager::new();
         mgr.register_service("svc", "http://svc:8080");
-        let op_id = mgr.start_operation_with_config("svc", "op", 1, None, None, 0, 2).unwrap();
+        let op_id = mgr
+            .start_operation_with_config("svc", "op", 1, None, None, 0, 2)
+            .unwrap();
         assert!(mgr.mark_started(op_id, None));
 
         // Fail + retry (attempt 1 → 2)
@@ -459,7 +551,9 @@ mod tests {
     fn test_callback_delivery() {
         let mgr = NexusManager::new();
         mgr.register_service("svc", "http://svc:8080");
-        let op_id = mgr.start_operation("svc", "op", 1, None, Some("http://callback:9090".into())).unwrap();
+        let op_id = mgr
+            .start_operation("svc", "op", 1, None, Some("http://callback:9090".into()))
+            .unwrap();
         assert!(mgr.mark_started(op_id, None));
 
         // Deliver callback
@@ -470,7 +564,10 @@ mod tests {
             error_message: None,
         };
         assert!(mgr.deliver_callback(result));
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::Completed);
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::Completed
+        );
         assert_eq!(mgr.get_operation(op_id).unwrap().result, Some(vec![42]));
     }
 
@@ -488,14 +585,22 @@ mod tests {
             error_message: Some("timeout".into()),
         };
         assert!(mgr.deliver_callback(result));
-        assert_eq!(mgr.get_operation(op_id).unwrap().state, NexusOperationState::Failed);
-        assert_eq!(mgr.get_operation(op_id).unwrap().error_message, Some("timeout".into()));
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().state,
+            NexusOperationState::Failed
+        );
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().error_message,
+            Some("timeout".into())
+        );
     }
 
     #[test]
     fn test_unknown_service() {
         let mgr = NexusManager::new();
-        assert!(mgr.start_operation("unknown", "op", 1, None, None).is_none());
+        assert!(mgr
+            .start_operation("unknown", "op", 1, None, None)
+            .is_none());
     }
 
     #[test]
@@ -527,6 +632,9 @@ mod tests {
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr.start_operation("svc", "op", 1, None, None).unwrap();
         assert!(mgr.set_routing_key(op_id, "shard-42"));
-        assert_eq!(mgr.get_operation(op_id).unwrap().routing_key, Some("shard-42".into()));
+        assert_eq!(
+            mgr.get_operation(op_id).unwrap().routing_key,
+            Some("shard-42".into())
+        );
     }
 }

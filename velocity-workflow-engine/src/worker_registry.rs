@@ -3,8 +3,8 @@
 //! Enables intelligent load-aware task dispatch.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock};
-use std::sync::atomic::{AtomicU64, AtomicU32, Ordering};
 use std::time::Instant;
 
 /// A registered worker with its capabilities and health state.
@@ -65,12 +65,25 @@ impl WorkerRegistry {
     }
 
     /// Register a new worker with default capacity.
-    pub fn register_worker(&self, address: &str, task_queue_hashes: &[u64], capabilities: &[String], version: &str) -> u64 {
+    pub fn register_worker(
+        &self,
+        address: &str,
+        task_queue_hashes: &[u64],
+        capabilities: &[String],
+        version: &str,
+    ) -> u64 {
         self.register_worker_with_capacity(address, task_queue_hashes, capabilities, version, 100)
     }
 
     /// Register a new worker with explicit max concurrent tasks.
-    pub fn register_worker_with_capacity(&self, address: &str, task_queue_hashes: &[u64], capabilities: &[String], version: &str, max_concurrent: u32) -> u64 {
+    pub fn register_worker_with_capacity(
+        &self,
+        address: &str,
+        task_queue_hashes: &[u64],
+        capabilities: &[String],
+        version: &str,
+        max_concurrent: u32,
+    ) -> u64 {
         let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed);
         let now = self.now_ms();
 
@@ -201,20 +214,31 @@ impl WorkerRegistry {
     /// Get workers that can handle a specific task queue.
     pub fn get_workers_for_queue(&self, tq_hash: u64) -> Vec<u64> {
         let q2w = self.queue_to_workers.read().unwrap();
-        q2w.get(&tq_hash).map(|s| s.iter().copied().collect()).unwrap_or_default()
+        q2w.get(&tq_hash)
+            .map(|s| s.iter().copied().collect())
+            .unwrap_or_default()
     }
 
     /// Get workers with available capacity for a task queue.
     pub fn get_available_workers(&self, tq_hash: u64) -> Vec<u64> {
         let workers = self.workers.read().unwrap();
         let q2w = self.queue_to_workers.read().unwrap();
-        q2w.get(&tq_hash).map(|set| {
-            set.iter().copied().filter(|wid| {
-                workers.get(wid).map(|w| {
-                    w.status == WorkerStatus::Active && w.current_load < w.max_concurrent_tasks
-                }).unwrap_or(false)
-            }).collect()
-        }).unwrap_or_default()
+        q2w.get(&tq_hash)
+            .map(|set| {
+                set.iter()
+                    .copied()
+                    .filter(|wid| {
+                        workers
+                            .get(wid)
+                            .map(|w| {
+                                w.status == WorkerStatus::Active
+                                    && w.current_load < w.max_concurrent_tasks
+                            })
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Select the best worker for a task using load-aware dispatch.
@@ -228,11 +252,19 @@ impl WorkerRegistry {
 
         for &wid in candidates {
             if let Some(w) = workers.get(&wid) {
-                if w.status != WorkerStatus::Active { continue; }
-                if w.current_load >= w.max_concurrent_tasks { continue; }
+                if w.status != WorkerStatus::Active {
+                    continue;
+                }
+                if w.current_load >= w.max_concurrent_tasks {
+                    continue;
+                }
 
                 // Prefer sticky affinity: 0 penalty if matching, 1 penalty otherwise
-                let affinity_penalty = if w.sticky_queue_hash == tq_hash { 0u32 } else { 1u32 };
+                let affinity_penalty = if w.sticky_queue_hash == tq_hash {
+                    0u32
+                } else {
+                    1u32
+                };
                 let score = (w.current_load + affinity_penalty, w.total_dispatched);
 
                 if best.is_none() || score < best.unwrap().1 {
@@ -247,9 +279,10 @@ impl WorkerRegistry {
     /// Check if a specific worker has capacity for more tasks.
     pub fn has_capacity(&self, worker_id: u64) -> bool {
         let workers = self.workers.read().unwrap();
-        workers.get(&worker_id).map(|w| {
-            w.status == WorkerStatus::Active && w.current_load < w.max_concurrent_tasks
-        }).unwrap_or(false)
+        workers
+            .get(&worker_id)
+            .map(|w| w.status == WorkerStatus::Active && w.current_load < w.max_concurrent_tasks)
+            .unwrap_or(false)
     }
 
     /// Drain a worker — stop dispatching new tasks but let in-flight complete.
@@ -278,12 +311,22 @@ impl WorkerRegistry {
 
     /// Count of active workers.
     pub fn active_worker_count(&self) -> usize {
-        self.workers.read().unwrap().values().filter(|w| w.status == WorkerStatus::Active).count()
+        self.workers
+            .read()
+            .unwrap()
+            .values()
+            .filter(|w| w.status == WorkerStatus::Active)
+            .count()
     }
 
     /// Count of draining workers.
     pub fn draining_worker_count(&self) -> usize {
-        self.workers.read().unwrap().values().filter(|w| w.status == WorkerStatus::Draining).count()
+        self.workers
+            .read()
+            .unwrap()
+            .values()
+            .filter(|w| w.status == WorkerStatus::Draining)
+            .count()
     }
 
     /// List all worker IDs.
@@ -297,7 +340,9 @@ impl WorkerRegistry {
         let mut stale = Vec::new();
         let mut workers = self.workers.write().unwrap();
         for info in workers.values_mut() {
-            if info.status == WorkerStatus::Active && now.saturating_sub(info.last_heartbeat_ms) > timeout_ms {
+            if info.status == WorkerStatus::Active
+                && now.saturating_sub(info.last_heartbeat_ms) > timeout_ms
+            {
                 info.status = WorkerStatus::Unhealthy;
                 stale.push(info.worker_id);
             }
@@ -307,22 +352,40 @@ impl WorkerRegistry {
 
     /// Get total tasks completed across all workers.
     pub fn total_tasks_completed(&self) -> u64 {
-        self.workers.read().unwrap().values().map(|w| w.tasks_completed).sum()
+        self.workers
+            .read()
+            .unwrap()
+            .values()
+            .map(|w| w.tasks_completed)
+            .sum()
     }
 
     /// Get total tasks failed across all workers.
     pub fn total_tasks_failed(&self) -> u64 {
-        self.workers.read().unwrap().values().map(|w| w.tasks_failed).sum()
+        self.workers
+            .read()
+            .unwrap()
+            .values()
+            .map(|w| w.tasks_failed)
+            .sum()
     }
 
     /// Get total current load across all workers.
     pub fn total_current_load(&self) -> u32 {
-        self.workers.read().unwrap().values().map(|w| w.current_load).sum()
+        self.workers
+            .read()
+            .unwrap()
+            .values()
+            .map(|w| w.current_load)
+            .sum()
     }
 
     /// Get total capacity across all active workers.
     pub fn total_capacity(&self) -> u32 {
-        self.workers.read().unwrap().values()
+        self.workers
+            .read()
+            .unwrap()
+            .values()
             .filter(|w| w.status == WorkerStatus::Active)
             .map(|w| w.max_concurrent_tasks.saturating_sub(w.current_load))
             .sum()
@@ -331,15 +394,25 @@ impl WorkerRegistry {
     /// Get the average load percentage across all active workers (0-100).
     pub fn average_load_percent(&self) -> u32 {
         let workers = self.workers.read().unwrap();
-        let active: Vec<_> = workers.values().filter(|w| w.status == WorkerStatus::Active && w.max_concurrent_tasks > 0).collect();
-        if active.is_empty() { return 0; }
-        let total_pct: u64 = active.iter().map(|w| (w.current_load as u64 * 100) / w.max_concurrent_tasks as u64).sum();
+        let active: Vec<_> = workers
+            .values()
+            .filter(|w| w.status == WorkerStatus::Active && w.max_concurrent_tasks > 0)
+            .collect();
+        if active.is_empty() {
+            return 0;
+        }
+        let total_pct: u64 = active
+            .iter()
+            .map(|w| (w.current_load as u64 * 100) / w.max_concurrent_tasks as u64)
+            .sum();
         (total_pct / active.len() as u64) as u32
     }
 }
 
 impl Default for WorkerRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -413,7 +486,9 @@ mod tests {
 
         assert!(reg.has_capacity(wid));
         // Dispatch 5 tasks
-        for _ in 0..5 { reg.record_task_dispatched(wid); }
+        for _ in 0..5 {
+            reg.record_task_dispatched(wid);
+        }
         assert!(!reg.has_capacity(wid)); // Full
 
         // Complete one
@@ -431,7 +506,9 @@ mod tests {
         let w2 = reg.register_worker_with_capacity("addr2", &[100], &[], "1.0", 10);
 
         // Load up w1
-        for _ in 0..5 { reg.record_task_dispatched(w1); }
+        for _ in 0..5 {
+            reg.record_task_dispatched(w1);
+        }
         // w2 has 0 load
 
         let selected = reg.select_worker(100).unwrap();

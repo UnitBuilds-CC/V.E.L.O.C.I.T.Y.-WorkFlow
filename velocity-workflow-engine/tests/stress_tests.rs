@@ -4,20 +4,22 @@
 //! operating parameters to surface race conditions, memory issues, and
 //! performance bottlenecks.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use velocity_workflow_engine::db_adapter::{DatabaseAdapter, InMemoryAdapter, WorkflowRecord};
 use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
-use velocity_workflow_engine::task_queue::{TaskQueue, TaskItem, TaskKind};
-use velocity_workflow_engine::timer_engine::TimerEngine;
-use velocity_workflow_engine::namespace::{NamespaceRegistry, NamespaceConfig};
-use velocity_workflow_engine::search_index::SearchAttributeIndex;
-use velocity_workflow_engine::visibility::SearchAttributeValue;
 use velocity_workflow_engine::hot_swap::HotSwapRegistry;
-use velocity_workflow_engine::db_adapter::{InMemoryAdapter, DatabaseAdapter, WorkflowRecord};
-use velocity_workflow_engine::observability::{StructuredLogger, MetricsExporter, SpanTracker, LogLevel};
+use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
+use velocity_workflow_engine::observability::{
+    LogLevel, MetricsExporter, SpanTracker, StructuredLogger,
+};
+use velocity_workflow_engine::search_index::SearchAttributeIndex;
+use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
+use velocity_workflow_engine::timer_engine::TimerEngine;
+use velocity_workflow_engine::visibility::SearchAttributeValue;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Stress Tests
@@ -33,7 +35,14 @@ fn test_10k_concurrent_workflows() {
 
     // Start all workflows
     for i in 0..count {
-        let key = engine.start_workflow(i + 1, 1, 0, 42, 3, Some(format!("input-{}", i).into_bytes()));
+        let key = engine.start_workflow(
+            i + 1,
+            1,
+            0,
+            42,
+            3,
+            Some(format!("input-{}", i).into_bytes()),
+        );
         keys.push(key);
     }
     assert_eq!(engine.workflow_count(), count as usize);
@@ -47,7 +56,11 @@ fn test_10k_concurrent_workflows() {
         engine.complete_step(*key, 2, b"step2".to_vec());
         engine.complete_workflow(*key, Some(b"done".to_vec()));
     }
-    println!("  all {} workflows completed in {:?}", count, start.elapsed());
+    println!(
+        "  all {} workflows completed in {:?}",
+        count,
+        start.elapsed()
+    );
 
     // Verify all completed
     for key in &keys {
@@ -82,7 +95,9 @@ fn test_1k_concurrent_namespaces() {
     let ns_reg = NamespaceRegistry::new();
 
     for i in 1..=1000u64 {
-        ns_reg.register(NamespaceConfig::new(i, format!("namespace-{}", i))).unwrap();
+        ns_reg
+            .register(NamespaceConfig::new(i, format!("namespace-{}", i)))
+            .unwrap();
     }
     assert_eq!(ns_reg.count(), 1001); // 1000 + default
     println!("  registered 1000 namespaces in {:?}", start.elapsed());
@@ -94,7 +109,10 @@ fn test_1k_concurrent_namespaces() {
         engine.complete_workflow(key, None);
         assert_eq!(engine.get_status(key), WorkflowStatus::Completed);
     }
-    println!("  workflows across 1000 namespaces completed in {:?}", start.elapsed());
+    println!(
+        "  workflows across 1000 namespaces completed in {:?}",
+        start.elapsed()
+    );
     engine.shutdown();
 }
 
@@ -119,8 +137,12 @@ fn test_memory_pressure() {
         engine.complete_step(*key, 1, vec![0xEF; 512]);
         engine.complete_workflow(*key, Some(vec![0xFF; 256]));
     }
-    println!("  completed {} workflows, {} still running in {:?}",
-        count / 2, engine.workflow_count(), start.elapsed());
+    println!(
+        "  completed {} workflows, {} still running in {:?}",
+        count / 2,
+        engine.workflow_count(),
+        start.elapsed()
+    );
 
     // Complete the rest
     for key in keys.iter().skip(count as usize / 2) {
@@ -133,7 +155,10 @@ fn test_memory_pressure() {
 #[test]
 fn test_long_running_soak() {
     let duration_secs = 30;
-    println!("test_long_running_soak: running for {} seconds", duration_secs);
+    println!(
+        "test_long_running_soak: running for {} seconds",
+        duration_secs
+    );
     let engine = Arc::new(WorkflowEngine::new());
     let total_ops = Arc::new(AtomicU64::new(0));
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -159,10 +184,15 @@ fn test_long_running_soak() {
 
     thread::sleep(Duration::from_secs(duration_secs));
     stop.store(true, Ordering::Relaxed);
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
 
     let ops_count = total_ops.load(Ordering::Relaxed);
-    println!("  completed {} workflow operations in {} seconds", ops_count, duration_secs);
+    println!(
+        "  completed {} workflow operations in {} seconds",
+        ops_count, duration_secs
+    );
     assert!(ops_count > 0, "Should have completed some operations");
     engine.shutdown();
 }
@@ -200,10 +230,15 @@ fn test_task_queue_contention() {
         handles.push(thread::spawn(move || {
             for i in 0..100u64 {
                 let task = TaskItem {
-                    task_id: 0, kind: TaskKind::WorkflowTask,
-                    workflow_key: t * 100 + i, task_queue_hash: tq_hash,
-                    step_index: 0, activity_name_id: 0, attempt: 1,
-                    priority: 0, deadline_ms: 0,
+                    task_id: 0,
+                    kind: TaskKind::WorkflowTask,
+                    workflow_key: t * 100 + i,
+                    task_queue_hash: tq_hash,
+                    step_index: 0,
+                    activity_name_id: 0,
+                    attempt: 1,
+                    priority: 0,
+                    deadline_ms: 0,
                 };
                 tq.enqueue(tq_hash, task);
                 prod.fetch_add(1, Ordering::Relaxed);
@@ -212,7 +247,9 @@ fn test_task_queue_contention() {
     }
 
     // Wait for producers
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
     assert_eq!(produced.load(Ordering::Relaxed), total_to_produce);
     assert_eq!(tq.pending_count(tq_hash), total_to_produce as usize);
 
@@ -221,19 +258,26 @@ fn test_task_queue_contention() {
     for _ in 0..10 {
         let tq = Arc::clone(&tq);
         let cons = Arc::clone(&consumed);
-        handles.push(thread::spawn(move || {
-            loop {
-                match tq.try_poll(tq_hash) {
-                    Some(_) => { cons.fetch_add(1, Ordering::Relaxed); }
-                    None => break,
+        handles.push(thread::spawn(move || loop {
+            match tq.try_poll(tq_hash) {
+                Some(_) => {
+                    cons.fetch_add(1, Ordering::Relaxed);
                 }
+                None => break,
             }
         }));
     }
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
 
     let consumed_count = consumed.load(Ordering::Relaxed);
-    println!("  produced={}, consumed={} in {:?}", total_to_produce, consumed_count, start.elapsed());
+    println!(
+        "  produced={}, consumed={} in {:?}",
+        total_to_produce,
+        consumed_count,
+        start.elapsed()
+    );
     assert_eq!(consumed_count, total_to_produce);
     tq.shutdown();
 }
@@ -276,16 +320,30 @@ fn test_search_index_scale() {
     let count = 100_000u64;
 
     for i in 0..count {
-        index.index_attribute(i, "env", &SearchAttributeValue::Keyword(
-            if i % 3 == 0 { "prod".into() } else if i % 3 == 1 { "staging".into() } else { "dev".into() }
-        ));
-        index.index_attribute(i, "priority", &SearchAttributeValue::Integer((i % 10) as i64));
+        index.index_attribute(
+            i,
+            "env",
+            &SearchAttributeValue::Keyword(if i % 3 == 0 {
+                "prod".into()
+            } else if i % 3 == 1 {
+                "staging".into()
+            } else {
+                "dev".into()
+            }),
+        );
+        index.index_attribute(
+            i,
+            "priority",
+            &SearchAttributeValue::Integer((i % 10) as i64),
+        );
     }
     println!("  indexed {} workflows in {:?}", count, start.elapsed());
 
     let stats = index.stats();
-    println!("  stats: indexed_workflows={}, total_entries={}, unique_keys={}",
-        stats.indexed_workflows, stats.total_entries, stats.unique_keys);
+    println!(
+        "  stats: indexed_workflows={}, total_entries={}, unique_keys={}",
+        stats.indexed_workflows, stats.total_entries, stats.unique_keys
+    );
     assert_eq!(stats.indexed_workflows, count);
 
     // Verify queries work
@@ -320,17 +378,28 @@ fn test_hot_swap_under_load() {
         let eng = Arc::clone(&engine);
         let keys_clone = keys.clone();
         handles.push(thread::spawn(move || {
-            for (i, &key) in keys_clone.iter().enumerate().skip((t * 250) as usize).take(250) {
-                let patch_id = reg.register_patch(1, &format!("patch-{}-{}", t, i), vec![(0, i as u64)]);
+            for (i, &key) in keys_clone
+                .iter()
+                .enumerate()
+                .skip((t * 250) as usize)
+                .take(250)
+            {
+                let patch_id =
+                    reg.register_patch(1, &format!("patch-{}-{}", t, i), vec![(0, i as u64)]);
                 let _ = reg.apply_patch(patch_id, key);
                 eng.complete_step(key, 0, b"patched".to_vec());
             }
         }));
     }
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
 
-    println!("  patches registered: {}, patched workflows: {}",
-        registry.patch_count(), registry.patched_workflow_count());
+    println!(
+        "  patches registered: {}, patched workflows: {}",
+        registry.patch_count(),
+        registry.patched_workflow_count()
+    );
     println!("  time: {:?}", start.elapsed());
 
     // Complete remaining steps
@@ -382,7 +451,9 @@ fn test_db_adapter_concurrent_writes() {
             }
         }));
     }
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
 
     let count = adapter.workflow_count();
     println!("  stored {} workflows in {:?}", count, start.elapsed());
@@ -399,10 +470,11 @@ fn test_observability_under_load() {
 
     // Log 100,000 events
     for i in 0..100_000u64 {
-        logger.log_event(LogLevel::Info, "stress_event", &[
-            ("iteration", &i.to_string()),
-            ("thread", "main"),
-        ]);
+        logger.log_event(
+            LogLevel::Info,
+            "stress_event",
+            &[("iteration", &i.to_string()), ("thread", "main")],
+        );
     }
     println!("  logged 100,000 events in {:?}", start.elapsed());
     assert_eq!(logger.total_events(), 100_000);
@@ -413,7 +485,10 @@ fn test_observability_under_load() {
     }
     let prometheus_output = metrics.export_prometheus();
     assert!(!prometheus_output.is_empty());
-    println!("  metrics exported, output size: {} bytes", prometheus_output.len());
+    println!(
+        "  metrics exported, output size: {} bytes",
+        prometheus_output.len()
+    );
 
     // Create and end spans
     for i in 0..10_000u64 {

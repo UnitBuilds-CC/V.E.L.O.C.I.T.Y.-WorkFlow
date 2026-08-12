@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::{Instant, Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 /// A single memo entry with metadata.
 #[derive(Debug, Clone)]
@@ -87,17 +87,19 @@ impl MemoStore {
     pub fn set(&self, workflow_key: u64, key: &str, value: Vec<u8>, ttl: Option<Duration>) {
         let now = Instant::now();
         let mut memos = self.memos.lock().unwrap();
-        let entry = memos.entry((workflow_key, key.to_string())).or_insert_with(|| {
-            let mut stats = self.stats.lock().unwrap();
-            stats.workflows_with_memos += 1;
-            MemoEntry {
-                value: value.clone(),
-                version: 0,
-                updated_at: now,
-                ttl,
-                created_at: now,
-            }
-        });
+        let entry = memos
+            .entry((workflow_key, key.to_string()))
+            .or_insert_with(|| {
+                let mut stats = self.stats.lock().unwrap();
+                stats.workflows_with_memos += 1;
+                MemoEntry {
+                    value: value.clone(),
+                    version: 0,
+                    updated_at: now,
+                    ttl,
+                    created_at: now,
+                }
+            });
 
         entry.value = value;
         entry.version += 1;
@@ -252,20 +254,22 @@ impl MemoStore {
     }
 
     /// Bulk set multiple memos atomically.
-    pub fn set_bulk(&self, workflow_key: u64, entries: HashMap<String, (Vec<u8>, Option<Duration>)>) {
+    pub fn set_bulk(
+        &self,
+        workflow_key: u64,
+        entries: HashMap<String, (Vec<u8>, Option<Duration>)>,
+    ) {
         let now = Instant::now();
         let mut memos = self.memos.lock().unwrap();
 
         for (key, (value, ttl)) in entries {
             let memo_key = (workflow_key, key);
-            let entry = memos.entry(memo_key).or_insert_with(|| {
-                MemoEntry {
-                    value: value.clone(),
-                    version: 0,
-                    updated_at: now,
-                    ttl,
-                    created_at: now,
-                }
+            let entry = memos.entry(memo_key).or_insert_with(|| MemoEntry {
+                value: value.clone(),
+                version: 0,
+                updated_at: now,
+                ttl,
+                created_at: now,
             });
 
             entry.value = value;
@@ -307,7 +311,11 @@ impl MemoStore {
     /// Get the total number of workflows that have memos.
     pub fn workflow_count(&self) -> usize {
         let memos = self.memos.lock().unwrap();
-        memos.keys().map(|(wk, _)| *wk).collect::<std::collections::HashSet<_>>().len()
+        memos
+            .keys()
+            .map(|(wk, _)| *wk)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
     }
 
     /// Get aggregate statistics.
@@ -318,7 +326,9 @@ impl MemoStore {
     /// Get the version of a specific memo key.
     pub fn get_version(&self, workflow_key: u64, key: &str) -> Option<u64> {
         let memos = self.memos.lock().unwrap();
-        memos.get(&(workflow_key, key.to_string())).map(|e| e.version)
+        memos
+            .get(&(workflow_key, key.to_string()))
+            .map(|e| e.version)
     }
 }
 

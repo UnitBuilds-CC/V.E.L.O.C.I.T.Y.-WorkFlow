@@ -119,21 +119,19 @@ fn execution_info_to_proto(info: &WorkflowExecutionInfo) -> WorkflowExecutionInf
 /// Map a `NamespaceError` to a gRPC `Status`.
 fn namespace_error_to_status(err: &NamespaceError) -> Status {
     match err {
-        NamespaceError::AlreadyExists(name) => Status::already_exists(format!(
-            "namespace '{}' already exists", name
-        )),
-        NamespaceError::NotFound(id) => Status::not_found(format!(
-            "namespace {} not found", id
-        )),
-        NamespaceError::CannotDeleteDefault => Status::failed_precondition(
-            "cannot delete the default namespace"
-        ),
-        NamespaceError::Inactive(id) => Status::failed_precondition(format!(
-            "namespace {} is not active", id
-        )),
-        NamespaceError::ConcurrencyLimitExceeded(id) => Status::resource_exhausted(format!(
-            "namespace {} concurrency limit exceeded", id
-        )),
+        NamespaceError::AlreadyExists(name) => {
+            Status::already_exists(format!("namespace '{}' already exists", name))
+        }
+        NamespaceError::NotFound(id) => Status::not_found(format!("namespace {} not found", id)),
+        NamespaceError::CannotDeleteDefault => {
+            Status::failed_precondition("cannot delete the default namespace")
+        }
+        NamespaceError::Inactive(id) => {
+            Status::failed_precondition(format!("namespace {} is not active", id))
+        }
+        NamespaceError::ConcurrencyLimitExceeded(id) => {
+            Status::resource_exhausted(format!("namespace {} concurrency limit exceeded", id))
+        }
     }
 }
 
@@ -176,9 +174,7 @@ impl WorkflowServiceImpl {
         self.engine
             .namespaces()
             .get_by_name(namespace)
-            .ok_or_else(|| {
-                Status::not_found(format!("namespace '{}' not found", namespace))
-            })
+            .ok_or_else(|| Status::not_found(format!("namespace '{}' not found", namespace)))
     }
 }
 
@@ -198,16 +194,8 @@ impl WorkflowService for WorkflowServiceImpl {
             .as_ref()
             .map(|e| e.workflow_id.parse::<u64>().unwrap_or(0))
             .unwrap_or(0);
-        let workflow_type_id = req
-            .workflow_type
-            .as_ref()
-            .map(|t| t.type_id)
-            .unwrap_or(0);
-        let task_queue_hash = req
-            .task_queue
-            .as_ref()
-            .map(|tq| tq.hash)
-            .unwrap_or(0);
+        let workflow_type_id = req.workflow_type.as_ref().map(|t| t.type_id).unwrap_or(0);
+        let task_queue_hash = req.task_queue.as_ref().map(|tq| tq.hash).unwrap_or(0);
         let total_steps = req.total_steps;
         let input = req.input.map(|p| p.data);
 
@@ -252,7 +240,8 @@ impl WorkflowService for WorkflowServiceImpl {
         let status = self.engine.get_status(key);
         if status == WorkflowStatus::Void {
             return Err(Status::not_found(format!(
-                "workflow execution {} not found", workflow_id
+                "workflow execution {} not found",
+                workflow_id
             )));
         }
 
@@ -324,13 +313,14 @@ impl WorkflowService for WorkflowServiceImpl {
         let status = self.engine.get_status(key);
         if status == WorkflowStatus::Void {
             return Err(Status::not_found(format!(
-                "workflow execution {} not found", workflow_id
+                "workflow execution {} not found",
+                workflow_id
             )));
         }
 
-        let query = req.query.ok_or_else(|| {
-            Status::invalid_argument("query is required")
-        })?;
+        let query = req
+            .query
+            .ok_or_else(|| Status::invalid_argument("query is required"))?;
 
         let query_name_id = query.query_name_id;
         let query_args = query.query_args.map(|p| p.data).unwrap_or_default();
@@ -344,7 +334,8 @@ impl WorkflowService for WorkflowServiceImpl {
                 }),
             })),
             None => Err(Status::not_found(format!(
-                "query handler for name_id {} not registered", query_name_id
+                "query handler for name_id {} not registered",
+                query_name_id
             ))),
         }
     }
@@ -366,7 +357,8 @@ impl WorkflowService for WorkflowServiceImpl {
         let status = self.engine.get_status(key);
         if status == WorkflowStatus::Void {
             return Err(Status::not_found(format!(
-                "workflow execution {} not found", workflow_id
+                "workflow execution {} not found",
+                workflow_id
             )));
         }
 
@@ -392,7 +384,8 @@ impl WorkflowService for WorkflowServiceImpl {
         let status = self.engine.get_status(key);
         if status == WorkflowStatus::Void {
             return Err(Status::not_found(format!(
-                "workflow execution {} not found", workflow_id
+                "workflow execution {} not found",
+                workflow_id
             )));
         }
 
@@ -446,15 +439,23 @@ impl WorkflowService for WorkflowServiceImpl {
             let status = status_from_proto(req.status_filter);
             self.engine.visibility().list_by_status(status)
         } else if req.namespace_id_filter != 0 {
-            self.engine.visibility().list_by_namespace(req.namespace_id_filter)
+            self.engine
+                .visibility()
+                .list_by_namespace(req.namespace_id_filter)
         } else if let Some(type_filter) = &req.type_filter {
             self.engine.visibility().list_by_type(type_filter.type_id)
         } else {
             // Return all workflows (by listing Running status as default)
-            self.engine.visibility().list_by_status(WorkflowStatus::Running)
+            self.engine
+                .visibility()
+                .list_by_status(WorkflowStatus::Running)
         };
 
-        let page_size = if req.page_size > 0 { req.page_size as usize } else { 100 };
+        let page_size = if req.page_size > 0 {
+            req.page_size as usize
+        } else {
+            100
+        };
         let executions: Vec<WorkflowExecutionInfoProto> = infos
             .iter()
             .take(page_size)
@@ -484,7 +485,8 @@ impl WorkflowService for WorkflowServiceImpl {
         let status = self.engine.get_status(key);
         if status == WorkflowStatus::Void {
             return Err(Status::not_found(format!(
-                "workflow execution {} not found", workflow_id
+                "workflow execution {} not found",
+                workflow_id
             )));
         }
 
@@ -511,7 +513,10 @@ impl WorkflowService for WorkflowServiceImpl {
                 let workflow_id = task.workflow_key & 0xFFFFFFFF;
                 let run_id = {
                     let workflows = self.engine.workflows_write();
-                    workflows.get(&task.workflow_key).map(|ctx| ctx.run_id).unwrap_or(0)
+                    workflows
+                        .get(&task.workflow_key)
+                        .map(|ctx| ctx.run_id)
+                        .unwrap_or(0)
                 };
 
                 Ok(Response::new(PollWorkflowTaskQueueResponse {
@@ -547,7 +552,10 @@ impl WorkflowService for WorkflowServiceImpl {
                 let workflow_id = task.workflow_key & 0xFFFFFFFF;
                 let run_id = {
                     let workflows = self.engine.workflows_write();
-                    workflows.get(&task.workflow_key).map(|ctx| ctx.run_id).unwrap_or(0)
+                    workflows
+                        .get(&task.workflow_key)
+                        .map(|ctx| ctx.run_id)
+                        .unwrap_or(0)
                 };
 
                 Ok(Response::new(PollActivityTaskQueueResponse {
@@ -569,9 +577,7 @@ impl WorkflowService for WorkflowServiceImpl {
                     retry_policy: None,
                 }))
             }
-            _ => {
-                Ok(Response::new(PollActivityTaskQueueResponse::default()))
-            }
+            _ => Ok(Response::new(PollActivityTaskQueueResponse::default())),
         }
     }
 
@@ -714,9 +720,10 @@ impl WorkflowService for WorkflowServiceImpl {
             self.resolve_namespace(&req.namespace)?
         };
 
-        let config = self.engine.namespaces().get(ns_id).ok_or_else(|| {
-            Status::not_found(format!("namespace '{}' not found", req.namespace))
-        })?;
+        let config =
+            self.engine.namespaces().get(ns_id).ok_or_else(|| {
+                Status::not_found(format!("namespace '{}' not found", req.namespace))
+            })?;
 
         Ok(Response::new(DescribeNamespaceResponse {
             namespace_info: Some(velocity_proto::NamespaceInfo {
@@ -753,7 +760,11 @@ impl WorkflowService for WorkflowServiceImpl {
                     nanos: config.retention_period.subsec_nanos() as i32,
                 }),
                 max_concurrent_workflows: config.max_concurrent_workflows,
-                metadata: config.metadata.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                metadata: config
+                    .metadata
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
             })
             .collect();
 
@@ -772,23 +783,23 @@ impl WorkflowService for WorkflowServiceImpl {
         let ns_id = self.resolve_namespace(&req.namespace)?;
 
         // Delete and re-register with updated config
-        let mut config = self.engine.namespaces().get(ns_id).ok_or_else(|| {
-            Status::not_found(format!("namespace '{}' not found", req.namespace))
-        })?;
+        let mut config =
+            self.engine.namespaces().get(ns_id).ok_or_else(|| {
+                Status::not_found(format!("namespace '{}' not found", req.namespace))
+            })?;
 
         if let Some(update) = &req.update {
             if let Some(retention) = &update.workflow_execution_retention_period {
-                config.retention_period = std::time::Duration::new(
-                    retention.seconds as u64,
-                    retention.nanos as u32,
-                );
+                config.retention_period =
+                    std::time::Duration::new(retention.seconds as u64, retention.nanos as u32);
             }
         }
 
         let _ = self.engine.namespaces().delete(ns_id);
-        self.engine.namespaces().register(config.clone()).map_err(|e| {
-            namespace_error_to_status(&e)
-        })?;
+        self.engine
+            .namespaces()
+            .register(config.clone())
+            .map_err(|e| namespace_error_to_status(&e))?;
 
         Ok(Response::new(UpdateNamespaceResponse {
             namespace_info: Some(velocity_proto::NamespaceInfo {
@@ -803,7 +814,6 @@ impl WorkflowService for WorkflowServiceImpl {
                 max_concurrent_workflows: config.max_concurrent_workflows,
                 metadata: config.metadata.into_iter().collect(),
             }),
-            config: None,
         }))
     }
 
@@ -1119,7 +1129,9 @@ mod tests {
         let info = resp.system_info.unwrap();
         let server = info.server.unwrap();
         assert!(!server.server_version.is_empty());
-        assert!(server.supported_features.contains(&"signal_with_start".to_string()));
+        assert!(server
+            .supported_features
+            .contains(&"signal_with_start".to_string()));
 
         let caps = info.capabilities.unwrap();
         assert!(caps.signal_and_query_header);
@@ -1158,7 +1170,10 @@ mod tests {
             ..Default::default()
         });
 
-        let response = svc.signal_with_start_workflow_execution(request).await.unwrap();
+        let response = svc
+            .signal_with_start_workflow_execution(request)
+            .await
+            .unwrap();
         let resp = response.into_inner();
 
         assert!(resp.started); // Should be started since workflow didn't exist

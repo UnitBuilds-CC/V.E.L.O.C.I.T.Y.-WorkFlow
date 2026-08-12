@@ -80,7 +80,10 @@ impl SessionManager {
             execution_count: 0,
         };
 
-        self.sessions.lock().unwrap().insert(session_id.clone(), session);
+        self.sessions
+            .lock()
+            .unwrap()
+            .insert(session_id.clone(), session);
         session_id
     }
 
@@ -140,14 +143,20 @@ impl SessionManager {
     pub fn list_sessions(&self, task_queue: Option<&str>) -> Vec<WorkerSession> {
         let sessions = self.sessions.lock().unwrap();
         match task_queue {
-            Some(tq) => sessions.values().filter(|s| s.task_queue == tq).cloned().collect(),
+            Some(tq) => sessions
+                .values()
+                .filter(|s| s.task_queue == tq)
+                .cloned()
+                .collect(),
             None => sessions.values().cloned().collect(),
         }
     }
 
     /// List sessions by worker ID.
     pub fn list_sessions_by_worker(&self, worker_id: &str) -> Vec<WorkerSession> {
-        self.sessions.lock().unwrap()
+        self.sessions
+            .lock()
+            .unwrap()
             .values()
             .filter(|s| s.worker_id == worker_id)
             .cloned()
@@ -158,8 +167,13 @@ impl SessionManager {
     pub fn cleanup_stale_sessions(&self, current_time: u64) -> usize {
         let mut sessions = self.sessions.lock().unwrap();
         let timeout = self.config.heartbeat_timeout_ms;
-        let stale_ids: Vec<String> = sessions.values()
-            .filter(|s| s.status == SessionStatus::Open && s.last_heartbeat > 0 && current_time.saturating_sub(s.last_heartbeat) > timeout)
+        let stale_ids: Vec<String> = sessions
+            .values()
+            .filter(|s| {
+                s.status == SessionStatus::Open
+                    && s.last_heartbeat > 0
+                    && current_time.saturating_sub(s.last_heartbeat) > timeout
+            })
             .map(|s| s.session_id.clone())
             .collect();
 
@@ -178,7 +192,12 @@ impl SessionManager {
 
     /// Count active (Open) sessions.
     pub fn active_session_count(&self) -> usize {
-        self.sessions.lock().unwrap().values().filter(|s| s.status == SessionStatus::Open).count()
+        self.sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.status == SessionStatus::Open)
+            .count()
     }
 
     /// Set metadata on a session.

@@ -8,18 +8,20 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
-use velocity_workflow_engine::timer_engine::TimerEngine;
-use velocity_workflow_engine::namespace::{NamespaceRegistry, NamespaceConfig};
-use velocity_workflow_engine::search_index::SearchAttributeIndex;
-use velocity_workflow_engine::visibility::SearchAttributeValue;
-use velocity_workflow_engine::hot_swap::HotSwapRegistry;
-use velocity_workflow_engine::db_adapter::{InMemoryAdapter, DatabaseAdapter};
-use velocity_workflow_engine::retry::{RetryPolicy, CircuitBreaker, CircuitBreakerConfig};
-use velocity_workflow_engine::rate_limiter::RateLimiter;
 use velocity_workflow_engine::cron::CronExpression;
-use velocity_workflow_engine::observability::{StructuredLogger, MetricsExporter, SpanTracker, LogLevel};
+use velocity_workflow_engine::db_adapter::{DatabaseAdapter, InMemoryAdapter};
+use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
 use velocity_workflow_engine::hardware_integration::compute_simple_merkle_root;
+use velocity_workflow_engine::hot_swap::HotSwapRegistry;
+use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
+use velocity_workflow_engine::observability::{
+    LogLevel, MetricsExporter, SpanTracker, StructuredLogger,
+};
+use velocity_workflow_engine::rate_limiter::RateLimiter;
+use velocity_workflow_engine::retry::{CircuitBreaker, CircuitBreakerConfig, RetryPolicy};
+use velocity_workflow_engine::search_index::SearchAttributeIndex;
+use velocity_workflow_engine::timer_engine::TimerEngine;
+use velocity_workflow_engine::visibility::SearchAttributeValue;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Fuzz Infrastructure
@@ -37,10 +39,22 @@ struct FuzzConfig {
 
 impl FuzzConfig {
     fn quick() -> Self {
-        Self { seed: 42, iteration_count: 200, max_workflows: 50, max_steps: 20, max_signals: 50 }
+        Self {
+            seed: 42,
+            iteration_count: 200,
+            max_workflows: 50,
+            max_steps: 20,
+            max_signals: 50,
+        }
     }
     fn standard() -> Self {
-        Self { seed: 12345, iteration_count: 500, max_workflows: 100, max_steps: 50, max_signals: 100 }
+        Self {
+            seed: 12345,
+            iteration_count: 500,
+            max_workflows: 100,
+            max_steps: 50,
+            max_signals: 100,
+        }
     }
 }
 
@@ -52,9 +66,13 @@ struct RandomGenerator {
 impl RandomGenerator {
     fn new(seed: u64) -> Self {
         let s = seed.wrapping_mul(0x9E3779B97F4A7C15);
-        let mut gen = Self { state: [s as u32, (s >> 32) as u32, 0x12345678, 0x9ABCDEF0] };
+        let mut gen = Self {
+            state: [s as u32, (s >> 32) as u32, 0x12345678, 0x9ABCDEF0],
+        };
         // Warm up
-        for _ in 0..20 { gen.next_u32(); }
+        for _ in 0..20 {
+            gen.next_u32();
+        }
         gen
     }
 
@@ -77,19 +95,31 @@ impl RandomGenerator {
     }
 
     fn range(&mut self, lo: u64, hi: u64) -> u64 {
-        if lo >= hi { return lo; }
+        if lo >= hi {
+            return lo;
+        }
         lo + (self.next_u64() % (hi - lo + 1))
     }
 
     fn range_u32(&mut self, lo: u32, hi: u32) -> u32 {
-        if lo >= hi { return lo; }
+        if lo >= hi {
+            return lo;
+        }
         lo + (self.next_u32() % (hi - lo + 1))
     }
 
-    fn random_workflow_id(&mut self) -> u64 { self.range(1, 1_000_000) }
-    fn random_step_count(&mut self) -> u32 { self.range_u32(1, 50) }
-    fn random_signal_id(&mut self) -> u64 { self.range(1, 10_000) }
-    fn random_namespace_id(&mut self) -> u64 { self.range(0, 10) }
+    fn random_workflow_id(&mut self) -> u64 {
+        self.range(1, 1_000_000)
+    }
+    fn random_step_count(&mut self) -> u32 {
+        self.range_u32(1, 50)
+    }
+    fn random_signal_id(&mut self) -> u64 {
+        self.range(1, 10_000)
+    }
+    fn random_namespace_id(&mut self) -> u64 {
+        self.range(0, 10)
+    }
     fn random_payload(&mut self, max_len: usize) -> Vec<u8> {
         let len = self.range(0, max_len as u64) as usize;
         (0..len).map(|_| self.next_u32() as u8).collect()
@@ -108,7 +138,10 @@ fn no_panic<F: FnOnce() + std::panic::UnwindSafe>(f: F) -> bool {
 #[test]
 fn fuzz_workflow_lifecycle() {
     let cfg = FuzzConfig::quick();
-    println!("fuzz_workflow_lifecycle: seed={}, iterations={}", cfg.seed, cfg.iteration_count);
+    println!(
+        "fuzz_workflow_lifecycle: seed={}, iterations={}",
+        cfg.seed, cfg.iteration_count
+    );
     let mut rng = RandomGenerator::new(cfg.seed);
     let engine = WorkflowEngine::new();
     let mut active_keys: Vec<u64> = Vec::new();
@@ -119,24 +152,29 @@ fn fuzz_workflow_lifecycle() {
         let op = rng.range(0, 4);
         let ok = no_panic(std::panic::AssertUnwindSafe(|| {
             match op {
-                0 => { // start
+                0 => {
+                    // start
                     let wf_id = rng.random_workflow_id();
                     let steps = rng.random_step_count();
-                    let key = engine.start_workflow(wf_id, 1, 0, 42, steps, Some(rng.random_payload(64)));
+                    let key =
+                        engine.start_workflow(wf_id, 1, 0, 42, steps, Some(rng.random_payload(64)));
                     active_keys.push(key);
                 }
-                1 if !active_keys.is_empty() => { // complete step
+                1 if !active_keys.is_empty() => {
+                    // complete step
                     let idx = rng.range(0, active_keys.len() as u64 - 1) as usize;
                     let key = active_keys[idx];
                     let step = rng.range_u32(0, engine.get_total_steps(key).saturating_sub(1));
                     engine.complete_step(key, step, rng.random_payload(128));
                 }
-                2 if !active_keys.is_empty() => { // signal
+                2 if !active_keys.is_empty() => {
+                    // signal
                     let idx = rng.range(0, active_keys.len() as u64 - 1) as usize;
                     let key = active_keys[idx];
                     engine.signal_workflow(key, rng.random_signal_id(), rng.random_payload(64));
                 }
-                3 if !active_keys.is_empty() => { // complete workflow
+                3 if !active_keys.is_empty() => {
+                    // complete workflow
                     let idx = rng.range(0, active_keys.len() as u64 - 1) as usize;
                     let key = active_keys.remove(idx);
                     engine.complete_workflow(key, Some(b"fuzz-done".to_vec()));
@@ -145,11 +183,20 @@ fn fuzz_workflow_lifecycle() {
                 _ => {} // query or no-op on empty
             }
         }));
-        if !ok { panicked += 1; }
+        if !ok {
+            panicked += 1;
+        }
     }
     // Cleanup remaining
-    for key in &active_keys { engine.complete_workflow(*key, None); }
-    println!("  completed={}, panicked={}, remaining={}", completed, panicked, active_keys.len());
+    for key in &active_keys {
+        engine.complete_workflow(*key, None);
+    }
+    println!(
+        "  completed={}, panicked={}, remaining={}",
+        completed,
+        panicked,
+        active_keys.len()
+    );
     assert_eq!(panicked, 0, "Fuzz run had panics");
     engine.shutdown();
 }
@@ -177,7 +224,9 @@ fn fuzz_concurrent_operations() {
             }
         }));
     }
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
     assert!(engine.workflow_count() >= 400);
     println!("  total workflows: {}", engine.workflow_count());
     engine.shutdown();
@@ -225,7 +274,9 @@ fn fuzz_step_ordering() {
         for step in &order {
             if no_panic(std::panic::AssertUnwindSafe(|| {
                 engine.complete_step(key, *step, format!("r{}", step).into_bytes());
-            })) { no_panic_count += 1; }
+            })) {
+                no_panic_count += 1;
+            }
         }
         engine.complete_workflow(key, None);
         engine.shutdown();
@@ -242,7 +293,9 @@ fn fuzz_namespace_isolation() {
     let mut rng = RandomGenerator::new(cfg.seed);
 
     for ns_id in 1..=5u64 {
-        ns_reg.register(NamespaceConfig::new(ns_id, format!("ns-{}", ns_id))).unwrap();
+        ns_reg
+            .register(NamespaceConfig::new(ns_id, format!("ns-{}", ns_id)))
+            .unwrap();
     }
 
     for _ in 0..cfg.iteration_count {
@@ -280,7 +333,11 @@ fn fuzz_timer_cancellation() {
             cancelled += 1;
         }
     }
-    println!("  pending={}, cancelled={}", timer.pending_count(), cancelled);
+    println!(
+        "  pending={}, cancelled={}",
+        timer.pending_count(),
+        cancelled
+    );
     timer.shutdown();
 }
 
@@ -295,19 +352,22 @@ fn fuzz_search_index_mutations() {
     for _ in 0..cfg.iteration_count {
         let op = rng.range(0, 2);
         match op {
-            0 => { // index
+            0 => {
+                // index
                 let wf_key = rng.random_workflow_id();
                 let attr_val = SearchAttributeValue::Integer(rng.range(0, 1000) as i64);
                 index.index_attribute(wf_key, "fuzz_attr", &attr_val);
                 indexed_keys.push(wf_key);
             }
-            1 => { // query
+            1 => {
+                // query
                 let val = rng.range(0, 1000) as i64;
                 let results = index.exact_match("fuzz_attr", &SearchAttributeValue::Integer(val));
                 // Just verify no panic
                 let _ = results.len();
             }
-            2 if !indexed_keys.is_empty() => { // delete
+            2 if !indexed_keys.is_empty() => {
+                // delete
                 let idx = rng.range(0, indexed_keys.len() as u64 - 1) as usize;
                 let key = indexed_keys.remove(idx);
                 index.remove_workflow(key);
@@ -316,7 +376,10 @@ fn fuzz_search_index_mutations() {
         }
     }
     let stats = index.stats();
-    println!("  indexed_workflows={}, total_entries={}", stats.indexed_workflows, stats.total_entries);
+    println!(
+        "  indexed_workflows={}, total_entries={}",
+        stats.indexed_workflows, stats.total_entries
+    );
 }
 
 #[test]
@@ -343,7 +406,9 @@ fn fuzz_hot_swap_races() {
             }
         }));
     }
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
     println!("  patches registered: {}", registry.patch_count());
 }
 
@@ -388,7 +453,9 @@ fn fuzz_db_adapter_stress() {
             }
         }));
     }
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
     println!("  stored workflows: {}", adapter.workflow_count());
 }
 
@@ -460,9 +527,8 @@ fn fuzz_child_workflow_trees() {
             for &p in &parents {
                 let child_count = rng.range(0, 2);
                 for _ in 0..child_count {
-                    let child = engine.start_child_workflow(
-                        p, rng.random_workflow_id(), 2, 42, 1, None,
-                    );
+                    let child =
+                        engine.start_child_workflow(p, rng.random_workflow_id(), 2, 42, 1, None);
                     children.push(child);
                 }
             }
@@ -478,7 +544,10 @@ fn fuzz_child_workflow_trees() {
 #[test]
 fn fuzz_cron_expression_parsing() {
     let cfg = FuzzConfig::standard();
-    println!("fuzz_cron_expression_parsing: {} iterations", cfg.iteration_count);
+    println!(
+        "fuzz_cron_expression_parsing: {} iterations",
+        cfg.iteration_count
+    );
     let mut rng = RandomGenerator::new(cfg.seed);
     let mut valid = 0u64;
     let mut invalid = 0u64;
@@ -486,7 +555,9 @@ fn fuzz_cron_expression_parsing() {
     let chars = b"*0123456789/-, ";
     for _ in 0..cfg.iteration_count {
         let len = rng.range(5, 30) as usize;
-        let expr: String = (0..len).map(|_| chars[rng.range(0, chars.len() as u64 - 1) as usize] as char).collect();
+        let expr: String = (0..len)
+            .map(|_| chars[rng.range(0, chars.len() as u64 - 1) as usize] as char)
+            .collect();
         if no_panic(std::panic::AssertUnwindSafe(|| {
             let _ = CronExpression::parse(&expr);
         })) {
@@ -511,7 +582,11 @@ fn fuzz_retry_policy() {
         let max_attempts = rng.range_u32(1, 20);
         let initial_ms = rng.range(0, 60_000);
         let coeff = (rng.range(100, 500) as f64) / 100.0;
-        let max_interval = if rng.range(0, 1) == 0 { Some(rng.range(100, 120_000)) } else { None };
+        let max_interval = if rng.range(0, 1) == 0 {
+            Some(rng.range(100, 120_000))
+        } else {
+            None
+        };
 
         let policy = RetryPolicy::defaults()
             .with_max_attempts(max_attempts)
@@ -568,26 +643,34 @@ fn fuzz_observability() {
     for _ in 0..cfg.iteration_count {
         let op = rng.range(0, 2);
         match op {
-            0 => { // log
+            0 => {
+                // log
                 let level = match rng.range(0, 4) {
-                    0 => LogLevel::Trace, 1 => LogLevel::Debug,
-                    2 => LogLevel::Info, 3 => LogLevel::Warn,
+                    0 => LogLevel::Trace,
+                    1 => LogLevel::Debug,
+                    2 => LogLevel::Info,
+                    3 => LogLevel::Warn,
                     _ => LogLevel::Error,
                 };
                 logger.log_event(level, "fuzz_event", &[("key", "val")]);
             }
-            1 => { // metrics
+            1 => {
+                // metrics
                 metrics.inc_counter("workflow_started_total");
                 metrics.set_gauge("workflow_started_total", rng.range(0, 1000) as i64);
             }
-            2 => { // spans
+            2 => {
+                // spans
                 let span_id = tracer.start_span("fuzz-span", None);
                 tracer.end_span(span_id);
             }
             _ => {}
         }
     }
-    println!("  logger events: {}, metrics exported", logger.total_events());
+    println!(
+        "  logger events: {}, metrics exported",
+        logger.total_events()
+    );
 }
 
 #[test]
@@ -613,7 +696,10 @@ fn fuzz_rate_limiter() {
 #[test]
 fn fuzz_merkle_verification() {
     let cfg = FuzzConfig::standard();
-    println!("fuzz_merkle_verification: {} iterations", cfg.iteration_count);
+    println!(
+        "fuzz_merkle_verification: {} iterations",
+        cfg.iteration_count
+    );
     let mut rng = RandomGenerator::new(cfg.seed);
 
     for _ in 0..cfg.iteration_count {
@@ -636,7 +722,10 @@ fn fuzz_merkle_verification() {
 fn fuzz_bitmask_operations() {
     use velocity_workflow_core::Bitmask256;
     let cfg = FuzzConfig::standard();
-    println!("fuzz_bitmask_operations: {} iterations", cfg.iteration_count);
+    println!(
+        "fuzz_bitmask_operations: {} iterations",
+        cfg.iteration_count
+    );
     let mut rng = RandomGenerator::new(cfg.seed);
 
     for _ in 0..cfg.iteration_count {
@@ -647,8 +736,14 @@ fn fuzz_bitmask_operations() {
             let op = rng.range(0, 2);
             let step = rng.range(0, 255) as usize;
             match op {
-                0 => { bitmask.set_step(step); expected_set.insert(step); }
-                1 => { bitmask.clear_step(step); expected_set.remove(&step); }
+                0 => {
+                    bitmask.set_step(step);
+                    expected_set.insert(step);
+                }
+                1 => {
+                    bitmask.clear_step(step);
+                    expected_set.remove(&step);
+                }
                 2 => {
                     let is_set = bitmask.is_step_set(step);
                     assert_eq!(is_set, expected_set.contains(&step));

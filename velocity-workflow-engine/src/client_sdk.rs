@@ -5,8 +5,11 @@
 //! interceptors, and workflow options.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
-use std::time::{SystemTime, Instant, Duration};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Client Configuration
@@ -126,7 +129,10 @@ impl WorkflowClient {
         }
     }
 
-    pub fn start_workflow(&self, options: &StartWorkflowOptions) -> Result<WorkflowHandle, ClientError> {
+    pub fn start_workflow(
+        &self,
+        options: &StartWorkflowOptions,
+    ) -> Result<WorkflowHandle, ClientError> {
         self.stats.workflows_started.fetch_add(1, Ordering::Relaxed);
 
         let run_id = format!("run-{}", uuid_simple());
@@ -157,7 +163,11 @@ impl WorkflowClient {
         }
     }
 
-    pub fn list_workflows(&self, query: &str, page_size: i32) -> Result<WorkflowListResult, ClientError> {
+    pub fn list_workflows(
+        &self,
+        query: &str,
+        page_size: i32,
+    ) -> Result<WorkflowListResult, ClientError> {
         Ok(WorkflowListResult {
             executions: vec![],
             next_page_token: None,
@@ -168,7 +178,9 @@ impl WorkflowClient {
         Ok(0)
     }
 
-    pub fn stats(&self) -> &ClientStats { &self.stats }
+    pub fn stats(&self) -> &ClientStats {
+        &self.stats
+    }
 }
 
 struct WorkflowClientInner {
@@ -193,7 +205,11 @@ impl WorkflowHandle {
         Ok(())
     }
 
-    pub fn query(&self, query_type: &str, args: Option<Vec<u8>>) -> Result<Option<Vec<u8>>, ClientError> {
+    pub fn query(
+        &self,
+        query_type: &str,
+        args: Option<Vec<u8>>,
+    ) -> Result<Option<Vec<u8>>, ClientError> {
         Ok(Some(b"null".to_vec()))
     }
 
@@ -211,7 +227,10 @@ impl WorkflowHandle {
             run_id: self.run_id.clone(),
             workflow_type: self.workflow_type.clone(),
             status: WorkflowStatus::Running,
-            start_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64,
+            start_time: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
             close_time: None,
             history_length: 0,
             task_queue: "default".to_string(),
@@ -227,7 +246,10 @@ impl WorkflowHandle {
         })
     }
 
-    pub fn wait_for_completion(&self, timeout: Option<Duration>) -> Result<WorkflowResult, ClientError> {
+    pub fn wait_for_completion(
+        &self,
+        timeout: Option<Duration>,
+    ) -> Result<WorkflowResult, ClientError> {
         Ok(WorkflowResult {
             status: WorkflowStatus::Completed,
             result: None,
@@ -235,11 +257,20 @@ impl WorkflowHandle {
         })
     }
 
-    pub fn reset(&self, reason: &str, reset_point: ResetPointSelector) -> Result<String, ClientError> {
+    pub fn reset(
+        &self,
+        reason: &str,
+        reset_point: ResetPointSelector,
+    ) -> Result<String, ClientError> {
         Ok(format!("run-{}", uuid_simple()))
     }
 
-    pub fn signal_with_start(&self, options: &StartWorkflowOptions, signal_name: &str, signal_input: Option<Vec<u8>>) -> Result<WorkflowHandle, ClientError> {
+    pub fn signal_with_start(
+        &self,
+        options: &StartWorkflowOptions,
+        signal_name: &str,
+        signal_input: Option<Vec<u8>>,
+    ) -> Result<WorkflowHandle, ClientError> {
         Ok(WorkflowHandle {
             client: self.client.clone(),
             workflow_id: options.workflow_id.clone(),
@@ -249,8 +280,12 @@ impl WorkflowHandle {
         })
     }
 
-    pub fn workflow_id(&self) -> &str { &self.workflow_id }
-    pub fn run_id(&self) -> &str { &self.run_id }
+    pub fn workflow_id(&self) -> &str {
+        &self.workflow_id
+    }
+    pub fn run_id(&self) -> &str {
+        &self.run_id
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -374,8 +409,12 @@ impl ClientConnection {
         }
     }
 
-    pub fn is_connected(&self) -> bool { self.connected }
-    pub fn target(&self) -> &str { &self.target_url }
+    pub fn is_connected(&self) -> bool {
+        self.connected
+    }
+    pub fn target(&self) -> &str {
+        &self.target_url
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -395,7 +434,10 @@ impl ScheduleClient {
         }
     }
 
-    pub fn create_schedule(&self, options: &CreateScheduleOptions) -> Result<ScheduleHandle, ClientError> {
+    pub fn create_schedule(
+        &self,
+        options: &CreateScheduleOptions,
+    ) -> Result<ScheduleHandle, ClientError> {
         Ok(ScheduleHandle {
             schedule_id: options.schedule_id.clone(),
             namespace: self.config.namespace.clone(),
@@ -483,12 +525,29 @@ impl ScheduleHandle {
         })
     }
 
-    pub fn trigger(&self) -> Result<(), ClientError> { Ok(()) }
-    pub fn pause(&self, note: &str) -> Result<(), ClientError> { Ok(()) }
-    pub fn unpause(&self, note: &str) -> Result<(), ClientError> { Ok(()) }
-    pub fn delete(&self) -> Result<(), ClientError> { Ok(()) }
-    pub fn backfill(&self, start: i64, end: i64, overlap: ScheduleOverlapPolicy) -> Result<(), ClientError> { Ok(()) }
-    pub fn update(&self, spec: ScheduleSpec) -> Result<(), ClientError> { Ok(()) }
+    pub fn trigger(&self) -> Result<(), ClientError> {
+        Ok(())
+    }
+    pub fn pause(&self, note: &str) -> Result<(), ClientError> {
+        Ok(())
+    }
+    pub fn unpause(&self, note: &str) -> Result<(), ClientError> {
+        Ok(())
+    }
+    pub fn delete(&self) -> Result<(), ClientError> {
+        Ok(())
+    }
+    pub fn backfill(
+        &self,
+        start: i64,
+        end: i64,
+        overlap: ScheduleOverlapPolicy,
+    ) -> Result<(), ClientError> {
+        Ok(())
+    }
+    pub fn update(&self, spec: ScheduleSpec) -> Result<(), ClientError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -588,7 +647,11 @@ impl SearchAttributeClient {
         })
     }
 
-    pub fn register_custom_attribute(&self, name: &str, attr_type: SearchAttributeType) -> Result<(), ClientError> {
+    pub fn register_custom_attribute(
+        &self,
+        name: &str,
+        attr_type: SearchAttributeType,
+    ) -> Result<(), ClientError> {
         Ok(())
     }
 }
@@ -616,9 +679,18 @@ pub enum SearchAttributeType {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub trait ClientInterceptor: Send + Sync {
-    fn intercept_start_workflow(&self, options: &mut StartWorkflowOptions) -> Result<(), ClientError> { Ok(()) }
-    fn intercept_signal(&self, workflow_id: &str, signal_name: &str) -> Result<(), ClientError> { Ok(()) }
-    fn intercept_query(&self, workflow_id: &str, query_type: &str) -> Result<(), ClientError> { Ok(()) }
+    fn intercept_start_workflow(
+        &self,
+        options: &mut StartWorkflowOptions,
+    ) -> Result<(), ClientError> {
+        Ok(())
+    }
+    fn intercept_signal(&self, workflow_id: &str, signal_name: &str) -> Result<(), ClientError> {
+        Ok(())
+    }
+    fn intercept_query(&self, workflow_id: &str, query_type: &str) -> Result<(), ClientError> {
+        Ok(())
+    }
 }
 
 pub struct LoggingInterceptor;
@@ -659,7 +731,9 @@ pub enum ClientError {
 
 fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{:x}{:x}", t.as_secs(), t.subsec_nanos())
 }
 
@@ -671,7 +745,9 @@ fn uuid_simple() -> String {
 mod tests {
     use super::*;
 
-    fn make_config() -> ClientConfig { ClientConfig::default() }
+    fn make_config() -> ClientConfig {
+        ClientConfig::default()
+    }
 
     fn make_start_options() -> StartWorkflowOptions {
         StartWorkflowOptions {
@@ -750,7 +826,9 @@ mod tests {
     fn test_workflow_handle_wait() {
         let client = WorkflowClient::new(make_config());
         let handle = client.start_workflow(&make_start_options()).unwrap();
-        let result = handle.wait_for_completion(Some(Duration::from_secs(5))).unwrap();
+        let result = handle
+            .wait_for_completion(Some(Duration::from_secs(5)))
+            .unwrap();
         assert_eq!(result.status, WorkflowStatus::Completed);
     }
 
@@ -758,7 +836,9 @@ mod tests {
     fn test_workflow_handle_reset() {
         let client = WorkflowClient::new(make_config());
         let handle = client.start_workflow(&make_start_options()).unwrap();
-        let new_run = handle.reset("test", ResetPointSelector::EventId(5)).unwrap();
+        let new_run = handle
+            .reset("test", ResetPointSelector::EventId(5))
+            .unwrap();
         assert!(!new_run.is_empty());
     }
 
@@ -800,15 +880,20 @@ mod tests {
     #[test]
     fn test_namespace_client() {
         let client = NamespaceClient::new(make_config());
-        let ns_id = client.register("test-ns", NamespaceOptions {
-            description: "Test".to_string(),
-            owner_email: "test@test.com".to_string(),
-            retention_days: 7,
-            is_global: false,
-            active_cluster: None,
-            clusters: vec![],
-            data: HashMap::new(),
-        }).unwrap();
+        let ns_id = client
+            .register(
+                "test-ns",
+                NamespaceOptions {
+                    description: "Test".to_string(),
+                    owner_email: "test@test.com".to_string(),
+                    retention_days: 7,
+                    is_global: false,
+                    active_cluster: None,
+                    clusters: vec![],
+                    data: HashMap::new(),
+                },
+            )
+            .unwrap();
         assert!(!ns_id.is_empty());
 
         let desc = client.describe("test-ns").unwrap();
@@ -819,7 +904,9 @@ mod tests {
     fn test_search_attribute_client() {
         let client = SearchAttributeClient::new(make_config());
         let attrs = client.get_search_attributes().unwrap();
-        assert!(client.register_custom_attribute("CustomField", SearchAttributeType::Keyword).is_ok());
+        assert!(client
+            .register_custom_attribute("CustomField", SearchAttributeType::Keyword)
+            .is_ok());
     }
 
     #[test]
@@ -835,7 +922,9 @@ mod tests {
         let mut options = make_start_options();
         assert!(logging.intercept_start_workflow(&mut options).is_ok());
 
-        let auth = AuthInterceptor { api_key: "key123".to_string() };
+        let auth = AuthInterceptor {
+            api_key: "key123".to_string(),
+        };
         assert!(auth.intercept_signal("wf-1", "test").is_ok());
     }
 
@@ -843,7 +932,9 @@ mod tests {
     fn test_signal_with_start() {
         let client = WorkflowClient::new(make_config());
         let handle = client.start_workflow(&make_start_options()).unwrap();
-        let new_handle = handle.signal_with_start(&make_start_options(), "my-signal", Some(b"data".to_vec())).unwrap();
+        let new_handle = handle
+            .signal_with_start(&make_start_options(), "my-signal", Some(b"data".to_vec()))
+            .unwrap();
         assert_eq!(new_handle.workflow_id(), "wf-1");
     }
 

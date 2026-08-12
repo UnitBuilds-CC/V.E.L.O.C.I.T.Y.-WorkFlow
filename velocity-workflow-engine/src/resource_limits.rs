@@ -67,28 +67,60 @@ pub enum ResourceExceeded {
     /// Global active-workflow cap reached.
     MaxActiveWorkflows { current: usize, limit: usize },
     /// Per-namespace workflow cap reached.
-    MaxWorkflowsPerNamespace { namespace_id: u64, current: usize, limit: usize },
+    MaxWorkflowsPerNamespace {
+        namespace_id: u64,
+        current: usize,
+        limit: usize,
+    },
     /// Signal buffer full.
-    MaxSignalsPerWorkflow { workflow_key: u64, current: usize, limit: usize },
+    MaxSignalsPerWorkflow {
+        workflow_key: u64,
+        current: usize,
+        limit: usize,
+    },
     /// Payload too large.
     MaxPayloadSize { size: usize, limit: usize },
     /// Too many steps.
     MaxSteps { steps: u32, limit: u32 },
     /// Too many child workflows.
-    MaxChildWorkflows { parent_key: u64, current: usize, limit: usize },
+    MaxChildWorkflows {
+        parent_key: u64,
+        current: usize,
+        limit: usize,
+    },
 }
 
 impl std::fmt::Display for ResourceExceeded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MaxActiveWorkflows { current, limit } => {
-                write!(f, "max active workflows exceeded ({} >= {})", current, limit)
+                write!(
+                    f,
+                    "max active workflows exceeded ({} >= {})",
+                    current, limit
+                )
             }
-            Self::MaxWorkflowsPerNamespace { namespace_id, current, limit } => {
-                write!(f, "namespace {} workflow limit exceeded ({} >= {})", namespace_id, current, limit)
+            Self::MaxWorkflowsPerNamespace {
+                namespace_id,
+                current,
+                limit,
+            } => {
+                write!(
+                    f,
+                    "namespace {} workflow limit exceeded ({} >= {})",
+                    namespace_id, current, limit
+                )
             }
-            Self::MaxSignalsPerWorkflow { workflow_key, current, limit } => {
-                write!(f, "workflow {} signal limit exceeded ({} >= {})", workflow_key, current, limit)
+            Self::MaxSignalsPerWorkflow {
+                workflow_key,
+                current,
+                limit,
+            } => {
+                write!(
+                    f,
+                    "workflow {} signal limit exceeded ({} >= {})",
+                    workflow_key, current, limit
+                )
             }
             Self::MaxPayloadSize { size, limit } => {
                 write!(f, "payload size {} exceeds limit {}", size, limit)
@@ -96,8 +128,16 @@ impl std::fmt::Display for ResourceExceeded {
             Self::MaxSteps { steps, limit } => {
                 write!(f, "step count {} exceeds limit {}", steps, limit)
             }
-            Self::MaxChildWorkflows { parent_key, current, limit } => {
-                write!(f, "workflow {} child limit exceeded ({} >= {})", parent_key, current, limit)
+            Self::MaxChildWorkflows {
+                parent_key,
+                current,
+                limit,
+            } => {
+                write!(
+                    f,
+                    "workflow {} child limit exceeded ({} >= {})",
+                    parent_key, current, limit
+                )
             }
         }
     }

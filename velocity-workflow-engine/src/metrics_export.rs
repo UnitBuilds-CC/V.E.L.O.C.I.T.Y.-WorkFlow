@@ -44,7 +44,12 @@ impl MetricsSnapshot {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        Self { counters, gauges, histograms, timestamp }
+        Self {
+            counters,
+            gauges,
+            histograms,
+            timestamp,
+        }
     }
 
     /// Create a snapshot from raw values (useful for testing).
@@ -57,7 +62,12 @@ impl MetricsSnapshot {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        Self { counters, gauges, histograms, timestamp }
+        Self {
+            counters,
+            gauges,
+            histograms,
+            timestamp,
+        }
     }
 
     // ─── Export: JSON ───────────────────────────────────────────────────────
@@ -167,7 +177,13 @@ impl MetricsSnapshot {
 /// Sanitise a metric name for Prometheus (replace non-alphanumeric with `_`).
 fn prometheus_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -206,7 +222,9 @@ fn format_u64(mut v: u64, buf: &mut [u8; 20]) -> &str {
 fn push_map_u64(out: &mut String, map: &HashMap<String, u64>) {
     let mut first = true;
     for (k, v) in map {
-        if !first { out.push(','); }
+        if !first {
+            out.push(',');
+        }
         first = false;
         out.push('"');
         out.push_str(k);
@@ -218,7 +236,9 @@ fn push_map_u64(out: &mut String, map: &HashMap<String, u64>) {
 fn push_map_i64(out: &mut String, map: &HashMap<String, i64>) {
     let mut first = true;
     for (k, v) in map {
-        if !first { out.push(','); }
+        if !first {
+            out.push(',');
+        }
         first = false;
         out.push('"');
         out.push_str(k);
@@ -230,7 +250,9 @@ fn push_map_i64(out: &mut String, map: &HashMap<String, i64>) {
 fn push_map_hist(out: &mut String, map: &HashMap<String, (u64, u64)>) {
     let mut first = true;
     for (k, (count, sum)) in map {
-        if !first { out.push(','); }
+        if !first {
+            out.push(',');
+        }
         first = false;
         out.push('"');
         out.push_str(k);
@@ -304,11 +326,7 @@ mod tests {
 
     #[test]
     fn test_empty_snapshot() {
-        let snap = MetricsSnapshot::from_raw(
-            HashMap::new(),
-            HashMap::new(),
-            HashMap::new(),
-        );
+        let snap = MetricsSnapshot::from_raw(HashMap::new(), HashMap::new(), HashMap::new());
         let json = snap.export_json();
         assert!(json.contains("\"counters\":{}"));
         assert!(json.contains("\"gauges\":{}"));

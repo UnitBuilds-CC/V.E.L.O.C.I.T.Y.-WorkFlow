@@ -4,8 +4,11 @@
 //! timer state, signal state, query state, state transitions, checksum, and rebuilder.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicI64, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::sync::{
+    atomic::{AtomicI64, AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Workflow Execution State
@@ -25,8 +28,15 @@ pub enum WorkflowExecutionState {
 
 impl WorkflowExecutionState {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Failed | Self::Cancelled |
-                       Self::Terminated | Self::ContinuedAsNew | Self::TimedOut)
+        matches!(
+            self,
+            Self::Completed
+                | Self::Failed
+                | Self::Cancelled
+                | Self::Terminated
+                | Self::ContinuedAsNew
+                | Self::TimedOut
+        )
     }
 
     pub fn name(&self) -> &'static str {
@@ -110,10 +120,13 @@ impl ActivityState {
     }
 
     pub fn is_terminal(&self) -> bool {
-        matches!(self.state, ActivityExecutionState::Completed |
-                            ActivityExecutionState::Failed |
-                            ActivityExecutionState::Cancelled |
-                            ActivityExecutionState::TimedOut)
+        matches!(
+            self.state,
+            ActivityExecutionState::Completed
+                | ActivityExecutionState::Failed
+                | ActivityExecutionState::Cancelled
+                | ActivityExecutionState::TimedOut
+        )
     }
 }
 
@@ -248,8 +261,17 @@ pub struct MutableState {
 }
 
 impl MutableState {
-    pub fn new(namespace_id: &str, workflow_id: &str, run_id: &str, workflow_type: &str, task_queue: &str) -> Self {
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    pub fn new(
+        namespace_id: &str,
+        workflow_id: &str,
+        run_id: &str,
+        workflow_type: &str,
+        task_queue: &str,
+    ) -> Self {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         Self {
             namespace_id: namespace_id.to_string(),
             workflow_id: workflow_id.to_string(),
@@ -286,7 +308,10 @@ impl MutableState {
         let mut act = activity;
         act.scheduled_event_id = event_id;
         act.state = ActivityExecutionState::Scheduled;
-        self.activities.write().unwrap().insert(act.activity_id.clone(), act);
+        self.activities
+            .write()
+            .unwrap()
+            .insert(act.activity_id.clone(), act);
         event_id
     }
 
@@ -294,10 +319,18 @@ impl MutableState {
         self.activities.read().unwrap().get(activity_id).cloned()
     }
 
-    pub fn complete_activity(&self, activity_id: &str, result: Option<Vec<u8>>) -> Result<(), StateError> {
+    pub fn complete_activity(
+        &self,
+        activity_id: &str,
+        result: Option<Vec<u8>>,
+    ) -> Result<(), StateError> {
         let mut activities = self.activities.write().unwrap();
-        let act = activities.get_mut(activity_id).ok_or(StateError::ActivityNotFound)?;
-        if act.is_terminal() { return Err(StateError::InvalidTransition); }
+        let act = activities
+            .get_mut(activity_id)
+            .ok_or(StateError::ActivityNotFound)?;
+        if act.is_terminal() {
+            return Err(StateError::InvalidTransition);
+        }
         act.state = ActivityExecutionState::Completed;
         act.result = result;
         self.record_transition();
@@ -306,8 +339,12 @@ impl MutableState {
 
     pub fn fail_activity(&self, activity_id: &str, failure: &str) -> Result<(), StateError> {
         let mut activities = self.activities.write().unwrap();
-        let act = activities.get_mut(activity_id).ok_or(StateError::ActivityNotFound)?;
-        if act.is_terminal() { return Err(StateError::InvalidTransition); }
+        let act = activities
+            .get_mut(activity_id)
+            .ok_or(StateError::ActivityNotFound)?;
+        if act.is_terminal() {
+            return Err(StateError::InvalidTransition);
+        }
         act.state = ActivityExecutionState::Failed;
         act.last_failure = Some(failure.to_string());
         self.record_transition();
@@ -316,14 +353,24 @@ impl MutableState {
 
     pub fn heartbeat_activity(&self, activity_id: &str) -> Result<(), StateError> {
         let mut activities = self.activities.write().unwrap();
-        let act = activities.get_mut(activity_id).ok_or(StateError::ActivityNotFound)?;
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+        let act = activities
+            .get_mut(activity_id)
+            .ok_or(StateError::ActivityNotFound)?;
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         act.last_heartbeat_at = Some(now);
         Ok(())
     }
 
     pub fn active_activity_count(&self) -> usize {
-        self.activities.read().unwrap().values().filter(|a| !a.is_terminal()).count()
+        self.activities
+            .read()
+            .unwrap()
+            .values()
+            .filter(|a| !a.is_terminal())
+            .count()
     }
 
     // Timer operations
@@ -336,14 +383,19 @@ impl MutableState {
             state: TimerExecutionState::Started,
             cancelled_event_id: None,
         };
-        self.timers.write().unwrap().insert(timer_id.to_string(), timer);
+        self.timers
+            .write()
+            .unwrap()
+            .insert(timer_id.to_string(), timer);
         event_id
     }
 
     pub fn fire_timer(&self, timer_id: &str) -> Result<(), StateError> {
         let mut timers = self.timers.write().unwrap();
         let timer = timers.get_mut(timer_id).ok_or(StateError::TimerNotFound)?;
-        if timer.state != TimerExecutionState::Started { return Err(StateError::InvalidTransition); }
+        if timer.state != TimerExecutionState::Started {
+            return Err(StateError::InvalidTransition);
+        }
         timer.state = TimerExecutionState::Fired;
         self.record_transition();
         Ok(())
@@ -352,15 +404,21 @@ impl MutableState {
     pub fn cancel_timer(&self, timer_id: &str) -> Result<(), StateError> {
         let mut timers = self.timers.write().unwrap();
         let timer = timers.get_mut(timer_id).ok_or(StateError::TimerNotFound)?;
-        if timer.state != TimerExecutionState::Started { return Err(StateError::InvalidTransition); }
+        if timer.state != TimerExecutionState::Started {
+            return Err(StateError::InvalidTransition);
+        }
         timer.state = TimerExecutionState::Cancelled;
         self.record_transition();
         Ok(())
     }
 
     pub fn active_timer_count(&self) -> usize {
-        self.timers.read().unwrap().values()
-            .filter(|t| t.state == TimerExecutionState::Started).count()
+        self.timers
+            .read()
+            .unwrap()
+            .values()
+            .filter(|t| t.state == TimerExecutionState::Started)
+            .count()
     }
 
     // Child workflow operations
@@ -368,13 +426,22 @@ impl MutableState {
         let event_id = self.next_event_id();
         let mut cw = child;
         cw.initiated_event_id = event_id;
-        self.child_workflows.write().unwrap().insert(cw.workflow_id.clone(), cw);
+        self.child_workflows
+            .write()
+            .unwrap()
+            .insert(cw.workflow_id.clone(), cw);
         event_id
     }
 
-    pub fn complete_child_workflow(&self, workflow_id: &str, result: Option<Vec<u8>>) -> Result<(), StateError> {
+    pub fn complete_child_workflow(
+        &self,
+        workflow_id: &str,
+        result: Option<Vec<u8>>,
+    ) -> Result<(), StateError> {
         let mut children = self.child_workflows.write().unwrap();
-        let cw = children.get_mut(workflow_id).ok_or(StateError::ChildNotFound)?;
+        let cw = children
+            .get_mut(workflow_id)
+            .ok_or(StateError::ChildNotFound)?;
         cw.state = ChildWorkflowExecutionState::Completed;
         cw.result = result;
         self.record_transition();
@@ -398,10 +465,17 @@ impl MutableState {
 
     // Query operations
     pub fn add_query(&self, query: QueryState) {
-        self.queries.write().unwrap().insert(query.query_id.clone(), query);
+        self.queries
+            .write()
+            .unwrap()
+            .insert(query.query_id.clone(), query);
     }
 
-    pub fn complete_query(&self, query_id: &str, result: Option<Vec<u8>>) -> Result<(), StateError> {
+    pub fn complete_query(
+        &self,
+        query_id: &str,
+        result: Option<Vec<u8>>,
+    ) -> Result<(), StateError> {
         let mut queries = self.queries.write().unwrap();
         let q = queries.get_mut(query_id).ok_or(StateError::QueryNotFound)?;
         q.state = QueryExecutionState::Completed;
@@ -418,7 +492,10 @@ impl MutableState {
     pub fn complete_workflow(&self) {
         *self.execution_state.write().unwrap() = WorkflowExecutionState::Completed;
         *self.close_time.write().unwrap() = Some(
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
         );
         self.record_transition();
     }
@@ -426,7 +503,10 @@ impl MutableState {
     pub fn fail_workflow(&self) {
         *self.execution_state.write().unwrap() = WorkflowExecutionState::Failed;
         *self.close_time.write().unwrap() = Some(
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
         );
         self.record_transition();
     }
@@ -434,7 +514,10 @@ impl MutableState {
     pub fn cancel_workflow(&self) {
         *self.execution_state.write().unwrap() = WorkflowExecutionState::Cancelled;
         *self.close_time.write().unwrap() = Some(
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
         );
         self.record_transition();
     }
@@ -442,7 +525,10 @@ impl MutableState {
     pub fn terminate_workflow(&self) {
         *self.execution_state.write().unwrap() = WorkflowExecutionState::Terminated;
         *self.close_time.write().unwrap() = Some(
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
         );
         self.record_transition();
     }
@@ -450,7 +536,10 @@ impl MutableState {
     pub fn continue_as_new(&self) {
         *self.execution_state.write().unwrap() = WorkflowExecutionState::ContinuedAsNew;
         *self.close_time.write().unwrap() = Some(
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
         );
         self.record_transition();
     }
@@ -474,8 +563,10 @@ impl MutableState {
 
     // Checksum
     pub fn compute_checksum(&self) -> Vec<u8> {
-        let state = format!("{}:{}:{}:{}:{}:{}",
-            self.workflow_id, self.run_id,
+        let state = format!(
+            "{}:{}:{}:{}:{}:{}",
+            self.workflow_id,
+            self.run_id,
             self.execution_state().name(),
             self.state_transition_count.load(Ordering::Relaxed),
             self.next_event_id.load(Ordering::Relaxed),
@@ -611,7 +702,8 @@ mod tests {
         assert!(event_id > 0);
         assert_eq!(ms.active_activity_count(), 1);
 
-        ms.complete_activity("act-1", Some(b"result".to_vec())).unwrap();
+        ms.complete_activity("act-1", Some(b"result".to_vec()))
+            .unwrap();
         let completed = ms.get_activity("act-1").unwrap();
         assert_eq!(completed.state, ActivityExecutionState::Completed);
         assert_eq!(ms.active_activity_count(), 0);
@@ -674,7 +766,8 @@ mod tests {
             failure: None,
         };
         ms.add_child_workflow(child);
-        ms.complete_child_workflow("child-1", Some(b"done".to_vec())).unwrap();
+        ms.complete_child_workflow("child-1", Some(b"done".to_vec()))
+            .unwrap();
     }
 
     #[test]
@@ -722,7 +815,11 @@ mod tests {
         let mut attrs = HashMap::new();
         attrs.insert("CustomField".to_string(), b"val".to_vec());
         ms.upsert_search_attributes(attrs);
-        assert!(ms.search_attributes.read().unwrap().contains_key("CustomField"));
+        assert!(ms
+            .search_attributes
+            .read()
+            .unwrap()
+            .contains_key("CustomField"));
     }
 
     #[test]

@@ -238,7 +238,10 @@ pub struct SimulatedSmartNic {
 
 impl SimulatedSmartNic {
     pub fn new() -> Self {
-        Self { available: true, next_handle: 1 }
+        Self {
+            available: true,
+            next_handle: 1,
+        }
     }
 }
 
@@ -309,7 +312,9 @@ impl TeeEnclave for SimulatedTee {
         data: &[u8],
     ) -> Result<(), HardwareError> {
         // In simulation, we just write to a regular Vec
-        let enclave = self.enclaves.get(&handle.0)
+        let enclave = self
+            .enclaves
+            .get(&handle.0)
             .ok_or(HardwareError::EnclaveError("Enclave not found".to_string()))?;
         if offset + data.len() > enclave.len() {
             return Err(HardwareError::EnclaveError("Out of bounds".to_string()));
@@ -323,7 +328,9 @@ impl TeeEnclave for SimulatedTee {
         offset: usize,
         buffer: &mut [u8],
     ) -> Result<(), HardwareError> {
-        let enclave = self.enclaves.get(&handle.0)
+        let enclave = self
+            .enclaves
+            .get(&handle.0)
             .ok_or(HardwareError::EnclaveError("Enclave not found".to_string()))?;
         if offset + buffer.len() > enclave.len() {
             return Err(HardwareError::EnclaveError("Out of bounds".to_string()));
@@ -398,14 +405,14 @@ mod tests {
         let info = nic.device_info();
         assert_eq!(info.vendor, "Software");
 
-        let handle = nic.offload_slab_transfer(
-            std::ptr::null(),
-            std::ptr::null_mut(),
-            1024,
-            &[0u8; 32],
-        ).unwrap();
+        let handle = nic
+            .offload_slab_transfer(std::ptr::null(), std::ptr::null_mut(), 1024, &[0u8; 32])
+            .unwrap();
 
-        assert_eq!(nic.check_transfer(handle).unwrap(), TransferStatus::Completed);
+        assert_eq!(
+            nic.check_transfer(handle).unwrap(),
+            TransferStatus::Completed
+        );
     }
 
     #[test]
@@ -430,7 +437,9 @@ mod tests {
         let parity = ecc.compute_parity(&data);
 
         let mut data_copy = data.clone();
-        let result = ecc.verify_and_repair(&mut data_copy, &parity, &[0u8; 32]).unwrap();
+        let result = ecc
+            .verify_and_repair(&mut data_copy, &parity, &[0u8; 32])
+            .unwrap();
         assert_eq!(result, VerificationResult::Valid);
     }
 }

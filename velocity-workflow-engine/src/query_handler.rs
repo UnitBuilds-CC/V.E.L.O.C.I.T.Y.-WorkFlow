@@ -128,8 +128,8 @@ impl QueryRecord {
 
     /// Check if this query has timed out based on the given deadline.
     pub fn is_timed_out(&self, timeout: Duration) -> bool {
-        self.state == QueryState::Pending || self.state == QueryState::Dispatched
-            && self.received_at.elapsed() > timeout
+        self.state == QueryState::Pending
+            || self.state == QueryState::Dispatched && self.received_at.elapsed() > timeout
     }
 }
 
@@ -201,7 +201,9 @@ impl QueryRegistry {
 
     /// Register a query handler for a workflow.
     pub fn register_handler(&self, workflow_key: u64, query_name_id: u64, handler: QueryHandler) {
-        self.handlers.lock().unwrap()
+        self.handlers
+            .lock()
+            .unwrap()
             .entry(workflow_key)
             .or_default()
             .insert(query_name_id, handler);
@@ -215,11 +217,15 @@ impl QueryRegistry {
         definition: QueryDefinition,
         handler: QueryHandler,
     ) {
-        self.definitions.lock().unwrap()
+        self.definitions
+            .lock()
+            .unwrap()
             .entry(workflow_key)
             .or_default()
             .insert(query_name_id, definition);
-        self.handlers.lock().unwrap()
+        self.handlers
+            .lock()
+            .unwrap()
             .entry(workflow_key)
             .or_default()
             .insert(query_name_id, handler);
@@ -229,12 +235,7 @@ impl QueryRegistry {
     ///
     /// If the query has a definition requiring consistency and the workflow
     /// is not consistent, the query is buffered instead of executed.
-    pub fn submit_query(
-        &self,
-        workflow_key: u64,
-        query_name_id: u64,
-        input: &[u8],
-    ) -> u64 {
+    pub fn submit_query(&self, workflow_key: u64, query_name_id: u64, input: &[u8]) -> u64 {
         let mut id_gen = self.next_query_id.lock().unwrap();
         let query_id = *id_gen;
         *id_gen += 1;
@@ -288,7 +289,9 @@ impl QueryRegistry {
                 max_wait: timeout,
             };
 
-            self.buffered.lock().unwrap()
+            self.buffered
+                .lock()
+                .unwrap()
                 .entry(workflow_key)
                 .or_default()
                 .push_back(buffered);
@@ -302,9 +305,17 @@ impl QueryRegistry {
     }
 
     /// Execute a query immediately (bypassing buffering). Returns the result.
-    pub fn execute_query(&self, workflow_key: u64, query_name_id: u64, input: &[u8]) -> Option<Vec<u8>> {
+    pub fn execute_query(
+        &self,
+        workflow_key: u64,
+        query_name_id: u64,
+        input: &[u8],
+    ) -> Option<Vec<u8>> {
         let handlers = self.handlers.lock().unwrap();
-        handlers.get(&workflow_key)?.get(&query_name_id).map(|h| h(input))
+        handlers
+            .get(&workflow_key)?
+            .get(&query_name_id)
+            .map(|h| h(input))
     }
 
     /// Execute a submitted query by ID. Updates the query record with the result.
@@ -326,7 +337,8 @@ impl QueryRegistry {
 
         // Execute the handler
         let handlers = self.handlers.lock().unwrap();
-        let result = handlers.get(&workflow_key)
+        let result = handlers
+            .get(&workflow_key)
             .and_then(|m| m.get(&query_name_id))
             .map(|h| h(input));
 
@@ -391,7 +403,8 @@ impl QueryRegistry {
 
         for (query_id, record) in records.iter_mut() {
             if record.state == QueryState::Pending || record.state == QueryState::Dispatched {
-                let timeout = defs.get(&record.workflow_key)
+                let timeout = defs
+                    .get(&record.workflow_key)
                     .and_then(|m| m.get(&record.query_name_id))
                     .map(|d| d.timeout)
                     .unwrap_or(Duration::from_secs(10));
@@ -408,7 +421,9 @@ impl QueryRegistry {
         if !timed_out.is_empty() {
             let mut stats = self.stats.lock().unwrap();
             stats.total_timed_out += timed_out.len() as u64;
-            stats.currently_pending = stats.currently_pending.saturating_sub(timed_out.len() as u64);
+            stats.currently_pending = stats
+                .currently_pending
+                .saturating_sub(timed_out.len() as u64);
         }
 
         timed_out
@@ -422,7 +437,8 @@ impl QueryRegistry {
         let count = queries.len();
 
         // Remove expired buffered queries
-        let (valid, expired): (Vec<_>, Vec<_>) = queries.into_iter()
+        let (valid, expired): (Vec<_>, Vec<_>) = queries
+            .into_iter()
             .partition(|q| q.buffered_at.elapsed() < q.max_wait);
 
         if !expired.is_empty() {
@@ -436,7 +452,9 @@ impl QueryRegistry {
             }
             let mut stats = self.stats.lock().unwrap();
             stats.total_timed_out += expired.len() as u64;
-            stats.currently_buffered = stats.currently_buffered.saturating_sub(expired.len() as u64);
+            stats.currently_buffered = stats
+                .currently_buffered
+                .saturating_sub(expired.len() as u64);
         }
 
         // Mark valid queries as pending execution
@@ -457,7 +475,9 @@ impl QueryRegistry {
 
     /// Get the number of buffered queries for a workflow.
     pub fn buffered_count(&self, workflow_key: u64) -> usize {
-        self.buffered.lock().unwrap()
+        self.buffered
+            .lock()
+            .unwrap()
             .get(&workflow_key)
             .map_or(0, |q| q.len())
     }
@@ -469,7 +489,9 @@ impl QueryRegistry {
 
     /// Check if a handler is registered.
     pub fn has_handler(&self, workflow_key: u64, query_name_id: u64) -> bool {
-        self.handlers.lock().unwrap()
+        self.handlers
+            .lock()
+            .unwrap()
             .get(&workflow_key)
             .and_then(|m| m.get(&query_name_id))
             .is_some()
@@ -477,7 +499,9 @@ impl QueryRegistry {
 
     /// Get the query definition for a handler.
     pub fn get_definition(&self, workflow_key: u64, query_name_id: u64) -> Option<QueryDefinition> {
-        self.definitions.lock().unwrap()
+        self.definitions
+            .lock()
+            .unwrap()
             .get(&workflow_key)
             .and_then(|m| m.get(&query_name_id))
             .cloned()
@@ -485,7 +509,9 @@ impl QueryRegistry {
 
     /// List all registered query name IDs for a workflow.
     pub fn list_queries(&self, workflow_key: u64) -> Vec<u64> {
-        self.handlers.lock().unwrap()
+        self.handlers
+            .lock()
+            .unwrap()
             .get(&workflow_key)
             .map(|m| m.keys().copied().collect())
             .unwrap_or_default()
@@ -493,7 +519,9 @@ impl QueryRegistry {
 
     /// List all registered query definitions for a workflow.
     pub fn list_definitions(&self, workflow_key: u64) -> Vec<(u64, QueryDefinition)> {
-        self.definitions.lock().unwrap()
+        self.definitions
+            .lock()
+            .unwrap()
             .get(&workflow_key)
             .map(|m| m.iter().map(|(k, v)| (*k, v.clone())).collect())
             .unwrap_or_default()
@@ -508,9 +536,12 @@ impl QueryRegistry {
 
         // Reject all pending queries for this workflow
         let mut records = self.records.lock().unwrap();
-        let pending_ids: Vec<u64> = records.iter()
-            .filter(|(_, r)| r.workflow_key == workflow_key
-                && (r.state == QueryState::Pending || r.state == QueryState::Dispatched))
+        let pending_ids: Vec<u64> = records
+            .iter()
+            .filter(|(_, r)| {
+                r.workflow_key == workflow_key
+                    && (r.state == QueryState::Pending || r.state == QueryState::Dispatched)
+            })
             .map(|(id, _)| *id)
             .collect();
 
@@ -524,7 +555,9 @@ impl QueryRegistry {
 
         let mut stats = self.stats.lock().unwrap();
         stats.total_rejected += pending_ids.len() as u64;
-        stats.currently_pending = stats.currently_pending.saturating_sub(pending_ids.len() as u64);
+        stats.currently_pending = stats
+            .currently_pending
+            .saturating_sub(pending_ids.len() as u64);
     }
 
     /// Get aggregate statistics.
@@ -539,7 +572,10 @@ impl QueryRegistry {
 
     /// Get the total number of active (pending/dispatched) queries.
     pub fn active_query_count(&self) -> usize {
-        self.records.lock().unwrap().values()
+        self.records
+            .lock()
+            .unwrap()
+            .values()
             .filter(|r| r.state == QueryState::Pending || r.state == QueryState::Dispatched)
             .count()
     }
@@ -549,9 +585,13 @@ impl QueryRegistry {
         let mut records = self.records.lock().unwrap();
         let before = records.len();
         records.retain(|_, r| {
-            let is_terminal = matches!(r.state,
-                QueryState::Completed | QueryState::Failed |
-                QueryState::TimedOut | QueryState::Rejected);
+            let is_terminal = matches!(
+                r.state,
+                QueryState::Completed
+                    | QueryState::Failed
+                    | QueryState::TimedOut
+                    | QueryState::Rejected
+            );
             if is_terminal {
                 if let Some(completed_at) = r.completed_at {
                     return completed_at.elapsed() < older_than;
@@ -576,11 +616,15 @@ mod tests {
     #[test]
     fn test_register_and_execute() {
         let reg = QueryRegistry::new();
-        reg.register_handler(42, 1, Box::new(|input| {
-            let mut r = input.to_vec();
-            r.push(0xFF);
-            r
-        }));
+        reg.register_handler(
+            42,
+            1,
+            Box::new(|input| {
+                let mut r = input.to_vec();
+                r.push(0xFF);
+                r
+            }),
+        );
         let result = reg.execute_query(42, 1, &[1, 2, 3]).unwrap();
         assert_eq!(result, vec![1, 2, 3, 0xFF]);
     }
@@ -655,8 +699,7 @@ mod tests {
     #[test]
     fn test_buffered_queries() {
         let reg = QueryRegistry::new();
-        let def = QueryDefinition::new("consistent_query")
-            .with_buffer_until_consistent(true);
+        let def = QueryDefinition::new("consistent_query").with_buffer_until_consistent(true);
 
         reg.register_typed_handler(42, 1, def, Box::new(|_| b"ok".to_vec()));
 

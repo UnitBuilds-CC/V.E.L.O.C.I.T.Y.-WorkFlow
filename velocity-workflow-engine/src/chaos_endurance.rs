@@ -3,7 +3,7 @@
 //! stability under prolonged load, detecting memory leaks, deadlocks, and
 //! resource exhaustion.
 
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -88,13 +88,17 @@ impl SoakTestMetrics {
 
     pub fn throughput_ops_per_sec(&self) -> f64 {
         let duration_ms = self.total_duration_ms.load(Ordering::Relaxed);
-        if duration_ms == 0 { return 0.0; }
+        if duration_ms == 0 {
+            return 0.0;
+        }
         self.total_operations() as f64 / (duration_ms as f64 / 1000.0)
     }
 
     pub fn error_rate(&self) -> f64 {
         let total = self.total_operations();
-        if total == 0 { return 0.0; }
+        if total == 0 {
+            return 0.0;
+        }
         self.errors.load(Ordering::Relaxed) as f64 / total as f64
     }
 
@@ -157,9 +161,8 @@ pub fn run_soak_test(config: &SoakTestConfig) -> Arc<SoakTestMetrics> {
                 // Start a workflow
                 let wf_id = (thread_id as u64 * 1_000_000) + workflow_counter;
                 workflow_counter += 1;
-                let workflow_key = engine.start_workflow(
-                    wf_id, 1, 0, (thread_id as u64) + 1, 3, None,
-                );
+                let workflow_key =
+                    engine.start_workflow(wf_id, 1, 0, (thread_id as u64) + 1, 3, None);
 
                 if workflow_key == 0 {
                     metrics.errors.fetch_add(1, Ordering::Relaxed);
@@ -172,7 +175,12 @@ pub fn run_soak_test(config: &SoakTestConfig) -> Arc<SoakTestMetrics> {
                 // Update peak
                 let mut peak = active.load(Ordering::Relaxed);
                 while current_active > peak {
-                    match active.compare_exchange_weak(peak, current_active, Ordering::Relaxed, Ordering::Relaxed) {
+                    match active.compare_exchange_weak(
+                        peak,
+                        current_active,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    ) {
                         Ok(_) => break,
                         Err(p) => peak = p,
                     }
@@ -227,9 +235,12 @@ pub fn run_soak_test(config: &SoakTestConfig) -> Arc<SoakTestMetrics> {
     }
 
     let elapsed = start_time.elapsed();
-    metrics.total_duration_ms.store(elapsed.as_millis() as u64, Ordering::Relaxed);
-    metrics.peak_active_workflows.store(
-        active_workflows.load(Ordering::Relaxed), Ordering::Relaxed);
+    metrics
+        .total_duration_ms
+        .store(elapsed.as_millis() as u64, Ordering::Relaxed);
+    metrics
+        .peak_active_workflows
+        .store(active_workflows.load(Ordering::Relaxed), Ordering::Relaxed);
 
     metrics
 }
@@ -245,9 +256,7 @@ pub fn run_crash_recovery_test(workflow_count: usize) -> (usize, usize) {
     {
         let engine = WorkflowEngine::new();
         for i in 0..workflow_count {
-            let key = engine.start_workflow(
-                i as u64 + 1, 1, 0, 1, 5, None,
-            );
+            let key = engine.start_workflow(i as u64 + 1, 1, 0, 1, 5, None);
             if key > 0 {
                 // Complete a few steps
                 for step in 0..2 {
@@ -266,9 +275,7 @@ pub fn run_crash_recovery_test(workflow_count: usize) -> (usize, usize) {
         let engine = WorkflowEngine::new();
         // Start new workflows on the "recovered" engine
         for i in 0..workflow_count {
-            let key = engine.start_workflow(
-                i as u64 + 1000, 1, 0, 1, 3, None,
-            );
+            let key = engine.start_workflow(i as u64 + 1000, 1, 0, 1, 3, None);
             if key > 0 {
                 engine.complete_workflow(key, None);
                 recovered += 1;

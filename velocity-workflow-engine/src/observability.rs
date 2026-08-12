@@ -180,11 +180,14 @@ impl StructuredLogger {
 
     /// Drain all buffered log lines.
     pub fn drain_logs(&self) -> Vec<String> {
-        self.log_buffer.lock().map(|mut buf| {
-            let out = buf.clone();
-            buf.clear();
-            out
-        }).unwrap_or_default()
+        self.log_buffer
+            .lock()
+            .map(|mut buf| {
+                let out = buf.clone();
+                buf.clear();
+                out
+            })
+            .unwrap_or_default()
     }
 
     /// Total events logged since creation.
@@ -301,9 +304,11 @@ impl MetricInstrument {
             let old = self.histogram_sum.load(Ordering::Relaxed);
             let old_f = f64::from_bits(old);
             let new_f = old_f + v;
-            if self.histogram_sum.compare_exchange_weak(
-                old, new_f.to_bits(), Ordering::Relaxed, Ordering::Relaxed
-            ).is_ok() {
+            if self
+                .histogram_sum
+                .compare_exchange_weak(old, new_f.to_bits(), Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
                 break;
             }
         }
@@ -374,10 +379,14 @@ impl MetricsExporter {
                 map.insert(name.to_string(), idx);
             }
 
-            let hist_bounds = vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 5000.0, 10000.0];
+            let hist_bounds = vec![
+                1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 5000.0, 10000.0,
+            ];
             let idx = store.len();
             store.push(MetricInstrument::new_histogram(
-                "replication_lag_ms", "Replication lag in milliseconds", hist_bounds,
+                "replication_lag_ms",
+                "Replication lag in milliseconds",
+                hist_bounds,
             ));
             map.insert("replication_lag_ms".to_string(), idx);
         }
@@ -386,7 +395,9 @@ impl MetricsExporter {
     /// Register a new counter. Returns `true` if newly inserted.
     pub fn register_counter(&self, name: &str, help: &str) -> bool {
         let mut map = self.instruments.write().unwrap();
-        if map.contains_key(name) { return false; }
+        if map.contains_key(name) {
+            return false;
+        }
         let mut store = self.storage.write().unwrap();
         let idx = store.len();
         store.push(MetricInstrument::new_counter(name, help));
@@ -397,7 +408,9 @@ impl MetricsExporter {
     /// Register a new gauge. Returns `true` if newly inserted.
     pub fn register_gauge(&self, name: &str, help: &str) -> bool {
         let mut map = self.instruments.write().unwrap();
-        if map.contains_key(name) { return false; }
+        if map.contains_key(name) {
+            return false;
+        }
         let mut store = self.storage.write().unwrap();
         let idx = store.len();
         store.push(MetricInstrument::new_gauge(name, help));
@@ -408,7 +421,9 @@ impl MetricsExporter {
     /// Register a new histogram. Returns `true` if newly inserted.
     pub fn register_histogram(&self, name: &str, help: &str, bounds: Vec<f64>) -> bool {
         let mut map = self.instruments.write().unwrap();
-        if map.contains_key(name) { return false; }
+        if map.contains_key(name) {
+            return false;
+        }
         let mut store = self.storage.write().unwrap();
         let idx = store.len();
         store.push(MetricInstrument::new_histogram(name, help, bounds));
@@ -428,11 +443,15 @@ impl MetricsExporter {
     }
 
     pub fn inc_counter(&self, name: &str) {
-        if let Some(inst) = self.get_instrument(name) { inst.inc_counter(); }
+        if let Some(inst) = self.get_instrument(name) {
+            inst.inc_counter();
+        }
     }
 
     pub fn add_counter(&self, name: &str, n: u64) {
-        if let Some(inst) = self.get_instrument(name) { inst.add_counter(n); }
+        if let Some(inst) = self.get_instrument(name) {
+            inst.add_counter(n);
+        }
     }
 
     pub fn get_counter(&self, name: &str) -> u64 {
@@ -440,7 +459,9 @@ impl MetricsExporter {
     }
 
     pub fn set_gauge(&self, name: &str, value: i64) {
-        if let Some(inst) = self.get_instrument(name) { inst.set_gauge(value); }
+        if let Some(inst) = self.get_instrument(name) {
+            inst.set_gauge(value);
+        }
     }
 
     pub fn get_gauge(&self, name: &str) -> i64 {
@@ -448,7 +469,9 @@ impl MetricsExporter {
     }
 
     pub fn observe_histogram(&self, name: &str, value: f64) {
-        if let Some(inst) = self.get_instrument(name) { inst.observe_histogram(value); }
+        if let Some(inst) = self.get_instrument(name) {
+            inst.observe_histogram(value);
+        }
     }
 
     /// Export all metrics in Prometheus text exposition format.
@@ -513,7 +536,10 @@ impl MetricsExporter {
                     let last_bucket = inst.histogram_buckets.len() - 1;
                     out.push_str(name);
                     out.push_str("_bucket{le=\"+Inf\"} ");
-                    push_u64(&mut out, inst.histogram_buckets[last_bucket].load(Ordering::Relaxed));
+                    push_u64(
+                        &mut out,
+                        inst.histogram_buckets[last_bucket].load(Ordering::Relaxed),
+                    );
                     out.push('\n');
                     out.push_str(name);
                     out.push_str("_sum ");
@@ -542,7 +568,9 @@ impl MetricsExporter {
 }
 
 impl Default for MetricsExporter {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Distributed Tracing ─────────────────────────────────────────────────────
@@ -674,9 +702,11 @@ impl SpanTracker {
 
     /// Get span info for inspection/testing.
     pub fn get_span_info(&self, span_id: SpanId) -> Option<(String, SpanStatus, Option<SpanId>)> {
-        self.spans.read().unwrap().get(&span_id).map(|s| {
-            (s.name.clone(), s.status, s.parent_id)
-        })
+        self.spans
+            .read()
+            .unwrap()
+            .get(&span_id)
+            .map(|s| (s.name.clone(), s.status, s.parent_id))
     }
 
     /// Total spans created.
@@ -696,7 +726,9 @@ impl SpanTracker {
         out.push_str("{\"spans\":[");
         let mut first = true;
         for span in spans.values() {
-            if !first { out.push(','); }
+            if !first {
+                out.push(',');
+            }
             first = false;
             out.push_str("{\"id\":");
             push_u64(&mut out, span.span_id);
@@ -719,7 +751,9 @@ impl SpanTracker {
             if !span.attributes.is_empty() {
                 out.push_str(",\"attributes\":{");
                 for (i, (k, v)) in span.attributes.iter().enumerate() {
-                    if i > 0 { out.push(','); }
+                    if i > 0 {
+                        out.push(',');
+                    }
                     out.push('"');
                     out.push_str(k);
                     out.push_str("\":\"");
@@ -731,7 +765,9 @@ impl SpanTracker {
             if !span.events.is_empty() {
                 out.push_str(",\"events\":[");
                 for (i, (name, ts)) in span.events.iter().enumerate() {
-                    if i > 0 { out.push(','); }
+                    if i > 0 {
+                        out.push(',');
+                    }
                     out.push_str("{\"name\":\"");
                     out.push_str(name);
                     out.push_str("\",\"tick\":");
@@ -748,7 +784,9 @@ impl SpanTracker {
 }
 
 impl Default for SpanTracker {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Observability Context ────────────────────────────────────────────────────
@@ -789,75 +827,104 @@ impl ObservabilityContext {
     }
 
     /// Access the structured logger.
-    pub fn logger(&self) -> &StructuredLogger { &self.logger }
+    pub fn logger(&self) -> &StructuredLogger {
+        &self.logger
+    }
 
     /// Access the metrics exporter.
-    pub fn metrics(&self) -> &MetricsExporter { &self.metrics }
+    pub fn metrics(&self) -> &MetricsExporter {
+        &self.metrics
+    }
 
     /// Access the span tracer.
-    pub fn tracer(&self) -> &SpanTracker { &self.tracer }
+    pub fn tracer(&self) -> &SpanTracker {
+        &self.tracer
+    }
 
     /// Access the configuration.
-    pub fn config(&self) -> &ObservabilityConfig { &self.config }
+    pub fn config(&self) -> &ObservabilityConfig {
+        &self.config
+    }
 
     /// Record a workflow start across all observability pillars.
     pub fn record_workflow_start(&self, key: u64, workflow_type: &str, namespace: &str) {
         self.workflow_starts.fetch_add(1, Ordering::Relaxed);
         self.metrics.inc_counter("workflow_started_total");
-        self.metrics.set_gauge("active_workflows",
+        self.metrics.set_gauge(
+            "active_workflows",
             self.workflow_starts.load(Ordering::Relaxed) as i64
                 - self.workflow_completions.load(Ordering::Relaxed) as i64
-                - self.workflow_failures.load(Ordering::Relaxed) as i64);
-        self.logger.log_event(LogLevel::Info, "workflow_started", &[
-            ("workflow_key", &u64_to_str(key)),
-            ("workflow_type", workflow_type),
-            ("namespace", namespace),
-        ]);
-        let span_id = self.tracer.start_span(
-            &format!("workflow:{}:{}", workflow_type, key),
-            None,
+                - self.workflow_failures.load(Ordering::Relaxed) as i64,
         );
-        self.tracer.set_span_attribute(span_id, "workflow.type", workflow_type);
-        self.tracer.set_span_attribute(span_id, "workflow.namespace", namespace);
+        self.logger.log_event(
+            LogLevel::Info,
+            "workflow_started",
+            &[
+                ("workflow_key", &u64_to_str(key)),
+                ("workflow_type", workflow_type),
+                ("namespace", namespace),
+            ],
+        );
+        let span_id = self
+            .tracer
+            .start_span(&format!("workflow:{}:{}", workflow_type, key), None);
+        self.tracer
+            .set_span_attribute(span_id, "workflow.type", workflow_type);
+        self.tracer
+            .set_span_attribute(span_id, "workflow.namespace", namespace);
     }
 
     /// Record a workflow completion.
     pub fn record_workflow_complete(&self, key: u64, duration_ms: u64) {
         self.workflow_completions.fetch_add(1, Ordering::Relaxed);
         self.metrics.inc_counter("workflow_completed_total");
-        self.metrics.observe_histogram("replication_lag_ms", duration_ms as f64);
-        self.metrics.set_gauge("active_workflows",
+        self.metrics
+            .observe_histogram("replication_lag_ms", duration_ms as f64);
+        self.metrics.set_gauge(
+            "active_workflows",
             self.workflow_starts.load(Ordering::Relaxed) as i64
                 - self.workflow_completions.load(Ordering::Relaxed) as i64
-                - self.workflow_failures.load(Ordering::Relaxed) as i64);
-        self.logger.log_event(LogLevel::Info, "workflow_completed", &[
-            ("workflow_key", &u64_to_str(key)),
-            ("duration_ms", &u64_to_str(duration_ms)),
-        ]);
+                - self.workflow_failures.load(Ordering::Relaxed) as i64,
+        );
+        self.logger.log_event(
+            LogLevel::Info,
+            "workflow_completed",
+            &[
+                ("workflow_key", &u64_to_str(key)),
+                ("duration_ms", &u64_to_str(duration_ms)),
+            ],
+        );
     }
 
     /// Record a workflow failure.
     pub fn record_workflow_fail(&self, key: u64, error: &str) {
         self.workflow_failures.fetch_add(1, Ordering::Relaxed);
         self.metrics.inc_counter("workflow_failed_total");
-        self.metrics.set_gauge("active_workflows",
+        self.metrics.set_gauge(
+            "active_workflows",
             self.workflow_starts.load(Ordering::Relaxed) as i64
                 - self.workflow_completions.load(Ordering::Relaxed) as i64
-                - self.workflow_failures.load(Ordering::Relaxed) as i64);
-        self.logger.log_event(LogLevel::Error, "workflow_failed", &[
-            ("workflow_key", &u64_to_str(key)),
-            ("error", error),
-        ]);
+                - self.workflow_failures.load(Ordering::Relaxed) as i64,
+        );
+        self.logger.log_event(
+            LogLevel::Error,
+            "workflow_failed",
+            &[("workflow_key", &u64_to_str(key)), ("error", error)],
+        );
     }
 
     /// Record a step completion within a workflow.
     pub fn record_step_complete(&self, key: u64, step: u32, duration_ms: u64) {
         self.metrics.inc_counter("step_completed_total");
-        self.logger.log_event(LogLevel::Debug, "step_completed", &[
-            ("workflow_key", &u64_to_str(key)),
-            ("step", &u32_to_str(step)),
-            ("duration_ms", &u64_to_str(duration_ms)),
-        ]);
+        self.logger.log_event(
+            LogLevel::Debug,
+            "step_completed",
+            &[
+                ("workflow_key", &u64_to_str(key)),
+                ("step", &u32_to_str(step)),
+                ("duration_ms", &u64_to_str(duration_ms)),
+            ],
+        );
     }
 
     /// Total workflow starts recorded.
@@ -931,7 +998,7 @@ static GLOBAL_CTX: once_cell_stub::OnceCell<ObservabilityContext> = once_cell_st
 
 /// Minimal OnceCell replacement (no external deps).
 mod once_cell_stub {
-    use std::sync::{Once, Mutex};
+    use std::sync::{Mutex, Once};
 
     pub struct OnceCell<T> {
         once: Once,
@@ -992,10 +1059,11 @@ mod tests {
     #[test]
     fn test_logger_json_format() {
         let logger = StructuredLogger::new(LogLevel::Info, "test-svc");
-        let recorded = logger.log_event(LogLevel::Info, "test_event", &[
-            ("key1", "val1"),
-            ("key2", "val2"),
-        ]);
+        let recorded = logger.log_event(
+            LogLevel::Info,
+            "test_event",
+            &[("key1", "val1"), ("key2", "val2")],
+        );
         assert!(recorded);
         let logs = logger.drain_logs();
         assert_eq!(logs.len(), 1);

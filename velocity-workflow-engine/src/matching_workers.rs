@@ -4,9 +4,12 @@
 //! poller management, task versioning, rate limiting, partition management,
 //! load balancing, and task forwarding.
 
-use std::collections::{HashMap, VecDeque, BTreeMap};
-use std::sync::{Arc, RwLock, Mutex, atomic::{AtomicU64, AtomicI64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant, Duration};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Task Queue Partition
@@ -44,7 +47,10 @@ impl TaskQueuePartition {
     }
 
     pub fn key(&self) -> String {
-        format!("{}:{}:{}:{}", self.namespace_id, self.task_queue, self.task_type as i32, self.partition)
+        format!(
+            "{}:{}:{}:{}",
+            self.namespace_id, self.task_queue, self.task_type as i32, self.partition
+        )
     }
 }
 
@@ -162,7 +168,8 @@ impl PhysicalTaskQueue {
 
     pub fn try_sync_match(&self, task: &InternalTask) -> Option<PollerInfo> {
         let pollers = self.pollers.read().unwrap();
-        let available = pollers.iter()
+        let available = pollers
+            .iter()
             .find(|p| {
                 if let Some(ref version) = task.version {
                     p.build_id == *version || p.build_id.is_empty()
@@ -276,7 +283,12 @@ impl LogicalTaskQueue {
     pub fn dispatch_task(&self, task: InternalTask) -> DispatchResult {
         // Check redirect rules first
         if let Some(version) = &task.version {
-            if let Some(redirect) = self.versioning.redirect_rules.iter().find(|r| &r.source_version == version) {
+            if let Some(redirect) = self
+                .versioning
+                .redirect_rules
+                .iter()
+                .find(|r| &r.source_version == version)
+            {
                 return DispatchResult::Redirected(redirect.target_version.clone());
             }
         }
@@ -320,9 +332,13 @@ impl LogicalTaskQueue {
     }
 
     pub fn add_partition(&self, partition_id: i32) {
-        let partition = TaskQueuePartition::child(&self.name, self.task_type, &self.namespace_id, partition_id);
+        let partition =
+            TaskQueuePartition::child(&self.name, self.task_type, &self.namespace_id, partition_id);
         let queue = Arc::new(PhysicalTaskQueue::new(partition, self.config.clone()));
-        self.child_partitions.write().unwrap().insert(partition_id, queue);
+        self.child_partitions
+            .write()
+            .unwrap()
+            .insert(partition_id, queue);
     }
 
     pub fn remove_partition(&self, partition_id: i32) {
@@ -350,12 +366,15 @@ impl LogicalTaskQueue {
         if let Some(data) = self.versioning.version_data.get_mut(version) {
             data.is_current = true;
         } else {
-            self.versioning.version_data.insert(version.to_string(), VersionData {
-                build_id: version.to_string(),
-                is_current: true,
-                is_draining: false,
-                first_poller_seen: None,
-            });
+            self.versioning.version_data.insert(
+                version.to_string(),
+                VersionData {
+                    build_id: version.to_string(),
+                    is_current: true,
+                    is_draining: false,
+                    first_poller_seen: None,
+                },
+            );
         }
     }
 
@@ -368,12 +387,14 @@ impl LogicalTaskQueue {
     }
 
     pub fn add_assignment_rule(&mut self, target: &str, percentage: f64) {
-        self.versioning.assignment_rules.push(VersionAssignmentRule {
-            source_version: None,
-            target_version: target.to_string(),
-            percentage,
-            created_at: Instant::now(),
-        });
+        self.versioning
+            .assignment_rules
+            .push(VersionAssignmentRule {
+                source_version: None,
+                target_version: target.to_string(),
+                percentage,
+                created_at: Instant::now(),
+            });
     }
 }
 
@@ -413,21 +434,42 @@ impl TaskQueueManager {
         }
     }
 
-    pub fn get_or_create_queue(&self, name: &str, task_type: TaskType, ns_id: &str) -> Arc<LogicalTaskQueue> {
+    pub fn get_or_create_queue(
+        &self,
+        name: &str,
+        task_type: TaskType,
+        ns_id: &str,
+    ) -> Arc<LogicalTaskQueue> {
         let key = format!("{}:{}:{}", ns_id, name, task_type as i32);
         let mut queues = self.queues.write().unwrap();
-        queues.entry(key).or_insert_with(|| {
-            Arc::new(LogicalTaskQueue::new(name, task_type, ns_id, self.config.clone()))
-        }).clone()
+        queues
+            .entry(key)
+            .or_insert_with(|| {
+                Arc::new(LogicalTaskQueue::new(
+                    name,
+                    task_type,
+                    ns_id,
+                    self.config.clone(),
+                ))
+            })
+            .clone()
     }
 
-    pub fn dispatch_task(&self, name: &str, task_type: TaskType, ns_id: &str, task: InternalTask) -> DispatchResult {
+    pub fn dispatch_task(
+        &self,
+        name: &str,
+        task_type: TaskType,
+        ns_id: &str,
+        task: InternalTask,
+    ) -> DispatchResult {
         let queue = self.get_or_create_queue(name, task_type, ns_id);
         let result = queue.dispatch_task(task);
 
         match &result {
             DispatchResult::SyncMatched(_) => {
-                self.stats.total_sync_matched.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .total_sync_matched
+                    .fetch_add(1, Ordering::Relaxed);
                 self.stats.total_dispatched.fetch_add(1, Ordering::Relaxed);
             }
             DispatchResult::Queued => {
@@ -444,13 +486,26 @@ impl TaskQueueManager {
         result
     }
 
-    pub fn poll_task(&self, name: &str, task_type: TaskType, ns_id: &str, identity: &str, build_id: &str) -> Option<InternalTask> {
+    pub fn poll_task(
+        &self,
+        name: &str,
+        task_type: TaskType,
+        ns_id: &str,
+        identity: &str,
+        build_id: &str,
+    ) -> Option<InternalTask> {
         self.stats.total_polled.fetch_add(1, Ordering::Relaxed);
         let queue = self.get_or_create_queue(name, task_type, ns_id);
         queue.poll_for_task(identity, build_id)
     }
 
-    pub fn register_poller(&self, name: &str, task_type: TaskType, ns_id: &str, poller: PollerInfo) -> bool {
+    pub fn register_poller(
+        &self,
+        name: &str,
+        task_type: TaskType,
+        ns_id: &str,
+        poller: PollerInfo,
+    ) -> bool {
         let queue = self.get_or_create_queue(name, task_type, ns_id);
         queue.root_partition.register_poller(poller)
     }
@@ -459,7 +514,9 @@ impl TaskQueueManager {
         self.queues.read().unwrap().len()
     }
 
-    pub fn stats(&self) -> &TaskQueueManagerStats { &self.stats }
+    pub fn stats(&self) -> &TaskQueueManagerStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -494,22 +551,35 @@ impl TaskForwarder {
 
         // Forward to parent (root)
         if queue.root_partition.add_task(task.clone()) {
-            self.forward_stats.forwarded_up.fetch_add(1, Ordering::Relaxed);
+            self.forward_stats
+                .forwarded_up
+                .fetch_add(1, Ordering::Relaxed);
             true
         } else {
-            self.forward_stats.forward_failures.fetch_add(1, Ordering::Relaxed);
+            self.forward_stats
+                .forward_failures
+                .fetch_add(1, Ordering::Relaxed);
             false
         }
     }
 
-    pub fn forward_down(&self, queue: &LogicalTaskQueue, task: &InternalTask, target_partition: i32) -> bool {
+    pub fn forward_down(
+        &self,
+        queue: &LogicalTaskQueue,
+        task: &InternalTask,
+        target_partition: i32,
+    ) -> bool {
         let children = queue.child_partitions.read().unwrap();
         if let Some(child) = children.get(&target_partition) {
             if child.add_task(task.clone()) {
-                self.forward_stats.forwarded_down.fetch_add(1, Ordering::Relaxed);
+                self.forward_stats
+                    .forwarded_down
+                    .fetch_add(1, Ordering::Relaxed);
                 true
             } else {
-                self.forward_stats.forward_failures.fetch_add(1, Ordering::Relaxed);
+                self.forward_stats
+                    .forward_failures
+                    .fetch_add(1, Ordering::Relaxed);
                 false
             }
         } else {
@@ -517,7 +587,9 @@ impl TaskForwarder {
         }
     }
 
-    pub fn stats(&self) -> &ForwardStats { &self.forward_stats }
+    pub fn stats(&self) -> &ForwardStats {
+        &self.forward_stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -577,7 +649,9 @@ impl MatchingLoadBalancer {
 
         for (key, load) in loads.iter() {
             if key.starts_with(&format!("{}:", queue_name)) {
-                let effective_load = load.backlog_size.saturating_sub(load.poller_count as u64 * 10);
+                let effective_load = load
+                    .backlog_size
+                    .saturating_sub(load.poller_count as u64 * 10);
                 if effective_load < min_load {
                     min_load = effective_load;
                     best_partition = Some(load.partition_id);
@@ -591,7 +665,9 @@ impl MatchingLoadBalancer {
     pub fn should_add_partition(&self, queue_name: &str, threshold: u64) -> bool {
         let loads = self.partition_loads.read().unwrap();
         let root_load = loads.get(&format!("{}:0", queue_name));
-        root_load.map(|l| l.backlog_size > threshold).unwrap_or(false)
+        root_load
+            .map(|l| l.backlog_size > threshold)
+            .unwrap_or(false)
     }
 }
 
@@ -658,7 +734,10 @@ mod tests {
     #[test]
     fn test_physical_queue_backlog_limit() {
         let partition = TaskQueuePartition::root("test-queue", TaskType::Workflow, "ns1");
-        let config = TaskQueueConfig { backlog_per_partition_limit: 2, ..Default::default() };
+        let config = TaskQueueConfig {
+            backlog_per_partition_limit: 2,
+            ..Default::default()
+        };
         let queue = PhysicalTaskQueue::new(partition, config);
 
         assert!(queue.add_task(make_task("wf1", None)));
@@ -668,7 +747,12 @@ mod tests {
 
     #[test]
     fn test_logical_queue_dispatch() {
-        let queue = LogicalTaskQueue::new("test-queue", TaskType::Workflow, "ns1", TaskQueueConfig::default());
+        let queue = LogicalTaskQueue::new(
+            "test-queue",
+            TaskType::Workflow,
+            "ns1",
+            TaskQueueConfig::default(),
+        );
 
         // No pollers, should queue
         let result = queue.dispatch_task(make_task("wf1", None));
@@ -678,8 +762,15 @@ mod tests {
 
     #[test]
     fn test_logical_queue_sync_match() {
-        let queue = LogicalTaskQueue::new("test-queue", TaskType::Workflow, "ns1", TaskQueueConfig::default());
-        queue.root_partition.register_poller(make_poller("worker1", ""));
+        let queue = LogicalTaskQueue::new(
+            "test-queue",
+            TaskType::Workflow,
+            "ns1",
+            TaskQueueConfig::default(),
+        );
+        queue
+            .root_partition
+            .register_poller(make_poller("worker1", ""));
 
         let result = queue.dispatch_task(make_task("wf1", None));
         matches!(result, DispatchResult::SyncMatched(_));
@@ -687,7 +778,12 @@ mod tests {
 
     #[test]
     fn test_logical_queue_redirect() {
-        let mut queue = LogicalTaskQueue::new("test-queue", TaskType::Workflow, "ns1", TaskQueueConfig::default());
+        let mut queue = LogicalTaskQueue::new(
+            "test-queue",
+            TaskType::Workflow,
+            "ns1",
+            TaskQueueConfig::default(),
+        );
         queue.add_redirect_rule("v1", "v2");
 
         let result = queue.dispatch_task(make_task("wf1", Some("v1")));
@@ -716,7 +812,12 @@ mod tests {
 
     #[test]
     fn test_task_forwarder() {
-        let queue = LogicalTaskQueue::new("test-queue", TaskType::Workflow, "ns1", TaskQueueConfig::default());
+        let queue = LogicalTaskQueue::new(
+            "test-queue",
+            TaskType::Workflow,
+            "ns1",
+            TaskQueueConfig::default(),
+        );
         queue.add_partition(1);
 
         let forwarder = TaskForwarder::new(3);
@@ -728,7 +829,12 @@ mod tests {
 
     #[test]
     fn test_load_balancer() {
-        let queue = LogicalTaskQueue::new("test-queue", TaskType::Workflow, "ns1", TaskQueueConfig::default());
+        let queue = LogicalTaskQueue::new(
+            "test-queue",
+            TaskType::Workflow,
+            "ns1",
+            TaskQueueConfig::default(),
+        );
         queue.add_partition(1);
         queue.add_partition(2);
 
@@ -745,7 +851,12 @@ mod tests {
 
     #[test]
     fn test_partition_management() {
-        let queue = LogicalTaskQueue::new("test-queue", TaskType::Workflow, "ns1", TaskQueueConfig::default());
+        let queue = LogicalTaskQueue::new(
+            "test-queue",
+            TaskType::Workflow,
+            "ns1",
+            TaskQueueConfig::default(),
+        );
         assert_eq!(queue.child_partitions.read().unwrap().len(), 0);
 
         queue.add_partition(1);
@@ -758,7 +869,12 @@ mod tests {
 
     #[test]
     fn test_versioning() {
-        let mut queue = LogicalTaskQueue::new("test-queue", TaskType::Workflow, "ns1", TaskQueueConfig::default());
+        let mut queue = LogicalTaskQueue::new(
+            "test-queue",
+            TaskType::Workflow,
+            "ns1",
+            TaskQueueConfig::default(),
+        );
 
         queue.set_current_version("v1");
         assert_eq!(queue.versioning.current_version, Some("v1".to_string()));
@@ -783,7 +899,12 @@ mod tests {
 
     #[test]
     fn test_total_pollers_and_backlog() {
-        let queue = LogicalTaskQueue::new("test-queue", TaskType::Workflow, "ns1", TaskQueueConfig::default());
+        let queue = LogicalTaskQueue::new(
+            "test-queue",
+            TaskType::Workflow,
+            "ns1",
+            TaskQueueConfig::default(),
+        );
         queue.add_partition(1);
 
         // Dispatch task first (no pollers, so it goes to backlog)

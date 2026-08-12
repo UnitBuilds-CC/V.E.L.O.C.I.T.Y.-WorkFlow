@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 /// Record of a single activity's heartbeat state.
 #[derive(Debug, Clone)]
@@ -102,7 +102,12 @@ impl HeartbeatTracker {
         stats.currently_active += 1;
     }
 
-    pub fn record_heartbeat(&self, workflow_key: u64, activity_id: u64, details: Option<Vec<u8>>) -> bool {
+    pub fn record_heartbeat(
+        &self,
+        workflow_key: u64,
+        activity_id: u64,
+        details: Option<Vec<u8>>,
+    ) -> bool {
         let mut records = self.records.lock().unwrap();
         if let Some(rec) = records.get_mut(&(workflow_key, activity_id)) {
             if rec.state != HeartbeatState::Pending && rec.state != HeartbeatState::Active {
@@ -129,17 +134,24 @@ impl HeartbeatTracker {
 
     pub fn get_last_details(&self, workflow_key: u64, activity_id: u64) -> Option<Vec<u8>> {
         let records = self.records.lock().unwrap();
-        records.get(&(workflow_key, activity_id)).and_then(|rec| rec.last_details.clone())
+        records
+            .get(&(workflow_key, activity_id))
+            .and_then(|rec| rec.last_details.clone())
     }
 
     pub fn get_detail_history(&self, workflow_key: u64, activity_id: u64) -> Vec<HeartbeatDetail> {
         let records = self.records.lock().unwrap();
-        records.get(&(workflow_key, activity_id)).map(|rec| rec.detail_history.clone()).unwrap_or_default()
+        records
+            .get(&(workflow_key, activity_id))
+            .map(|rec| rec.detail_history.clone())
+            .unwrap_or_default()
     }
 
     pub fn get_state(&self, workflow_key: u64, activity_id: u64) -> Option<HeartbeatState> {
         let records = self.records.lock().unwrap();
-        records.get(&(workflow_key, activity_id)).map(|rec| rec.state)
+        records
+            .get(&(workflow_key, activity_id))
+            .map(|rec| rec.state)
     }
 
     pub fn check_timeouts(&self) -> Vec<TimeoutEvent> {
@@ -203,11 +215,17 @@ impl HeartbeatTracker {
     }
 
     pub fn unregister(&self, workflow_key: u64, activity_id: u64) {
-        self.records.lock().unwrap().remove(&(workflow_key, activity_id));
+        self.records
+            .lock()
+            .unwrap()
+            .remove(&(workflow_key, activity_id));
     }
 
     pub fn active_count(&self) -> usize {
-        self.records.lock().unwrap().values()
+        self.records
+            .lock()
+            .unwrap()
+            .values()
             .filter(|r| r.state == HeartbeatState::Pending || r.state == HeartbeatState::Active)
             .count()
     }
@@ -220,21 +238,31 @@ impl HeartbeatTracker {
         self.stats.lock().unwrap().clone()
     }
 
-    pub fn time_since_last_heartbeat(&self, workflow_key: u64, activity_id: u64) -> Option<Duration> {
+    pub fn time_since_last_heartbeat(
+        &self,
+        workflow_key: u64,
+        activity_id: u64,
+    ) -> Option<Duration> {
         let records = self.records.lock().unwrap();
-        records.get(&(workflow_key, activity_id)).map(|rec| rec.last_heartbeat.elapsed())
+        records
+            .get(&(workflow_key, activity_id))
+            .map(|rec| rec.last_heartbeat.elapsed())
     }
 
     pub fn purge_terminal(&self) -> usize {
         let mut records = self.records.lock().unwrap();
         let before = records.len();
-        records.retain(|_, rec| rec.state == HeartbeatState::Pending || rec.state == HeartbeatState::Active);
+        records.retain(|_, rec| {
+            rec.state == HeartbeatState::Pending || rec.state == HeartbeatState::Active
+        });
         before - records.len()
     }
 }
 
 impl Default for HeartbeatTracker {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

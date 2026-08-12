@@ -22,10 +22,7 @@ pub unsafe extern "C" fn velocity_slab_create(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_slab_mark_step(
-    header: *mut SlabHeader,
-    step_index: u32,
-) -> i32 {
+pub unsafe extern "C" fn velocity_slab_mark_step(header: *mut SlabHeader, step_index: u32) -> i32 {
     if header.is_null() {
         return -1;
     }
@@ -119,10 +116,7 @@ pub unsafe extern "C" fn velocity_vctp_aimd_update(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn velocity_wal_write_step(
-    header: *mut SlabHeader,
-    step_index: u32,
-) -> i32 {
+pub unsafe extern "C" fn velocity_wal_write_step(header: *mut SlabHeader, step_index: u32) -> i32 {
     if header.is_null() {
         return -1;
     }

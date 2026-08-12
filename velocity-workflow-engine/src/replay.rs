@@ -140,9 +140,8 @@ impl ReplayEngine {
                 HistoryEventType::StepCompleted => {
                     // Parse step index from payload: first 4 bytes = step_index (LE)
                     if event.payload.len() >= 4 {
-                        let step_index = u32::from_le_bytes(
-                            event.payload[0..4].try_into().unwrap_or([0; 4]),
-                        );
+                        let step_index =
+                            u32::from_le_bytes(event.payload[0..4].try_into().unwrap_or([0; 4]));
                         let result = if event.payload.len() > 4 {
                             event.payload[4..].to_vec()
                         } else {
@@ -153,12 +152,10 @@ impl ReplayEngine {
                 }
                 HistoryEventType::ActivityScheduled => {
                     if event.payload.len() >= 12 {
-                        let step_index = u32::from_le_bytes(
-                            event.payload[0..4].try_into().unwrap_or([0; 4]),
-                        );
-                        let activity_name_id = u64::from_le_bytes(
-                            event.payload[4..12].try_into().unwrap_or([0; 8]),
-                        );
+                        let step_index =
+                            u32::from_le_bytes(event.payload[0..4].try_into().unwrap_or([0; 4]));
+                        let activity_name_id =
+                            u64::from_le_bytes(event.payload[4..12].try_into().unwrap_or([0; 8]));
                         activity_states.push(ReplayActivityState {
                             step_index,
                             activity_name_id,
@@ -169,25 +166,31 @@ impl ReplayEngine {
                 }
                 HistoryEventType::ActivityStarted => {
                     if event.payload.len() >= 4 {
-                        let step_index = u32::from_le_bytes(
-                            event.payload[0..4].try_into().unwrap_or([0; 4]),
-                        );
-                        if let Some(act) = activity_states.iter_mut().rev().find(|a| a.step_index == step_index) {
+                        let step_index =
+                            u32::from_le_bytes(event.payload[0..4].try_into().unwrap_or([0; 4]));
+                        if let Some(act) = activity_states
+                            .iter_mut()
+                            .rev()
+                            .find(|a| a.step_index == step_index)
+                        {
                             act.status = ReplayActivityStatus::Started;
                         }
                     }
                 }
                 HistoryEventType::ActivityCompleted => {
                     if event.payload.len() >= 4 {
-                        let step_index = u32::from_le_bytes(
-                            event.payload[0..4].try_into().unwrap_or([0; 4]),
-                        );
+                        let step_index =
+                            u32::from_le_bytes(event.payload[0..4].try_into().unwrap_or([0; 4]));
                         let result = if event.payload.len() > 4 {
                             Some(event.payload[4..].to_vec())
                         } else {
                             None
                         };
-                        if let Some(act) = activity_states.iter_mut().rev().find(|a| a.step_index == step_index) {
+                        if let Some(act) = activity_states
+                            .iter_mut()
+                            .rev()
+                            .find(|a| a.step_index == step_index)
+                        {
                             act.status = ReplayActivityStatus::Completed;
                             act.result = result;
                         }
@@ -195,29 +198,34 @@ impl ReplayEngine {
                 }
                 HistoryEventType::ActivityFailed => {
                     if event.payload.len() >= 4 {
-                        let step_index = u32::from_le_bytes(
-                            event.payload[0..4].try_into().unwrap_or([0; 4]),
-                        );
-                        if let Some(act) = activity_states.iter_mut().rev().find(|a| a.step_index == step_index) {
+                        let step_index =
+                            u32::from_le_bytes(event.payload[0..4].try_into().unwrap_or([0; 4]));
+                        if let Some(act) = activity_states
+                            .iter_mut()
+                            .rev()
+                            .find(|a| a.step_index == step_index)
+                        {
                             act.status = ReplayActivityStatus::Failed;
                         }
                     }
                 }
                 HistoryEventType::ActivityTimedOut => {
                     if event.payload.len() >= 4 {
-                        let step_index = u32::from_le_bytes(
-                            event.payload[0..4].try_into().unwrap_or([0; 4]),
-                        );
-                        if let Some(act) = activity_states.iter_mut().rev().find(|a| a.step_index == step_index) {
+                        let step_index =
+                            u32::from_le_bytes(event.payload[0..4].try_into().unwrap_or([0; 4]));
+                        if let Some(act) = activity_states
+                            .iter_mut()
+                            .rev()
+                            .find(|a| a.step_index == step_index)
+                        {
                             act.status = ReplayActivityStatus::TimedOut;
                         }
                     }
                 }
                 HistoryEventType::SignalReceived => {
                     if event.payload.len() >= 8 {
-                        let signal_name_id = u64::from_le_bytes(
-                            event.payload[0..8].try_into().unwrap_or([0; 8]),
-                        );
+                        let signal_name_id =
+                            u64::from_le_bytes(event.payload[0..8].try_into().unwrap_or([0; 8]));
                         let signal_payload = if event.payload.len() > 8 {
                             event.payload[8..].to_vec()
                         } else {
@@ -285,9 +293,9 @@ impl ReplayEngine {
 
         let mut ctx = WorkflowContext::new(
             result.workflow_key & 0xFFFFFFFF, // workflow_id
-            0,                                 // run_id (will be reassigned)
-            0,                                 // workflow_type_id (from history)
-            0,                                 // task_queue_hash (from history)
+            0,                                // run_id (will be reassigned)
+            0,                                // workflow_type_id (from history)
+            0,                                // task_queue_hash (from history)
             total_steps,
         );
 
@@ -310,11 +318,7 @@ impl ReplayEngine {
     }
 
     /// Verify determinism: replay the same history twice and confirm identical results.
-    pub fn verify_determinism(
-        &self,
-        workflow_key: u64,
-        history: &[HistoryEvent],
-    ) -> bool {
+    pub fn verify_determinism(&self, workflow_key: u64, history: &[HistoryEvent]) -> bool {
         let result1 = self.replay(workflow_key, history, None);
         let result2 = self.replay(workflow_key, history, None);
 
@@ -326,7 +330,11 @@ impl ReplayEngine {
 
     /// Get a cached replay result.
     pub fn get_cached(&self, workflow_key: u64) -> Option<ReplayResult> {
-        self.replay_cache.read().unwrap().get(&workflow_key).cloned()
+        self.replay_cache
+            .read()
+            .unwrap()
+            .get(&workflow_key)
+            .cloned()
     }
 
     /// Clear the replay cache for a specific workflow.
@@ -366,26 +374,18 @@ mod tests {
     fn make_history(workflow_key: u64) -> Vec<HistoryEvent> {
         let store = HistoryStore::new();
         store.record_event(workflow_key, HistoryEventType::WorkflowStarted, vec![]);
-        store.record_event(
-            workflow_key,
-            HistoryEventType::StepCompleted,
-            {
-                let mut payload = Vec::new();
-                payload.extend_from_slice(&0u32.to_le_bytes()); // step 0
-                payload.extend_from_slice(&[10, 20, 30]);        // result
-                payload
-            },
-        );
-        store.record_event(
-            workflow_key,
-            HistoryEventType::StepCompleted,
-            {
-                let mut payload = Vec::new();
-                payload.extend_from_slice(&1u32.to_le_bytes()); // step 1
-                payload.extend_from_slice(&[40, 50]);            // result
-                payload
-            },
-        );
+        store.record_event(workflow_key, HistoryEventType::StepCompleted, {
+            let mut payload = Vec::new();
+            payload.extend_from_slice(&0u32.to_le_bytes()); // step 0
+            payload.extend_from_slice(&[10, 20, 30]); // result
+            payload
+        });
+        store.record_event(workflow_key, HistoryEventType::StepCompleted, {
+            let mut payload = Vec::new();
+            payload.extend_from_slice(&1u32.to_le_bytes()); // step 1
+            payload.extend_from_slice(&[40, 50]); // result
+            payload
+        });
         store.record_event(workflow_key, HistoryEventType::WorkflowCompleted, vec![]);
         store.get_history(workflow_key).unwrap()
     }
@@ -480,7 +480,10 @@ mod tests {
         assert_eq!(result.activity_states.len(), 1);
         assert_eq!(result.activity_states[0].step_index, 0);
         assert_eq!(result.activity_states[0].activity_name_id, 55);
-        assert_eq!(result.activity_states[0].status, ReplayActivityStatus::Completed);
+        assert_eq!(
+            result.activity_states[0].status,
+            ReplayActivityStatus::Completed
+        );
         assert_eq!(result.activity_states[0].result, Some(vec![7, 8, 9]));
     }
 

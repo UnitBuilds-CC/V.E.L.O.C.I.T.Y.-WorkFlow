@@ -4,8 +4,11 @@
 //! request/response routing, and operation lifecycle management.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Nexus Endpoint
@@ -23,8 +26,15 @@ pub struct NexusEndpoint {
 
 #[derive(Debug, Clone)]
 pub enum EndpointTarget {
-    Worker { namespace: String, task_queue: String, identity: Option<String> },
-    External { url: String, auth_method: AuthMethod },
+    Worker {
+        namespace: String,
+        task_queue: String,
+        identity: Option<String>,
+    },
+    External {
+        url: String,
+        auth_method: AuthMethod,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -65,7 +75,12 @@ impl NexusEndpointManager {
         }
     }
 
-    pub fn create_endpoint(&self, name: &str, target: EndpointTarget, description: &str) -> Result<NexusEndpoint, NexusError> {
+    pub fn create_endpoint(
+        &self,
+        name: &str,
+        target: EndpointTarget,
+        description: &str,
+    ) -> Result<NexusEndpoint, NexusError> {
         let mut endpoints = self.endpoints.write().unwrap();
         let mut name_index = self.name_index.write().unwrap();
 
@@ -78,7 +93,10 @@ impl NexusEndpointManager {
             name: name.to_string(),
             description: description.to_string(),
             target,
-            created_at: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64,
+            created_at: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
             version: 1,
         };
 
@@ -99,9 +117,15 @@ impl NexusEndpointManager {
         self.endpoints.read().unwrap().get(id).cloned()
     }
 
-    pub fn update_endpoint(&self, id: &str, description: Option<&str>, target: Option<EndpointTarget>) -> Result<NexusEndpoint, NexusError> {
+    pub fn update_endpoint(
+        &self,
+        id: &str,
+        description: Option<&str>,
+        target: Option<EndpointTarget>,
+    ) -> Result<NexusEndpoint, NexusError> {
         let mut endpoints = self.endpoints.write().unwrap();
-        let endpoint = endpoints.get_mut(id)
+        let endpoint = endpoints
+            .get_mut(id)
             .ok_or(NexusError::EndpointNotFound(id.to_string()))?;
 
         if let Some(desc) = description {
@@ -120,7 +144,8 @@ impl NexusEndpointManager {
         let mut endpoints = self.endpoints.write().unwrap();
         let mut name_index = self.name_index.write().unwrap();
 
-        let endpoint = endpoints.remove(id)
+        let endpoint = endpoints
+            .remove(id)
             .ok_or(NexusError::EndpointNotFound(id.to_string()))?;
         name_index.remove(&endpoint.name);
         self.stats.endpoints_deleted.fetch_add(1, Ordering::Relaxed);
@@ -132,7 +157,9 @@ impl NexusEndpointManager {
         self.endpoints.read().unwrap().values().cloned().collect()
     }
 
-    pub fn stats(&self) -> &EndpointManagerStats { &self.stats }
+    pub fn stats(&self) -> &EndpointManagerStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -200,8 +227,17 @@ impl NexusOperationManager {
         }
     }
 
-    pub fn start_operation(&self, endpoint_id: &str, service: &str, operation_name: &str, input: Option<Vec<u8>>, callback_url: Option<&str>) -> Result<NexusOperation, NexusError> {
-        self.stats.operations_started.fetch_add(1, Ordering::Relaxed);
+    pub fn start_operation(
+        &self,
+        endpoint_id: &str,
+        service: &str,
+        operation_name: &str,
+        input: Option<Vec<u8>>,
+        callback_url: Option<&str>,
+    ) -> Result<NexusOperation, NexusError> {
+        self.stats
+            .operations_started
+            .fetch_add(1, Ordering::Relaxed);
 
         let op = NexusOperation {
             operation_id: format!("op-{}", uuid_simple()),
@@ -213,7 +249,10 @@ impl NexusOperationManager {
             result: None,
             failure: None,
             callback_url: callback_url.map(|s| s.to_string()),
-            created_at: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64,
+            created_at: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
             completed_at: None,
             attempt: 1,
             max_attempts: 3,
@@ -222,8 +261,13 @@ impl NexusOperationManager {
         };
 
         let op_id = op.operation_id.clone();
-        self.operations.write().unwrap().insert(op_id.clone(), op.clone());
-        self.endpoint_ops.write().unwrap()
+        self.operations
+            .write()
+            .unwrap()
+            .insert(op_id.clone(), op.clone());
+        self.endpoint_ops
+            .write()
+            .unwrap()
             .entry(endpoint_id.to_string())
             .or_insert_with(Vec::new)
             .push(op_id);
@@ -231,27 +275,49 @@ impl NexusOperationManager {
         Ok(op)
     }
 
-    pub fn complete_operation(&self, operation_id: &str, result: Option<Vec<u8>>) -> Result<(), NexusError> {
+    pub fn complete_operation(
+        &self,
+        operation_id: &str,
+        result: Option<Vec<u8>>,
+    ) -> Result<(), NexusError> {
         let mut ops = self.operations.write().unwrap();
-        let op = ops.get_mut(operation_id)
+        let op = ops
+            .get_mut(operation_id)
             .ok_or(NexusError::OperationNotFound(operation_id.to_string()))?;
 
         op.state = NexusOperationState::Succeeded;
         op.result = result;
-        op.completed_at = Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64);
-        self.stats.operations_completed.fetch_add(1, Ordering::Relaxed);
+        op.completed_at = Some(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
+        );
+        self.stats
+            .operations_completed
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok(())
     }
 
-    pub fn fail_operation(&self, operation_id: &str, failure: NexusFailure) -> Result<(), NexusError> {
+    pub fn fail_operation(
+        &self,
+        operation_id: &str,
+        failure: NexusFailure,
+    ) -> Result<(), NexusError> {
         let mut ops = self.operations.write().unwrap();
-        let op = ops.get_mut(operation_id)
+        let op = ops
+            .get_mut(operation_id)
             .ok_or(NexusError::OperationNotFound(operation_id.to_string()))?;
 
         op.state = NexusOperationState::Failed;
         op.failure = Some(failure);
-        op.completed_at = Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64);
+        op.completed_at = Some(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
+        );
         self.stats.operations_failed.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
@@ -259,10 +325,16 @@ impl NexusOperationManager {
 
     pub fn cancel_operation(&self, operation_id: &str) -> Result<(), NexusError> {
         let mut ops = self.operations.write().unwrap();
-        let op = ops.get_mut(operation_id)
+        let op = ops
+            .get_mut(operation_id)
             .ok_or(NexusError::OperationNotFound(operation_id.to_string()))?;
         op.state = NexusOperationState::Canceled;
-        op.completed_at = Some(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64);
+        op.completed_at = Some(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
+        );
         Ok(())
     }
 
@@ -273,13 +345,20 @@ impl NexusOperationManager {
     pub fn get_operations_for_endpoint(&self, endpoint_id: &str) -> Vec<NexusOperation> {
         let endpoint_ops = self.endpoint_ops.read().unwrap();
         let ops = self.operations.read().unwrap();
-        endpoint_ops.get(endpoint_id)
+        endpoint_ops
+            .get(endpoint_id)
             .map(|ids| ids.iter().filter_map(|id| ops.get(id).cloned()).collect())
             .unwrap_or_default()
     }
 
-    pub fn handle_callback(&self, operation_id: &str, result: CallbackResult) -> Result<(), NexusError> {
-        self.stats.callbacks_received.fetch_add(1, Ordering::Relaxed);
+    pub fn handle_callback(
+        &self,
+        operation_id: &str,
+        result: CallbackResult,
+    ) -> Result<(), NexusError> {
+        self.stats
+            .callbacks_received
+            .fetch_add(1, Ordering::Relaxed);
         match result {
             CallbackResult::Success(data) => self.complete_operation(operation_id, data),
             CallbackResult::Failure(failure) => self.fail_operation(operation_id, failure),
@@ -310,7 +389,9 @@ pub enum NexusError {
 
 fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{:x}{:x}", t.as_secs(), t.subsec_nanos())
 }
 
@@ -325,11 +406,17 @@ mod tests {
     #[test]
     fn test_endpoint_create() {
         let mgr = NexusEndpointManager::new();
-        let ep = mgr.create_endpoint("test-ep", EndpointTarget::Worker {
-            namespace: "default".to_string(),
-            task_queue: "nexus-queue".to_string(),
-            identity: None,
-        }, "Test endpoint").unwrap();
+        let ep = mgr
+            .create_endpoint(
+                "test-ep",
+                EndpointTarget::Worker {
+                    namespace: "default".to_string(),
+                    task_queue: "nexus-queue".to_string(),
+                    identity: None,
+                },
+                "Test endpoint",
+            )
+            .unwrap();
         assert_eq!(ep.name, "test-ep");
         assert_eq!(mgr.stats().endpoints_created.load(Ordering::Relaxed), 1);
     }
@@ -337,9 +424,16 @@ mod tests {
     #[test]
     fn test_endpoint_get_by_name() {
         let mgr = NexusEndpointManager::new();
-        mgr.create_endpoint("my-ep", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").unwrap();
+        mgr.create_endpoint(
+            "my-ep",
+            EndpointTarget::Worker {
+                namespace: "ns".to_string(),
+                task_queue: "q".to_string(),
+                identity: None,
+            },
+            "desc",
+        )
+        .unwrap();
 
         let ep = mgr.get_endpoint_by_name("my-ep").unwrap();
         assert_eq!(ep.name, "my-ep");
@@ -348,9 +442,17 @@ mod tests {
     #[test]
     fn test_endpoint_update() {
         let mgr = NexusEndpointManager::new();
-        let ep = mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "original").unwrap();
+        let ep = mgr
+            .create_endpoint(
+                "ep1",
+                EndpointTarget::Worker {
+                    namespace: "ns".to_string(),
+                    task_queue: "q".to_string(),
+                    identity: None,
+                },
+                "original",
+            )
+            .unwrap();
 
         let updated = mgr.update_endpoint(&ep.id, Some("updated"), None).unwrap();
         assert_eq!(updated.description, "updated");
@@ -360,9 +462,17 @@ mod tests {
     #[test]
     fn test_endpoint_delete() {
         let mgr = NexusEndpointManager::new();
-        let ep = mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").unwrap();
+        let ep = mgr
+            .create_endpoint(
+                "ep1",
+                EndpointTarget::Worker {
+                    namespace: "ns".to_string(),
+                    task_queue: "q".to_string(),
+                    identity: None,
+                },
+                "desc",
+            )
+            .unwrap();
 
         mgr.delete_endpoint(&ep.id).unwrap();
         assert!(mgr.get_endpoint(&ep.id).is_none());
@@ -372,26 +482,59 @@ mod tests {
     #[test]
     fn test_endpoint_duplicate() {
         let mgr = NexusEndpointManager::new();
-        mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").unwrap();
-        assert!(mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").is_err());
+        mgr.create_endpoint(
+            "ep1",
+            EndpointTarget::Worker {
+                namespace: "ns".to_string(),
+                task_queue: "q".to_string(),
+                identity: None,
+            },
+            "desc",
+        )
+        .unwrap();
+        assert!(mgr
+            .create_endpoint(
+                "ep1",
+                EndpointTarget::Worker {
+                    namespace: "ns".to_string(),
+                    task_queue: "q".to_string(),
+                    identity: None,
+                },
+                "desc"
+            )
+            .is_err());
     }
 
     #[test]
     fn test_nexus_operation_lifecycle() {
         let mgr = NexusEndpointManager::new();
-        let ep = mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").unwrap();
+        let ep = mgr
+            .create_endpoint(
+                "ep1",
+                EndpointTarget::Worker {
+                    namespace: "ns".to_string(),
+                    task_queue: "q".to_string(),
+                    identity: None,
+                },
+                "desc",
+            )
+            .unwrap();
 
         let op_mgr = NexusOperationManager::new(Arc::new(EndpointManagerStats::default()));
-        let op = op_mgr.start_operation(&ep.id, "payment-service", "process-payment", Some(b"input".to_vec()), Some("http://callback")).unwrap();
+        let op = op_mgr
+            .start_operation(
+                &ep.id,
+                "payment-service",
+                "process-payment",
+                Some(b"input".to_vec()),
+                Some("http://callback"),
+            )
+            .unwrap();
         assert_eq!(op.state, NexusOperationState::Pending);
 
-        op_mgr.complete_operation(&op.operation_id, Some(b"result".to_vec())).unwrap();
+        op_mgr
+            .complete_operation(&op.operation_id, Some(b"result".to_vec()))
+            .unwrap();
         let completed = op_mgr.get_operation(&op.operation_id).unwrap();
         assert_eq!(completed.state, NexusOperationState::Succeeded);
         assert!(completed.result.is_some());
@@ -401,16 +544,31 @@ mod tests {
     fn test_nexus_operation_failure() {
         let op_mgr = NexusOperationManager::new(Arc::new(EndpointManagerStats::default()));
         let ep_mgr = NexusEndpointManager::new();
-        let ep = ep_mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").unwrap();
+        let ep = ep_mgr
+            .create_endpoint(
+                "ep1",
+                EndpointTarget::Worker {
+                    namespace: "ns".to_string(),
+                    task_queue: "q".to_string(),
+                    identity: None,
+                },
+                "desc",
+            )
+            .unwrap();
 
-        let op = op_mgr.start_operation(&ep.id, "svc", "op", None, None).unwrap();
-        op_mgr.fail_operation(&op.operation_id, NexusFailure {
-            message: "payment declined".to_string(),
-            failure_type: "BusinessError".to_string(),
-            retryable: false,
-        }).unwrap();
+        let op = op_mgr
+            .start_operation(&ep.id, "svc", "op", None, None)
+            .unwrap();
+        op_mgr
+            .fail_operation(
+                &op.operation_id,
+                NexusFailure {
+                    message: "payment declined".to_string(),
+                    failure_type: "BusinessError".to_string(),
+                    retryable: false,
+                },
+            )
+            .unwrap();
 
         let failed = op_mgr.get_operation(&op.operation_id).unwrap();
         assert_eq!(failed.state, NexusOperationState::Failed);
@@ -421,12 +579,27 @@ mod tests {
     fn test_nexus_callback() {
         let op_mgr = NexusOperationManager::new(Arc::new(EndpointManagerStats::default()));
         let ep_mgr = NexusEndpointManager::new();
-        let ep = ep_mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").unwrap();
+        let ep = ep_mgr
+            .create_endpoint(
+                "ep1",
+                EndpointTarget::Worker {
+                    namespace: "ns".to_string(),
+                    task_queue: "q".to_string(),
+                    identity: None,
+                },
+                "desc",
+            )
+            .unwrap();
 
-        let op = op_mgr.start_operation(&ep.id, "svc", "op", None, None).unwrap();
-        op_mgr.handle_callback(&op.operation_id, CallbackResult::Success(Some(b"callback-result".to_vec()))).unwrap();
+        let op = op_mgr
+            .start_operation(&ep.id, "svc", "op", None, None)
+            .unwrap();
+        op_mgr
+            .handle_callback(
+                &op.operation_id,
+                CallbackResult::Success(Some(b"callback-result".to_vec())),
+            )
+            .unwrap();
 
         let completed = op_mgr.get_operation(&op.operation_id).unwrap();
         assert_eq!(completed.state, NexusOperationState::Succeeded);
@@ -435,12 +608,25 @@ mod tests {
     #[test]
     fn test_list_endpoints() {
         let mgr = NexusEndpointManager::new();
-        mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").unwrap();
-        mgr.create_endpoint("ep2", EndpointTarget::External {
-            url: "http://external.com".to_string(), auth_method: AuthMethod::None,
-        }, "external").unwrap();
+        mgr.create_endpoint(
+            "ep1",
+            EndpointTarget::Worker {
+                namespace: "ns".to_string(),
+                task_queue: "q".to_string(),
+                identity: None,
+            },
+            "desc",
+        )
+        .unwrap();
+        mgr.create_endpoint(
+            "ep2",
+            EndpointTarget::External {
+                url: "http://external.com".to_string(),
+                auth_method: AuthMethod::None,
+            },
+            "external",
+        )
+        .unwrap();
 
         assert_eq!(mgr.list_endpoints().len(), 2);
     }
@@ -448,13 +634,25 @@ mod tests {
     #[test]
     fn test_operations_for_endpoint() {
         let ep_mgr = NexusEndpointManager::new();
-        let ep = ep_mgr.create_endpoint("ep1", EndpointTarget::Worker {
-            namespace: "ns".to_string(), task_queue: "q".to_string(), identity: None,
-        }, "desc").unwrap();
+        let ep = ep_mgr
+            .create_endpoint(
+                "ep1",
+                EndpointTarget::Worker {
+                    namespace: "ns".to_string(),
+                    task_queue: "q".to_string(),
+                    identity: None,
+                },
+                "desc",
+            )
+            .unwrap();
 
         let op_mgr = NexusOperationManager::new(Arc::new(EndpointManagerStats::default()));
-        op_mgr.start_operation(&ep.id, "svc", "op1", None, None).unwrap();
-        op_mgr.start_operation(&ep.id, "svc", "op2", None, None).unwrap();
+        op_mgr
+            .start_operation(&ep.id, "svc", "op1", None, None)
+            .unwrap();
+        op_mgr
+            .start_operation(&ep.id, "svc", "op2", None, None)
+            .unwrap();
 
         let ops = op_mgr.get_operations_for_endpoint(&ep.id);
         assert_eq!(ops.len(), 2);

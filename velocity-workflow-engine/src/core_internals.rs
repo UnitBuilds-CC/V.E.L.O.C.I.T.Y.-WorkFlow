@@ -11,7 +11,10 @@
 //! 8. **MutableStateChecksum**: State integrity validation via checksumming.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Mutex, RwLock, atomic::{AtomicU8, AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, AtomicU8, Ordering},
+    Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── 1. Workflow Mutable State ────────────────────────────────────────────────
@@ -67,7 +70,9 @@ pub struct ActivityRetryPolicyState {
 
 impl ActivityRetryPolicyState {
     pub fn calculate_next_delay(&self, attempt: u32) -> Option<u64> {
-        if attempt >= self.max_attempts { return None; }
+        if attempt >= self.max_attempts {
+            return None;
+        }
         let delay = self.initial_interval_ms as f64 * self.backoff_coefficient.powi(attempt as i32);
         let delay_ms = delay as u64;
         Some(match self.max_interval_ms {
@@ -221,9 +226,18 @@ pub struct WorkflowMutableState {
 }
 
 impl WorkflowMutableState {
-    pub fn new(workflow_key: u64, workflow_id: u64, run_id: u64, workflow_type: &str, namespace_id: u64, task_queue: &str) -> Self {
+    pub fn new(
+        workflow_key: u64,
+        workflow_id: u64,
+        run_id: u64,
+        workflow_type: &str,
+        namespace_id: u64,
+        task_queue: &str,
+    ) -> Self {
         Self {
-            workflow_key, workflow_id, run_id,
+            workflow_key,
+            workflow_id,
+            run_id,
             workflow_type: workflow_type.to_string(),
             namespace_id,
             task_queue: task_queue.to_string(),
@@ -273,7 +287,9 @@ impl WorkflowMutableState {
             act.state = new_state;
             self.mutation_count.fetch_add(1, Ordering::Relaxed);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn record_activity_heartbeat(&self, event_id: u64, details: Vec<u8>) -> bool {
@@ -282,17 +298,27 @@ impl WorkflowMutableState {
             act.last_heartbeat_ms = Some(now_ms());
             act.heartbeat_details = Some(details);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn pending_activities(&self) -> Vec<ActivityMutableInfo> {
-        self.activities.read().unwrap().values()
-            .filter(|a| a.state == ActivityMutableState::Scheduled || a.state == ActivityMutableState::Started)
+        self.activities
+            .read()
+            .unwrap()
+            .values()
+            .filter(|a| {
+                a.state == ActivityMutableState::Scheduled
+                    || a.state == ActivityMutableState::Started
+            })
             .cloned()
             .collect()
     }
 
-    pub fn activity_count(&self) -> usize { self.activities.read().unwrap().len() }
+    pub fn activity_count(&self) -> usize {
+        self.activities.read().unwrap().len()
+    }
 
     // ─── Timer Operations ─────────────────────────────────────────────────
 
@@ -311,7 +337,9 @@ impl WorkflowMutableState {
             t.state = TimerMutableState::Fired;
             self.mutation_count.fetch_add(1, Ordering::Relaxed);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn cancel_timer(&self, timer_id: u64) -> bool {
@@ -320,11 +348,16 @@ impl WorkflowMutableState {
             t.state = TimerMutableState::Canceled;
             self.mutation_count.fetch_add(1, Ordering::Relaxed);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn pending_timers(&self) -> Vec<TimerMutableInfo> {
-        self.timers.read().unwrap().values()
+        self.timers
+            .read()
+            .unwrap()
+            .values()
             .filter(|t| t.state == TimerMutableState::Started)
             .cloned()
             .collect()
@@ -343,12 +376,20 @@ impl WorkflowMutableState {
             c.state = new_state;
             self.mutation_count.fetch_add(1, Ordering::Relaxed);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn pending_children(&self) -> Vec<ChildWorkflowMutableInfo> {
-        self.child_workflows.read().unwrap().values()
-            .filter(|c| c.state == ChildWorkflowMutableState::Initiated || c.state == ChildWorkflowMutableState::Started)
+        self.child_workflows
+            .read()
+            .unwrap()
+            .values()
+            .filter(|c| {
+                c.state == ChildWorkflowMutableState::Initiated
+                    || c.state == ChildWorkflowMutableState::Started
+            })
             .cloned()
             .collect()
     }
@@ -356,7 +397,10 @@ impl WorkflowMutableState {
     // ─── Signal Dedup ─────────────────────────────────────────────────────
 
     pub fn add_signal_request_id(&self, request_id: &str) -> bool {
-        self.signal_request_ids.write().unwrap().insert(request_id.to_string())
+        self.signal_request_ids
+            .write()
+            .unwrap()
+            .insert(request_id.to_string())
     }
 
     pub fn has_signal_request_id(&self, request_id: &str) -> bool {
@@ -413,7 +457,9 @@ impl WorkflowMutableState {
         self.mutation_count.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn is_running(&self) -> bool { self.status.load(Ordering::Relaxed) == 1 }
+    pub fn is_running(&self) -> bool {
+        self.status.load(Ordering::Relaxed) == 1
+    }
 
     // ─── Event ID Management ──────────────────────────────────────────────
 
@@ -617,7 +663,11 @@ impl CommandProcessor {
     }
 
     /// Process a batch of commands against mutable state. Returns generated tasks.
-    pub fn process_commands(&self, state: &WorkflowMutableState, commands: &[WorkflowCommand]) -> Vec<GeneratedTask> {
+    pub fn process_commands(
+        &self,
+        state: &WorkflowMutableState,
+        commands: &[WorkflowCommand],
+    ) -> Vec<GeneratedTask> {
         let mut tasks = Vec::new();
 
         for cmd in commands {
@@ -737,7 +787,10 @@ impl CommandProcessor {
                 }
 
                 WorkflowCommand::CancelChildWorkflow(c) => {
-                    state.update_child_state(c.child_workflow_key as u64, ChildWorkflowMutableState::Canceled);
+                    state.update_child_state(
+                        c.child_workflow_key as u64,
+                        ChildWorkflowMutableState::Canceled,
+                    );
                     self.log_command("CancelChildWorkflow", event_id, true, None);
                 }
 
@@ -797,23 +850,32 @@ impl CommandProcessor {
                 }
 
                 WorkflowCommand::RequestCancelActivity(c) => {
-                    state.update_activity_state(c.activity_event_id, ActivityMutableState::Canceled);
+                    state
+                        .update_activity_state(c.activity_event_id, ActivityMutableState::Canceled);
                     self.log_command("RequestCancelActivity", event_id, true, None);
                 }
 
                 WorkflowCommand::ProtocolMessage(c) => {
-                    state.protocol_messages.write().unwrap().insert(c.protocol_instance_id.clone(), c.payload.clone());
+                    state
+                        .protocol_messages
+                        .write()
+                        .unwrap()
+                        .insert(c.protocol_instance_id.clone(), c.payload.clone());
                     self.log_command("ProtocolMessage", event_id, true, None);
                 }
 
                 WorkflowCommand::ModifyWorkflowProperties(c) => {
                     if let Some(attrs) = &c.upserted_search_attributes {
                         let mut sa = state.search_attributes.write().unwrap();
-                        for (k, v) in attrs { sa.insert(k.clone(), v.clone()); }
+                        for (k, v) in attrs {
+                            sa.insert(k.clone(), v.clone());
+                        }
                     }
                     if let Some(memo) = &c.memo_delta {
                         let mut m = state.memo.write().unwrap();
-                        for (k, v) in memo { m.insert(k.clone(), v.clone()); }
+                        for (k, v) in memo {
+                            m.insert(k.clone(), v.clone());
+                        }
                     }
                     self.log_command("ModifyProperties", event_id, true, None);
                 }
@@ -839,13 +901,22 @@ impl CommandProcessor {
         tasks
     }
 
-    fn log_command(&self, cmd_type: &'static str, event_id: u64, success: bool, error: Option<String>) {
-        self.processed_commands.lock().unwrap().push(ProcessedCommandRecord {
-            command_type: cmd_type,
-            event_id,
-            success,
-            error,
-        });
+    fn log_command(
+        &self,
+        cmd_type: &'static str,
+        event_id: u64,
+        success: bool,
+        error: Option<String>,
+    ) {
+        self.processed_commands
+            .lock()
+            .unwrap()
+            .push(ProcessedCommandRecord {
+                command_type: cmd_type,
+                event_id,
+                success,
+                error,
+            });
     }
 
     pub fn total_processed(&self) -> u64 {
@@ -858,7 +929,9 @@ impl CommandProcessor {
 }
 
 impl Default for CommandProcessor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 3. Task Generator ────────────────────────────────────────────────────────
@@ -966,7 +1039,10 @@ impl TaskGenerator {
     }
 
     /// Generate tasks for a new workflow start.
-    pub fn generate_workflow_start_tasks(&self, state: &WorkflowMutableState) -> Vec<GeneratedTask> {
+    pub fn generate_workflow_start_tasks(
+        &self,
+        state: &WorkflowMutableState,
+    ) -> Vec<GeneratedTask> {
         let mut tasks = Vec::new();
         self.total_generated.fetch_add(1, Ordering::Relaxed);
 
@@ -1020,7 +1096,10 @@ impl TaskGenerator {
     }
 
     /// Generate workflow task timeout timer.
-    pub fn generate_workflow_task_timeout(&self, state: &WorkflowMutableState) -> Option<GeneratedTask> {
+    pub fn generate_workflow_task_timeout(
+        &self,
+        state: &WorkflowMutableState,
+    ) -> Option<GeneratedTask> {
         let timeout_ms = state.workflow_task_timeout_ms?;
         let task = GeneratedTask::Timer(TimerTask {
             task_type: TimerTaskType::WorkflowTaskTimeout,
@@ -1034,7 +1113,11 @@ impl TaskGenerator {
     }
 
     /// Generate activity timeout timers.
-    pub fn generate_activity_timeouts(&self, activity: &ActivityMutableInfo, workflow_key: u64) -> Vec<GeneratedTask> {
+    pub fn generate_activity_timeouts(
+        &self,
+        activity: &ActivityMutableInfo,
+        workflow_key: u64,
+    ) -> Vec<GeneratedTask> {
         let mut tasks = Vec::new();
         let now = now_ms();
 
@@ -1082,7 +1165,9 @@ impl TaskGenerator {
 }
 
 impl Default for TaskGenerator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 4. Transaction Manager ───────────────────────────────────────────────────
@@ -1147,14 +1232,17 @@ impl TransactionManager {
         let snapshot = self.take_snapshot(state);
 
         self.snapshots.lock().unwrap().push((tx_id, snapshot));
-        self.transactions.lock().unwrap().insert(tx_id, TransactionInfo {
+        self.transactions.lock().unwrap().insert(
             tx_id,
-            state: TransactionState::Open,
-            started_at_ms: now_ms(),
-            completed_at_ms: None,
-            commands_processed: 0,
-            tasks_generated: 0,
-        });
+            TransactionInfo {
+                tx_id,
+                state: TransactionState::Open,
+                started_at_ms: now_ms(),
+                completed_at_ms: None,
+                commands_processed: 0,
+                tasks_generated: 0,
+            },
+        );
 
         tx_id
     }
@@ -1163,21 +1251,27 @@ impl TransactionManager {
     pub fn commit(&self, tx_id: u64, commands: u32, tasks: u32) -> bool {
         let mut txns = self.transactions.lock().unwrap();
         if let Some(tx) = txns.get_mut(&tx_id) {
-            if tx.state != TransactionState::Open { return false; }
+            if tx.state != TransactionState::Open {
+                return false;
+            }
             tx.state = TransactionState::Committed;
             tx.completed_at_ms = Some(now_ms());
             tx.commands_processed = commands;
             tx.tasks_generated = tasks;
             self.total_committed.fetch_add(1, Ordering::Relaxed);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Rollback a transaction. Returns the snapshot for state restoration.
     pub fn rollback(&self, tx_id: u64) -> Option<MutableStateSnapshot> {
         let mut txns = self.transactions.lock().unwrap();
         if let Some(tx) = txns.get_mut(&tx_id) {
-            if tx.state != TransactionState::Open { return None; }
+            if tx.state != TransactionState::Open {
+                return None;
+            }
             tx.state = TransactionState::RolledBack;
             tx.completed_at_ms = Some(now_ms());
             self.total_rolled_back.fetch_add(1, Ordering::Relaxed);
@@ -1186,8 +1280,12 @@ impl TransactionManager {
             let mut snapshots = self.snapshots.lock().unwrap();
             if let Some(pos) = snapshots.iter().position(|(id, _)| *id == tx_id) {
                 Some(snapshots.remove(pos).1)
-            } else { None }
-        } else { None }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     /// Apply a snapshot to restore mutable state.
@@ -1203,8 +1301,12 @@ impl TransactionManager {
         // Restore timer states
         for (timer_id, timer_state) in &snapshot.timer_states {
             match timer_state {
-                TimerMutableState::Fired => { state.fire_timer(*timer_id); }
-                TimerMutableState::Canceled => { state.cancel_timer(*timer_id); }
+                TimerMutableState::Fired => {
+                    state.fire_timer(*timer_id);
+                }
+                TimerMutableState::Canceled => {
+                    state.cancel_timer(*timer_id);
+                }
                 _ => {}
             }
         }
@@ -1216,12 +1318,27 @@ impl TransactionManager {
     }
 
     fn take_snapshot(&self, state: &WorkflowMutableState) -> MutableStateSnapshot {
-        let activity_states: HashMap<u64, ActivityMutableState> = state.activities.read().unwrap()
-            .iter().map(|(&k, v)| (k, v.state)).collect();
-        let timer_states: HashMap<u64, TimerMutableState> = state.timers.read().unwrap()
-            .iter().map(|(&k, v)| (k, v.state)).collect();
-        let child_states: HashMap<u64, ChildWorkflowMutableState> = state.child_workflows.read().unwrap()
-            .iter().map(|(&k, v)| (k, v.state)).collect();
+        let activity_states: HashMap<u64, ActivityMutableState> = state
+            .activities
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(&k, v)| (k, v.state))
+            .collect();
+        let timer_states: HashMap<u64, TimerMutableState> = state
+            .timers
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(&k, v)| (k, v.state))
+            .collect();
+        let child_states: HashMap<u64, ChildWorkflowMutableState> = state
+            .child_workflows
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(&k, v)| (k, v.state))
+            .collect();
         let signal_ids: HashSet<String> = state.signal_request_ids.read().unwrap().clone();
 
         MutableStateSnapshot {
@@ -1243,7 +1360,13 @@ impl TransactionManager {
         TransactionStats {
             total_committed: self.total_committed.load(Ordering::Relaxed),
             total_rolled_back: self.total_rolled_back.load(Ordering::Relaxed),
-            open_transactions: self.transactions.lock().unwrap().values().filter(|t| t.state == TransactionState::Open).count(),
+            open_transactions: self
+                .transactions
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| t.state == TransactionState::Open)
+                .count(),
         }
     }
 
@@ -1262,7 +1385,9 @@ pub struct TransactionStats {
 }
 
 impl Default for TransactionManager {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 5. Workflow Task State Machine ───────────────────────────────────────────
@@ -1315,7 +1440,12 @@ impl WorkflowTaskStateMachine {
     }
 
     /// Schedule a new workflow task.
-    pub fn schedule(&self, event_id: u64, task_queue: &str, sticky: Option<&str>) -> WorkflowTaskInfo {
+    pub fn schedule(
+        &self,
+        event_id: u64,
+        task_queue: &str,
+        sticky: Option<&str>,
+    ) -> WorkflowTaskInfo {
         let info = WorkflowTaskInfo {
             scheduled_event_id: event_id,
             started_event_id: 0,
@@ -1338,24 +1468,32 @@ impl WorkflowTaskStateMachine {
     pub fn record_started(&self, started_event_id: u64) -> bool {
         let mut task = self.current_task.lock().unwrap();
         if let Some(ref mut t) = *task {
-            if t.state != WorkflowTaskState::Scheduled { return false; }
+            if t.state != WorkflowTaskState::Scheduled {
+                return false;
+            }
             t.state = WorkflowTaskState::Started;
             t.started_event_id = started_event_id;
             t.started_time_ms = Some(now_ms());
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Record task completion.
     pub fn record_completed(&self) -> bool {
         let mut task = self.current_task.lock().unwrap();
         if let Some(ref mut t) = *task {
-            if t.state != WorkflowTaskState::Started { return false; }
+            if t.state != WorkflowTaskState::Started {
+                return false;
+            }
             t.state = WorkflowTaskState::Completed;
             self.total_completed.fetch_add(1, Ordering::Relaxed);
             *task = None;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Record task failure.
@@ -1366,7 +1504,9 @@ impl WorkflowTaskStateMachine {
             self.total_failed.fetch_add(1, Ordering::Relaxed);
             *task = None;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Record task timeout.
@@ -1377,7 +1517,9 @@ impl WorkflowTaskStateMachine {
             self.total_timed_out.fetch_add(1, Ordering::Relaxed);
             *task = None;
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Get the current workflow task.
@@ -1424,7 +1566,9 @@ pub struct WorkflowTaskStats {
 }
 
 impl Default for WorkflowTaskStateMachine {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 6. Task Refresher ────────────────────────────────────────────────────────
@@ -1436,7 +1580,9 @@ pub struct TaskRefresher {
 
 impl TaskRefresher {
     pub fn new() -> Self {
-        Self { total_refreshed: AtomicU64::new(0) }
+        Self {
+            total_refreshed: AtomicU64::new(0),
+        }
     }
 
     /// Refresh all pending activity tasks for a workflow.
@@ -1484,20 +1630,35 @@ impl TaskRefresher {
     /// Refresh pending timers.
     pub fn refresh_timers(&self, state: &WorkflowMutableState) -> Vec<TimerTask> {
         let pending = state.pending_timers();
-        pending.iter().map(|t| TimerTask {
-            task_type: TimerTaskType::UserTimer,
-            workflow_key: state.workflow_key,
-            timer_id: t.timer_id,
-            expiry_time_ms: t.expiry_time_ms,
-        }).collect()
+        pending
+            .iter()
+            .map(|t| TimerTask {
+                task_type: TimerTaskType::UserTimer,
+                workflow_key: state.workflow_key,
+                timer_id: t.timer_id,
+                expiry_time_ms: t.expiry_time_ms,
+            })
+            .collect()
     }
 
     /// Refresh all tasks for a workflow.
     pub fn refresh_all(&self, state: &WorkflowMutableState) -> Vec<GeneratedTask> {
         let mut tasks: Vec<GeneratedTask> = Vec::new();
-        tasks.extend(self.refresh_activities(state).into_iter().map(GeneratedTask::Transfer));
-        tasks.extend(self.refresh_children(state).into_iter().map(GeneratedTask::Transfer));
-        tasks.extend(self.refresh_timers(state).into_iter().map(GeneratedTask::Timer));
+        tasks.extend(
+            self.refresh_activities(state)
+                .into_iter()
+                .map(GeneratedTask::Transfer),
+        );
+        tasks.extend(
+            self.refresh_children(state)
+                .into_iter()
+                .map(GeneratedTask::Transfer),
+        );
+        tasks.extend(
+            self.refresh_timers(state)
+                .into_iter()
+                .map(GeneratedTask::Timer),
+        );
         tasks
     }
 
@@ -1507,7 +1668,9 @@ impl TaskRefresher {
 }
 
 impl Default for TaskRefresher {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 7. Timer Sequence ────────────────────────────────────────────────────────
@@ -1528,7 +1691,9 @@ pub struct TimerSequenceEntry {
 
 impl TimerSequence {
     pub fn new() -> Self {
-        Self { timers: Mutex::new(Vec::new()) }
+        Self {
+            timers: Mutex::new(Vec::new()),
+        }
     }
 
     /// Add a timer to the sequence.
@@ -1541,7 +1706,10 @@ impl TimerSequence {
     /// Get the next timer to fire.
     pub fn next_to_fire(&self, now_ms: u64) -> Option<TimerSequenceEntry> {
         let timers = self.timers.lock().unwrap();
-        timers.first().filter(|e| e.expiry_time_ms <= now_ms).cloned()
+        timers
+            .first()
+            .filter(|e| e.expiry_time_ms <= now_ms)
+            .cloned()
     }
 
     /// Remove a timer by ID.
@@ -1564,7 +1732,9 @@ impl TimerSequence {
 }
 
 impl Default for TimerSequence {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 8. Mutable State Checksum ────────────────────────────────────────────────
@@ -1586,7 +1756,9 @@ impl MutableStateChecksum {
     /// Compute a checksum of the mutable state.
     pub fn compute(&self, state: &WorkflowMutableState) -> u64 {
         let mut hash: u64 = state.workflow_key;
-        hash = hash.wrapping_mul(31).wrapping_add(state.status.load(Ordering::Relaxed) as u64);
+        hash = hash
+            .wrapping_mul(31)
+            .wrapping_add(state.status.load(Ordering::Relaxed) as u64);
         hash = hash.wrapping_mul(31).wrapping_add(state.current_event_id());
 
         // Include activity states
@@ -1609,7 +1781,9 @@ impl MutableStateChecksum {
         }
 
         // Include signal count
-        hash = hash.wrapping_mul(31).wrapping_add(state.signal_request_ids.read().unwrap().len() as u64);
+        hash = hash
+            .wrapping_mul(31)
+            .wrapping_add(state.signal_request_ids.read().unwrap().len() as u64);
 
         *self.last_checksum.lock().unwrap() = hash;
         self.total_computed.fetch_add(1, Ordering::Relaxed);
@@ -1633,7 +1807,9 @@ impl MutableStateChecksum {
 }
 
 impl Default for MutableStateChecksum {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Time Helper ──────────────────────────────────────────────────────────────
@@ -1661,16 +1837,25 @@ mod tests {
     fn test_mutable_state_activity_lifecycle() {
         let state = make_state();
         let info = ActivityMutableInfo {
-            activity_id: 1, activity_type: "greet".into(),
+            activity_id: 1,
+            activity_type: "greet".into(),
             state: ActivityMutableState::Scheduled,
-            scheduled_event_id: 10, started_event_id: 0,
-            attempt: 1, scheduled_time_ms: now_ms(), started_time_ms: None,
+            scheduled_event_id: 10,
+            started_event_id: 0,
+            attempt: 1,
+            scheduled_time_ms: now_ms(),
+            started_time_ms: None,
             scheduled_to_start_timeout_ms: Some(5000),
             start_to_close_timeout_ms: Some(10000),
             schedule_to_close_timeout_ms: None,
-            heartbeat_timeout_ms: None, last_heartbeat_ms: None, heartbeat_details: None,
-            retry_policy: None, task_queue: "test-queue".into(),
-            result: None, failure: None, is_paused: false,
+            heartbeat_timeout_ms: None,
+            last_heartbeat_ms: None,
+            heartbeat_details: None,
+            retry_policy: None,
+            task_queue: "test-queue".into(),
+            result: None,
+            failure: None,
+            is_paused: false,
             request_id: "req-1".into(),
         };
 
@@ -1679,7 +1864,10 @@ mod tests {
         assert_eq!(state.pending_activities().len(), 1);
 
         state.update_activity_state(10, ActivityMutableState::Started);
-        assert_eq!(state.get_activity(10).unwrap().state, ActivityMutableState::Started);
+        assert_eq!(
+            state.get_activity(10).unwrap().state,
+            ActivityMutableState::Started
+        );
         assert_eq!(state.pending_activities().len(), 1); // Still pending
 
         state.update_activity_state(10, ActivityMutableState::Completed);
@@ -1690,8 +1878,11 @@ mod tests {
     fn test_mutable_state_timer_lifecycle() {
         let state = make_state();
         let timer = TimerMutableInfo {
-            timer_id: 1, state: TimerMutableState::Started,
-            started_event_id: 5, expiry_time_ms: now_ms() + 5000, task_id: 0,
+            timer_id: 1,
+            state: TimerMutableState::Started,
+            started_event_id: 5,
+            expiry_time_ms: now_ms() + 5000,
+            task_id: 0,
         };
 
         state.add_timer(1, timer);
@@ -1706,11 +1897,15 @@ mod tests {
     fn test_mutable_state_child_lifecycle() {
         let state = make_state();
         let child = ChildWorkflowMutableInfo {
-            workflow_key: 500, initiated_event_id: 20, started_event_id: 0,
+            workflow_key: 500,
+            initiated_event_id: 20,
+            started_event_id: 0,
             state: ChildWorkflowMutableState::Initiated,
-            namespace: "default".into(), workflow_type: "child-wf".into(),
+            namespace: "default".into(),
+            workflow_type: "child-wf".into(),
             parent_close_policy: ParentClosePolicyKind::Terminate,
-            result: None, failure: None,
+            result: None,
+            failure: None,
         };
 
         state.add_child_workflow(20, child);
@@ -1746,17 +1941,31 @@ mod tests {
     #[test]
     fn test_state_summary() {
         let state = make_state();
-        state.add_activity(10, ActivityMutableInfo {
-            activity_id: 1, activity_type: "a".into(),
-            state: ActivityMutableState::Scheduled,
-            scheduled_event_id: 10, started_event_id: 0,
-            attempt: 1, scheduled_time_ms: 0, started_time_ms: None,
-            scheduled_to_start_timeout_ms: None, start_to_close_timeout_ms: None,
-            schedule_to_close_timeout_ms: None, heartbeat_timeout_ms: None,
-            last_heartbeat_ms: None, heartbeat_details: None,
-            retry_policy: None, task_queue: "q".into(),
-            result: None, failure: None, is_paused: false, request_id: "r".into(),
-        });
+        state.add_activity(
+            10,
+            ActivityMutableInfo {
+                activity_id: 1,
+                activity_type: "a".into(),
+                state: ActivityMutableState::Scheduled,
+                scheduled_event_id: 10,
+                started_event_id: 0,
+                attempt: 1,
+                scheduled_time_ms: 0,
+                started_time_ms: None,
+                scheduled_to_start_timeout_ms: None,
+                start_to_close_timeout_ms: None,
+                schedule_to_close_timeout_ms: None,
+                heartbeat_timeout_ms: None,
+                last_heartbeat_ms: None,
+                heartbeat_details: None,
+                retry_policy: None,
+                task_queue: "q".into(),
+                result: None,
+                failure: None,
+                is_paused: false,
+                request_id: "r".into(),
+            },
+        );
 
         let summary = state.state_summary();
         assert_eq!(summary.activity_count, 1);
@@ -1772,10 +1981,16 @@ mod tests {
         let proc = CommandProcessor::new();
 
         let commands = vec![WorkflowCommand::ScheduleActivity(ScheduleActivityCommand {
-            activity_id: 1, activity_type: "greet".into(), task_queue: "activity-q".into(),
-            input: None, schedule_to_close_timeout_ms: Some(30000),
-            schedule_to_start_timeout_ms: None, start_to_close_timeout_ms: Some(10000),
-            heartbeat_timeout_ms: None, retry_policy: None, request_id: "r1".into(),
+            activity_id: 1,
+            activity_type: "greet".into(),
+            task_queue: "activity-q".into(),
+            input: None,
+            schedule_to_close_timeout_ms: Some(30000),
+            schedule_to_start_timeout_ms: None,
+            start_to_close_timeout_ms: Some(10000),
+            heartbeat_timeout_ms: None,
+            retry_policy: None,
+            request_id: "r1".into(),
         })];
 
         let tasks = proc.process_commands(&state, &commands);
@@ -1804,11 +2019,14 @@ mod tests {
         let proc = CommandProcessor::new();
 
         let commands = vec![WorkflowCommand::StartTimer(StartTimerCommand {
-            timer_id: 42, start_to_fire_timeout_ms: 5000,
+            timer_id: 42,
+            start_to_fire_timeout_ms: 5000,
         })];
 
         let tasks = proc.process_commands(&state, &commands);
-        assert!(tasks.iter().any(|t| matches!(t, GeneratedTask::Timer(tt) if tt.task_type == TimerTaskType::UserTimer)));
+        assert!(tasks.iter().any(
+            |t| matches!(t, GeneratedTask::Timer(tt) if tt.task_type == TimerTaskType::UserTimer)
+        ));
         assert_eq!(state.pending_timers().len(), 1);
     }
 
@@ -1817,12 +2035,17 @@ mod tests {
         let state = make_state();
         let proc = CommandProcessor::new();
 
-        let commands = vec![WorkflowCommand::StartChildWorkflow(StartChildWorkflowCommand {
-            namespace: "default".into(), workflow_type: "child".into(),
-            workflow_id: 999, task_queue: "child-q".into(),
-            input: None, parent_close_policy: ParentClosePolicyKind::Terminate,
-            request_id: "cr1".into(),
-        })];
+        let commands = vec![WorkflowCommand::StartChildWorkflow(
+            StartChildWorkflowCommand {
+                namespace: "default".into(),
+                workflow_type: "child".into(),
+                workflow_id: 999,
+                task_queue: "child-q".into(),
+                input: None,
+                parent_close_policy: ParentClosePolicyKind::Terminate,
+                request_id: "cr1".into(),
+            },
+        )];
 
         let tasks = proc.process_commands(&state, &commands);
         assert!(tasks.iter().any(|t| matches!(t, GeneratedTask::Transfer(tt) if tt.task_type == TransferTaskType::StartChildExecution)));
@@ -1837,10 +2060,12 @@ mod tests {
         let mut attrs = HashMap::new();
         attrs.insert("key".into(), b"value".to_vec());
 
-        let commands = vec![WorkflowCommand::ModifyWorkflowProperties(ModifyPropertiesCommand {
-            upserted_search_attributes: Some(attrs),
-            memo_delta: None,
-        })];
+        let commands = vec![WorkflowCommand::ModifyWorkflowProperties(
+            ModifyPropertiesCommand {
+                upserted_search_attributes: Some(attrs),
+                memo_delta: None,
+            },
+        )];
 
         proc.process_commands(&state, &commands);
         assert!(state.search_attributes.read().unwrap().contains_key("key"));
@@ -1855,9 +2080,15 @@ mod tests {
 
         let tasks = gen.generate_workflow_start_tasks(&state);
         assert!(tasks.len() >= 3); // visibility + transfer + replication
-        assert!(tasks.iter().any(|t| matches!(t, GeneratedTask::Visibility(_))));
-        assert!(tasks.iter().any(|t| matches!(t, GeneratedTask::Transfer(_))));
-        assert!(tasks.iter().any(|t| matches!(t, GeneratedTask::Replication(_))));
+        assert!(tasks
+            .iter()
+            .any(|t| matches!(t, GeneratedTask::Visibility(_))));
+        assert!(tasks
+            .iter()
+            .any(|t| matches!(t, GeneratedTask::Transfer(_))));
+        assert!(tasks
+            .iter()
+            .any(|t| matches!(t, GeneratedTask::Replication(_))));
     }
 
     #[test]
@@ -1878,17 +2109,31 @@ mod tests {
         let mgr = TransactionManager::new();
 
         let tx_id = mgr.begin(&state);
-        state.add_activity(10, ActivityMutableInfo {
-            activity_id: 1, activity_type: "a".into(),
-            state: ActivityMutableState::Scheduled,
-            scheduled_event_id: 10, started_event_id: 0,
-            attempt: 1, scheduled_time_ms: 0, started_time_ms: None,
-            scheduled_to_start_timeout_ms: None, start_to_close_timeout_ms: None,
-            schedule_to_close_timeout_ms: None, heartbeat_timeout_ms: None,
-            last_heartbeat_ms: None, heartbeat_details: None,
-            retry_policy: None, task_queue: "q".into(),
-            result: None, failure: None, is_paused: false, request_id: "r".into(),
-        });
+        state.add_activity(
+            10,
+            ActivityMutableInfo {
+                activity_id: 1,
+                activity_type: "a".into(),
+                state: ActivityMutableState::Scheduled,
+                scheduled_event_id: 10,
+                started_event_id: 0,
+                attempt: 1,
+                scheduled_time_ms: 0,
+                started_time_ms: None,
+                scheduled_to_start_timeout_ms: None,
+                start_to_close_timeout_ms: None,
+                schedule_to_close_timeout_ms: None,
+                heartbeat_timeout_ms: None,
+                last_heartbeat_ms: None,
+                heartbeat_details: None,
+                retry_policy: None,
+                task_queue: "q".into(),
+                result: None,
+                failure: None,
+                is_paused: false,
+                request_id: "r".into(),
+            },
+        );
 
         assert!(mgr.commit(tx_id, 1, 2));
         let stats = mgr.stats();
@@ -1954,17 +2199,31 @@ mod tests {
     #[test]
     fn test_refresh_activities() {
         let state = make_state();
-        state.add_activity(10, ActivityMutableInfo {
-            activity_id: 1, activity_type: "a".into(),
-            state: ActivityMutableState::Scheduled,
-            scheduled_event_id: 10, started_event_id: 0,
-            attempt: 1, scheduled_time_ms: 0, started_time_ms: None,
-            scheduled_to_start_timeout_ms: None, start_to_close_timeout_ms: None,
-            schedule_to_close_timeout_ms: None, heartbeat_timeout_ms: None,
-            last_heartbeat_ms: None, heartbeat_details: None,
-            retry_policy: None, task_queue: "q".into(),
-            result: None, failure: None, is_paused: false, request_id: "r".into(),
-        });
+        state.add_activity(
+            10,
+            ActivityMutableInfo {
+                activity_id: 1,
+                activity_type: "a".into(),
+                state: ActivityMutableState::Scheduled,
+                scheduled_event_id: 10,
+                started_event_id: 0,
+                attempt: 1,
+                scheduled_time_ms: 0,
+                started_time_ms: None,
+                scheduled_to_start_timeout_ms: None,
+                start_to_close_timeout_ms: None,
+                schedule_to_close_timeout_ms: None,
+                heartbeat_timeout_ms: None,
+                last_heartbeat_ms: None,
+                heartbeat_details: None,
+                retry_policy: None,
+                task_queue: "q".into(),
+                result: None,
+                failure: None,
+                is_paused: false,
+                request_id: "r".into(),
+            },
+        );
 
         let refresher = TaskRefresher::new();
         let tasks = refresher.refresh_activities(&state);
@@ -1977,9 +2236,24 @@ mod tests {
     #[test]
     fn test_timer_sequence_ordering() {
         let seq = TimerSequence::new();
-        seq.add(TimerSequenceEntry { timer_id: 3, expiry_time_ms: 3000, task_type: TimerTaskType::UserTimer, event_id: 30 });
-        seq.add(TimerSequenceEntry { timer_id: 1, expiry_time_ms: 1000, task_type: TimerTaskType::UserTimer, event_id: 10 });
-        seq.add(TimerSequenceEntry { timer_id: 2, expiry_time_ms: 2000, task_type: TimerTaskType::UserTimer, event_id: 20 });
+        seq.add(TimerSequenceEntry {
+            timer_id: 3,
+            expiry_time_ms: 3000,
+            task_type: TimerTaskType::UserTimer,
+            event_id: 30,
+        });
+        seq.add(TimerSequenceEntry {
+            timer_id: 1,
+            expiry_time_ms: 1000,
+            task_type: TimerTaskType::UserTimer,
+            event_id: 10,
+        });
+        seq.add(TimerSequenceEntry {
+            timer_id: 2,
+            expiry_time_ms: 2000,
+            task_type: TimerTaskType::UserTimer,
+            event_id: 20,
+        });
 
         let next = seq.next_to_fire(1500).unwrap();
         assert_eq!(next.timer_id, 1); // Earliest timer
@@ -2007,17 +2281,31 @@ mod tests {
         let checksum = MutableStateChecksum::new();
 
         let c1 = checksum.compute(&state);
-        state.add_activity(10, ActivityMutableInfo {
-            activity_id: 1, activity_type: "a".into(),
-            state: ActivityMutableState::Scheduled,
-            scheduled_event_id: 10, started_event_id: 0,
-            attempt: 1, scheduled_time_ms: 0, started_time_ms: None,
-            scheduled_to_start_timeout_ms: None, start_to_close_timeout_ms: None,
-            schedule_to_close_timeout_ms: None, heartbeat_timeout_ms: None,
-            last_heartbeat_ms: None, heartbeat_details: None,
-            retry_policy: None, task_queue: "q".into(),
-            result: None, failure: None, is_paused: false, request_id: "r".into(),
-        });
+        state.add_activity(
+            10,
+            ActivityMutableInfo {
+                activity_id: 1,
+                activity_type: "a".into(),
+                state: ActivityMutableState::Scheduled,
+                scheduled_event_id: 10,
+                started_event_id: 0,
+                attempt: 1,
+                scheduled_time_ms: 0,
+                started_time_ms: None,
+                scheduled_to_start_timeout_ms: None,
+                start_to_close_timeout_ms: None,
+                schedule_to_close_timeout_ms: None,
+                heartbeat_timeout_ms: None,
+                last_heartbeat_ms: None,
+                heartbeat_details: None,
+                retry_policy: None,
+                task_queue: "q".into(),
+                result: None,
+                failure: None,
+                is_paused: false,
+                request_id: "r".into(),
+            },
+        );
         let c2 = checksum.compute(&state);
         assert_ne!(c1, c2);
     }

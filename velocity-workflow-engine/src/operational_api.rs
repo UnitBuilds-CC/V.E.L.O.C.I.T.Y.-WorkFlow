@@ -12,7 +12,10 @@
 //! 10. **DeploymentVersionRamp**: Enhanced deployment with percentage-based ramping.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Mutex, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── 1. Schedule Backfill ─────────────────────────────────────────────────────
@@ -69,7 +72,8 @@ impl ScheduleBackfiller {
         let mut skipped = 0u64;
         let mut wf_keys = Vec::new();
 
-        let times_in_window: Vec<u64> = fire_times_ms.iter()
+        let times_in_window: Vec<u64> = fire_times_ms
+            .iter()
             .filter(|&&t| t >= req.start_time_ms && t <= req.end_time_ms)
             .copied()
             .collect();
@@ -110,7 +114,11 @@ impl ScheduleBackfiller {
     pub fn backfill_history(&self, schedule_id: Option<u64>) -> Vec<BackfillResult> {
         let results = self.results.lock().unwrap();
         match schedule_id {
-            Some(id) => results.iter().filter(|r| r.schedule_id == id).cloned().collect(),
+            Some(id) => results
+                .iter()
+                .filter(|r| r.schedule_id == id)
+                .cloned()
+                .collect(),
             None => results.clone(),
         }
     }
@@ -122,7 +130,9 @@ impl ScheduleBackfiller {
 }
 
 impl Default for ScheduleBackfiller {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 2. Update Validator ──────────────────────────────────────────────────────
@@ -170,19 +180,34 @@ impl UpdateValidatorRegistry {
     }
 
     /// Register a validator for a specific update name.
-    pub fn register_validator(&self, update_name: &str, validator: impl Fn(&str, &[u8]) -> UpdateValidationResult + Send + Sync + 'static) {
-        self.validators.write().unwrap().insert(update_name.to_string(), Box::new(validator));
+    pub fn register_validator(
+        &self,
+        update_name: &str,
+        validator: impl Fn(&str, &[u8]) -> UpdateValidationResult + Send + Sync + 'static,
+    ) {
+        self.validators
+            .write()
+            .unwrap()
+            .insert(update_name.to_string(), Box::new(validator));
     }
 
     /// Validate an update request. Returns the validation result.
-    pub fn validate(&self, update_id: &str, update_name: &str, args: &[u8]) -> UpdateValidationResult {
+    pub fn validate(
+        &self,
+        update_id: &str,
+        update_name: &str,
+        args: &[u8],
+    ) -> UpdateValidationResult {
         self.total_validated.fetch_add(1, Ordering::Relaxed);
 
         let result = {
             let validators = self.validators.read().unwrap();
             match validators.get(update_name) {
                 Some(validator) => validator(update_id, args),
-                None => UpdateValidationResult::Rejected(format!("No validator registered for '{}'", update_name)),
+                None => UpdateValidationResult::Rejected(format!(
+                    "No validator registered for '{}'",
+                    update_name
+                )),
             }
         };
 
@@ -194,13 +219,16 @@ impl UpdateValidatorRegistry {
             }
         };
 
-        self.validation_log.lock().unwrap().push(UpdateValidationLogEntry {
-            update_id: update_id.to_string(),
-            update_name: update_name.to_string(),
-            accepted,
-            reason,
-            timestamp_ms: now_ms(),
-        });
+        self.validation_log
+            .lock()
+            .unwrap()
+            .push(UpdateValidationLogEntry {
+                update_id: update_id.to_string(),
+                update_name: update_name.to_string(),
+                accepted,
+                reason,
+                timestamp_ms: now_ms(),
+            });
 
         result
     }
@@ -240,7 +268,9 @@ pub struct UpdateValidationStats {
 }
 
 impl Default for UpdateValidatorRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 3. Workflow Deletion Pipeline ────────────────────────────────────────────
@@ -373,7 +403,9 @@ impl WorkflowDeletionPipeline {
 }
 
 impl Default for WorkflowDeletionPipeline {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 4. Mutable State Rebuilder ───────────────────────────────────────────────
@@ -429,12 +461,20 @@ impl MutableStateRebuilder {
             match *evt {
                 "WorkflowExecutionStarted" => {}
                 "WorkflowTaskScheduled" | "WorkflowTaskStarted" | "WorkflowTaskCompleted" => {}
-                "ActivityTaskScheduled" => { activities += 1; }
+                "ActivityTaskScheduled" => {
+                    activities += 1;
+                }
                 "ActivityTaskStarted" | "ActivityTaskCompleted" => {}
-                "TimerStarted" => { timers += 1; }
+                "TimerStarted" => {
+                    timers += 1;
+                }
                 "TimerFired" | "TimerCanceled" => {}
-                "WorkflowExecutionSignaled" => { signals += 1; }
-                "StartChildWorkflowExecutionInitiated" | "ChildWorkflowExecutionCompleted" => { children += 1; }
+                "WorkflowExecutionSignaled" => {
+                    signals += 1;
+                }
+                "StartChildWorkflowExecutionInitiated" | "ChildWorkflowExecutionCompleted" => {
+                    children += 1;
+                }
                 _ => {}
             }
         }
@@ -494,7 +534,10 @@ impl MutableStateRebuilder {
 
     /// Get rebuild history for a workflow.
     pub fn history(&self, workflow_key: u64) -> Vec<RebuiltMutableState> {
-        self.rebuild_log.lock().unwrap().iter()
+        self.rebuild_log
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|r| r.workflow_key == workflow_key)
             .cloned()
             .collect()
@@ -509,7 +552,9 @@ pub struct RebuildStats {
 }
 
 impl Default for MutableStateRebuilder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 5. Task Validator ────────────────────────────────────────────────────────
@@ -551,11 +596,21 @@ impl TaskValidator {
     }
 
     /// Validate a workflow task.
-    pub fn validate_workflow_task(&self, workflow_key: u64, task_id: &str, expected_shard: Option<u64>) -> TaskValidationResult {
+    pub fn validate_workflow_task(
+        &self,
+        workflow_key: u64,
+        task_id: &str,
+        expected_shard: Option<u64>,
+    ) -> TaskValidationResult {
         self.total_validated.fetch_add(1, Ordering::Relaxed);
 
         // Check if workflow is completed
-        if self.completed_workflows.read().unwrap().contains(&workflow_key) {
+        if self
+            .completed_workflows
+            .read()
+            .unwrap()
+            .contains(&workflow_key)
+        {
             self.total_stale.fetch_add(1, Ordering::Relaxed);
             return TaskValidationResult::Stale("Workflow already completed".into());
         }
@@ -563,7 +618,10 @@ impl TaskValidator {
         // Check for duplicate
         if self.processed_tasks.read().unwrap().contains(task_id) {
             self.total_duplicate.fetch_add(1, Ordering::Relaxed);
-            return TaskValidationResult::Duplicate(format!("Task '{}' already processed", task_id));
+            return TaskValidationResult::Duplicate(format!(
+                "Task '{}' already processed",
+                task_id
+            ));
         }
 
         // Check shard assignment
@@ -572,9 +630,10 @@ impl TaskValidator {
             if let Some(&actual) = assignments.get(&workflow_key) {
                 if actual != expected {
                     self.total_stale.fetch_add(1, Ordering::Relaxed);
-                    return TaskValidationResult::Stale(
-                        format!("Workflow on shard {} but task routed to shard {}", actual, expected)
-                    );
+                    return TaskValidationResult::Stale(format!(
+                        "Workflow on shard {} but task routed to shard {}",
+                        actual, expected
+                    ));
                 }
             }
         }
@@ -586,14 +645,22 @@ impl TaskValidator {
     pub fn validate_activity_task(&self, workflow_key: u64, task_id: &str) -> TaskValidationResult {
         self.total_validated.fetch_add(1, Ordering::Relaxed);
 
-        if self.completed_workflows.read().unwrap().contains(&workflow_key) {
+        if self
+            .completed_workflows
+            .read()
+            .unwrap()
+            .contains(&workflow_key)
+        {
             self.total_stale.fetch_add(1, Ordering::Relaxed);
             return TaskValidationResult::Stale("Workflow already completed".into());
         }
 
         if self.processed_tasks.read().unwrap().contains(task_id) {
             self.total_duplicate.fetch_add(1, Ordering::Relaxed);
-            return TaskValidationResult::Duplicate(format!("Task '{}' already processed", task_id));
+            return TaskValidationResult::Duplicate(format!(
+                "Task '{}' already processed",
+                task_id
+            ));
         }
 
         TaskValidationResult::Valid
@@ -601,17 +668,26 @@ impl TaskValidator {
 
     /// Mark a workflow as completed (all future tasks for it are stale).
     pub fn mark_workflow_completed(&self, workflow_key: u64) {
-        self.completed_workflows.write().unwrap().insert(workflow_key);
+        self.completed_workflows
+            .write()
+            .unwrap()
+            .insert(workflow_key);
     }
 
     /// Mark a task as processed.
     pub fn mark_task_processed(&self, task_id: &str) {
-        self.processed_tasks.write().unwrap().insert(task_id.to_string());
+        self.processed_tasks
+            .write()
+            .unwrap()
+            .insert(task_id.to_string());
     }
 
     /// Set shard assignment for a workflow.
     pub fn set_shard_assignment(&self, workflow_key: u64, shard_id: u64) {
-        self.shard_assignments.write().unwrap().insert(workflow_key, shard_id);
+        self.shard_assignments
+            .write()
+            .unwrap()
+            .insert(workflow_key, shard_id);
     }
 
     /// Get validation stats.
@@ -637,7 +713,9 @@ pub struct TaskValidationStats {
 }
 
 impl Default for TaskValidator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 6. Workflow Task Scheduler ───────────────────────────────────────────────
@@ -685,7 +763,11 @@ impl WorkflowTaskScheduler {
     }
 
     /// Schedule a workflow task for a workflow.
-    pub fn schedule(&self, workflow_key: u64, task_type: ScheduledTaskType) -> ScheduledWorkflowTask {
+    pub fn schedule(
+        &self,
+        workflow_key: u64,
+        task_type: ScheduledTaskType,
+    ) -> ScheduledWorkflowTask {
         let task_id = self.next_task_id.fetch_add(1, Ordering::Relaxed);
         let task = ScheduledWorkflowTask {
             workflow_key,
@@ -701,7 +783,11 @@ impl WorkflowTaskScheduler {
     }
 
     /// Schedule a task and verify first workflow task is scheduled (for child workflows).
-    pub fn schedule_with_child_verification(&self, workflow_key: u64, parent_workflow_key: u64) -> ScheduledWorkflowTask {
+    pub fn schedule_with_child_verification(
+        &self,
+        workflow_key: u64,
+        parent_workflow_key: u64,
+    ) -> ScheduledWorkflowTask {
         let mut task = self.schedule(workflow_key, ScheduledTaskType::AfterChildCompletion);
         task.child_verified = true;
         self.total_verified.fetch_add(1, Ordering::Relaxed);
@@ -710,7 +796,10 @@ impl WorkflowTaskScheduler {
 
     /// Get all scheduled tasks for a workflow.
     pub fn get_tasks(&self, workflow_key: u64) -> Vec<ScheduledWorkflowTask> {
-        self.scheduled.lock().unwrap().iter()
+        self.scheduled
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|t| t.workflow_key == workflow_key)
             .cloned()
             .collect()
@@ -718,7 +807,10 @@ impl WorkflowTaskScheduler {
 
     /// Get the latest scheduled task for a workflow.
     pub fn latest_task(&self, workflow_key: u64) -> Option<ScheduledWorkflowTask> {
-        self.scheduled.lock().unwrap().iter()
+        self.scheduled
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|t| t.workflow_key == workflow_key)
             .last()
             .cloned()
@@ -744,7 +836,9 @@ impl WorkflowTaskScheduler {
 }
 
 impl Default for WorkflowTaskScheduler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 7. Batch Reset ───────────────────────────────────────────────────────────
@@ -794,7 +888,11 @@ impl BatchResetter {
     }
 
     /// Execute a batch reset.
-    pub fn execute(&self, req: &BatchResetRequest, valid_workflows: &HashSet<u64>) -> BatchResetResult {
+    pub fn execute(
+        &self,
+        req: &BatchResetRequest,
+        valid_workflows: &HashSet<u64>,
+    ) -> BatchResetResult {
         let batch_id = self.next_batch_id.fetch_add(1, Ordering::Relaxed);
         let mut per_workflow = Vec::new();
         let mut succeeded = 0;
@@ -846,7 +944,9 @@ impl BatchResetter {
 }
 
 impl Default for BatchResetter {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 8. Search Attribute Schema ───────────────────────────────────────────────
@@ -901,26 +1001,39 @@ impl OpSearchAttributeSchema {
 
         // Register Temporal's built-in system search attributes
         let system_attrs = [
-            "WorkflowId", "RunId", "WorkflowType", "StartTime", "CloseTime",
-            "ExecutionStatus", "ExecutionDuration", "HistoryLength",
-            "TaskQueue", "Namespace", "TemporalChangeVersion",
-            "BatchOperationId", "ParentWorkflowId", "ParentRunId",
+            "WorkflowId",
+            "RunId",
+            "WorkflowType",
+            "StartTime",
+            "CloseTime",
+            "ExecutionStatus",
+            "ExecutionDuration",
+            "HistoryLength",
+            "TaskQueue",
+            "Namespace",
+            "TemporalChangeVersion",
+            "BatchOperationId",
+            "ParentWorkflowId",
+            "ParentRunId",
         ];
 
         let mut system_set = HashSet::new();
         let mut defs = HashMap::new();
         for name in &system_attrs {
             system_set.insert(name.to_string());
-            defs.insert(name.to_string(), OpSearchAttributeDefinition {
-                name: name.to_string(),
-                attr_type: match *name {
-                    "StartTime" | "CloseTime" => OpSearchAttributeType::Datetime,
-                    "HistoryLength" => OpSearchAttributeType::Int,
-                    _ => OpSearchAttributeType::Keyword,
+            defs.insert(
+                name.to_string(),
+                OpSearchAttributeDefinition {
+                    name: name.to_string(),
+                    attr_type: match *name {
+                        "StartTime" | "CloseTime" => OpSearchAttributeType::Datetime,
+                        "HistoryLength" => OpSearchAttributeType::Int,
+                        _ => OpSearchAttributeType::Keyword,
+                    },
+                    is_system: true,
+                    created_at_ms: 0,
                 },
-                is_system: true,
-                created_at_ms: 0,
-            });
+            );
         }
 
         *schema.system_attributes.write().unwrap() = system_set;
@@ -932,16 +1045,22 @@ impl OpSearchAttributeSchema {
     pub fn register(&self, name: &str, attr_type: OpSearchAttributeType) -> Result<(), String> {
         let system = self.system_attributes.read().unwrap();
         if system.contains(name) {
-            return Err(format!("'{}' is a system attribute and cannot be modified", name));
+            return Err(format!(
+                "'{}' is a system attribute and cannot be modified",
+                name
+            ));
         }
         drop(system);
 
-        self.definitions.write().unwrap().insert(name.to_string(), OpSearchAttributeDefinition {
-            name: name.to_string(),
-            attr_type,
-            is_system: false,
-            created_at_ms: now_ms(),
-        });
+        self.definitions.write().unwrap().insert(
+            name.to_string(),
+            OpSearchAttributeDefinition {
+                name: name.to_string(),
+                attr_type,
+                is_system: false,
+                created_at_ms: now_ms(),
+            },
+        );
         Ok(())
     }
 
@@ -969,7 +1088,10 @@ impl OpSearchAttributeSchema {
 
     /// List only custom (non-system) search attributes.
     pub fn list_custom(&self) -> Vec<OpSearchAttributeDefinition> {
-        self.definitions.read().unwrap().values()
+        self.definitions
+            .read()
+            .unwrap()
+            .values()
             .filter(|d| !d.is_system)
             .cloned()
             .collect()
@@ -981,14 +1103,23 @@ impl OpSearchAttributeSchema {
     }
 
     /// Validate that a value matches the expected type for an attribute.
-    pub fn validate_value(&self, name: &str, value_type: OpSearchAttributeType) -> Result<(), String> {
+    pub fn validate_value(
+        &self,
+        name: &str,
+        value_type: OpSearchAttributeType,
+    ) -> Result<(), String> {
         let defs = self.definitions.read().unwrap();
         match defs.get(name) {
             Some(def) => {
                 if def.attr_type == value_type {
                     Ok(())
                 } else {
-                    Err(format!("Attribute '{}' is type {} but got {}", name, def.attr_type.name(), value_type.name()))
+                    Err(format!(
+                        "Attribute '{}' is type {} but got {}",
+                        name,
+                        def.attr_type.name(),
+                        value_type.name()
+                    ))
                 }
             }
             None => Err(format!("Unknown search attribute '{}'", name)),
@@ -997,7 +1128,9 @@ impl OpSearchAttributeSchema {
 }
 
 impl Default for OpSearchAttributeSchema {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 9. Nexus Endpoint Manager ────────────────────────────────────────────────
@@ -1033,7 +1166,13 @@ impl NexusEndpointManager {
     }
 
     /// Create a new endpoint.
-    pub fn create(&self, name: &str, url: &str, description: &str, max_concurrent: u32) -> Result<NexusEndpointInfo, String> {
+    pub fn create(
+        &self,
+        name: &str,
+        url: &str,
+        description: &str,
+        max_concurrent: u32,
+    ) -> Result<NexusEndpointInfo, String> {
         let mut endpoints = self.endpoints.write().unwrap();
         if endpoints.contains_key(name) {
             return Err(format!("Endpoint '{}' already exists", name));
@@ -1058,16 +1197,31 @@ impl NexusEndpointManager {
     }
 
     /// Update an endpoint's URL and description.
-    pub fn update(&self, name: &str, url: Option<&str>, description: Option<&str>, expected_version: u64) -> Result<NexusEndpointInfo, String> {
+    pub fn update(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        description: Option<&str>,
+        expected_version: u64,
+    ) -> Result<NexusEndpointInfo, String> {
         let mut endpoints = self.endpoints.write().unwrap();
-        let ep = endpoints.get_mut(name).ok_or_else(|| format!("Endpoint '{}' not found", name))?;
+        let ep = endpoints
+            .get_mut(name)
+            .ok_or_else(|| format!("Endpoint '{}' not found", name))?;
 
         if ep.version != expected_version {
-            return Err(format!("Version conflict: expected {} but got {}", expected_version, ep.version));
+            return Err(format!(
+                "Version conflict: expected {} but got {}",
+                expected_version, ep.version
+            ));
         }
 
-        if let Some(u) = url { ep.url = u.to_string(); }
-        if let Some(d) = description { ep.description = d.to_string(); }
+        if let Some(u) = url {
+            ep.url = u.to_string();
+        }
+        if let Some(d) = description {
+            ep.description = d.to_string();
+        }
         ep.updated_at_ms = now_ms();
         ep.version = self.next_version.fetch_add(1, Ordering::Relaxed);
 
@@ -1075,9 +1229,15 @@ impl NexusEndpointManager {
     }
 
     /// Update endpoint metadata.
-    pub fn update_metadata(&self, name: &str, metadata: HashMap<String, String>) -> Result<NexusEndpointInfo, String> {
+    pub fn update_metadata(
+        &self,
+        name: &str,
+        metadata: HashMap<String, String>,
+    ) -> Result<NexusEndpointInfo, String> {
         let mut endpoints = self.endpoints.write().unwrap();
-        let ep = endpoints.get_mut(name).ok_or_else(|| format!("Endpoint '{}' not found", name))?;
+        let ep = endpoints
+            .get_mut(name)
+            .ok_or_else(|| format!("Endpoint '{}' not found", name))?;
         ep.metadata = metadata;
         ep.updated_at_ms = now_ms();
         ep.version = self.next_version.fetch_add(1, Ordering::Relaxed);
@@ -1087,9 +1247,14 @@ impl NexusEndpointManager {
     /// Delete an endpoint. Fails if it has active operations.
     pub fn delete(&self, name: &str) -> Result<(), String> {
         let mut endpoints = self.endpoints.write().unwrap();
-        let ep = endpoints.get(name).ok_or_else(|| format!("Endpoint '{}' not found", name))?;
+        let ep = endpoints
+            .get(name)
+            .ok_or_else(|| format!("Endpoint '{}' not found", name))?;
         if ep.active_operations > 0 {
-            return Err(format!("Cannot delete endpoint '{}': {} active operations", name, ep.active_operations));
+            return Err(format!(
+                "Cannot delete endpoint '{}': {} active operations",
+                name, ep.active_operations
+            ));
         }
         endpoints.remove(name);
         Ok(())
@@ -1106,7 +1271,11 @@ impl NexusEndpointManager {
     }
 
     /// List endpoints with pagination.
-    pub fn list_paginated(&self, page_size: usize, offset: usize) -> (Vec<NexusEndpointInfo>, usize) {
+    pub fn list_paginated(
+        &self,
+        page_size: usize,
+        offset: usize,
+    ) -> (Vec<NexusEndpointInfo>, usize) {
         let all: Vec<_> = self.endpoints.read().unwrap().values().cloned().collect();
         let total = all.len();
         let page: Vec<_> = all.into_iter().skip(offset).take(page_size).collect();
@@ -1120,7 +1289,9 @@ impl NexusEndpointManager {
 }
 
 impl Default for NexusEndpointManager {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── 10. Deployment Version Ramp ──────────────────────────────────────────────
@@ -1174,14 +1345,21 @@ impl DeploymentVersionRamp {
     }
 
     /// Start ramping a version (set percentage).
-    pub fn start_ramp(&self, deployment_name: &str, build_id: &str, percentage: f32) -> Result<DeploymentVersion, String> {
+    pub fn start_ramp(
+        &self,
+        deployment_name: &str,
+        build_id: &str,
+        percentage: f32,
+    ) -> Result<DeploymentVersion, String> {
         if percentage < 0.0 || percentage > 100.0 {
             return Err("Percentage must be between 0 and 100".into());
         }
 
         let key = format!("{}/{}", deployment_name, build_id);
         let mut versions = self.versions.write().unwrap();
-        let v = versions.get_mut(&key).ok_or_else(|| format!("Version '{}/{}' not found", deployment_name, build_id))?;
+        let v = versions
+            .get_mut(&key)
+            .ok_or_else(|| format!("Version '{}/{}' not found", deployment_name, build_id))?;
 
         v.ramp_percentage = percentage;
         if v.ramp_started_at_ms.is_none() {
@@ -1192,12 +1370,21 @@ impl DeploymentVersionRamp {
     }
 
     /// Promote a version to current (100% traffic).
-    pub fn promote(&self, deployment_name: &str, build_id: &str) -> Result<DeploymentVersion, String> {
+    pub fn promote(
+        &self,
+        deployment_name: &str,
+        build_id: &str,
+    ) -> Result<DeploymentVersion, String> {
         let key = format!("{}/{}", deployment_name, build_id);
         let mut versions = self.versions.write().unwrap();
 
         // Demote current if exists
-        let current_key = self.current_by_deployment.read().unwrap().get(deployment_name).cloned();
+        let current_key = self
+            .current_by_deployment
+            .read()
+            .unwrap()
+            .get(deployment_name)
+            .cloned();
         if let Some(ck) = current_key {
             if let Some(old) = versions.get_mut(&ck) {
                 old.is_current = false;
@@ -1205,13 +1392,18 @@ impl DeploymentVersionRamp {
             }
         }
 
-        let v = versions.get_mut(&key).ok_or_else(|| format!("Version '{}/{}' not found", deployment_name, build_id))?;
+        let v = versions
+            .get_mut(&key)
+            .ok_or_else(|| format!("Version '{}/{}' not found", deployment_name, build_id))?;
         v.is_current = true;
         v.ramp_percentage = 100.0;
         v.current_since_ms = Some(now_ms());
         v.last_updated_ms = now_ms();
 
-        self.current_by_deployment.write().unwrap().insert(deployment_name.to_string(), key);
+        self.current_by_deployment
+            .write()
+            .unwrap()
+            .insert(deployment_name.to_string(), key);
         Ok(v.clone())
     }
 
@@ -1223,7 +1415,10 @@ impl DeploymentVersionRamp {
 
     /// List versions for a deployment.
     pub fn list_versions(&self, deployment_name: &str) -> Vec<DeploymentVersion> {
-        self.versions.read().unwrap().values()
+        self.versions
+            .read()
+            .unwrap()
+            .values()
             .filter(|v| v.deployment_name == deployment_name)
             .cloned()
             .collect()
@@ -1231,15 +1426,27 @@ impl DeploymentVersionRamp {
 
     /// Get the current version for a deployment.
     pub fn get_current(&self, deployment_name: &str) -> Option<DeploymentVersion> {
-        let key = self.current_by_deployment.read().unwrap().get(deployment_name).cloned()?;
+        let key = self
+            .current_by_deployment
+            .read()
+            .unwrap()
+            .get(deployment_name)
+            .cloned()?;
         self.versions.read().unwrap().get(&key).cloned()
     }
 
     /// Update version metadata.
-    pub fn update_metadata(&self, deployment_name: &str, build_id: &str, metadata: HashMap<String, String>) -> Result<DeploymentVersion, String> {
+    pub fn update_metadata(
+        &self,
+        deployment_name: &str,
+        build_id: &str,
+        metadata: HashMap<String, String>,
+    ) -> Result<DeploymentVersion, String> {
         let key = format!("{}/{}", deployment_name, build_id);
         let mut versions = self.versions.write().unwrap();
-        let v = versions.get_mut(&key).ok_or_else(|| format!("Version not found"))?;
+        let v = versions
+            .get_mut(&key)
+            .ok_or_else(|| format!("Version not found"))?;
         v.metadata = metadata;
         v.last_updated_ms = now_ms();
         Ok(v.clone())
@@ -1247,7 +1454,11 @@ impl DeploymentVersionRamp {
 
     /// List all deployments (unique deployment names).
     pub fn list_deployments(&self) -> Vec<String> {
-        let mut names: Vec<String> = self.versions.read().unwrap().values()
+        let mut names: Vec<String> = self
+            .versions
+            .read()
+            .unwrap()
+            .values()
             .map(|v| v.deployment_name.clone())
             .collect::<HashSet<_>>()
             .into_iter()
@@ -1263,7 +1474,9 @@ impl DeploymentVersionRamp {
 }
 
 impl Default for DeploymentVersionRamp {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Time Helper ──────────────────────────────────────────────────────────────
@@ -1317,7 +1530,9 @@ mod tests {
     fn test_backfill_history() {
         let bf = ScheduleBackfiller::new();
         let req = ScheduleBackfillRequest {
-            schedule_id: 1, start_time_ms: 0, end_time_ms: 10000,
+            schedule_id: 1,
+            start_time_ms: 0,
+            end_time_ms: 10000,
             overlap_policy: BackfillOverlapPolicy::AllowAll,
         };
         bf.backfill(&req, &[500, 1500]);
@@ -1428,9 +1643,14 @@ mod tests {
         let rebuilder = MutableStateRebuilder::new();
         let events = vec![
             "WorkflowExecutionStarted",
-            "WorkflowTaskScheduled", "WorkflowTaskStarted", "WorkflowTaskCompleted",
-            "ActivityTaskScheduled", "ActivityTaskStarted", "ActivityTaskCompleted",
-            "TimerStarted", "TimerFired",
+            "WorkflowTaskScheduled",
+            "WorkflowTaskStarted",
+            "WorkflowTaskCompleted",
+            "ActivityTaskScheduled",
+            "ActivityTaskStarted",
+            "ActivityTaskCompleted",
+            "TimerStarted",
+            "TimerFired",
             "WorkflowExecutionSignaled",
             "StartChildWorkflowExecutionInitiated",
         ];
@@ -1500,9 +1720,15 @@ mod tests {
     #[test]
     fn test_task_validator_activity() {
         let tv = TaskValidator::new();
-        assert!(matches!(tv.validate_activity_task(1, "at-1"), TaskValidationResult::Valid));
+        assert!(matches!(
+            tv.validate_activity_task(1, "at-1"),
+            TaskValidationResult::Valid
+        ));
         tv.mark_workflow_completed(1);
-        assert!(matches!(tv.validate_activity_task(1, "at-2"), TaskValidationResult::Stale(_)));
+        assert!(matches!(
+            tv.validate_activity_task(1, "at-2"),
+            TaskValidationResult::Stale(_)
+        ));
     }
 
     // ─── Workflow Task Scheduler ──────────────────────────────────────────
@@ -1599,8 +1825,12 @@ mod tests {
     #[test]
     fn test_schema_register_custom() {
         let schema = OpSearchAttributeSchema::new();
-        schema.register("customer_id", OpSearchAttributeType::Keyword).unwrap();
-        schema.register("amount", OpSearchAttributeType::Double).unwrap();
+        schema
+            .register("customer_id", OpSearchAttributeType::Keyword)
+            .unwrap();
+        schema
+            .register("amount", OpSearchAttributeType::Double)
+            .unwrap();
 
         let def = schema.get("customer_id").unwrap();
         assert_eq!(def.attr_type, OpSearchAttributeType::Keyword);
@@ -1612,24 +1842,36 @@ mod tests {
     #[test]
     fn test_schema_cannot_modify_system() {
         let schema = OpSearchAttributeSchema::new();
-        assert!(schema.register("WorkflowId", OpSearchAttributeType::Text).is_err());
+        assert!(schema
+            .register("WorkflowId", OpSearchAttributeType::Text)
+            .is_err());
         assert!(schema.delete("WorkflowId").is_err());
     }
 
     #[test]
     fn test_schema_validate_value() {
         let schema = OpSearchAttributeSchema::new();
-        schema.register("amount", OpSearchAttributeType::Double).unwrap();
+        schema
+            .register("amount", OpSearchAttributeType::Double)
+            .unwrap();
 
-        assert!(schema.validate_value("amount", OpSearchAttributeType::Double).is_ok());
-        assert!(schema.validate_value("amount", OpSearchAttributeType::Int).is_err());
-        assert!(schema.validate_value("unknown", OpSearchAttributeType::Int).is_err());
+        assert!(schema
+            .validate_value("amount", OpSearchAttributeType::Double)
+            .is_ok());
+        assert!(schema
+            .validate_value("amount", OpSearchAttributeType::Int)
+            .is_err());
+        assert!(schema
+            .validate_value("unknown", OpSearchAttributeType::Int)
+            .is_err());
     }
 
     #[test]
     fn test_schema_delete_custom() {
         let schema = OpSearchAttributeSchema::new();
-        schema.register("temp_attr", OpSearchAttributeType::Text).unwrap();
+        schema
+            .register("temp_attr", OpSearchAttributeType::Text)
+            .unwrap();
         assert!(schema.get("temp_attr").is_some());
         schema.delete("temp_attr").unwrap();
         assert!(schema.get("temp_attr").is_none());
@@ -1642,7 +1884,14 @@ mod tests {
         let mgr = NexusEndpointManager::new();
 
         // Create
-        let ep = mgr.create("payments", "https://payments.internal", "Payment service", 50).unwrap();
+        let ep = mgr
+            .create(
+                "payments",
+                "https://payments.internal",
+                "Payment service",
+                50,
+            )
+            .unwrap();
         assert_eq!(ep.name, "payments");
         assert_eq!(ep.version, 1);
 
@@ -1651,7 +1900,9 @@ mod tests {
         assert_eq!(fetched.url, "https://payments.internal");
 
         // Update
-        let updated = mgr.update("payments", Some("https://payments-v2.internal"), None, 1).unwrap();
+        let updated = mgr
+            .update("payments", Some("https://payments-v2.internal"), None, 1)
+            .unwrap();
         assert_eq!(updated.url, "https://payments-v2.internal");
         assert!(updated.version > 1);
 
@@ -1682,7 +1933,8 @@ mod tests {
     fn test_endpoint_pagination() {
         let mgr = NexusEndpointManager::new();
         for i in 0..5 {
-            mgr.create(&format!("ep{}", i), &format!("http://ep{}", i), "", 10).unwrap();
+            mgr.create(&format!("ep{}", i), &format!("http://ep{}", i), "", 10)
+                .unwrap();
         }
 
         let (page, total) = mgr.list_paginated(2, 0);

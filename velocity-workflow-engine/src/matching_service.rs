@@ -3,7 +3,7 @@
 //! and blocking poll for efficient worker dispatch. Mirrors Temporal's matching service.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, RwLock, Condvar};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 // ─── Match Task ──────────────────────────────────────────────────────────────
@@ -90,9 +90,9 @@ impl PartitionQueue {
     fn has_compatible_poller(&self, build_id: &Option<String>) -> bool {
         self.pollers.iter().any(|p| {
             match (&p.build_id, build_id) {
-                (None, _) => true, // unversioned poller accepts anything
+                (None, _) => true,            // unversioned poller accepts anything
                 (Some(a), Some(b)) => a == b, // versioned match
-                (Some(_), None) => false, // versioned poller won't accept unversioned task
+                (Some(_), None) => false,     // versioned poller won't accept unversioned task
             }
         })
     }
@@ -201,7 +201,12 @@ impl MatchingService {
     }
 
     /// Poll for a task (blocking with timeout). Returns None if no task available within timeout.
-    pub fn poll_task(&self, queue_name: &str, build_id: Option<String>, kind: TaskKindFilter) -> Option<MatchTask> {
+    pub fn poll_task(
+        &self,
+        queue_name: &str,
+        build_id: Option<String>,
+        kind: TaskKindFilter,
+    ) -> Option<MatchTask> {
         let partition = self.partition_for(queue_name);
         let timeout = Duration::from_millis(self.config.poll_timeout_ms);
 
@@ -241,14 +246,21 @@ impl MatchingService {
     }
 
     /// Non-blocking poll. Returns immediately with None if no task available.
-    pub fn try_poll_task(&self, queue_name: &str, build_id: Option<String>, kind: TaskKindFilter) -> Option<MatchTask> {
+    pub fn try_poll_task(
+        &self,
+        queue_name: &str,
+        build_id: Option<String>,
+        kind: TaskKindFilter,
+    ) -> Option<MatchTask> {
         let partition = self.partition_for(queue_name);
         self.poll_task_inner(queue_name, build_id.as_deref(), kind, partition)
     }
 
     /// Register a poller for a task queue.
     pub fn register_poller(&self, queue_name: &str, build_id: Option<String>) -> u64 {
-        let poller_id = self.next_poller_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let poller_id = self
+            .next_poller_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let partition = self.partition_for(queue_name);
 
         let mut queues = self.queues.write().unwrap();
@@ -288,7 +300,11 @@ impl MatchingService {
     pub fn stats(&self) -> MatchingServiceStats {
         let mut s = self.stats.read().unwrap().clone();
         let queues = self.queues.read().unwrap();
-        s.queue_depth = queues.values().flat_map(|ps| ps.iter()).map(|p| p.len() as u64).sum();
+        s.queue_depth = queues
+            .values()
+            .flat_map(|ps| ps.iter())
+            .map(|p| p.len() as u64)
+            .sum();
         s
     }
 
@@ -300,29 +316,45 @@ impl MatchingService {
     /// Get queue depth for a specific task queue.
     pub fn queue_depth(&self, queue_name: &str) -> usize {
         let queues = self.queues.read().unwrap();
-        queues.get(queue_name).map(|ps| ps.iter().map(|p| p.len()).sum()).unwrap_or(0)
+        queues
+            .get(queue_name)
+            .map(|ps| ps.iter().map(|p| p.len()).sum())
+            .unwrap_or(0)
     }
 
     // ─── Internal ─────────────────────────────────────────────────────────
 
     fn partition_for(&self, queue_name: &str) -> u64 {
         // Simple hash-based partitioning
-        let hash = queue_name.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+        let hash = queue_name
+            .bytes()
+            .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
         hash % self.config.num_partitions
     }
 
-    fn is_task_compatible(&self, task: &MatchTask, build_id: &Option<String>, kind: TaskKindFilter) -> bool {
+    fn is_task_compatible(
+        &self,
+        task: &MatchTask,
+        build_id: &Option<String>,
+        kind: TaskKindFilter,
+    ) -> bool {
         // Version compatibility
         match (&task.build_id, build_id) {
             (None, _) => {}
             (Some(_), None) => return false,
-            (Some(a), Some(b)) => if a != b { return false; },
+            (Some(a), Some(b)) => {
+                if a != b {
+                    return false;
+                }
+            }
         }
         true
     }
 
     fn try_forward(&self, task: MatchTask, queue_name: &str, from_partition: u64) -> bool {
-        if from_partition == 0 { return false; }
+        if from_partition == 0 {
+            return false;
+        }
         // Forward to root (partition 0)
         let mut queues = self.queues.write().unwrap();
         if let Some(partitions) = queues.get_mut(queue_name) {
@@ -336,7 +368,9 @@ impl MatchingService {
     }
 
     fn try_forward_ref(&self, task: &MatchTask, queue_name: &str, from_partition: u64) -> bool {
-        if from_partition == 0 { return false; }
+        if from_partition == 0 {
+            return false;
+        }
         let mut queues = self.queues.write().unwrap();
         if let Some(partitions) = queues.get_mut(queue_name) {
             if let Some(root) = partitions.get_mut(0) {
@@ -348,7 +382,13 @@ impl MatchingService {
         false
     }
 
-    fn poll_task_inner(&self, queue_name: &str, build_id: Option<&str>, kind: TaskKindFilter, partition: u64) -> Option<MatchTask> {
+    fn poll_task_inner(
+        &self,
+        queue_name: &str,
+        build_id: Option<&str>,
+        kind: TaskKindFilter,
+        partition: u64,
+    ) -> Option<MatchTask> {
         let mut queues = self.queues.write().unwrap();
         if let Some(partitions) = queues.get_mut(queue_name) {
             if let Some(pq) = partitions.get_mut(partition as usize) {
@@ -529,9 +569,13 @@ mod tests {
         assert_eq!(svc.queue_depth("queue-a"), 5);
 
         for _ in 0..5 {
-            assert!(svc.try_poll_task("queue-a", None, TaskKindFilter::Any).is_some());
+            assert!(svc
+                .try_poll_task("queue-a", None, TaskKindFilter::Any)
+                .is_some());
         }
-        assert!(svc.try_poll_task("queue-a", None, TaskKindFilter::Any).is_none());
+        assert!(svc
+            .try_poll_task("queue-a", None, TaskKindFilter::Any)
+            .is_none());
     }
 
     #[test]

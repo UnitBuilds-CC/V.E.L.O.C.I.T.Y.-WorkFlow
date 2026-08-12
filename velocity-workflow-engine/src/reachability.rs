@@ -69,10 +69,7 @@ impl ReachabilityTracker {
     /// Check reachability for a task queue.
     pub fn check_reachability(&self, query: &ReachabilityQuery) -> ReachabilityResult {
         let activity = self.task_queue_activity.lock().unwrap();
-        let (last_seen, worker_count) = activity
-            .get(&query.task_queue)
-            .copied()
-            .unwrap_or((0, 0));
+        let (last_seen, worker_count) = activity.get(&query.task_queue).copied().unwrap_or((0, 0));
 
         let is_reachable = worker_count > 0;
 

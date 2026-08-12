@@ -50,7 +50,13 @@ impl DeploymentManager {
     }
 
     /// Create a new deployment.
-    pub fn create_deployment(&self, id: &str, series: &str, build_id: &str, timestamp: u64) -> Deployment {
+    pub fn create_deployment(
+        &self,
+        id: &str,
+        series: &str,
+        build_id: &str,
+        timestamp: u64,
+    ) -> Deployment {
         let deployment = Deployment {
             id: id.to_string(),
             series_name: series.to_string(),
@@ -60,14 +66,19 @@ impl DeploymentManager {
             task_queues: Vec::new(),
             drainage_status: None,
         };
-        self.deployments.lock().unwrap().insert(id.to_string(), deployment.clone());
+        self.deployments
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), deployment.clone());
         deployment
     }
 
     /// Activate a deployment (makes it current for its series).
     pub fn activate_deployment(&self, id: &str) -> Result<(), String> {
         let deployments = self.deployments.lock().unwrap();
-        let deployment = deployments.get(id).ok_or_else(|| format!("Deployment '{}' not found", id))?;
+        let deployment = deployments
+            .get(id)
+            .ok_or_else(|| format!("Deployment '{}' not found", id))?;
         let series = deployment.series_name.clone();
         drop(deployments);
 
@@ -84,7 +95,9 @@ impl DeploymentManager {
     /// Start draining a deployment.
     pub fn drain_deployment(&self, id: &str) -> Result<(), String> {
         let mut deployments = self.deployments.lock().unwrap();
-        let deployment = deployments.get_mut(id).ok_or_else(|| format!("Deployment '{}' not found", id))?;
+        let deployment = deployments
+            .get_mut(id)
+            .ok_or_else(|| format!("Deployment '{}' not found", id))?;
         if deployment.status == DeploymentStatus::Drained {
             return Err("Deployment already drained".to_string());
         }
@@ -100,7 +113,9 @@ impl DeploymentManager {
     /// Complete drainage for a deployment.
     pub fn complete_drainage(&self, id: &str) -> Result<(), String> {
         let mut deployments = self.deployments.lock().unwrap();
-        let deployment = deployments.get_mut(id).ok_or_else(|| format!("Deployment '{}' not found", id))?;
+        let deployment = deployments
+            .get_mut(id)
+            .ok_or_else(|| format!("Deployment '{}' not found", id))?;
         if deployment.status != DeploymentStatus::Draining {
             return Err("Deployment is not draining".to_string());
         }
@@ -120,7 +135,11 @@ impl DeploymentManager {
     pub fn list_deployments(&self, series: Option<&str>) -> Vec<Deployment> {
         let deployments = self.deployments.lock().unwrap();
         match series {
-            Some(s) => deployments.values().filter(|d| d.series_name == s).cloned().collect(),
+            Some(s) => deployments
+                .values()
+                .filter(|d| d.series_name == s)
+                .cloned()
+                .collect(),
             None => deployments.values().cloned().collect(),
         }
     }
@@ -139,14 +158,19 @@ impl DeploymentManager {
             return Err(format!("Deployment '{}' not found", deployment_id));
         }
         drop(deployments);
-        self.current_by_series.lock().unwrap().insert(series.to_string(), deployment_id.to_string());
+        self.current_by_series
+            .lock()
+            .unwrap()
+            .insert(series.to_string(), deployment_id.to_string());
         Ok(())
     }
 
     /// Add a task queue to a deployment.
     pub fn add_task_queue(&self, deployment_id: &str, task_queue: &str) -> Result<(), String> {
         let mut deployments = self.deployments.lock().unwrap();
-        let deployment = deployments.get_mut(deployment_id).ok_or_else(|| format!("Deployment '{}' not found", deployment_id))?;
+        let deployment = deployments
+            .get_mut(deployment_id)
+            .ok_or_else(|| format!("Deployment '{}' not found", deployment_id))?;
         if !deployment.task_queues.contains(&task_queue.to_string()) {
             deployment.task_queues.push(task_queue.to_string());
         }

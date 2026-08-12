@@ -10,12 +10,15 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 fn sha256_hex(input: &[u8]) -> [u8; 32] {
@@ -38,7 +41,9 @@ fn generate_random_bytes(len: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(len);
     let mut state = seed;
     while out.len() < len {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         out.push((state >> 33) as u8);
     }
     out.truncate(len);
@@ -126,8 +131,12 @@ impl ApiKeyManager {
 
         let prefix = hash_hex[..8].to_string();
         self.keys.lock().unwrap().insert(hash_hex.clone(), api_key);
-        self.prefix_index.lock().unwrap()
-            .entry(prefix).or_insert_with(Vec::new).push(hash_hex);
+        self.prefix_index
+            .lock()
+            .unwrap()
+            .entry(prefix)
+            .or_insert_with(Vec::new)
+            .push(hash_hex);
 
         raw_key
     }
@@ -203,7 +212,9 @@ impl ApiKeyManager {
 }
 
 impl Default for ApiKeyManager {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -315,7 +326,9 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     let bytes: Vec<u8> = input.bytes().filter(|&b| b != b'=').collect();
 
     let lookup = |c: u8| -> Result<u8, String> {
-        table.iter().position(|&t| t == c)
+        table
+            .iter()
+            .position(|&t| t == c)
             .map(|p| p as u8)
             .ok_or_else(|| format!("Invalid base64 character: {}", c as char))
     };
@@ -365,7 +378,8 @@ fn parse_claims_from_json(json: &str) -> Result<Claims, AuthError> {
             let after_key = &json[pos + pattern.len()..];
             if let Some(colon) = after_key.find(':') {
                 let after_colon = after_key[colon + 1..].trim_start();
-                let num_str: String = after_colon.chars()
+                let num_str: String = after_colon
+                    .chars()
                     .take_while(|c| c.is_ascii_digit())
                     .collect();
                 return num_str.parse().unwrap_or(0);
@@ -382,7 +396,8 @@ fn parse_claims_from_json(json: &str) -> Result<Claims, AuthError> {
                 let rest = &after_key[bracket + 1..];
                 if let Some(end) = rest.find(']') {
                     let inner = &rest[..end];
-                    return inner.split(',')
+                    return inner
+                        .split(',')
                         .map(|s| s.trim().trim_matches('"').to_string())
                         .filter(|s| !s.is_empty())
                         .collect();
@@ -475,15 +490,21 @@ impl AuditLogger {
             let mut ridx = self.resource_index.lock().unwrap();
             ridx.clear();
             for (i, log) in logs.iter().enumerate() {
-                ridx.entry(log.resource.clone()).or_insert_with(Vec::new).push(i);
+                ridx.entry(log.resource.clone())
+                    .or_insert_with(Vec::new)
+                    .push(i);
             }
         }
 
         let resource = event.resource.clone();
         logs.push(event);
 
-        self.resource_index.lock().unwrap()
-            .entry(resource).or_insert_with(Vec::new).push(idx);
+        self.resource_index
+            .lock()
+            .unwrap()
+            .entry(resource)
+            .or_insert_with(Vec::new)
+            .push(idx);
     }
 
     /// Query logs with a filter.
@@ -492,22 +513,34 @@ impl AuditLogger {
         logs.iter()
             .filter(|log| {
                 if let Some(ref actor) = filter.actor {
-                    if &log.actor != actor { return false; }
+                    if &log.actor != actor {
+                        return false;
+                    }
                 }
                 if let Some(ref action) = filter.action {
-                    if &log.action != action { return false; }
+                    if &log.action != action {
+                        return false;
+                    }
                 }
                 if let Some(ref resource) = filter.resource {
-                    if &log.resource != resource { return false; }
+                    if &log.resource != resource {
+                        return false;
+                    }
                 }
                 if let Some(ref result) = filter.result {
-                    if &log.result != result { return false; }
+                    if &log.result != result {
+                        return false;
+                    }
                 }
                 if let Some(since) = filter.since {
-                    if log.timestamp < since { return false; }
+                    if log.timestamp < since {
+                        return false;
+                    }
                 }
                 if let Some(until) = filter.until {
-                    if log.timestamp > until { return false; }
+                    if log.timestamp > until {
+                        return false;
+                    }
                 }
                 true
             })
@@ -521,7 +554,8 @@ impl AuditLogger {
         let logs = self.logs.lock().unwrap();
         let ridx = self.resource_index.lock().unwrap();
         if let Some(indices) = ridx.get(resource) {
-            indices.iter()
+            indices
+                .iter()
                 .filter_map(|&i| logs.get(i).cloned())
                 .collect()
         } else {
@@ -536,7 +570,9 @@ impl AuditLogger {
 }
 
 impl Default for AuditLogger {
-    fn default() -> Self { Self::new(100_000) }
+    fn default() -> Self {
+        Self::new(100_000)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -701,7 +737,12 @@ mod tests {
     #[test]
     fn test_revoke_api_key() {
         let mgr = ApiKeyManager::new();
-        let key = mgr.create_api_key("revoke-me", "default", vec![ApiPermission::WorkflowWrite], 0);
+        let key = mgr.create_api_key(
+            "revoke-me",
+            "default",
+            vec![ApiPermission::WorkflowWrite],
+            0,
+        );
         assert!(mgr.validate_api_key(&key).is_some());
         assert!(mgr.revoke_api_key(&key));
         assert!(mgr.validate_api_key(&key).is_none());
@@ -742,7 +783,8 @@ mod tests {
     #[test]
     fn test_rotate_api_key() {
         let mgr = ApiKeyManager::new();
-        let old_key = mgr.create_api_key("rotate-me", "default", vec![ApiPermission::WorkflowRead], 0);
+        let old_key =
+            mgr.create_api_key("rotate-me", "default", vec![ApiPermission::WorkflowRead], 0);
         let new_key = mgr.rotate_api_key(&old_key);
         assert!(new_key.is_some());
         let new_key = new_key.unwrap();
@@ -783,14 +825,18 @@ mod tests {
     #[test]
     fn test_api_key_permissions() {
         let mgr = ApiKeyManager::new();
-        let key = mgr.create_api_key("perms", "ns", vec![
-            ApiPermission::WorkflowRead,
-            ApiPermission::WorkflowWrite,
-        ], 0);
+        let key = mgr.create_api_key(
+            "perms",
+            "ns",
+            vec![ApiPermission::WorkflowRead, ApiPermission::WorkflowWrite],
+            0,
+        );
         let validated = mgr.validate_api_key(&key).unwrap();
         assert_eq!(validated.permissions.len(), 2);
         assert!(validated.permissions.contains(&ApiPermission::WorkflowRead));
-        assert!(validated.permissions.contains(&ApiPermission::WorkflowWrite));
+        assert!(validated
+            .permissions
+            .contains(&ApiPermission::WorkflowWrite));
     }
 
     // ── OAuth2 / JWT Tests ─────────────────────────────────────────────────
@@ -814,8 +860,16 @@ mod tests {
         let mut i = 0;
         while i < data.len() {
             let b0 = data[i] as usize;
-            let b1 = if i + 1 < data.len() { data[i + 1] as usize } else { 0 };
-            let b2 = if i + 2 < data.len() { data[i + 2] as usize } else { 0 };
+            let b1 = if i + 1 < data.len() {
+                data[i + 1] as usize
+            } else {
+                0
+            };
+            let b2 = if i + 2 < data.len() {
+                data[i + 2] as usize
+            } else {
+                0
+            };
             output.push(table[b0 >> 2] as char);
             output.push(table[((b0 & 3) << 4) | (b1 >> 4)] as char);
             if i + 1 < data.len() {
@@ -839,7 +893,12 @@ mod tests {
             client_secret: "secret".into(),
         };
         let validator = OAuth2Validator::new(config);
-        let token = make_test_jwt("user-123", "https://auth.velocity.dev", "velocity-api", 9999999999);
+        let token = make_test_jwt(
+            "user-123",
+            "https://auth.velocity.dev",
+            "velocity-api",
+            9999999999,
+        );
         let claims = validator.validate_token(&token).unwrap();
         assert_eq!(claims.subject, "user-123");
         assert_eq!(claims.issuer, "https://auth.velocity.dev");
@@ -896,8 +955,11 @@ mod tests {
     #[test]
     fn test_jwt_malformed_token() {
         let config = OAuth2Config {
-            issuer: "".into(), audience: "".into(), jwks_uri: "".into(),
-            client_id: "".into(), client_secret: "".into(),
+            issuer: "".into(),
+            audience: "".into(),
+            jwks_uri: "".into(),
+            client_id: "".into(),
+            client_secret: "".into(),
         };
         let validator = OAuth2Validator::new(config);
         let result = validator.validate_token("not.a.valid-jwt");
@@ -907,8 +969,11 @@ mod tests {
     #[test]
     fn test_jwt_missing_subject() {
         let config = OAuth2Config {
-            issuer: "".into(), audience: "".into(), jwks_uri: "".into(),
-            client_id: "".into(), client_secret: "".into(),
+            issuer: "".into(),
+            audience: "".into(),
+            jwks_uri: "".into(),
+            client_id: "".into(),
+            client_secret: "".into(),
         };
         let validator = OAuth2Validator::new(config);
         let header = base64url_encode(r#"{"alg":"RS256"}"#.as_bytes());
@@ -940,14 +1005,22 @@ mod tests {
     fn test_audit_query_by_actor() {
         let logger = AuditLogger::new(1000);
         logger.log_event(AuditLog {
-            timestamp: 1000, actor: "user-1".into(), action: "Start".into(),
-            resource: "wf-1".into(), result: AuditResult::Success,
-            ip_address: "".into(), user_agent: "".into(),
+            timestamp: 1000,
+            actor: "user-1".into(),
+            action: "Start".into(),
+            resource: "wf-1".into(),
+            result: AuditResult::Success,
+            ip_address: "".into(),
+            user_agent: "".into(),
         });
         logger.log_event(AuditLog {
-            timestamp: 1001, actor: "user-2".into(), action: "Start".into(),
-            resource: "wf-2".into(), result: AuditResult::Success,
-            ip_address: "".into(), user_agent: "".into(),
+            timestamp: 1001,
+            actor: "user-2".into(),
+            action: "Start".into(),
+            resource: "wf-2".into(),
+            result: AuditResult::Success,
+            ip_address: "".into(),
+            user_agent: "".into(),
         });
 
         let results = logger.query_logs(AuditFilter {
@@ -962,14 +1035,22 @@ mod tests {
     fn test_audit_query_by_action() {
         let logger = AuditLogger::new(1000);
         logger.log_event(AuditLog {
-            timestamp: 1000, actor: "u".into(), action: "Start".into(),
-            resource: "wf".into(), result: AuditResult::Success,
-            ip_address: "".into(), user_agent: "".into(),
+            timestamp: 1000,
+            actor: "u".into(),
+            action: "Start".into(),
+            resource: "wf".into(),
+            result: AuditResult::Success,
+            ip_address: "".into(),
+            user_agent: "".into(),
         });
         logger.log_event(AuditLog {
-            timestamp: 1001, actor: "u".into(), action: "Terminate".into(),
-            resource: "wf".into(), result: AuditResult::Denied("forbidden".into()),
-            ip_address: "".into(), user_agent: "".into(),
+            timestamp: 1001,
+            actor: "u".into(),
+            action: "Terminate".into(),
+            resource: "wf".into(),
+            result: AuditResult::Denied("forbidden".into()),
+            ip_address: "".into(),
+            user_agent: "".into(),
         });
 
         let results = logger.query_logs(AuditFilter {
@@ -983,19 +1064,31 @@ mod tests {
     fn test_audit_get_logs_for_resource() {
         let logger = AuditLogger::new(1000);
         logger.log_event(AuditLog {
-            timestamp: 1000, actor: "u".into(), action: "Start".into(),
-            resource: "wf-abc".into(), result: AuditResult::Success,
-            ip_address: "".into(), user_agent: "".into(),
+            timestamp: 1000,
+            actor: "u".into(),
+            action: "Start".into(),
+            resource: "wf-abc".into(),
+            result: AuditResult::Success,
+            ip_address: "".into(),
+            user_agent: "".into(),
         });
         logger.log_event(AuditLog {
-            timestamp: 1001, actor: "u".into(), action: "Signal".into(),
-            resource: "wf-xyz".into(), result: AuditResult::Success,
-            ip_address: "".into(), user_agent: "".into(),
+            timestamp: 1001,
+            actor: "u".into(),
+            action: "Signal".into(),
+            resource: "wf-xyz".into(),
+            result: AuditResult::Success,
+            ip_address: "".into(),
+            user_agent: "".into(),
         });
         logger.log_event(AuditLog {
-            timestamp: 1002, actor: "u".into(), action: "Query".into(),
-            resource: "wf-abc".into(), result: AuditResult::Success,
-            ip_address: "".into(), user_agent: "".into(),
+            timestamp: 1002,
+            actor: "u".into(),
+            action: "Query".into(),
+            resource: "wf-abc".into(),
+            result: AuditResult::Success,
+            ip_address: "".into(),
+            user_agent: "".into(),
         });
 
         let wf_abc_logs = logger.get_logs_for_resource("wf-abc");
@@ -1007,12 +1100,19 @@ mod tests {
         let logger = AuditLogger::new(1000);
         for i in 0..20 {
             logger.log_event(AuditLog {
-                timestamp: i, actor: "u".into(), action: "act".into(),
-                resource: "r".into(), result: AuditResult::Success,
-                ip_address: "".into(), user_agent: "".into(),
+                timestamp: i,
+                actor: "u".into(),
+                action: "act".into(),
+                resource: "r".into(),
+                result: AuditResult::Success,
+                ip_address: "".into(),
+                user_agent: "".into(),
             });
         }
-        let results = logger.query_logs(AuditFilter { limit: Some(5), ..Default::default() });
+        let results = logger.query_logs(AuditFilter {
+            limit: Some(5),
+            ..Default::default()
+        });
         assert_eq!(results.len(), 5);
     }
 
@@ -1021,9 +1121,13 @@ mod tests {
         let logger = AuditLogger::new(10);
         for i in 0..15 {
             logger.log_event(AuditLog {
-                timestamp: i, actor: format!("user-{}", i), action: "act".into(),
-                resource: "r".into(), result: AuditResult::Success,
-                ip_address: "".into(), user_agent: "".into(),
+                timestamp: i,
+                actor: format!("user-{}", i),
+                action: "act".into(),
+                resource: "r".into(),
+                result: AuditResult::Success,
+                ip_address: "".into(),
+                user_agent: "".into(),
             });
         }
         // After eviction, should have fewer than 15 entries

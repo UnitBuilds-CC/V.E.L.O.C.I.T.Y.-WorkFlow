@@ -5,8 +5,11 @@
 //! namespace deletion service, add-search-attributes service.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Worker Deployment Management (11,361 lines in Temporal)
@@ -87,7 +90,11 @@ impl WorkerDeploymentManager {
         }
     }
 
-    pub fn create_deployment(&self, namespace_id: &str, name: &str) -> Result<WorkerDeployment, DeploymentError> {
+    pub fn create_deployment(
+        &self,
+        namespace_id: &str,
+        name: &str,
+    ) -> Result<WorkerDeployment, DeploymentError> {
         let key = format!("{}/{}", namespace_id, name);
         let mut deployments = self.deployments.write().unwrap();
         if deployments.contains_key(&key) {
@@ -104,17 +111,33 @@ impl WorkerDeploymentManager {
             state: DeploymentState::Active,
         };
         deployments.insert(key, deployment.clone());
-        self.stats.deployments_created.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .deployments_created
+            .fetch_add(1, Ordering::Relaxed);
         Ok(deployment)
     }
 
-    pub fn register_version(&self, namespace_id: &str, deployment_name: &str, version_name: &str, build_id: &str) -> Result<DeploymentVersion, DeploymentError> {
+    pub fn register_version(
+        &self,
+        namespace_id: &str,
+        deployment_name: &str,
+        version_name: &str,
+        build_id: &str,
+    ) -> Result<DeploymentVersion, DeploymentError> {
         let key = format!("{}/{}", namespace_id, deployment_name);
         let mut deployments = self.deployments.write().unwrap();
-        let deployment = deployments.get_mut(&key).ok_or_else(|| DeploymentError::NotFound(key.clone()))?;
+        let deployment = deployments
+            .get_mut(&key)
+            .ok_or_else(|| DeploymentError::NotFound(key.clone()))?;
 
-        if deployment.versions.iter().any(|v| v.version_name == version_name) {
-            return Err(DeploymentError::VersionAlreadyExists(version_name.to_string()));
+        if deployment
+            .versions
+            .iter()
+            .any(|v| v.version_name == version_name)
+        {
+            return Err(DeploymentError::VersionAlreadyExists(
+                version_name.to_string(),
+            ));
         }
 
         let version = DeploymentVersion {
@@ -127,32 +150,59 @@ impl WorkerDeploymentManager {
         };
         deployment.versions.push(version.clone());
         deployment.last_updated_ms = now_ms();
-        self.stats.versions_registered.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .versions_registered
+            .fetch_add(1, Ordering::Relaxed);
         Ok(version)
     }
 
-    pub fn set_current_version(&self, namespace_id: &str, deployment_name: &str, version_name: &str) -> Result<(), DeploymentError> {
+    pub fn set_current_version(
+        &self,
+        namespace_id: &str,
+        deployment_name: &str,
+        version_name: &str,
+    ) -> Result<(), DeploymentError> {
         let key = format!("{}/{}", namespace_id, deployment_name);
         let mut deployments = self.deployments.write().unwrap();
-        let deployment = deployments.get_mut(&key).ok_or_else(|| DeploymentError::NotFound(key.clone()))?;
+        let deployment = deployments
+            .get_mut(&key)
+            .ok_or_else(|| DeploymentError::NotFound(key.clone()))?;
 
-        if !deployment.versions.iter().any(|v| v.version_name == version_name) {
+        if !deployment
+            .versions
+            .iter()
+            .any(|v| v.version_name == version_name)
+        {
             return Err(DeploymentError::VersionNotFound(version_name.to_string()));
         }
 
         deployment.current_version_name = Some(version_name.to_string());
         deployment.last_updated_ms = now_ms();
-        self.current_version.write().unwrap().insert(namespace_id.to_string(), version_name.to_string());
-        self.stats.current_version_changes.fetch_add(1, Ordering::Relaxed);
+        self.current_version
+            .write()
+            .unwrap()
+            .insert(namespace_id.to_string(), version_name.to_string());
+        self.stats
+            .current_version_changes
+            .fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn start_drainage(&self, namespace_id: &str, deployment_name: &str, version_name: &str) -> Result<(), DeploymentError> {
+    pub fn start_drainage(
+        &self,
+        namespace_id: &str,
+        deployment_name: &str,
+        version_name: &str,
+    ) -> Result<(), DeploymentError> {
         let key = format!("{}/{}", namespace_id, deployment_name);
         let mut deployments = self.deployments.write().unwrap();
-        let deployment = deployments.get_mut(&key).ok_or_else(|| DeploymentError::NotFound(key.clone()))?;
+        let deployment = deployments
+            .get_mut(&key)
+            .ok_or_else(|| DeploymentError::NotFound(key.clone()))?;
 
-        let version = deployment.versions.iter_mut()
+        let version = deployment
+            .versions
+            .iter_mut()
             .find(|v| v.version_name == version_name)
             .ok_or_else(|| DeploymentError::VersionNotFound(version_name.to_string()))?;
 
@@ -173,13 +223,18 @@ impl WorkerDeploymentManager {
     }
 
     pub fn list_deployments(&self, namespace_id: &str) -> Vec<WorkerDeployment> {
-        self.deployments.read().unwrap().values()
+        self.deployments
+            .read()
+            .unwrap()
+            .values()
             .filter(|d| d.namespace_id == namespace_id)
             .cloned()
             .collect()
     }
 
-    pub fn stats(&self) -> &DeploymentManagerStats { &self.stats }
+    pub fn stats(&self) -> &DeploymentManagerStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -296,10 +351,17 @@ impl SchedulerService {
         Ok(())
     }
 
-    pub fn trigger_schedule(&self, namespace_id: &str, schedule_id: &str, overlap: Option<SchedulerOverlapPolicy>) -> Result<SchedulerActionResult, SchedulerError> {
+    pub fn trigger_schedule(
+        &self,
+        namespace_id: &str,
+        schedule_id: &str,
+        overlap: Option<SchedulerOverlapPolicy>,
+    ) -> Result<SchedulerActionResult, SchedulerError> {
         let key = format!("{}/{}", namespace_id, schedule_id);
         let mut schedules = self.schedules.write().unwrap();
-        let schedule = schedules.get_mut(&key).ok_or_else(|| SchedulerError::NotFound(key.clone()))?;
+        let schedule = schedules
+            .get_mut(&key)
+            .ok_or_else(|| SchedulerError::NotFound(key.clone()))?;
 
         if schedule.state.paused {
             return Err(SchedulerError::Paused(key));
@@ -315,36 +377,57 @@ impl SchedulerService {
 
         schedule.info.recent_actions.push(result.clone());
         schedule.info.last_updated_ms = now_ms();
-        self.stats.schedules_triggered.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .schedules_triggered
+            .fetch_add(1, Ordering::Relaxed);
         Ok(result)
     }
 
-    pub fn pause_schedule(&self, namespace_id: &str, schedule_id: &str, note: &str) -> Result<(), SchedulerError> {
+    pub fn pause_schedule(
+        &self,
+        namespace_id: &str,
+        schedule_id: &str,
+        note: &str,
+    ) -> Result<(), SchedulerError> {
         let key = format!("{}/{}", namespace_id, schedule_id);
         let mut schedules = self.schedules.write().unwrap();
-        let schedule = schedules.get_mut(&key).ok_or_else(|| SchedulerError::NotFound(key))?;
+        let schedule = schedules
+            .get_mut(&key)
+            .ok_or_else(|| SchedulerError::NotFound(key))?;
         schedule.state.paused = true;
         schedule.state.notes = note.to_string();
         Ok(())
     }
 
-    pub fn unpause_schedule(&self, namespace_id: &str, schedule_id: &str, note: &str) -> Result<(), SchedulerError> {
+    pub fn unpause_schedule(
+        &self,
+        namespace_id: &str,
+        schedule_id: &str,
+        note: &str,
+    ) -> Result<(), SchedulerError> {
         let key = format!("{}/{}", namespace_id, schedule_id);
         let mut schedules = self.schedules.write().unwrap();
-        let schedule = schedules.get_mut(&key).ok_or_else(|| SchedulerError::NotFound(key))?;
+        let schedule = schedules
+            .get_mut(&key)
+            .ok_or_else(|| SchedulerError::NotFound(key))?;
         schedule.state.paused = false;
         schedule.state.notes = note.to_string();
         Ok(())
     }
 
     pub fn list_schedules(&self, namespace_id: &str) -> Vec<SchedulerSchedule> {
-        self.schedules.read().unwrap().values()
+        self.schedules
+            .read()
+            .unwrap()
+            .values()
             .filter(|s| s.namespace_id == namespace_id)
             .cloned()
             .collect()
     }
 
-    pub fn stats(&self) -> &SchedulerStats { &self.stats }
+    pub fn stats(&self) -> &SchedulerStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -407,7 +490,11 @@ impl ScannerService {
         }
     }
 
-    pub fn start_scan(&self, scan_type: ScanType, namespace_id: &str) -> Result<String, ScannerError> {
+    pub fn start_scan(
+        &self,
+        scan_type: ScanType,
+        namespace_id: &str,
+    ) -> Result<String, ScannerError> {
         let scan_id = format!("scan-{}-{}", scan_type as u8, now_ms());
         let scan = ScanExecution {
             scan_id: scan_id.clone(),
@@ -426,17 +513,29 @@ impl ScannerService {
         Ok(scan_id)
     }
 
-    pub fn complete_scan(&self, scan_id: &str, items_scanned: i64, items_with_issues: i64, items_fixed: i64) -> Result<(), ScannerError> {
+    pub fn complete_scan(
+        &self,
+        scan_id: &str,
+        items_scanned: i64,
+        items_with_issues: i64,
+        items_fixed: i64,
+    ) -> Result<(), ScannerError> {
         let mut scans = self.scans.write().unwrap();
-        let scan = scans.get_mut(scan_id).ok_or_else(|| ScannerError::NotFound(scan_id.to_string()))?;
+        let scan = scans
+            .get_mut(scan_id)
+            .ok_or_else(|| ScannerError::NotFound(scan_id.to_string()))?;
         scan.status = ScanStatus::Completed;
         scan.completed_at_ms = Some(now_ms());
         scan.items_scanned = items_scanned;
         scan.items_with_issues = items_with_issues;
         scan.items_fixed = items_fixed;
         self.stats.scans_completed.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_items_scanned.fetch_add(items_scanned as u64, Ordering::Relaxed);
-        self.stats.total_fixes_applied.fetch_add(items_fixed as u64, Ordering::Relaxed);
+        self.stats
+            .total_items_scanned
+            .fetch_add(items_scanned as u64, Ordering::Relaxed);
+        self.stats
+            .total_fixes_applied
+            .fetch_add(items_fixed as u64, Ordering::Relaxed);
         Ok(())
     }
 
@@ -445,13 +544,18 @@ impl ScannerService {
     }
 
     pub fn list_scans(&self, namespace_id: &str) -> Vec<ScanExecution> {
-        self.scans.read().unwrap().values()
+        self.scans
+            .read()
+            .unwrap()
+            .values()
             .filter(|s| s.namespace_id == namespace_id)
             .cloned()
             .collect()
     }
 
-    pub fn stats(&self) -> &ScannerStats { &self.stats }
+    pub fn stats(&self) -> &ScannerStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -503,7 +607,12 @@ impl MigrationService {
         }
     }
 
-    pub fn start_migration(&self, source_ns: &str, target_ns: &str, total_workflows: i64) -> Result<String, MigrationError> {
+    pub fn start_migration(
+        &self,
+        source_ns: &str,
+        target_ns: &str,
+        total_workflows: i64,
+    ) -> Result<String, MigrationError> {
         let migration_id = format!("mig-{}", now_ms());
         let migration = MigrationExecution {
             migration_id: migration_id.clone(),
@@ -517,20 +626,31 @@ impl MigrationService {
             completed_at_ms: None,
             errors: vec![],
         };
-        self.migrations.write().unwrap().insert(migration_id.clone(), migration);
-        self.stats.migrations_started.fetch_add(1, Ordering::Relaxed);
+        self.migrations
+            .write()
+            .unwrap()
+            .insert(migration_id.clone(), migration);
+        self.stats
+            .migrations_started
+            .fetch_add(1, Ordering::Relaxed);
         Ok(migration_id)
     }
 
     pub fn advance_migration(&self, migration_id: &str, count: i64) -> Result<(), MigrationError> {
         let mut migrations = self.migrations.write().unwrap();
-        let migration = migrations.get_mut(migration_id).ok_or_else(|| MigrationError::NotFound(migration_id.to_string()))?;
+        let migration = migrations
+            .get_mut(migration_id)
+            .ok_or_else(|| MigrationError::NotFound(migration_id.to_string()))?;
         migration.migrated_workflows += count;
-        self.stats.workflows_migrated.fetch_add(count as u64, Ordering::Relaxed);
+        self.stats
+            .workflows_migrated
+            .fetch_add(count as u64, Ordering::Relaxed);
         if migration.migrated_workflows >= migration.total_workflows {
             migration.status = MigrationExecStatus::Completed;
             migration.completed_at_ms = Some(now_ms());
-            self.stats.migrations_completed.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .migrations_completed
+                .fetch_add(1, Ordering::Relaxed);
         }
         Ok(())
     }
@@ -539,7 +659,9 @@ impl MigrationService {
         self.migrations.read().unwrap().get(migration_id).cloned()
     }
 
-    pub fn stats(&self) -> &MigrationStats { &self.stats }
+    pub fn stats(&self) -> &MigrationStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -603,10 +725,17 @@ impl DlqManagementService {
         key
     }
 
-    pub fn enqueue_message(&self, source: &str, target: &str, msg: DlqMessage) -> Result<(), DlqError> {
+    pub fn enqueue_message(
+        &self,
+        source: &str,
+        target: &str,
+        msg: DlqMessage,
+    ) -> Result<(), DlqError> {
         let key = format!("{}:{}", source, target);
         let mut queues = self.queues.write().unwrap();
-        let queue = queues.get_mut(&key).ok_or_else(|| DlqError::NotFound(key))?;
+        let queue = queues
+            .get_mut(&key)
+            .ok_or_else(|| DlqError::NotFound(key))?;
         if queue.messages.len() >= queue.max_size {
             queue.messages.pop_front(); // Drop oldest
         }
@@ -615,29 +744,52 @@ impl DlqManagementService {
         Ok(())
     }
 
-    pub fn redrive_messages(&self, source: &str, target: &str, max_count: usize) -> Result<Vec<DlqMessage>, DlqError> {
+    pub fn redrive_messages(
+        &self,
+        source: &str,
+        target: &str,
+        max_count: usize,
+    ) -> Result<Vec<DlqMessage>, DlqError> {
         let key = format!("{}:{}", source, target);
         let mut queues = self.queues.write().unwrap();
-        let queue = queues.get_mut(&key).ok_or_else(|| DlqError::NotFound(key))?;
+        let queue = queues
+            .get_mut(&key)
+            .ok_or_else(|| DlqError::NotFound(key))?;
         let count = max_count.min(queue.messages.len());
         let messages: Vec<DlqMessage> = queue.messages.drain(..count).collect();
-        self.stats.messages_redriven.fetch_add(messages.len() as u64, Ordering::Relaxed);
+        self.stats
+            .messages_redriven
+            .fetch_add(messages.len() as u64, Ordering::Relaxed);
         Ok(messages)
     }
 
-    pub fn purge_messages(&self, source: &str, target: &str, before_message_id: i64) -> Result<i64, DlqError> {
+    pub fn purge_messages(
+        &self,
+        source: &str,
+        target: &str,
+        before_message_id: i64,
+    ) -> Result<i64, DlqError> {
         let key = format!("{}:{}", source, target);
         let mut queues = self.queues.write().unwrap();
-        let queue = queues.get_mut(&key).ok_or_else(|| DlqError::NotFound(key))?;
+        let queue = queues
+            .get_mut(&key)
+            .ok_or_else(|| DlqError::NotFound(key))?;
         let before = queue.messages.len() as i64;
         queue.messages.retain(|m| m.message_id >= before_message_id);
         let after = queue.messages.len() as i64;
         let purged = before - after;
-        self.stats.messages_purged.fetch_add(purged as u64, Ordering::Relaxed);
+        self.stats
+            .messages_purged
+            .fetch_add(purged as u64, Ordering::Relaxed);
         Ok(purged)
     }
 
-    pub fn list_messages(&self, source: &str, target: &str, max_count: usize) -> Result<Vec<DlqMessage>, DlqError> {
+    pub fn list_messages(
+        &self,
+        source: &str,
+        target: &str,
+        max_count: usize,
+    ) -> Result<Vec<DlqMessage>, DlqError> {
         let key = format!("{}:{}", source, target);
         let queues = self.queues.read().unwrap();
         let queue = queues.get(&key).ok_or_else(|| DlqError::NotFound(key))?;
@@ -646,10 +798,17 @@ impl DlqManagementService {
 
     pub fn queue_size(&self, source: &str, target: &str) -> usize {
         let key = format!("{}:{}", source, target);
-        self.queues.read().unwrap().get(&key).map(|q| q.messages.len()).unwrap_or(0)
+        self.queues
+            .read()
+            .unwrap()
+            .get(&key)
+            .map(|q| q.messages.len())
+            .unwrap_or(0)
     }
 
-    pub fn stats(&self) -> &DlqStats { &self.stats }
+    pub fn stats(&self) -> &DlqStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -706,7 +865,13 @@ impl BatcherService {
         }
     }
 
-    pub fn start_job(&self, namespace_id: &str, op: BatcherOperation, query: &str, total_items: i64) -> String {
+    pub fn start_job(
+        &self,
+        namespace_id: &str,
+        op: BatcherOperation,
+        query: &str,
+        total_items: i64,
+    ) -> String {
         let job_id = format!("batch-{}-{}", op as u8, now_ms());
         let job = BatcherJob {
             job_id: job_id.clone(),
@@ -725,12 +890,21 @@ impl BatcherService {
         job_id
     }
 
-    pub fn advance_job(&self, job_id: &str, processed: i64, failed: i64) -> Result<(), BatcherError> {
+    pub fn advance_job(
+        &self,
+        job_id: &str,
+        processed: i64,
+        failed: i64,
+    ) -> Result<(), BatcherError> {
         let mut jobs = self.jobs.write().unwrap();
-        let job = jobs.get_mut(job_id).ok_or_else(|| BatcherError::NotFound(job_id.to_string()))?;
+        let job = jobs
+            .get_mut(job_id)
+            .ok_or_else(|| BatcherError::NotFound(job_id.to_string()))?;
         job.processed_items += processed;
         job.failed_items += failed;
-        self.stats.items_processed.fetch_add(processed as u64, Ordering::Relaxed);
+        self.stats
+            .items_processed
+            .fetch_add(processed as u64, Ordering::Relaxed);
         if job.processed_items >= job.total_items {
             job.status = BatcherJobStatus::Completed;
             job.completed_at_ms = Some(now_ms());
@@ -744,13 +918,18 @@ impl BatcherService {
     }
 
     pub fn list_jobs(&self, namespace_id: &str) -> Vec<BatcherJob> {
-        self.jobs.read().unwrap().values()
+        self.jobs
+            .read()
+            .unwrap()
+            .values()
             .filter(|j| j.namespace_id == namespace_id)
             .cloned()
             .collect()
     }
 
-    pub fn stats(&self) -> &BatcherStats { &self.stats }
+    pub fn stats(&self) -> &BatcherStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -795,7 +974,10 @@ pub enum BatcherError {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -810,10 +992,13 @@ mod tests {
         let dep = mgr.create_deployment("ns1", "my-deployment").unwrap();
         assert_eq!(dep.deployment_name, "my-deployment");
 
-        let ver = mgr.register_version("ns1", "my-deployment", "v1", "build-1").unwrap();
+        let ver = mgr
+            .register_version("ns1", "my-deployment", "v1", "build-1")
+            .unwrap();
         assert_eq!(ver.version_name, "v1");
 
-        mgr.set_current_version("ns1", "my-deployment", "v1").unwrap();
+        mgr.set_current_version("ns1", "my-deployment", "v1")
+            .unwrap();
         let dep = mgr.get_deployment("ns1", "my-deployment").unwrap();
         assert_eq!(dep.current_version_name, Some("v1".to_string()));
 
@@ -911,11 +1096,22 @@ mod tests {
         svc.create_queue("cluster-a", "cluster-b", 100);
 
         for i in 0..5 {
-            svc.enqueue_message("cluster-a", "cluster-b", DlqMessage {
-                message_id: i, shard_id: 1, task_type: "transfer".to_string(),
-                namespace_id: "ns1".to_string(), workflow_id: format!("wf{}", i),
-                run_id: format!("run{}", i), payload: vec![], enqueued_at_ms: now_ms(), retry_count: 0,
-            }).unwrap();
+            svc.enqueue_message(
+                "cluster-a",
+                "cluster-b",
+                DlqMessage {
+                    message_id: i,
+                    shard_id: 1,
+                    task_type: "transfer".to_string(),
+                    namespace_id: "ns1".to_string(),
+                    workflow_id: format!("wf{}", i),
+                    run_id: format!("run{}", i),
+                    payload: vec![],
+                    enqueued_at_ms: now_ms(),
+                    retry_count: 0,
+                },
+            )
+            .unwrap();
         }
 
         assert_eq!(svc.queue_size("cluster-a", "cluster-b"), 5);
@@ -931,7 +1127,12 @@ mod tests {
     #[test]
     fn test_batcher_service() {
         let svc = BatcherService::new();
-        let job_id = svc.start_job("ns1", BatcherOperation::Terminate, "ExecutionStatus='Running'", 100);
+        let job_id = svc.start_job(
+            "ns1",
+            BatcherOperation::Terminate,
+            "ExecutionStatus='Running'",
+            100,
+        );
 
         svc.advance_job(&job_id, 60, 2).unwrap();
         let job = svc.get_job(&job_id).unwrap();
@@ -962,24 +1163,36 @@ mod tests {
                 schedule_id: format!("sched-{}", i),
                 namespace_id: "ns1".to_string(),
                 spec: SchedulerSpec {
-                    cron_expressions: vec![], interval_seconds: Some(60),
-                    calendar_specs: vec![], start_time_ms: None, end_time_ms: None,
-                    jitter_ms: None, timezone: "UTC".to_string(),
+                    cron_expressions: vec![],
+                    interval_seconds: Some(60),
+                    calendar_specs: vec![],
+                    start_time_ms: None,
+                    end_time_ms: None,
+                    jitter_ms: None,
+                    timezone: "UTC".to_string(),
                 },
                 policy: SchedulerPolicy {
                     overlap_policy: SchedulerOverlapPolicy::Skip,
-                    catchup_window_ms: 60000, pause_on_failure: false,
+                    catchup_window_ms: 60000,
+                    pause_on_failure: false,
                 },
                 state: SchedulerState {
-                    paused: false, notes: String::new(), limited_actions: 0, remaining_actions: 0,
+                    paused: false,
+                    notes: String::new(),
+                    limited_actions: 0,
+                    remaining_actions: 0,
                 },
                 info: SchedulerInfo {
-                    spec_description: vec![], next_action_times: vec![],
-                    recent_actions: vec![], running_actions: vec![],
-                    create_time_ms: now_ms(), last_updated_ms: now_ms(),
+                    spec_description: vec![],
+                    next_action_times: vec![],
+                    recent_actions: vec![],
+                    running_actions: vec![],
+                    create_time_ms: now_ms(),
+                    last_updated_ms: now_ms(),
                 },
                 created_at_ms: now_ms(),
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         assert_eq!(svc.list_schedules("ns1").len(), 3);

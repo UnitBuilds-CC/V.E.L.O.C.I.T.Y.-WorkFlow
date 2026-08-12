@@ -91,7 +91,8 @@ impl DeterminismChecker {
         let violations = self.violations.lock().unwrap();
         let side_effects = self.side_effects.lock().unwrap();
 
-        let step_violations: Vec<_> = violations.iter()
+        let step_violations: Vec<_> = violations
+            .iter()
             .filter(|v| v.step == step)
             .cloned()
             .collect();
@@ -122,13 +123,17 @@ impl DeterminismChecker {
     /// Replay a side effect by ID.
     pub fn replay_side_effect(&self, side_effect_id: u64) -> Option<Vec<u8>> {
         let effects = self.side_effects.lock().unwrap();
-        effects.iter()
+        effects
+            .iter()
             .find(|e| e.id == side_effect_id)
             .map(|e| e.result.clone())
     }
 
     /// Validate that operations don't contain non-deterministic ops.
-    pub fn validate_no_nondeterministic_ops(&self, operations: &[WorkflowOperation]) -> Vec<DeterminismViolation> {
+    pub fn validate_no_nondeterministic_ops(
+        &self,
+        operations: &[WorkflowOperation],
+    ) -> Vec<DeterminismViolation> {
         let mut violations = Vec::new();
 
         for op in operations {
@@ -145,7 +150,8 @@ impl DeterminismChecker {
                     violations.push(DeterminismViolation {
                         operation: op.name.clone(),
                         step: op.step,
-                        reason: "System time is non-deterministic. Use workflow timers instead.".to_string(),
+                        reason: "System time is non-deterministic. Use workflow timers instead."
+                            .to_string(),
                         severity: ViolationSeverity::Fatal,
                     });
                 }
@@ -153,7 +159,8 @@ impl DeterminismChecker {
                     violations.push(DeterminismViolation {
                         operation: op.name.clone(),
                         step: op.step,
-                        reason: "File I/O is non-deterministic. Use activities instead.".to_string(),
+                        reason: "File I/O is non-deterministic. Use activities instead."
+                            .to_string(),
                         severity: ViolationSeverity::Error,
                     });
                 }
@@ -161,7 +168,8 @@ impl DeterminismChecker {
                     violations.push(DeterminismViolation {
                         operation: op.name.clone(),
                         step: op.step,
-                        reason: "Network I/O is non-deterministic. Use activities instead.".to_string(),
+                        reason: "Network I/O is non-deterministic. Use activities instead."
+                            .to_string(),
                         severity: ViolationSeverity::Error,
                     });
                 }
@@ -241,13 +249,11 @@ mod tests {
     #[test]
     fn test_validate_random_number() {
         let checker = DeterminismChecker::new();
-        let ops = vec![
-            WorkflowOperation {
-                name: "generate-id".to_string(),
-                op_type: OperationType::RandomNumber,
-                step: 1,
-            },
-        ];
+        let ops = vec![WorkflowOperation {
+            name: "generate-id".to_string(),
+            op_type: OperationType::RandomNumber,
+            step: 1,
+        }];
 
         let violations = checker.validate_no_nondeterministic_ops(&ops);
         assert_eq!(violations.len(), 1);
@@ -257,13 +263,11 @@ mod tests {
     #[test]
     fn test_validate_system_time() {
         let checker = DeterminismChecker::new();
-        let ops = vec![
-            WorkflowOperation {
-                name: "get-timestamp".to_string(),
-                op_type: OperationType::SystemTime,
-                step: 1,
-            },
-        ];
+        let ops = vec![WorkflowOperation {
+            name: "get-timestamp".to_string(),
+            op_type: OperationType::SystemTime,
+            step: 1,
+        }];
 
         let violations = checker.validate_no_nondeterministic_ops(&ops);
         assert_eq!(violations.len(), 1);
@@ -273,13 +277,11 @@ mod tests {
     #[test]
     fn test_validate_file_io() {
         let checker = DeterminismChecker::new();
-        let ops = vec![
-            WorkflowOperation {
-                name: "read-config".to_string(),
-                op_type: OperationType::FileIO,
-                step: 1,
-            },
-        ];
+        let ops = vec![WorkflowOperation {
+            name: "read-config".to_string(),
+            op_type: OperationType::FileIO,
+            step: 1,
+        }];
 
         let violations = checker.validate_no_nondeterministic_ops(&ops);
         assert_eq!(violations.len(), 1);
@@ -290,12 +292,36 @@ mod tests {
     fn test_validate_safe_operations() {
         let checker = DeterminismChecker::new();
         let ops = vec![
-            WorkflowOperation { name: "signal".to_string(), op_type: OperationType::Signal, step: 1 },
-            WorkflowOperation { name: "query".to_string(), op_type: OperationType::Query, step: 2 },
-            WorkflowOperation { name: "timer".to_string(), op_type: OperationType::Timer, step: 3 },
-            WorkflowOperation { name: "activity".to_string(), op_type: OperationType::Activity, step: 4 },
-            WorkflowOperation { name: "child".to_string(), op_type: OperationType::ChildWorkflow, step: 5 },
-            WorkflowOperation { name: "effect".to_string(), op_type: OperationType::SideEffect, step: 6 },
+            WorkflowOperation {
+                name: "signal".to_string(),
+                op_type: OperationType::Signal,
+                step: 1,
+            },
+            WorkflowOperation {
+                name: "query".to_string(),
+                op_type: OperationType::Query,
+                step: 2,
+            },
+            WorkflowOperation {
+                name: "timer".to_string(),
+                op_type: OperationType::Timer,
+                step: 3,
+            },
+            WorkflowOperation {
+                name: "activity".to_string(),
+                op_type: OperationType::Activity,
+                step: 4,
+            },
+            WorkflowOperation {
+                name: "child".to_string(),
+                op_type: OperationType::ChildWorkflow,
+                step: 5,
+            },
+            WorkflowOperation {
+                name: "effect".to_string(),
+                op_type: OperationType::SideEffect,
+                step: 6,
+            },
         ];
 
         let violations = checker.validate_no_nondeterministic_ops(&ops);
@@ -313,13 +339,11 @@ mod tests {
     #[test]
     fn test_check_determinism_with_violations() {
         let checker = DeterminismChecker::new();
-        let ops = vec![
-            WorkflowOperation {
-                name: "random-op".to_string(),
-                op_type: OperationType::RandomNumber,
-                step: 1,
-            },
-        ];
+        let ops = vec![WorkflowOperation {
+            name: "random-op".to_string(),
+            op_type: OperationType::RandomNumber,
+            step: 1,
+        }];
         checker.validate_no_nondeterministic_ops(&ops);
 
         let result = checker.check_determinism(1, 1);
@@ -343,13 +367,11 @@ mod tests {
     #[test]
     fn test_clear_violations() {
         let checker = DeterminismChecker::new();
-        let ops = vec![
-            WorkflowOperation {
-                name: "bad-op".to_string(),
-                op_type: OperationType::RandomNumber,
-                step: 1,
-            },
-        ];
+        let ops = vec![WorkflowOperation {
+            name: "bad-op".to_string(),
+            op_type: OperationType::RandomNumber,
+            step: 1,
+        }];
         checker.validate_no_nondeterministic_ops(&ops);
         assert_eq!(checker.violation_count(), 1);
 

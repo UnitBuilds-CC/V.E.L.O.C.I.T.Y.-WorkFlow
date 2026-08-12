@@ -200,14 +200,22 @@ impl ActivityPauseRegistry {
 
     /// Increment and return the attempt count for an activity.
     pub fn increment_attempt(&mut self, workflow_key: u64, activity_id: u32) -> u32 {
-        let count = self.attempts.entry(workflow_key).or_default().entry(activity_id).or_insert(0);
+        let count = self
+            .attempts
+            .entry(workflow_key)
+            .or_default()
+            .entry(activity_id)
+            .or_insert(0);
         *count += 1;
         *count
     }
 
     /// Get the current attempt count.
     pub fn get_attempts(&self, workflow_key: u64, activity_id: u32) -> u32 {
-        self.attempts.get(&workflow_key).and_then(|m| m.get(&activity_id).copied()).unwrap_or(0)
+        self.attempts
+            .get(&workflow_key)
+            .and_then(|m| m.get(&activity_id).copied())
+            .unwrap_or(0)
     }
 
     /// Remove all state for a workflow.
@@ -224,7 +232,8 @@ impl ActivityPauseRegistry {
 
     /// Count of paused activities.
     pub fn paused_count(&self) -> usize {
-        self.states.values()
+        self.states
+            .values()
             .flat_map(|m| m.values())
             .filter(|s| **s == ActivityPauseState::Paused)
             .count()
@@ -253,7 +262,8 @@ impl WorkflowPauseRegistry {
 
     /// Register a workflow as running.
     pub fn register(&mut self, workflow_key: u64) {
-        self.states.insert(workflow_key, WorkflowPauseState::Running);
+        self.states
+            .insert(workflow_key, WorkflowPauseState::Running);
     }
 
     /// Pause a workflow.
@@ -266,7 +276,8 @@ impl WorkflowPauseRegistry {
     /// Unpause a workflow.
     pub fn unpause(&mut self, workflow_key: u64) -> Option<WorkflowPauseState> {
         let prev = self.states.get(&workflow_key).copied()?;
-        self.states.insert(workflow_key, WorkflowPauseState::Running);
+        self.states
+            .insert(workflow_key, WorkflowPauseState::Running);
         Some(prev)
     }
 
@@ -287,7 +298,8 @@ impl WorkflowPauseRegistry {
 
     /// List all paused workflow keys.
     pub fn all_paused(&self) -> Vec<u64> {
-        self.states.iter()
+        self.states
+            .iter()
             .filter(|(_, s)| **s == WorkflowPauseState::Paused)
             .map(|(k, _)| *k)
             .collect()
@@ -300,7 +312,10 @@ impl WorkflowPauseRegistry {
 
     /// Count of paused workflows.
     pub fn paused_count(&self) -> usize {
-        self.states.values().filter(|s| **s == WorkflowPauseState::Paused).count()
+        self.states
+            .values()
+            .filter(|s| **s == WorkflowPauseState::Paused)
+            .count()
     }
 }
 
@@ -369,7 +384,9 @@ impl MultiOperationExecutor {
             return Err("multi-operation limited to 10 steps".into());
         }
         // First operation must be StartWorkflow if any StartWorkflow is present
-        let has_start = operations.iter().any(|op| matches!(op, MultiOperationStep::StartWorkflow { .. }));
+        let has_start = operations
+            .iter()
+            .any(|op| matches!(op, MultiOperationStep::StartWorkflow { .. }));
         if has_start && !matches!(operations[0], MultiOperationStep::StartWorkflow { .. }) {
             return Err("StartWorkflow must be the first step when present".into());
         }
@@ -389,12 +406,18 @@ impl MultiOperationExecutor {
     /// Build a success result.
     pub fn success_result(results: Vec<MultiOperationStepResult>) -> MultiOperationResult {
         let all_succeeded = results.iter().all(|r| r.success);
-        MultiOperationResult { results, all_succeeded }
+        MultiOperationResult {
+            results,
+            all_succeeded,
+        }
     }
 
     /// Build a partial failure result.
     pub fn partial_failure(results: Vec<MultiOperationStepResult>) -> MultiOperationResult {
-        MultiOperationResult { results, all_succeeded: false }
+        MultiOperationResult {
+            results,
+            all_succeeded: false,
+        }
     }
 
     /// Total operations executed.
@@ -405,7 +428,11 @@ impl MultiOperationExecutor {
     /// Failure rate as a percentage.
     pub fn failure_rate(&self) -> f64 {
         let total = self.executed_count + self.failed_count;
-        if total == 0 { 0.0 } else { self.failed_count as f64 / total as f64 * 100.0 }
+        if total == 0 {
+            0.0
+        } else {
+            self.failed_count as f64 / total as f64 * 100.0
+        }
     }
 }
 
@@ -454,7 +481,8 @@ impl RuntimeOptionsRegistry {
         activity_id: u32,
         options: ActivityRuntimeOptions,
     ) -> Option<ActivityRuntimeOptions> {
-        let prev = self.activity_options
+        let prev = self
+            .activity_options
             .get(&workflow_key)
             .and_then(|m| m.get(&activity_id).cloned());
         self.activity_options
@@ -681,14 +709,17 @@ impl FairnessTracker {
 
     /// Get the poller with the fewest dispatches (most fair target).
     pub fn fairest_poller(&self) -> Option<u64> {
-        self.dispatch_counts.iter()
+        self.dispatch_counts
+            .iter()
             .min_by_key(|(_, count)| **count)
             .map(|(id, _)| *id)
     }
 
     /// Get dispatch counts sorted by count (ascending).
     pub fn dispatch_ranking(&self) -> Vec<(u64, u64)> {
-        let mut ranking: Vec<(u64, u64)> = self.dispatch_counts.iter()
+        let mut ranking: Vec<(u64, u64)> = self
+            .dispatch_counts
+            .iter()
             .map(|(id, count)| (*id, *count))
             .collect();
         ranking.sort_by_key(|(_, count)| *count);
@@ -705,10 +736,16 @@ impl FairnessTracker {
         let counts: Vec<u64> = self.dispatch_counts.values().copied().collect();
         let min = counts.iter().copied().min().unwrap_or(0);
         let max = counts.iter().copied().max().unwrap_or(0);
-        let avg = if counts.is_empty() { 0.0 } else {
+        let avg = if counts.is_empty() {
+            0.0
+        } else {
             counts.iter().sum::<u64>() as f64 / counts.len() as f64
         };
-        let imbalance = if min == 0 { max as f64 } else { max as f64 / min as f64 };
+        let imbalance = if min == 0 {
+            max as f64
+        } else {
+            max as f64 / min as f64
+        };
 
         FairnessStats {
             poller_count: self.dispatch_counts.len(),
@@ -823,22 +860,30 @@ impl WorkerManagementRegistry {
 
     /// List workers matching the given filters.
     pub fn list_workers(&self, req: &ListWorkersRequest) -> ListWorkersResponse {
-        let mut filtered: Vec<&ManagedWorkerInfo> = self.workers.values()
+        let mut filtered: Vec<&ManagedWorkerInfo> = self
+            .workers
+            .values()
             .filter(|w| w.namespace == req.namespace)
             .filter(|w| {
                 if let Some(ref tq) = req.task_queue_filter {
                     w.task_queues.iter().any(|t| t == tq)
-                } else { true }
+                } else {
+                    true
+                }
             })
             .filter(|w| {
                 if let Some(ref bid) = req.build_id_filter {
                     &w.build_id == bid
-                } else { true }
+                } else {
+                    true
+                }
             })
             .filter(|w| {
                 if let Some(health) = req.health_filter {
                     w.health == health
-                } else { true }
+                } else {
+                    true
+                }
             })
             .collect();
 
@@ -846,13 +891,18 @@ impl WorkerManagementRegistry {
         let total_count = filtered.len();
 
         // Simple pagination by index
-        let page_idx = req.page_token.as_ref()
+        let page_idx = req
+            .page_token
+            .as_ref()
             .and_then(|t| String::from_utf8(t.clone()).ok())
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(0);
 
         let end = (page_idx + req.max_results).min(filtered.len());
-        let workers: Vec<ManagedWorkerInfo> = filtered[page_idx..end].iter().map(|w| (*w).clone()).collect();
+        let workers: Vec<ManagedWorkerInfo> = filtered[page_idx..end]
+            .iter()
+            .map(|w| (*w).clone())
+            .collect();
 
         let next_page_token = if end < filtered.len() {
             Some(end.to_string().into_bytes())
@@ -860,17 +910,24 @@ impl WorkerManagementRegistry {
             None
         };
 
-        ListWorkersResponse { workers, next_page_token, total_count }
+        ListWorkersResponse {
+            workers,
+            next_page_token,
+            total_count,
+        }
     }
 
     /// Count workers matching filters.
     pub fn count_workers(&self, namespace: &str, task_queue: Option<&str>) -> usize {
-        self.workers.values()
+        self.workers
+            .values()
             .filter(|w| w.namespace == namespace)
             .filter(|w| {
                 if let Some(tq) = task_queue {
                     w.task_queues.iter().any(|t| t == tq)
-                } else { true }
+                } else {
+                    true
+                }
             })
             .count()
     }
@@ -899,12 +956,18 @@ impl WorkerManagementRegistry {
 
     /// Count of healthy workers.
     pub fn healthy_count(&self) -> usize {
-        self.workers.values().filter(|w| w.health == WorkerHealthStatus::Healthy).count()
+        self.workers
+            .values()
+            .filter(|w| w.health == WorkerHealthStatus::Healthy)
+            .count()
     }
 
     /// Count of unhealthy workers.
     pub fn unhealthy_count(&self) -> usize {
-        self.workers.values().filter(|w| w.health == WorkerHealthStatus::Unhealthy).count()
+        self.workers
+            .values()
+            .filter(|w| w.health == WorkerHealthStatus::Unhealthy)
+            .count()
     }
 }
 
@@ -944,7 +1007,14 @@ impl DlqAdminController {
     }
 
     /// Enqueue a failed task to the DLQ.
-    pub fn enqueue(&mut self, queue_name: &str, workflow_key: Option<u64>, task_type: &str, payload: Vec<u8>, reason: &str) -> u64 {
+    pub fn enqueue(
+        &mut self,
+        queue_name: &str,
+        workflow_key: Option<u64>,
+        task_type: &str,
+        payload: Vec<u8>,
+        reason: &str,
+    ) -> u64 {
         let task_id = self.next_id;
         self.next_id += 1;
         let task = DlqAdminTask {
@@ -957,14 +1027,18 @@ impl DlqAdminController {
             failure_reason: reason.to_string(),
             retry_count: 0,
         };
-        self.queues.entry(queue_name.to_string()).or_default().push_back(task);
+        self.queues
+            .entry(queue_name.to_string())
+            .or_default()
+            .push_back(task);
         self.total_enqueued += 1;
         task_id
     }
 
     /// Get tasks from a DLQ (with optional limit).
     pub fn get_tasks(&self, queue_name: &str, max_count: usize) -> Vec<&DlqAdminTask> {
-        self.queues.get(queue_name)
+        self.queues
+            .get(queue_name)
             .map(|q| q.iter().take(max_count).collect())
             .unwrap_or_default()
     }
@@ -976,7 +1050,11 @@ impl DlqAdminController {
 
     /// Purge (delete) all tasks from a DLQ. Returns count of purged tasks.
     pub fn purge(&mut self, queue_name: &str) -> u64 {
-        let count = self.queues.get(queue_name).map(|q| q.len() as u64).unwrap_or(0);
+        let count = self
+            .queues
+            .get(queue_name)
+            .map(|q| q.len() as u64)
+            .unwrap_or(0);
         if let Some(q) = self.queues.get_mut(queue_name) {
             let purged = q.len() as u64;
             q.clear();
@@ -1002,7 +1080,11 @@ impl DlqAdminController {
 
     /// Merge (re-enqueue) tasks from a DLQ back to the source. Returns count of merged tasks.
     pub fn merge(&mut self, queue_name: &str) -> Vec<DlqAdminTask> {
-        let tasks = self.queues.remove(queue_name).map(|q| q.into_iter().collect::<Vec<_>>()).unwrap_or_default();
+        let tasks = self
+            .queues
+            .remove(queue_name)
+            .map(|q| q.into_iter().collect::<Vec<_>>())
+            .unwrap_or_default();
         let count = tasks.len() as u64;
         self.total_merged += count;
         tasks
@@ -1071,7 +1153,12 @@ mod tests {
         reg.register(1, 10);
         assert_eq!(reg.get_state(1, 10), Some(ActivityPauseState::Active));
 
-        let resp = reg.pause(&PauseActivityRequest { workflow_key: 1, activity_id: 10 }).unwrap();
+        let resp = reg
+            .pause(&PauseActivityRequest {
+                workflow_key: 1,
+                activity_id: 10,
+            })
+            .unwrap();
         assert!(resp.success);
         assert_eq!(resp.new_state, ActivityPauseState::Paused);
         assert_eq!(reg.get_state(1, 10), Some(ActivityPauseState::Paused));
@@ -1081,8 +1168,16 @@ mod tests {
     fn test_pause_already_paused() {
         let mut reg = ActivityPauseRegistry::new();
         reg.register(1, 10);
-        reg.pause(&PauseActivityRequest { workflow_key: 1, activity_id: 10 });
-        let resp = reg.pause(&PauseActivityRequest { workflow_key: 1, activity_id: 10 }).unwrap();
+        reg.pause(&PauseActivityRequest {
+            workflow_key: 1,
+            activity_id: 10,
+        });
+        let resp = reg
+            .pause(&PauseActivityRequest {
+                workflow_key: 1,
+                activity_id: 10,
+            })
+            .unwrap();
         assert!(resp.success);
         assert_eq!(resp.message, "already paused");
     }
@@ -1091,12 +1186,20 @@ mod tests {
     fn test_unpause_activity() {
         let mut reg = ActivityPauseRegistry::new();
         reg.register(1, 10);
-        reg.pause(&PauseActivityRequest { workflow_key: 1, activity_id: 10 });
+        reg.pause(&PauseActivityRequest {
+            workflow_key: 1,
+            activity_id: 10,
+        });
 
-        let resp = reg.unpause(&UnpauseActivityRequest {
-            workflow_key: 1, activity_id: 10,
-            jitter_ms: None, reset_attempts: false, reset_heartbeat: false,
-        }).unwrap();
+        let resp = reg
+            .unpause(&UnpauseActivityRequest {
+                workflow_key: 1,
+                activity_id: 10,
+                jitter_ms: None,
+                reset_attempts: false,
+                reset_heartbeat: false,
+            })
+            .unwrap();
         assert_eq!(resp.new_state, ActivityPauseState::Active);
         assert!(reg.should_schedule(1, 10));
     }
@@ -1109,10 +1212,15 @@ mod tests {
         reg.increment_attempt(1, 10);
         reg.record_heartbeat(1, 10, vec![1, 2, 3]);
 
-        let resp = reg.unpause(&UnpauseActivityRequest {
-            workflow_key: 1, activity_id: 10,
-            jitter_ms: None, reset_attempts: true, reset_heartbeat: true,
-        }).unwrap();
+        let resp = reg
+            .unpause(&UnpauseActivityRequest {
+                workflow_key: 1,
+                activity_id: 10,
+                jitter_ms: None,
+                reset_attempts: true,
+                reset_heartbeat: true,
+            })
+            .unwrap();
         assert_eq!(resp.new_state, ActivityPauseState::Active);
         assert_eq!(reg.get_attempts(1, 10), 0);
         assert!(reg.get_heartbeat(1, 10).is_none());
@@ -1125,10 +1233,15 @@ mod tests {
         reg.increment_attempt(1, 10);
         reg.increment_attempt(1, 10);
 
-        let resp = reg.reset(&ResetActivityRequest {
-            workflow_key: 1, activity_id: 10,
-            jitter_ms: None, reset_heartbeats: true, keep_paused: false,
-        }).unwrap();
+        let resp = reg
+            .reset(&ResetActivityRequest {
+                workflow_key: 1,
+                activity_id: 10,
+                jitter_ms: None,
+                reset_heartbeats: true,
+                keep_paused: false,
+            })
+            .unwrap();
         assert_eq!(resp.new_state, ActivityPauseState::Reset);
         assert_eq!(reg.get_attempts(1, 10), 0);
     }
@@ -1137,12 +1250,20 @@ mod tests {
     fn test_reset_keep_paused() {
         let mut reg = ActivityPauseRegistry::new();
         reg.register(1, 10);
-        reg.pause(&PauseActivityRequest { workflow_key: 1, activity_id: 10 });
+        reg.pause(&PauseActivityRequest {
+            workflow_key: 1,
+            activity_id: 10,
+        });
 
-        let resp = reg.reset(&ResetActivityRequest {
-            workflow_key: 1, activity_id: 10,
-            jitter_ms: None, reset_heartbeats: false, keep_paused: true,
-        }).unwrap();
+        let resp = reg
+            .reset(&ResetActivityRequest {
+                workflow_key: 1,
+                activity_id: 10,
+                jitter_ms: None,
+                reset_heartbeats: false,
+                keep_paused: true,
+            })
+            .unwrap();
         assert_eq!(resp.new_state, ActivityPauseState::Paused);
     }
 
@@ -1151,14 +1272,22 @@ mod tests {
         let mut reg = ActivityPauseRegistry::new();
         reg.register(1, 10);
         assert!(reg.should_schedule(1, 10));
-        reg.pause(&PauseActivityRequest { workflow_key: 1, activity_id: 10 });
+        reg.pause(&PauseActivityRequest {
+            workflow_key: 1,
+            activity_id: 10,
+        });
         assert!(!reg.should_schedule(1, 10));
     }
 
     #[test]
     fn test_pause_nonexistent() {
         let mut reg = ActivityPauseRegistry::new();
-        assert!(reg.pause(&PauseActivityRequest { workflow_key: 99, activity_id: 99 }).is_none());
+        assert!(reg
+            .pause(&PauseActivityRequest {
+                workflow_key: 99,
+                activity_id: 99
+            })
+            .is_none());
     }
 
     #[test]
@@ -1178,8 +1307,14 @@ mod tests {
         reg.register(1, 20);
         reg.register(2, 30);
         assert_eq!(reg.paused_count(), 0);
-        reg.pause(&PauseActivityRequest { workflow_key: 1, activity_id: 10 });
-        reg.pause(&PauseActivityRequest { workflow_key: 2, activity_id: 30 });
+        reg.pause(&PauseActivityRequest {
+            workflow_key: 1,
+            activity_id: 10,
+        });
+        reg.pause(&PauseActivityRequest {
+            workflow_key: 2,
+            activity_id: 30,
+        });
         assert_eq!(reg.paused_count(), 2);
     }
 
@@ -1245,10 +1380,15 @@ mod tests {
 
     #[test]
     fn test_multi_op_validate_too_many() {
-        let ops = vec![MultiOperationStep::StartWorkflow {
-            workflow_type: "test".into(), workflow_id: "1".into(),
-            task_queue: "q".into(), input: None,
-        }; 11];
+        let ops = vec![
+            MultiOperationStep::StartWorkflow {
+                workflow_type: "test".into(),
+                workflow_id: "1".into(),
+                task_queue: "q".into(),
+                input: None,
+            };
+            11
+        ];
         assert!(MultiOperationExecutor::validate(&ops).is_err());
     }
 
@@ -1256,11 +1396,15 @@ mod tests {
     fn test_multi_op_validate_start_first() {
         let ops = vec![
             MultiOperationStep::SignalWorkflow {
-                workflow_id: "1".into(), signal_name: "sig".into(), data: None,
+                workflow_id: "1".into(),
+                signal_name: "sig".into(),
+                data: None,
             },
             MultiOperationStep::StartWorkflow {
-                workflow_type: "test".into(), workflow_id: "1".into(),
-                task_queue: "q".into(), input: None,
+                workflow_type: "test".into(),
+                workflow_id: "1".into(),
+                task_queue: "q".into(),
+                input: None,
             },
         ];
         assert!(MultiOperationExecutor::validate(&ops).is_err());
@@ -1270,11 +1414,15 @@ mod tests {
     fn test_multi_op_validate_valid() {
         let ops = vec![
             MultiOperationStep::StartWorkflow {
-                workflow_type: "test".into(), workflow_id: "1".into(),
-                task_queue: "q".into(), input: None,
+                workflow_type: "test".into(),
+                workflow_id: "1".into(),
+                task_queue: "q".into(),
+                input: None,
             },
             MultiOperationStep::SignalWorkflow {
-                workflow_id: "1".into(), signal_name: "sig".into(), data: None,
+                workflow_id: "1".into(),
+                signal_name: "sig".into(),
+                data: None,
             },
         ];
         assert!(MultiOperationExecutor::validate(&ops).is_ok());
@@ -1293,8 +1441,18 @@ mod tests {
     #[test]
     fn test_multi_op_result() {
         let results = vec![
-            MultiOperationStepResult { step_index: 0, success: true, workflow_key: Some(1), error: None },
-            MultiOperationStepResult { step_index: 1, success: true, workflow_key: Some(1), error: None },
+            MultiOperationStepResult {
+                step_index: 0,
+                success: true,
+                workflow_key: Some(1),
+                error: None,
+            },
+            MultiOperationStepResult {
+                step_index: 1,
+                success: true,
+                workflow_key: Some(1),
+                error: None,
+            },
         ];
         let result = MultiOperationExecutor::success_result(results);
         assert!(result.all_succeeded);
@@ -1303,8 +1461,18 @@ mod tests {
     #[test]
     fn test_multi_op_partial_failure() {
         let results = vec![
-            MultiOperationStepResult { step_index: 0, success: true, workflow_key: Some(1), error: None },
-            MultiOperationStepResult { step_index: 1, success: false, workflow_key: None, error: Some("not found".into()) },
+            MultiOperationStepResult {
+                step_index: 0,
+                success: true,
+                workflow_key: Some(1),
+                error: None,
+            },
+            MultiOperationStepResult {
+                step_index: 1,
+                success: false,
+                workflow_key: None,
+                error: Some("not found".into()),
+            },
         ];
         let result = MultiOperationExecutor::partial_failure(results);
         assert!(!result.all_succeeded);
@@ -1367,12 +1535,15 @@ mod tests {
     #[test]
     fn test_runtime_options_remove() {
         let mut reg = RuntimeOptionsRegistry::new();
-        reg.update_workflow_options(1, WorkflowRuntimeOptions {
-            workflow_execution_timeout_ms: Some(1000),
-            workflow_run_timeout_ms: None,
-            workflow_task_timeout_ms: None,
-            versioning_override: None,
-        });
+        reg.update_workflow_options(
+            1,
+            WorkflowRuntimeOptions {
+                workflow_execution_timeout_ms: Some(1000),
+                workflow_run_timeout_ms: None,
+                workflow_task_timeout_ms: None,
+                versioning_override: None,
+            },
+        );
         reg.remove_workflow(1);
         assert!(reg.get_workflow_options(1).is_none());
         assert_eq!(reg.workflow_count(), 0);
@@ -1476,7 +1647,9 @@ mod tests {
     #[test]
     fn test_fairness_imbalanced() {
         let mut tracker = FairnessTracker::new(2.0);
-        for _ in 0..10 { tracker.record_dispatch(1); }
+        for _ in 0..10 {
+            tracker.record_dispatch(1);
+        }
         tracker.record_dispatch(2);
         // ratio = 10/1 = 10 > 2.0 threshold
         assert!(!tracker.is_fair(1));
@@ -1549,9 +1722,12 @@ mod tests {
         reg.register_worker(make_worker("w3", "ns2", vec!["q1"]));
 
         let resp = reg.list_workers(&ListWorkersRequest {
-            namespace: "ns1".into(), task_queue_filter: None,
-            build_id_filter: None, health_filter: None,
-            max_results: 10, page_token: None,
+            namespace: "ns1".into(),
+            task_queue_filter: None,
+            build_id_filter: None,
+            health_filter: None,
+            max_results: 10,
+            page_token: None,
         });
         assert_eq!(resp.total_count, 2);
         assert_eq!(resp.workers.len(), 2);
@@ -1564,9 +1740,12 @@ mod tests {
         reg.register_worker(make_worker("w2", "ns1", vec!["q2"]));
 
         let resp = reg.list_workers(&ListWorkersRequest {
-            namespace: "ns1".into(), task_queue_filter: Some("q2".into()),
-            build_id_filter: None, health_filter: None,
-            max_results: 10, page_token: None,
+            namespace: "ns1".into(),
+            task_queue_filter: Some("q2".into()),
+            build_id_filter: None,
+            health_filter: None,
+            max_results: 10,
+            page_token: None,
         });
         assert_eq!(resp.total_count, 1);
         assert_eq!(resp.workers[0].instance_key, "w2");
@@ -1605,7 +1784,10 @@ mod tests {
         let mut reg = WorkerManagementRegistry::new();
         reg.register_worker(make_worker("w1", "ns1", vec!["q1"]));
         reg.drain_worker("w1");
-        assert_eq!(reg.describe_worker("w1").unwrap().health, WorkerHealthStatus::Draining);
+        assert_eq!(
+            reg.describe_worker("w1").unwrap().health,
+            WorkerHealthStatus::Draining
+        );
     }
 
     #[test]
@@ -1631,7 +1813,13 @@ mod tests {
     #[test]
     fn test_dlq_enqueue() {
         let mut dlq = DlqAdminController::new();
-        let id = dlq.enqueue("transfer-dlq", Some(1), "TransferTask", vec![1, 2], "timeout");
+        let id = dlq.enqueue(
+            "transfer-dlq",
+            Some(1),
+            "TransferTask",
+            vec![1, 2],
+            "timeout",
+        );
         assert_eq!(id, 0);
         assert_eq!(dlq.queue_size("transfer-dlq"), 1);
         assert_eq!(dlq.total_size(), 1);

@@ -4,8 +4,11 @@
 //! pagination, filtering, sorting, and in-memory visibility store.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Mutex, atomic::{AtomicU64, Ordering}};
-use std::time::{SystemTime, Duration};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Duration, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Visibility Record
@@ -95,9 +98,9 @@ impl SearchAttribute {
             SearchAttribute::Text(s) | SearchAttribute::Keyword(s) => {
                 s.to_lowercase().contains(&query.to_lowercase())
             }
-            SearchAttribute::KeywordList(list) => {
-                list.iter().any(|s| s.to_lowercase().contains(&query.to_lowercase()))
-            }
+            SearchAttribute::KeywordList(list) => list
+                .iter()
+                .any(|s| s.to_lowercase().contains(&query.to_lowercase())),
             _ => false,
         }
     }
@@ -138,7 +141,9 @@ pub enum QueryValue {
 }
 
 impl QueryParser {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     pub fn parse(&self, input: &str) -> Result<VisibilityQuery, QueryParseError> {
         let input = input.trim();
@@ -212,7 +217,8 @@ impl QueryParser {
             let rest = trimmed[pos + 4..].trim();
             if rest.starts_with('(') && rest.ends_with(')') {
                 let inner = &rest[1..rest.len() - 1];
-                let values: Result<Vec<QueryValue>, _> = inner.split(',')
+                let values: Result<Vec<QueryValue>, _> = inner
+                    .split(',')
                     .map(|v| self.parse_value(v.trim()))
                     .collect();
                 return Ok(VisibilityQuery::In(field, values?));
@@ -229,7 +235,14 @@ impl QueryParser {
         }
 
         // Comparison operators (check longer operators first to avoid false matches)
-        let ops = [(">=", "ge"), ("<=", "le"), ("!=", "ne"), (">", "gt"), ("<", "lt"), ("=", "eq")];
+        let ops = [
+            (">=", "ge"),
+            ("<=", "le"),
+            ("!=", "ne"),
+            (">", "gt"),
+            ("<", "lt"),
+            ("=", "eq"),
+        ];
         for (op_str, op_kind) in &ops {
             if let Some(pos) = trimmed.find(op_str) {
                 let field = trimmed[..pos].trim().to_string();
@@ -252,13 +265,21 @@ impl QueryParser {
     fn parse_value(&self, input: &str) -> Result<QueryValue, QueryParseError> {
         let trimmed = input.trim();
         if trimmed.starts_with('\'') && trimmed.ends_with('\'') {
-            return Ok(QueryValue::String(trimmed[1..trimmed.len() - 1].to_string()));
+            return Ok(QueryValue::String(
+                trimmed[1..trimmed.len() - 1].to_string(),
+            ));
         }
         if trimmed.starts_with('"') && trimmed.ends_with('"') {
-            return Ok(QueryValue::String(trimmed[1..trimmed.len() - 1].to_string()));
+            return Ok(QueryValue::String(
+                trimmed[1..trimmed.len() - 1].to_string(),
+            ));
         }
-        if trimmed == "true" { return Ok(QueryValue::Bool(true)); }
-        if trimmed == "false" { return Ok(QueryValue::Bool(false)); }
+        if trimmed == "true" {
+            return Ok(QueryValue::Bool(true));
+        }
+        if trimmed == "false" {
+            return Ok(QueryValue::Bool(false));
+        }
         if let Ok(v) = trimmed.parse::<i64>() {
             return Ok(QueryValue::Integer(v));
         }
@@ -288,7 +309,9 @@ pub enum QueryParseError {
 pub struct QueryEvaluator;
 
 impl QueryEvaluator {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     pub fn evaluate(&self, query: &VisibilityQuery, record: &VisibilityRecord) -> bool {
         match query {
@@ -300,53 +323,70 @@ impl QueryEvaluator {
                 self.evaluate(left, record) || self.evaluate(right, record)
             }
             VisibilityQuery::Not(inner) => !self.evaluate(inner, record),
-            VisibilityQuery::Equals(field, value) => {
-                self.get_field_value(record, field).map(|v| self.values_equal(&v, value)).unwrap_or(false)
-            }
-            VisibilityQuery::NotEquals(field, value) => {
-                self.get_field_value(record, field).map(|v| !self.values_equal(&v, value)).unwrap_or(true)
-            }
-            VisibilityQuery::GreaterThan(field, value) => {
-                self.get_field_value(record, field).map(|v| self.compare_values(&v, value) == Some(std::cmp::Ordering::Greater)).unwrap_or(false)
-            }
-            VisibilityQuery::GreaterOrEqual(field, value) => {
-                self.get_field_value(record, field).map(|v| {
-                    matches!(self.compare_values(&v, value), Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal))
-                }).unwrap_or(false)
-            }
-            VisibilityQuery::LessThan(field, value) => {
-                self.get_field_value(record, field).map(|v| self.compare_values(&v, value) == Some(std::cmp::Ordering::Less)).unwrap_or(false)
-            }
-            VisibilityQuery::LessOrEqual(field, value) => {
-                self.get_field_value(record, field).map(|v| {
-                    matches!(self.compare_values(&v, value), Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal))
-                }).unwrap_or(false)
-            }
-            VisibilityQuery::In(field, values) => {
-                self.get_field_value(record, field).map(|v| {
-                    values.iter().any(|qv| self.values_equal(&v, qv))
-                }).unwrap_or(false)
-            }
-            VisibilityQuery::Between(field, low, high) => {
-                self.get_field_value(record, field).map(|v| {
-                    let ge_low = matches!(self.compare_values(&v, low), Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal));
-                    let le_high = matches!(self.compare_values(&v, high), Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal));
+            VisibilityQuery::Equals(field, value) => self
+                .get_field_value(record, field)
+                .map(|v| self.values_equal(&v, value))
+                .unwrap_or(false),
+            VisibilityQuery::NotEquals(field, value) => self
+                .get_field_value(record, field)
+                .map(|v| !self.values_equal(&v, value))
+                .unwrap_or(true),
+            VisibilityQuery::GreaterThan(field, value) => self
+                .get_field_value(record, field)
+                .map(|v| self.compare_values(&v, value) == Some(std::cmp::Ordering::Greater))
+                .unwrap_or(false),
+            VisibilityQuery::GreaterOrEqual(field, value) => self
+                .get_field_value(record, field)
+                .map(|v| {
+                    matches!(
+                        self.compare_values(&v, value),
+                        Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+                    )
+                })
+                .unwrap_or(false),
+            VisibilityQuery::LessThan(field, value) => self
+                .get_field_value(record, field)
+                .map(|v| self.compare_values(&v, value) == Some(std::cmp::Ordering::Less))
+                .unwrap_or(false),
+            VisibilityQuery::LessOrEqual(field, value) => self
+                .get_field_value(record, field)
+                .map(|v| {
+                    matches!(
+                        self.compare_values(&v, value),
+                        Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+                    )
+                })
+                .unwrap_or(false),
+            VisibilityQuery::In(field, values) => self
+                .get_field_value(record, field)
+                .map(|v| values.iter().any(|qv| self.values_equal(&v, qv)))
+                .unwrap_or(false),
+            VisibilityQuery::Between(field, low, high) => self
+                .get_field_value(record, field)
+                .map(|v| {
+                    let ge_low = matches!(
+                        self.compare_values(&v, low),
+                        Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+                    );
+                    let le_high = matches!(
+                        self.compare_values(&v, high),
+                        Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+                    );
                     ge_low && le_high
-                }).unwrap_or(false)
-            }
-            VisibilityQuery::Like(field, pattern) => {
-                self.get_field_value(record, field).map(|v| {
+                })
+                .unwrap_or(false),
+            VisibilityQuery::Like(field, pattern) => self
+                .get_field_value(record, field)
+                .map(|v| {
                     if let QueryValue::String(s) = &v {
                         self.like_match(pattern, s)
-                    } else { false }
-                }).unwrap_or(false)
-            }
-            VisibilityQuery::IsNull(field) => {
-                self.get_field_value(record, field).is_none()
-            }
-            VisibilityQuery::IsNotNull(field) => {
-                self.get_field_value(record, field).is_some()
-            }
+                    } else {
+                        false
+                    }
+                })
+                .unwrap_or(false),
+            VisibilityQuery::IsNull(field) => self.get_field_value(record, field).is_none(),
+            VisibilityQuery::IsNotNull(field) => self.get_field_value(record, field).is_some(),
         }
     }
 
@@ -354,7 +394,9 @@ impl QueryEvaluator {
         match field {
             "WorkflowId" | "workflow_id" => Some(QueryValue::String(record.workflow_id.clone())),
             "RunId" | "run_id" => Some(QueryValue::String(record.run_id.clone())),
-            "WorkflowType" | "WorkflowTypeName" | "workflow_type_name" => Some(QueryValue::String(record.workflow_type_name.clone())),
+            "WorkflowType" | "WorkflowTypeName" | "workflow_type_name" => {
+                Some(QueryValue::String(record.workflow_type_name.clone()))
+            }
             "StartTime" | "start_time" => Some(QueryValue::Datetime(record.start_time)),
             "CloseTime" | "close_time" => record.close_time.map(QueryValue::Datetime),
             "ExecutionStatus" | "status" => Some(QueryValue::Integer(record.status as i64)),
@@ -364,15 +406,15 @@ impl QueryEvaluator {
             "StateTransitionCount" => Some(QueryValue::Integer(record.state_transition_count)),
             _ => {
                 // Check search attributes
-                record.search_attributes.get(field).map(|attr| {
-                    match attr {
-                        SearchAttribute::Keyword(s) | SearchAttribute::Text(s) => QueryValue::String(s.clone()),
-                        SearchAttribute::Int(v) => QueryValue::Integer(*v),
-                        SearchAttribute::Double(v) => QueryValue::Float(*v),
-                        SearchAttribute::Bool(v) => QueryValue::Bool(*v),
-                        SearchAttribute::Datetime(v) => QueryValue::Datetime(*v),
-                        SearchAttribute::KeywordList(list) => QueryValue::String(list.join(",")),
+                record.search_attributes.get(field).map(|attr| match attr {
+                    SearchAttribute::Keyword(s) | SearchAttribute::Text(s) => {
+                        QueryValue::String(s.clone())
                     }
+                    SearchAttribute::Int(v) => QueryValue::Integer(*v),
+                    SearchAttribute::Double(v) => QueryValue::Float(*v),
+                    SearchAttribute::Bool(v) => QueryValue::Bool(*v),
+                    SearchAttribute::Datetime(v) => QueryValue::Datetime(*v),
+                    SearchAttribute::KeywordList(list) => QueryValue::String(list.join(",")),
                 })
             }
         }
@@ -389,7 +431,11 @@ impl QueryEvaluator {
         }
     }
 
-    fn compare_values(&self, field_val: &QueryValue, query_val: &QueryValue) -> Option<std::cmp::Ordering> {
+    fn compare_values(
+        &self,
+        field_val: &QueryValue,
+        query_val: &QueryValue,
+    ) -> Option<std::cmp::Ordering> {
         match (field_val, query_val) {
             (QueryValue::Integer(a), QueryValue::Integer(b)) => Some(a.cmp(b)),
             (QueryValue::Float(a), QueryValue::Float(b)) => a.partial_cmp(b),
@@ -430,22 +476,30 @@ impl VisibilityIndex {
     pub fn index_record(&self, record: &VisibilityRecord) {
         let key = format!("{}:{}", record.namespace_id, record.run_id);
 
-        self.by_workflow_type.write().unwrap()
+        self.by_workflow_type
+            .write()
+            .unwrap()
             .entry(record.workflow_type_name.clone())
             .or_insert_with(Vec::new)
             .push(key.clone());
 
-        self.by_status.write().unwrap()
+        self.by_status
+            .write()
+            .unwrap()
             .entry(record.status as i32)
             .or_insert_with(Vec::new)
             .push(key.clone());
 
-        self.by_task_queue.write().unwrap()
+        self.by_task_queue
+            .write()
+            .unwrap()
             .entry(record.task_queue.clone())
             .or_insert_with(Vec::new)
             .push(key.clone());
 
-        self.by_namespace.write().unwrap()
+        self.by_namespace
+            .write()
+            .unwrap()
             .entry(record.namespace_id.clone())
             .or_insert_with(Vec::new)
             .push(key);
@@ -454,30 +508,65 @@ impl VisibilityIndex {
     pub fn remove_record(&self, record: &VisibilityRecord) {
         let key = format!("{}:{}", record.namespace_id, record.run_id);
 
-        if let Some(entries) = self.by_workflow_type.write().unwrap().get_mut(&record.workflow_type_name) {
+        if let Some(entries) = self
+            .by_workflow_type
+            .write()
+            .unwrap()
+            .get_mut(&record.workflow_type_name)
+        {
             entries.retain(|k| k != &key);
         }
-        if let Some(entries) = self.by_status.write().unwrap().get_mut(&(record.status as i32)) {
+        if let Some(entries) = self
+            .by_status
+            .write()
+            .unwrap()
+            .get_mut(&(record.status as i32))
+        {
             entries.retain(|k| k != &key);
         }
-        if let Some(entries) = self.by_task_queue.write().unwrap().get_mut(&record.task_queue) {
+        if let Some(entries) = self
+            .by_task_queue
+            .write()
+            .unwrap()
+            .get_mut(&record.task_queue)
+        {
             entries.retain(|k| k != &key);
         }
-        if let Some(entries) = self.by_namespace.write().unwrap().get_mut(&record.namespace_id) {
+        if let Some(entries) = self
+            .by_namespace
+            .write()
+            .unwrap()
+            .get_mut(&record.namespace_id)
+        {
             entries.retain(|k| k != &key);
         }
     }
 
     pub fn get_by_workflow_type(&self, wf_type: &str) -> Vec<String> {
-        self.by_workflow_type.read().unwrap().get(wf_type).cloned().unwrap_or_default()
+        self.by_workflow_type
+            .read()
+            .unwrap()
+            .get(wf_type)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn get_by_status(&self, status: i32) -> Vec<String> {
-        self.by_status.read().unwrap().get(&status).cloned().unwrap_or_default()
+        self.by_status
+            .read()
+            .unwrap()
+            .get(&status)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn get_by_namespace(&self, ns_id: &str) -> Vec<String> {
-        self.by_namespace.read().unwrap().get(ns_id).cloned().unwrap_or_default()
+        self.by_namespace
+            .read()
+            .unwrap()
+            .get(ns_id)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -520,7 +609,9 @@ impl DeepVisibilityStore {
         self.index.index_record(&record);
         records.insert(key, record);
         self.stats.total_upserts.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_records.store(records.len() as u64, Ordering::Relaxed);
+        self.stats
+            .total_records
+            .store(records.len() as u64, Ordering::Relaxed);
     }
 
     pub fn delete(&self, namespace_id: &str, run_id: &str) -> bool {
@@ -530,22 +621,33 @@ impl DeepVisibilityStore {
         if let Some(record) = records.remove(&key) {
             self.index.remove_record(&record);
             self.stats.total_deletes.fetch_add(1, Ordering::Relaxed);
-            self.stats.total_records.store(records.len() as u64, Ordering::Relaxed);
+            self.stats
+                .total_records
+                .store(records.len() as u64, Ordering::Relaxed);
             true
         } else {
             false
         }
     }
 
-    pub fn query(&self, namespace_id: &str, query_str: &str, page_size: usize, page_token: Option<&str>) -> Result<(Vec<VisibilityRecord>, Option<String>), VisibilityError> {
+    pub fn query(
+        &self,
+        namespace_id: &str,
+        query_str: &str,
+        page_size: usize,
+        page_token: Option<&str>,
+    ) -> Result<(Vec<VisibilityRecord>, Option<String>), VisibilityError> {
         self.stats.total_queries.fetch_add(1, Ordering::Relaxed);
 
         let parser = QueryParser::new();
-        let parsed_query = parser.parse(query_str).map_err(|_| VisibilityError::InvalidQuery)?;
+        let parsed_query = parser
+            .parse(query_str)
+            .map_err(|_| VisibilityError::InvalidQuery)?;
         let evaluator = QueryEvaluator::new();
 
         let records = self.records.read().unwrap();
-        let mut matching: Vec<&VisibilityRecord> = records.values()
+        let mut matching: Vec<&VisibilityRecord> = records
+            .values()
             .filter(|r| r.namespace_id == namespace_id)
             .filter(|r| evaluator.evaluate(&parsed_query, r))
             .collect();
@@ -555,14 +657,18 @@ impl DeepVisibilityStore {
 
         // Apply pagination
         let start_idx = if let Some(token) = page_token {
-            matching.iter().position(|r| format!("{}:{}", r.namespace_id, r.run_id) == token).unwrap_or(0)
+            matching
+                .iter()
+                .position(|r| format!("{}:{}", r.namespace_id, r.run_id) == token)
+                .unwrap_or(0)
         } else {
             0
         };
 
         let total_matching = matching.len();
 
-        let page: Vec<VisibilityRecord> = matching.into_iter()
+        let page: Vec<VisibilityRecord> = matching
+            .into_iter()
             .skip(start_idx)
             .take(page_size)
             .cloned()
@@ -580,11 +686,14 @@ impl DeepVisibilityStore {
 
     pub fn count(&self, namespace_id: &str, query_str: &str) -> Result<u64, VisibilityError> {
         let parser = QueryParser::new();
-        let parsed_query = parser.parse(query_str).map_err(|_| VisibilityError::InvalidQuery)?;
+        let parsed_query = parser
+            .parse(query_str)
+            .map_err(|_| VisibilityError::InvalidQuery)?;
         let evaluator = QueryEvaluator::new();
 
         let records = self.records.read().unwrap();
-        let count = records.values()
+        let count = records
+            .values()
             .filter(|r| r.namespace_id == namespace_id)
             .filter(|r| evaluator.evaluate(&parsed_query, r))
             .count();
@@ -615,7 +724,9 @@ impl DeepVisibilityStore {
         self.records.read().unwrap().get(&key).cloned()
     }
 
-    pub fn stats(&self) -> &VisibilityStats { &self.stats }
+    pub fn stats(&self) -> &VisibilityStats {
+        &self.stats
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -633,13 +744,22 @@ pub enum VisibilityError {
 mod tests {
     use super::*;
 
-    fn make_record(ns: &str, wf_id: &str, run_id: &str, wf_type: &str, status: WorkflowExecutionStatus) -> VisibilityRecord {
+    fn make_record(
+        ns: &str,
+        wf_id: &str,
+        run_id: &str,
+        wf_type: &str,
+        status: WorkflowExecutionStatus,
+    ) -> VisibilityRecord {
         VisibilityRecord {
             namespace_id: ns.to_string(),
             workflow_id: wf_id.to_string(),
             run_id: run_id.to_string(),
             workflow_type_name: wf_type.to_string(),
-            start_time: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as i64,
+            start_time: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64,
             close_time: None,
             status,
             history_length: 10,
@@ -675,14 +795,18 @@ mod tests {
     #[test]
     fn test_query_parser_and() {
         let parser = QueryParser::new();
-        let q = parser.parse("WorkflowType = 'A' AND ExecutionStatus = 0").unwrap();
+        let q = parser
+            .parse("WorkflowType = 'A' AND ExecutionStatus = 0")
+            .unwrap();
         matches!(q, VisibilityQuery::And(_, _));
     }
 
     #[test]
     fn test_query_parser_or() {
         let parser = QueryParser::new();
-        let q = parser.parse("ExecutionStatus = 0 OR ExecutionStatus = 1").unwrap();
+        let q = parser
+            .parse("ExecutionStatus = 0 OR ExecutionStatus = 1")
+            .unwrap();
         matches!(q, VisibilityQuery::Or(_, _));
     }
 
@@ -706,29 +830,69 @@ mod tests {
         let q = parser.parse("ExecutionStatus IN (0, 1, 2)").unwrap();
         if let VisibilityQuery::In(_, vals) = q {
             assert_eq!(vals.len(), 3);
-        } else { panic!("Expected In query"); }
+        } else {
+            panic!("Expected In query");
+        }
     }
 
     #[test]
     fn test_visibility_store_upsert_and_query() {
         let store = DeepVisibilityStore::new();
-        store.upsert(make_record("ns1", "wf1", "run1", "TypeA", WorkflowExecutionStatus::Running));
-        store.upsert(make_record("ns1", "wf2", "run2", "TypeB", WorkflowExecutionStatus::Completed));
-        store.upsert(make_record("ns1", "wf3", "run3", "TypeA", WorkflowExecutionStatus::Failed));
+        store.upsert(make_record(
+            "ns1",
+            "wf1",
+            "run1",
+            "TypeA",
+            WorkflowExecutionStatus::Running,
+        ));
+        store.upsert(make_record(
+            "ns1",
+            "wf2",
+            "run2",
+            "TypeB",
+            WorkflowExecutionStatus::Completed,
+        ));
+        store.upsert(make_record(
+            "ns1",
+            "wf3",
+            "run3",
+            "TypeA",
+            WorkflowExecutionStatus::Failed,
+        ));
 
         let (results, _) = store.query("ns1", "*", 10, None).unwrap();
         assert_eq!(results.len(), 3);
 
-        let (results, _) = store.query("ns1", "WorkflowType = 'TypeA'", 10, None).unwrap();
+        let (results, _) = store
+            .query("ns1", "WorkflowType = 'TypeA'", 10, None)
+            .unwrap();
         assert_eq!(results.len(), 2);
     }
 
     #[test]
     fn test_visibility_store_count() {
         let store = DeepVisibilityStore::new();
-        store.upsert(make_record("ns1", "wf1", "run1", "TypeA", WorkflowExecutionStatus::Running));
-        store.upsert(make_record("ns1", "wf2", "run2", "TypeA", WorkflowExecutionStatus::Completed));
-        store.upsert(make_record("ns1", "wf3", "run3", "TypeB", WorkflowExecutionStatus::Running));
+        store.upsert(make_record(
+            "ns1",
+            "wf1",
+            "run1",
+            "TypeA",
+            WorkflowExecutionStatus::Running,
+        ));
+        store.upsert(make_record(
+            "ns1",
+            "wf2",
+            "run2",
+            "TypeA",
+            WorkflowExecutionStatus::Completed,
+        ));
+        store.upsert(make_record(
+            "ns1",
+            "wf3",
+            "run3",
+            "TypeB",
+            WorkflowExecutionStatus::Running,
+        ));
 
         assert_eq!(store.count("ns1", "*").unwrap(), 3);
         assert_eq!(store.count("ns1", "WorkflowType = 'TypeA'").unwrap(), 2);
@@ -738,7 +902,13 @@ mod tests {
     #[test]
     fn test_visibility_store_delete() {
         let store = DeepVisibilityStore::new();
-        store.upsert(make_record("ns1", "wf1", "run1", "TypeA", WorkflowExecutionStatus::Running));
+        store.upsert(make_record(
+            "ns1",
+            "wf1",
+            "run1",
+            "TypeA",
+            WorkflowExecutionStatus::Running,
+        ));
         assert_eq!(store.count("ns1", "*").unwrap(), 1);
 
         assert!(store.delete("ns1", "run1"));
@@ -748,9 +918,27 @@ mod tests {
     #[test]
     fn test_visibility_aggregation() {
         let store = DeepVisibilityStore::new();
-        store.upsert(make_record("ns1", "wf1", "run1", "TypeA", WorkflowExecutionStatus::Running));
-        store.upsert(make_record("ns1", "wf2", "run2", "TypeA", WorkflowExecutionStatus::Completed));
-        store.upsert(make_record("ns1", "wf3", "run3", "TypeB", WorkflowExecutionStatus::Failed));
+        store.upsert(make_record(
+            "ns1",
+            "wf1",
+            "run1",
+            "TypeA",
+            WorkflowExecutionStatus::Running,
+        ));
+        store.upsert(make_record(
+            "ns1",
+            "wf2",
+            "run2",
+            "TypeA",
+            WorkflowExecutionStatus::Completed,
+        ));
+        store.upsert(make_record(
+            "ns1",
+            "wf3",
+            "run3",
+            "TypeB",
+            WorkflowExecutionStatus::Failed,
+        ));
 
         let by_status = store.aggregate_by_status("ns1");
         assert_eq!(by_status.get(&0), Some(&1)); // Running
@@ -765,7 +953,13 @@ mod tests {
     #[test]
     fn test_visibility_index() {
         let index = VisibilityIndex::new();
-        let record = make_record("ns1", "wf1", "run1", "TypeA", WorkflowExecutionStatus::Running);
+        let record = make_record(
+            "ns1",
+            "wf1",
+            "run1",
+            "TypeA",
+            WorkflowExecutionStatus::Running,
+        );
         index.index_record(&record);
 
         let keys = index.get_by_workflow_type("TypeA");
@@ -781,18 +975,35 @@ mod tests {
     #[test]
     fn test_search_attribute_query() {
         let store = DeepVisibilityStore::new();
-        let mut record = make_record("ns1", "wf1", "run1", "TypeA", WorkflowExecutionStatus::Running);
-        record.search_attributes.insert("CustomField".to_string(), SearchAttribute::Keyword("important".to_string()));
+        let mut record = make_record(
+            "ns1",
+            "wf1",
+            "run1",
+            "TypeA",
+            WorkflowExecutionStatus::Running,
+        );
+        record.search_attributes.insert(
+            "CustomField".to_string(),
+            SearchAttribute::Keyword("important".to_string()),
+        );
         store.upsert(record);
 
-        let (results, _) = store.query("ns1", "CustomField = 'important'", 10, None).unwrap();
+        let (results, _) = store
+            .query("ns1", "CustomField = 'important'", 10, None)
+            .unwrap();
         assert_eq!(results.len(), 1);
     }
 
     #[test]
     fn test_query_evaluator_greater_than() {
         let store = DeepVisibilityStore::new();
-        let mut record = make_record("ns1", "wf1", "run1", "TypeA", WorkflowExecutionStatus::Running);
+        let mut record = make_record(
+            "ns1",
+            "wf1",
+            "run1",
+            "TypeA",
+            WorkflowExecutionStatus::Running,
+        );
         record.history_length = 100;
         store.upsert(record);
 
@@ -806,8 +1017,20 @@ mod tests {
     #[test]
     fn test_visibility_store_stats() {
         let store = DeepVisibilityStore::new();
-        store.upsert(make_record("ns1", "wf1", "run1", "TypeA", WorkflowExecutionStatus::Running));
-        store.upsert(make_record("ns1", "wf2", "run2", "TypeB", WorkflowExecutionStatus::Completed));
+        store.upsert(make_record(
+            "ns1",
+            "wf1",
+            "run1",
+            "TypeA",
+            WorkflowExecutionStatus::Running,
+        ));
+        store.upsert(make_record(
+            "ns1",
+            "wf2",
+            "run2",
+            "TypeB",
+            WorkflowExecutionStatus::Completed,
+        ));
 
         assert_eq!(store.stats().total_upserts.load(Ordering::Relaxed), 2);
         assert_eq!(store.stats().total_records.load(Ordering::Relaxed), 2);

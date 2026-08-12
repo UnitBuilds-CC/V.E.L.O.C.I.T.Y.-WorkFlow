@@ -3,8 +3,8 @@
 //! compensating action that can undo its effects if a later step fails.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, RwLock};
 
 /// A single step in a saga, with a compensation action.
 #[derive(Debug, Clone)]
@@ -68,8 +68,10 @@ impl SagaOrchestrator {
     /// Create a new saga with the given steps. Returns the saga ID.
     pub fn create_saga(&self, workflow_key: u64, steps: Vec<SagaStepDefinition>) -> u64 {
         let saga_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let saga_steps: Vec<SagaStep> = steps.into_iter().enumerate().map(|(i, def)| {
-            SagaStep {
+        let saga_steps: Vec<SagaStep> = steps
+            .into_iter()
+            .enumerate()
+            .map(|(i, def)| SagaStep {
                 step_id: i as u64,
                 name: def.name,
                 workflow_type_id: def.workflow_type_id,
@@ -78,8 +80,8 @@ impl SagaOrchestrator {
                 compensation_workflow_type_id: def.compensation_workflow_type_id,
                 compensation_input: def.compensation_input,
                 status: SagaStepStatus::Pending,
-            }
-        }).collect();
+            })
+            .collect();
 
         let execution = SagaExecution {
             saga_id,
@@ -128,7 +130,8 @@ impl SagaOrchestrator {
                     if saga.steps[i].status == SagaStepStatus::Completed {
                         if let Some(comp_type_id) = saga.steps[i].compensation_workflow_type_id {
                             saga.steps[i].status = SagaStepStatus::Compensating;
-                            compensations.push((comp_type_id, saga.steps[i].compensation_input.clone()));
+                            compensations
+                                .push((comp_type_id, saga.steps[i].compensation_input.clone()));
                         }
                     }
                 }
@@ -146,9 +149,9 @@ impl SagaOrchestrator {
                 saga.steps[step_index].status = SagaStepStatus::Compensated;
                 // Check if all compensations are done
                 let all_done = saga.steps.iter().all(|s| {
-                    s.status == SagaStepStatus::Compensated ||
-                    s.status == SagaStepStatus::Pending ||
-                    s.status == SagaStepStatus::Failed
+                    s.status == SagaStepStatus::Compensated
+                        || s.status == SagaStepStatus::Pending
+                        || s.status == SagaStepStatus::Failed
                 });
                 if all_done {
                     saga.status = SagaStatus::Compensated;
@@ -169,7 +172,10 @@ impl SagaOrchestrator {
 
     /// Get sagas by status.
     pub fn sagas_by_status(&self, status: SagaStatus) -> Vec<SagaExecution> {
-        self.sagas.read().unwrap().values()
+        self.sagas
+            .read()
+            .unwrap()
+            .values()
             .filter(|s| s.status == status)
             .cloned()
             .collect()
@@ -177,7 +183,9 @@ impl SagaOrchestrator {
 }
 
 impl Default for SagaOrchestrator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Definition for creating a saga step.
@@ -220,12 +228,9 @@ mod tests {
     fn test_create_saga() {
         let orchestrator = SagaOrchestrator::new();
         let steps = vec![
-            SagaStepDefinition::new("book_flight", 100)
-                .with_compensation(200, None),
-            SagaStepDefinition::new("book_hotel", 101)
-                .with_compensation(201, None),
-            SagaStepDefinition::new("book_car", 102)
-                .with_compensation(202, None),
+            SagaStepDefinition::new("book_flight", 100).with_compensation(200, None),
+            SagaStepDefinition::new("book_hotel", 101).with_compensation(201, None),
+            SagaStepDefinition::new("book_car", 102).with_compensation(202, None),
         ];
 
         let saga_id = orchestrator.create_saga(42, steps);

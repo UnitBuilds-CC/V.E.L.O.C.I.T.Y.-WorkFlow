@@ -6,7 +6,7 @@
 //! Total header: 1 + 8 + 4 = 13 bytes + data + 4 bytes CRC
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write, Read, BufWriter, BufReader, Seek, SeekFrom};
+use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -56,7 +56,11 @@ pub struct WalRecord {
 
 impl WalRecord {
     pub fn new(event_type: WalEventType, workflow_key: u64, data: Vec<u8>) -> Self {
-        Self { event_type, workflow_key, data }
+        Self {
+            event_type,
+            workflow_key,
+            data,
+        }
     }
 
     /// Encode to bytes: [event_type: u8][workflow_key: u64][data_len: u32][data: bytes][crc32: u32]
@@ -80,7 +84,7 @@ impl WalRecord {
     pub fn decode<R: Read>(reader: &mut R) -> io::Result<Option<Self>> {
         let mut event_byte = [0u8; 1];
         match reader.read_exact(&mut event_byte) {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
             Err(e) => return Err(e),
         }
@@ -115,7 +119,11 @@ impl WalRecord {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "CRC mismatch"));
         }
 
-        Ok(Some(Self { event_type, workflow_key, data }))
+        Ok(Some(Self {
+            event_type,
+            workflow_key,
+            data,
+        }))
     }
 }
 
@@ -153,7 +161,12 @@ impl WalWriter {
     }
 
     /// Append a record with a convenience builder.
-    pub fn append_event(&mut self, event_type: WalEventType, workflow_key: u64, data: Vec<u8>) -> io::Result<()> {
+    pub fn append_event(
+        &mut self,
+        event_type: WalEventType,
+        workflow_key: u64,
+        data: Vec<u8>,
+    ) -> io::Result<()> {
         let record = WalRecord::new(event_type, workflow_key, data);
         self.append(&record)
     }
@@ -206,7 +219,12 @@ impl WalManager {
     }
 
     /// Append an event to the WAL.
-    pub fn append(&self, event_type: WalEventType, workflow_key: u64, data: Vec<u8>) -> io::Result<()> {
+    pub fn append(
+        &self,
+        event_type: WalEventType,
+        workflow_key: u64,
+        data: Vec<u8>,
+    ) -> io::Result<()> {
         let mut writer = self.writer.lock().unwrap();
         writer.append_event(event_type, workflow_key, data)?;
 
@@ -316,9 +334,15 @@ mod tests {
 
         {
             let mut writer = WalWriter::open(&path).unwrap();
-            writer.append_event(WalEventType::WorkflowStarted, 1001, vec![1, 2, 3]).unwrap();
-            writer.append_event(WalEventType::StepCompleted, 1001, vec![4, 5]).unwrap();
-            writer.append_event(WalEventType::WorkflowCompleted, 1001, vec![42]).unwrap();
+            writer
+                .append_event(WalEventType::WorkflowStarted, 1001, vec![1, 2, 3])
+                .unwrap();
+            writer
+                .append_event(WalEventType::StepCompleted, 1001, vec![4, 5])
+                .unwrap();
+            writer
+                .append_event(WalEventType::WorkflowCompleted, 1001, vec![42])
+                .unwrap();
             assert_eq!(writer.record_count(), 3);
         }
 
@@ -340,13 +364,17 @@ mod tests {
 
         {
             let mut writer = WalWriter::open(&path).unwrap();
-            writer.append_event(WalEventType::SignalReceived, 2001, vec![7, 8, 9]).unwrap();
+            writer
+                .append_event(WalEventType::SignalReceived, 2001, vec![7, 8, 9])
+                .unwrap();
         }
 
         // Corrupt a byte in the data section
         let mut bytes = fs::read(&path).unwrap();
         let len = bytes.len();
-        if len > 6 { bytes[len - 6] ^= 0xFF; }
+        if len > 6 {
+            bytes[len - 6] ^= 0xFF;
+        }
         fs::write(&path, &bytes).unwrap();
 
         // Reading should fail with CRC mismatch
@@ -362,9 +390,15 @@ mod tests {
         cleanup(&path);
 
         let manager = WalManager::new(&path, 1024 * 1024).unwrap();
-        manager.append(WalEventType::WorkflowStarted, 3001, vec![10]).unwrap();
-        manager.append(WalEventType::StepCompleted, 3001, vec![20]).unwrap();
-        manager.append(WalEventType::ActivityScheduled, 3001, vec![30]).unwrap();
+        manager
+            .append(WalEventType::WorkflowStarted, 3001, vec![10])
+            .unwrap();
+        manager
+            .append(WalEventType::StepCompleted, 3001, vec![20])
+            .unwrap();
+        manager
+            .append(WalEventType::ActivityScheduled, 3001, vec![30])
+            .unwrap();
 
         let records = manager.replay().unwrap();
         assert_eq!(records.len(), 3);

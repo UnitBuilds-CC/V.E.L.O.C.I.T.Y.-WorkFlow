@@ -55,14 +55,23 @@ impl DatabaseConfig {
         }
     }
 
-    pub fn with_port(mut self, port: u16) -> Self { self.port = port; self }
+    pub fn with_port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
     pub fn with_credentials(mut self, user: impl Into<String>, pass: impl Into<String>) -> Self {
         self.username = user.into();
         self.password = pass.into();
         self
     }
-    pub fn with_pool_size(mut self, size: u32) -> Self { self.pool_size = size; self }
-    pub fn with_ssl_mode(mut self, mode: SslMode) -> Self { self.ssl_mode = mode; self }
+    pub fn with_pool_size(mut self, size: u32) -> Self {
+        self.pool_size = size;
+        self
+    }
+    pub fn with_ssl_mode(mut self, mode: SslMode) -> Self {
+        self.ssl_mode = mode;
+        self
+    }
 
     /// Build a PostgreSQL connection string.
     pub fn to_connection_string(&self) -> String {
@@ -189,7 +198,11 @@ impl WorkflowRecord {
             current_step: ctx.slab.current_step,
             total_steps: ctx.slab.total_steps,
             merkle_root: ctx.slab.merkle_root.to_vec(),
-            step_bitmask: ctx.slab.step_bitmask.bits.iter()
+            step_bitmask: ctx
+                .slab
+                .step_bitmask
+                .bits
+                .iter()
                 .flat_map(|w| w.to_le_bytes())
                 .collect(),
             status: ctx.status,
@@ -323,11 +336,7 @@ pub trait DatabaseAdapter: Send + Sync {
     fn load_events(&self, workflow_key: u64) -> DatabaseResult<Vec<WorkflowEventRecord>>;
 
     /// Persist search attributes for a workflow (upsert).
-    fn save_search_attributes(
-        &self,
-        key: u64,
-        attrs: &SearchAttributes,
-    ) -> DatabaseResult<()>;
+    fn save_search_attributes(&self, key: u64, attrs: &SearchAttributes) -> DatabaseResult<()>;
 
     /// Load search attributes for a workflow.
     fn load_search_attributes(&self, key: u64) -> DatabaseResult<SearchAttributes>;
@@ -500,8 +509,14 @@ impl PostgresAdapter {
         prepared.insert("insert_event".into(), sql::INSERT_EVENT.into());
         prepared.insert("select_events".into(), sql::SELECT_EVENTS.into());
         prepared.insert("upsert_search_attr".into(), sql::UPSERT_SEARCH_ATTR.into());
-        prepared.insert("select_search_attrs".into(), sql::SELECT_SEARCH_ATTRS.into());
-        prepared.insert("delete_search_attrs".into(), sql::DELETE_SEARCH_ATTRS.into());
+        prepared.insert(
+            "select_search_attrs".into(),
+            sql::SELECT_SEARCH_ATTRS.into(),
+        );
+        prepared.insert(
+            "delete_search_attrs".into(),
+            sql::DELETE_SEARCH_ATTRS.into(),
+        );
         prepared.insert("insert_namespace".into(), sql::INSERT_NAMESPACE.into());
 
         Self {
@@ -523,7 +538,10 @@ impl PostgresAdapter {
 
     /// List all prepared statement names.
     pub fn statement_names(&self) -> Vec<&str> {
-        self.prepared_statements.keys().map(|s| s.as_str()).collect()
+        self.prepared_statements
+            .keys()
+            .map(|s| s.as_str())
+            .collect()
     }
 
     /// Get the full schema SQL for initialization.
@@ -611,7 +629,13 @@ impl DatabaseAdapter for PostgresAdapter {
         if !self.is_connected() {
             return Err(DatabaseError::NotConnected);
         }
-        let _ = (workflow_key, event_type, event_type_name, sequence_num, data);
+        let _ = (
+            workflow_key,
+            event_type,
+            event_type_name,
+            sequence_num,
+            data,
+        );
         Ok(0)
     }
 
@@ -720,7 +744,8 @@ impl InMemoryAdapter {
 
     /// Get the number of stored events for a workflow.
     pub fn event_count(&self, workflow_key: u64) -> usize {
-        self.state.read()
+        self.state
+            .read()
             .map(|s| s.events.get(&workflow_key).map_or(0, |v| v.len()))
             .unwrap_or(0)
     }
@@ -776,18 +801,24 @@ impl DatabaseAdapter for InMemoryAdapter {
             state.workflows.insert(key, record.clone());
             Ok(())
         } else {
-            Err(DatabaseError::QueryError("failed to acquire write lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire write lock".into(),
+            ))
         }
     }
 
     fn load_workflow(&self, key: u64) -> DatabaseResult<WorkflowRecord> {
         self.check_failure()?;
         if let Ok(state) = self.state.read() {
-            state.workflows.get(&key)
+            state
+                .workflows
+                .get(&key)
                 .cloned()
                 .ok_or(DatabaseError::NotFound(key))
         } else {
-            Err(DatabaseError::QueryError("failed to acquire read lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire read lock".into(),
+            ))
         }
     }
 
@@ -799,7 +830,9 @@ impl DatabaseAdapter for InMemoryAdapter {
             state.search_attrs.remove(&key);
             Ok(())
         } else {
-            Err(DatabaseError::QueryError("failed to acquire write lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire write lock".into(),
+            ))
         }
     }
 
@@ -813,7 +846,9 @@ impl DatabaseAdapter for InMemoryAdapter {
         self.check_failure()?;
         if let Ok(state) = self.state.read() {
             let status_code = status_filter.to_status_code();
-            let filtered: Vec<WorkflowRecord> = state.workflows.values()
+            let filtered: Vec<WorkflowRecord> = state
+                .workflows
+                .values()
                 .filter(|w| {
                     // Namespace filter
                     if let Some(ns) = namespace {
@@ -835,7 +870,9 @@ impl DatabaseAdapter for InMemoryAdapter {
                 .collect();
             Ok(filtered)
         } else {
-            Err(DatabaseError::QueryError("failed to acquire read lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire read lock".into(),
+            ))
         }
     }
 
@@ -862,26 +899,26 @@ impl DatabaseAdapter for InMemoryAdapter {
                 metadata: HashMap::new(),
             };
 
-            state.events.entry(workflow_key)
-                .or_default()
-                .push(event);
+            state.events.entry(workflow_key).or_default().push(event);
 
             Ok(id)
         } else {
-            Err(DatabaseError::QueryError("failed to acquire write lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire write lock".into(),
+            ))
         }
     }
 
     fn load_events(&self, workflow_key: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> {
         self.check_failure()?;
         if let Ok(state) = self.state.read() {
-            let mut events = state.events.get(&workflow_key)
-                .cloned()
-                .unwrap_or_default();
+            let mut events = state.events.get(&workflow_key).cloned().unwrap_or_default();
             events.sort_by(|a, b| a.sequence_num.cmp(&b.sequence_num).then(a.id.cmp(&b.id)));
             Ok(events)
         } else {
-            Err(DatabaseError::QueryError("failed to acquire read lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire read lock".into(),
+            ))
         }
     }
 
@@ -894,7 +931,9 @@ impl DatabaseAdapter for InMemoryAdapter {
             }
             Ok(())
         } else {
-            Err(DatabaseError::QueryError("failed to acquire write lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire write lock".into(),
+            ))
         }
     }
 
@@ -903,7 +942,9 @@ impl DatabaseAdapter for InMemoryAdapter {
         if let Ok(state) = self.state.read() {
             Ok(state.search_attrs.get(&key).cloned().unwrap_or_default())
         } else {
-            Err(DatabaseError::QueryError("failed to acquire read lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire read lock".into(),
+            ))
         }
     }
 
@@ -917,7 +958,9 @@ impl DatabaseAdapter for InMemoryAdapter {
                 Err(DatabaseError::NotFound(key))
             }
         } else {
-            Err(DatabaseError::QueryError("failed to acquire write lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire write lock".into(),
+            ))
         }
     }
 
@@ -929,7 +972,9 @@ impl DatabaseAdapter for InMemoryAdapter {
         self.check_failure()?;
         if let Ok(state) = self.state.read() {
             let status_code = status_filter.to_status_code();
-            let count = state.workflows.values()
+            let count = state
+                .workflows
+                .values()
                 .filter(|w| {
                     if let Some(ns) = namespace {
                         if w.namespace_name != ns {
@@ -946,7 +991,9 @@ impl DatabaseAdapter for InMemoryAdapter {
                 .count();
             Ok(count as u64)
         } else {
-            Err(DatabaseError::QueryError("failed to acquire read lock".into()))
+            Err(DatabaseError::QueryError(
+                "failed to acquire read lock".into(),
+            ))
         }
     }
 
@@ -970,14 +1017,25 @@ pub struct MysqlAdapter {
 
 impl MysqlAdapter {
     pub fn new(config: DatabaseConfig) -> Self {
-        Self { config, connected: Arc::new(RwLock::new(false)) }
+        Self {
+            config,
+            connected: Arc::new(RwLock::new(false)),
+        }
     }
 
-    pub fn config(&self) -> &DatabaseConfig { &self.config }
+    pub fn config(&self) -> &DatabaseConfig {
+        &self.config
+    }
 
     pub fn to_connection_string(&self) -> String {
-        format!("mysql://{}:{}@{}:{}/{}", self.config.username, self.config.password,
-            self.config.host, self.config.port, self.config.database)
+        format!(
+            "mysql://{}:{}@{}:{}/{}",
+            self.config.username,
+            self.config.password,
+            self.config.host,
+            self.config.port,
+            self.config.database
+        )
     }
 
     pub fn schema_sql(&self) -> &'static str {
@@ -1054,21 +1112,60 @@ impl MysqlAdapter {
 }
 
 impl DatabaseAdapter for MysqlAdapter {
-    fn init_schema(&self) -> DatabaseResult<()> { Ok(()) }
-    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> { Ok(()) }
-    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
-        Err(DatabaseError::ConnectionError("MySQL adapter requires live connection".into()))
+    fn init_schema(&self) -> DatabaseResult<()> {
+        Ok(())
     }
-    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> { Ok(()) }
-    fn list_workflows(&self, _ns: Option<&str>, _sf: StatusFilter, _limit: u32, _offset: u32) -> DatabaseResult<Vec<WorkflowRecord>> { Ok(vec![]) }
-    fn save_event(&self, _wk: u64, _et: u8, _etn: &str, _sn: u64, _data: Vec<u8>) -> DatabaseResult<i64> { Ok(0) }
-    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> { Ok(vec![]) }
-    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> { Ok(()) }
-    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> { Ok(SearchAttributes::new()) }
-    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> { Ok(()) }
-    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> { Ok(0) }
-    fn is_connected(&self) -> bool { *self.connected.read().unwrap() }
-    fn adapter_name(&self) -> &str { "MysqlAdapter" }
+    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
+        Err(DatabaseError::ConnectionError(
+            "MySQL adapter requires live connection".into(),
+        ))
+    }
+    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn list_workflows(
+        &self,
+        _ns: Option<&str>,
+        _sf: StatusFilter,
+        _limit: u32,
+        _offset: u32,
+    ) -> DatabaseResult<Vec<WorkflowRecord>> {
+        Ok(vec![])
+    }
+    fn save_event(
+        &self,
+        _wk: u64,
+        _et: u8,
+        _etn: &str,
+        _sn: u64,
+        _data: Vec<u8>,
+    ) -> DatabaseResult<i64> {
+        Ok(0)
+    }
+    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> {
+        Ok(vec![])
+    }
+    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> {
+        Ok(SearchAttributes::new())
+    }
+    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> {
+        Ok(0)
+    }
+    fn is_connected(&self) -> bool {
+        *self.connected.read().unwrap()
+    }
+    fn adapter_name(&self) -> &str {
+        "MysqlAdapter"
+    }
 }
 
 // ─── Cassandra Adapter ───────────────────────────────────────────────────────
@@ -1088,20 +1185,37 @@ pub struct CassandraAdapter {
 /// Cassandra consistency levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CassandraConsistency {
-    Any, One, Two, Three, Quorum, All, LocalQuorum, EachQuorum, Serial, LocalSerial, LocalOne,
+    Any,
+    One,
+    Two,
+    Three,
+    Quorum,
+    All,
+    LocalQuorum,
+    EachQuorum,
+    Serial,
+    LocalSerial,
+    LocalOne,
 }
 
 impl CassandraAdapter {
     pub fn new(config: DatabaseConfig) -> Self {
         Self {
-            config, connected: Arc::new(RwLock::new(false)),
+            config,
+            connected: Arc::new(RwLock::new(false)),
             read_consistency: CassandraConsistency::LocalQuorum,
             write_consistency: CassandraConsistency::LocalQuorum,
         }
     }
 
-    pub fn with_consistency(mut self, read: CassandraConsistency, write: CassandraConsistency) -> Self {
-        self.read_consistency = read; self.write_consistency = write; self
+    pub fn with_consistency(
+        mut self,
+        read: CassandraConsistency,
+        write: CassandraConsistency,
+    ) -> Self {
+        self.read_consistency = read;
+        self.write_consistency = write;
+        self
     }
 
     pub fn schema_cql(&self) -> &'static str {
@@ -1178,21 +1292,60 @@ impl CassandraAdapter {
 }
 
 impl DatabaseAdapter for CassandraAdapter {
-    fn init_schema(&self) -> DatabaseResult<()> { Ok(()) }
-    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> { Ok(()) }
-    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
-        Err(DatabaseError::ConnectionError("Cassandra adapter requires live connection".into()))
+    fn init_schema(&self) -> DatabaseResult<()> {
+        Ok(())
     }
-    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> { Ok(()) }
-    fn list_workflows(&self, _ns: Option<&str>, _sf: StatusFilter, _limit: u32, _offset: u32) -> DatabaseResult<Vec<WorkflowRecord>> { Ok(vec![]) }
-    fn save_event(&self, _wk: u64, _et: u8, _etn: &str, _sn: u64, _data: Vec<u8>) -> DatabaseResult<i64> { Ok(0) }
-    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> { Ok(vec![]) }
-    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> { Ok(()) }
-    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> { Ok(SearchAttributes::new()) }
-    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> { Ok(()) }
-    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> { Ok(0) }
-    fn is_connected(&self) -> bool { *self.connected.read().unwrap() }
-    fn adapter_name(&self) -> &str { "CassandraAdapter" }
+    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
+        Err(DatabaseError::ConnectionError(
+            "Cassandra adapter requires live connection".into(),
+        ))
+    }
+    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn list_workflows(
+        &self,
+        _ns: Option<&str>,
+        _sf: StatusFilter,
+        _limit: u32,
+        _offset: u32,
+    ) -> DatabaseResult<Vec<WorkflowRecord>> {
+        Ok(vec![])
+    }
+    fn save_event(
+        &self,
+        _wk: u64,
+        _et: u8,
+        _etn: &str,
+        _sn: u64,
+        _data: Vec<u8>,
+    ) -> DatabaseResult<i64> {
+        Ok(0)
+    }
+    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> {
+        Ok(vec![])
+    }
+    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> {
+        Ok(SearchAttributes::new())
+    }
+    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> {
+        Ok(0)
+    }
+    fn is_connected(&self) -> bool {
+        *self.connected.read().unwrap()
+    }
+    fn adapter_name(&self) -> &str {
+        "CassandraAdapter"
+    }
 }
 
 // ─── SQLite Adapter ──────────────────────────────────────────────────────────
@@ -1212,16 +1365,32 @@ pub struct SqliteAdapter {
 /// SQLite journal modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteJournalMode {
-    Delete, Truncate, Persist, Memory, Wal, Off,
+    Delete,
+    Truncate,
+    Persist,
+    Memory,
+    Wal,
+    Off,
 }
 
 impl SqliteAdapter {
     pub fn new(path: impl Into<String>) -> Self {
-        Self { path: path.into(), connected: Arc::new(RwLock::new(false)), wal_mode: true, journal_mode: SqliteJournalMode::Wal }
+        Self {
+            path: path.into(),
+            connected: Arc::new(RwLock::new(false)),
+            wal_mode: true,
+            journal_mode: SqliteJournalMode::Wal,
+        }
     }
 
-    pub fn with_journal_mode(mut self, mode: SqliteJournalMode) -> Self { self.journal_mode = mode; self }
-    pub fn with_wal_mode(mut self, enabled: bool) -> Self { self.wal_mode = enabled; self }
+    pub fn with_journal_mode(mut self, mode: SqliteJournalMode) -> Self {
+        self.journal_mode = mode;
+        self
+    }
+    pub fn with_wal_mode(mut self, enabled: bool) -> Self {
+        self.wal_mode = enabled;
+        self
+    }
 
     pub fn schema_sql(&self) -> &'static str {
         r#"
@@ -1295,21 +1464,60 @@ impl SqliteAdapter {
 }
 
 impl DatabaseAdapter for SqliteAdapter {
-    fn init_schema(&self) -> DatabaseResult<()> { Ok(()) }
-    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> { Ok(()) }
-    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
-        Err(DatabaseError::ConnectionError("SQLite adapter requires live connection".into()))
+    fn init_schema(&self) -> DatabaseResult<()> {
+        Ok(())
     }
-    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> { Ok(()) }
-    fn list_workflows(&self, _ns: Option<&str>, _sf: StatusFilter, _limit: u32, _offset: u32) -> DatabaseResult<Vec<WorkflowRecord>> { Ok(vec![]) }
-    fn save_event(&self, _wk: u64, _et: u8, _etn: &str, _sn: u64, _data: Vec<u8>) -> DatabaseResult<i64> { Ok(0) }
-    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> { Ok(vec![]) }
-    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> { Ok(()) }
-    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> { Ok(SearchAttributes::new()) }
-    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> { Ok(()) }
-    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> { Ok(0) }
-    fn is_connected(&self) -> bool { *self.connected.read().unwrap() }
-    fn adapter_name(&self) -> &str { "SqliteAdapter" }
+    fn save_workflow(&self, _key: u64, _record: &WorkflowRecord) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn load_workflow(&self, _key: u64) -> DatabaseResult<WorkflowRecord> {
+        Err(DatabaseError::ConnectionError(
+            "SQLite adapter requires live connection".into(),
+        ))
+    }
+    fn delete_workflow(&self, _key: u64) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn list_workflows(
+        &self,
+        _ns: Option<&str>,
+        _sf: StatusFilter,
+        _limit: u32,
+        _offset: u32,
+    ) -> DatabaseResult<Vec<WorkflowRecord>> {
+        Ok(vec![])
+    }
+    fn save_event(
+        &self,
+        _wk: u64,
+        _et: u8,
+        _etn: &str,
+        _sn: u64,
+        _data: Vec<u8>,
+    ) -> DatabaseResult<i64> {
+        Ok(0)
+    }
+    fn load_events(&self, _wk: u64) -> DatabaseResult<Vec<WorkflowEventRecord>> {
+        Ok(vec![])
+    }
+    fn save_search_attributes(&self, _key: u64, _attrs: &SearchAttributes) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn load_search_attributes(&self, _key: u64) -> DatabaseResult<SearchAttributes> {
+        Ok(SearchAttributes::new())
+    }
+    fn update_workflow_status(&self, _key: u64, _status: WorkflowStatus) -> DatabaseResult<()> {
+        Ok(())
+    }
+    fn count_workflows(&self, _ns: Option<&str>, _sf: StatusFilter) -> DatabaseResult<u64> {
+        Ok(0)
+    }
+    fn is_connected(&self) -> bool {
+        *self.connected.read().unwrap()
+    }
+    fn adapter_name(&self) -> &str {
+        "SqliteAdapter"
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -1414,7 +1622,10 @@ mod tests {
 
         adapter.delete_workflow(3001).unwrap();
         assert_eq!(adapter.workflow_count(), 0);
-        assert!(matches!(adapter.load_workflow(3001), Err(DatabaseError::NotFound(3001))));
+        assert!(matches!(
+            adapter.load_workflow(3001),
+            Err(DatabaseError::NotFound(3001))
+        ));
     }
 
     #[test]
@@ -1422,8 +1633,12 @@ mod tests {
         let adapter = make_adapter();
         let record = make_test_record(4001, WorkflowStatus::Running);
         adapter.save_workflow(4001, &record).unwrap();
-        adapter.save_event(4001, 1, "WorkflowStarted", 0, vec![1, 2, 3]).unwrap();
-        adapter.save_event(4001, 2, "StepCompleted", 1, vec![4, 5]).unwrap();
+        adapter
+            .save_event(4001, 1, "WorkflowStarted", 0, vec![1, 2, 3])
+            .unwrap();
+        adapter
+            .save_event(4001, 2, "StepCompleted", 1, vec![4, 5])
+            .unwrap();
 
         let mut attrs = SearchAttributes::new();
         attrs.insert("env".into(), SearchAttributeValue::Text("prod".into()));
@@ -1444,7 +1659,9 @@ mod tests {
         let record = make_test_record(5001, WorkflowStatus::Running);
         adapter.save_workflow(5001, &record).unwrap();
 
-        adapter.update_workflow_status(5001, WorkflowStatus::Completed).unwrap();
+        adapter
+            .update_workflow_status(5001, WorkflowStatus::Completed)
+            .unwrap();
         let loaded = adapter.load_workflow(5001).unwrap();
         assert_eq!(loaded.status, WorkflowStatus::Completed);
     }
@@ -1464,10 +1681,18 @@ mod tests {
         let record = make_test_record(6001, WorkflowStatus::Running);
         adapter.save_workflow(6001, &record).unwrap();
 
-        let id1 = adapter.save_event(6001, 1, "WorkflowStarted", 0, vec![1]).unwrap();
-        let id2 = adapter.save_event(6001, 2, "StepCompleted", 1, vec![2]).unwrap();
-        let id3 = adapter.save_event(6001, 2, "StepCompleted", 2, vec![3]).unwrap();
-        let id4 = adapter.save_event(6001, 3, "WorkflowCompleted", 3, vec![4]).unwrap();
+        let id1 = adapter
+            .save_event(6001, 1, "WorkflowStarted", 0, vec![1])
+            .unwrap();
+        let id2 = adapter
+            .save_event(6001, 2, "StepCompleted", 1, vec![2])
+            .unwrap();
+        let id3 = adapter
+            .save_event(6001, 2, "StepCompleted", 2, vec![3])
+            .unwrap();
+        let id4 = adapter
+            .save_event(6001, 3, "WorkflowCompleted", 3, vec![4])
+            .unwrap();
 
         assert!(id1 < id2 && id2 < id3 && id3 < id4);
 
@@ -1490,9 +1715,15 @@ mod tests {
     fn test_events_ordered_by_sequence() {
         let adapter = make_adapter();
         // Insert events out of order
-        adapter.save_event(7001, 2, "StepCompleted", 5, vec![5]).unwrap();
-        adapter.save_event(7001, 1, "WorkflowStarted", 0, vec![0]).unwrap();
-        adapter.save_event(7001, 2, "StepCompleted", 3, vec![3]).unwrap();
+        adapter
+            .save_event(7001, 2, "StepCompleted", 5, vec![5])
+            .unwrap();
+        adapter
+            .save_event(7001, 1, "WorkflowStarted", 0, vec![0])
+            .unwrap();
+        adapter
+            .save_event(7001, 2, "StepCompleted", 3, vec![3])
+            .unwrap();
 
         let events = adapter.load_events(7001).unwrap();
         assert_eq!(events.len(), 3);
@@ -1510,11 +1741,17 @@ mod tests {
         adapter.save_workflow(8001, &record).unwrap();
 
         let mut attrs = SearchAttributes::new();
-        attrs.insert("environment".into(), SearchAttributeValue::Text("production".into()));
+        attrs.insert(
+            "environment".into(),
+            SearchAttributeValue::Text("production".into()),
+        );
         attrs.insert("priority".into(), SearchAttributeValue::Integer(5));
         attrs.insert("score".into(), SearchAttributeValue::Float(9.95));
         attrs.insert("active".into(), SearchAttributeValue::Bool(true));
-        attrs.insert("tags".into(), SearchAttributeValue::TextArray(vec!["critical".into(), "finance".into()]));
+        attrs.insert(
+            "tags".into(),
+            SearchAttributeValue::TextArray(vec!["critical".into(), "finance".into()]),
+        );
 
         adapter.save_search_attributes(8001, &attrs).unwrap();
 
@@ -1564,7 +1801,9 @@ mod tests {
             adapter.save_workflow(10000 + i, &record).unwrap();
         }
 
-        let list = adapter.list_workflows(None, StatusFilter::All, 100, 0).unwrap();
+        let list = adapter
+            .list_workflows(None, StatusFilter::All, 100, 0)
+            .unwrap();
         assert_eq!(list.len(), 5);
     }
 
@@ -1584,10 +1823,14 @@ mod tests {
         r3.namespace_name = "ns-a".into();
         adapter.save_workflow(11003, &r3).unwrap();
 
-        let ns_a = adapter.list_workflows(Some("ns-a"), StatusFilter::All, 100, 0).unwrap();
+        let ns_a = adapter
+            .list_workflows(Some("ns-a"), StatusFilter::All, 100, 0)
+            .unwrap();
         assert_eq!(ns_a.len(), 2);
 
-        let ns_b = adapter.list_workflows(Some("ns-b"), StatusFilter::All, 100, 0).unwrap();
+        let ns_b = adapter
+            .list_workflows(Some("ns-b"), StatusFilter::All, 100, 0)
+            .unwrap();
         assert_eq!(ns_b.len(), 1);
     }
 
@@ -1595,18 +1838,32 @@ mod tests {
     fn test_list_workflows_with_status_filter() {
         let adapter = make_adapter();
 
-        adapter.save_workflow(12001, &make_test_record(12001, WorkflowStatus::Running)).unwrap();
-        adapter.save_workflow(12002, &make_test_record(12002, WorkflowStatus::Completed)).unwrap();
-        adapter.save_workflow(12003, &make_test_record(12003, WorkflowStatus::Failed)).unwrap();
-        adapter.save_workflow(12004, &make_test_record(12004, WorkflowStatus::Running)).unwrap();
+        adapter
+            .save_workflow(12001, &make_test_record(12001, WorkflowStatus::Running))
+            .unwrap();
+        adapter
+            .save_workflow(12002, &make_test_record(12002, WorkflowStatus::Completed))
+            .unwrap();
+        adapter
+            .save_workflow(12003, &make_test_record(12003, WorkflowStatus::Failed))
+            .unwrap();
+        adapter
+            .save_workflow(12004, &make_test_record(12004, WorkflowStatus::Running))
+            .unwrap();
 
-        let running = adapter.list_workflows(None, StatusFilter::Running, 100, 0).unwrap();
+        let running = adapter
+            .list_workflows(None, StatusFilter::Running, 100, 0)
+            .unwrap();
         assert_eq!(running.len(), 2);
 
-        let completed = adapter.list_workflows(None, StatusFilter::Completed, 100, 0).unwrap();
+        let completed = adapter
+            .list_workflows(None, StatusFilter::Completed, 100, 0)
+            .unwrap();
         assert_eq!(completed.len(), 1);
 
-        let failed = adapter.list_workflows(None, StatusFilter::Failed, 100, 0).unwrap();
+        let failed = adapter
+            .list_workflows(None, StatusFilter::Failed, 100, 0)
+            .unwrap();
         assert_eq!(failed.len(), 1);
     }
 
@@ -1618,30 +1875,57 @@ mod tests {
             adapter.save_workflow(13000 + i, &record).unwrap();
         }
 
-        let page1 = adapter.list_workflows(None, StatusFilter::All, 3, 0).unwrap();
+        let page1 = adapter
+            .list_workflows(None, StatusFilter::All, 3, 0)
+            .unwrap();
         assert_eq!(page1.len(), 3);
 
-        let page2 = adapter.list_workflows(None, StatusFilter::All, 3, 3).unwrap();
+        let page2 = adapter
+            .list_workflows(None, StatusFilter::All, 3, 3)
+            .unwrap();
         assert_eq!(page2.len(), 3);
 
-        let page4 = adapter.list_workflows(None, StatusFilter::All, 3, 9).unwrap();
+        let page4 = adapter
+            .list_workflows(None, StatusFilter::All, 3, 9)
+            .unwrap();
         assert_eq!(page4.len(), 1);
 
-        let empty = adapter.list_workflows(None, StatusFilter::All, 3, 100).unwrap();
+        let empty = adapter
+            .list_workflows(None, StatusFilter::All, 3, 100)
+            .unwrap();
         assert!(empty.is_empty());
     }
 
     #[test]
     fn test_count_workflows() {
         let adapter = make_adapter();
-        adapter.save_workflow(14001, &make_test_record(14001, WorkflowStatus::Running)).unwrap();
-        adapter.save_workflow(14002, &make_test_record(14002, WorkflowStatus::Completed)).unwrap();
-        adapter.save_workflow(14003, &make_test_record(14003, WorkflowStatus::Running)).unwrap();
+        adapter
+            .save_workflow(14001, &make_test_record(14001, WorkflowStatus::Running))
+            .unwrap();
+        adapter
+            .save_workflow(14002, &make_test_record(14002, WorkflowStatus::Completed))
+            .unwrap();
+        adapter
+            .save_workflow(14003, &make_test_record(14003, WorkflowStatus::Running))
+            .unwrap();
 
         assert_eq!(adapter.count_workflows(None, StatusFilter::All).unwrap(), 3);
-        assert_eq!(adapter.count_workflows(None, StatusFilter::Running).unwrap(), 2);
-        assert_eq!(adapter.count_workflows(None, StatusFilter::Completed).unwrap(), 1);
-        assert_eq!(adapter.count_workflows(None, StatusFilter::Failed).unwrap(), 0);
+        assert_eq!(
+            adapter
+                .count_workflows(None, StatusFilter::Running)
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            adapter
+                .count_workflows(None, StatusFilter::Completed)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            adapter.count_workflows(None, StatusFilter::Failed).unwrap(),
+            0
+        );
     }
 
     // ── Failure Simulation Tests ──────────────────────────────────────────────
@@ -1655,7 +1939,9 @@ mod tests {
         assert!(adapter.save_workflow(15001, &record).is_err());
         assert!(adapter.load_workflow(15001).is_err());
         assert!(adapter.delete_workflow(15001).is_err());
-        assert!(adapter.list_workflows(None, StatusFilter::All, 10, 0).is_err());
+        assert!(adapter
+            .list_workflows(None, StatusFilter::All, 10, 0)
+            .is_err());
 
         adapter.set_simulate_failures(false);
         assert!(adapter.save_workflow(15001, &record).is_ok());
@@ -1682,8 +1968,14 @@ mod tests {
         let adapter = PostgresAdapter::new(DatabaseConfig::default());
         let record = make_test_record(16001, WorkflowStatus::Running);
 
-        assert!(matches!(adapter.save_workflow(16001, &record), Err(DatabaseError::NotConnected)));
-        assert!(matches!(adapter.load_workflow(16001), Err(DatabaseError::NotConnected)));
+        assert!(matches!(
+            adapter.save_workflow(16001, &record),
+            Err(DatabaseError::NotConnected)
+        ));
+        assert!(matches!(
+            adapter.load_workflow(16001),
+            Err(DatabaseError::NotConnected)
+        ));
     }
 
     #[test]
@@ -1749,13 +2041,17 @@ mod tests {
     #[test]
     fn test_adapter_clear() {
         let adapter = make_adapter();
-        adapter.save_workflow(17001, &make_test_record(17001, WorkflowStatus::Running)).unwrap();
+        adapter
+            .save_workflow(17001, &make_test_record(17001, WorkflowStatus::Running))
+            .unwrap();
         adapter.save_event(17001, 1, "Started", 0, vec![]).unwrap();
-        adapter.save_search_attributes(17001, &{
-            let mut m = SearchAttributes::new();
-            m.insert("k".into(), SearchAttributeValue::Text("v".into()));
-            m
-        }).unwrap();
+        adapter
+            .save_search_attributes(17001, &{
+                let mut m = SearchAttributes::new();
+                m.insert("k".into(), SearchAttributeValue::Text("v".into()));
+                m
+            })
+            .unwrap();
 
         assert_eq!(adapter.workflow_count(), 1);
         adapter.clear();

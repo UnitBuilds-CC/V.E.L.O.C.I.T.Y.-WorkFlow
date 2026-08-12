@@ -4,9 +4,12 @@
 //! metrics framework depth (6.9K), task framework (4.2K),
 //! worker versioning depth (3.7K), RPC utilities.
 
-use std::collections::{HashMap, HashSet, BTreeMap};
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant, Duration};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Quota Management (3,535 lines in Temporal)
@@ -64,7 +67,10 @@ impl QuotaManager {
         let quotas = self.quotas.read().unwrap();
         let policy = match quotas.get(&key) {
             Some(p) => p,
-            None => { self.stats.allowed.fetch_add(1, Ordering::Relaxed); return true; }
+            None => {
+                self.stats.allowed.fetch_add(1, Ordering::Relaxed);
+                return true;
+            }
         };
 
         let mut usage = self.usage.write().unwrap();
@@ -127,7 +133,9 @@ impl QuotaManager {
         }
     }
 
-    pub fn stats(&self) -> &QuotaStats { &self.stats }
+    pub fn stats(&self) -> &QuotaStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -193,24 +201,35 @@ impl SearchAttributeManager {
             ("ParentWorkflowId", SearchAttributeFieldType::Keyword),
             ("ParentRunId", SearchAttributeFieldType::Keyword),
             ("BinaryChecksums", SearchAttributeFieldType::KeywordList),
-            ("TemporalChangeVersion", SearchAttributeFieldType::KeywordList),
+            (
+                "TemporalChangeVersion",
+                SearchAttributeFieldType::KeywordList,
+            ),
             ("BatchOperationId", SearchAttributeFieldType::Keyword),
             ("BuildIds", SearchAttributeFieldType::KeywordList),
         ];
 
         for (name, field_type) in system_attrs {
-            mgr.system_attributes.write().unwrap().insert(name.to_string(), SearchAttributeDefinition {
-                name: name.to_string(),
-                field_type,
-                is_system: true,
-                description: format!("System search attribute: {}", name),
-            });
+            mgr.system_attributes.write().unwrap().insert(
+                name.to_string(),
+                SearchAttributeDefinition {
+                    name: name.to_string(),
+                    field_type,
+                    is_system: true,
+                    description: format!("System search attribute: {}", name),
+                },
+            );
         }
 
         mgr
     }
 
-    pub fn register_custom_attribute(&self, namespace: &str, name: &str, field_type: SearchAttributeFieldType) -> Result<(), SearchAttributeError> {
+    pub fn register_custom_attribute(
+        &self,
+        namespace: &str,
+        name: &str,
+        field_type: SearchAttributeFieldType,
+    ) -> Result<(), SearchAttributeError> {
         if self.get_attribute(name).is_some() {
             return Err(SearchAttributeError::AlreadyExists(name.to_string()));
         }
@@ -222,8 +241,13 @@ impl SearchAttributeManager {
             description: String::new(),
         };
 
-        self.custom_attributes.write().unwrap().insert(name.to_string(), def.clone());
-        self.namespace_attributes.write().unwrap()
+        self.custom_attributes
+            .write()
+            .unwrap()
+            .insert(name.to_string(), def.clone());
+        self.namespace_attributes
+            .write()
+            .unwrap()
             .entry(namespace.to_string())
             .or_insert_with(HashMap::new)
             .insert(name.to_string(), def);
@@ -239,9 +263,15 @@ impl SearchAttributeManager {
         self.custom_attributes.read().unwrap().get(name).cloned()
     }
 
-    pub fn validate_value(&self, name: &str, value: &SearchAttributeValue) -> Result<(), SearchAttributeError> {
+    pub fn validate_value(
+        &self,
+        name: &str,
+        value: &SearchAttributeValue,
+    ) -> Result<(), SearchAttributeError> {
         self.stats.validations.fetch_add(1, Ordering::Relaxed);
-        let def = self.get_attribute(name).ok_or_else(|| SearchAttributeError::NotFound(name.to_string()))?;
+        let def = self
+            .get_attribute(name)
+            .ok_or_else(|| SearchAttributeError::NotFound(name.to_string()))?;
 
         let valid = match def.field_type {
             SearchAttributeFieldType::Text => matches!(value, SearchAttributeValue::Text(_)),
@@ -249,12 +279,18 @@ impl SearchAttributeManager {
             SearchAttributeFieldType::Int => matches!(value, SearchAttributeValue::Int(_)),
             SearchAttributeFieldType::Double => matches!(value, SearchAttributeValue::Double(_)),
             SearchAttributeFieldType::Bool => matches!(value, SearchAttributeValue::Bool(_)),
-            SearchAttributeFieldType::Datetime => matches!(value, SearchAttributeValue::Datetime(_)),
-            SearchAttributeFieldType::KeywordList => matches!(value, SearchAttributeValue::KeywordList(_)),
+            SearchAttributeFieldType::Datetime => {
+                matches!(value, SearchAttributeValue::Datetime(_))
+            }
+            SearchAttributeFieldType::KeywordList => {
+                matches!(value, SearchAttributeValue::KeywordList(_))
+            }
         };
 
         if !valid {
-            self.stats.validation_failures.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .validation_failures
+                .fetch_add(1, Ordering::Relaxed);
             return Err(SearchAttributeError::TypeMismatch {
                 name: name.to_string(),
                 expected: format!("{:?}", def.field_type),
@@ -265,17 +301,26 @@ impl SearchAttributeManager {
     }
 
     pub fn list_system_attributes(&self) -> Vec<SearchAttributeDefinition> {
-        self.system_attributes.read().unwrap().values().cloned().collect()
+        self.system_attributes
+            .read()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub fn list_custom_attributes(&self, namespace: &str) -> Vec<SearchAttributeDefinition> {
-        self.namespace_attributes.read().unwrap()
+        self.namespace_attributes
+            .read()
+            .unwrap()
             .get(namespace)
             .map(|attrs| attrs.values().cloned().collect())
             .unwrap_or_default()
     }
 
-    pub fn stats(&self) -> &SearchAttributeStats { &self.stats }
+    pub fn stats(&self) -> &SearchAttributeStats {
+        &self.stats
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -293,7 +338,11 @@ pub enum SearchAttributeValue {
 pub enum SearchAttributeError {
     AlreadyExists(String),
     NotFound(String),
-    TypeMismatch { name: String, expected: String, got: String },
+    TypeMismatch {
+        name: String,
+        expected: String,
+        got: String,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -350,30 +399,103 @@ impl MetricsFramework {
 
         // Register standard metric definitions
         let defs = vec![
-            ("workflow_started", MetricType::Counter, "Number of workflows started", "1"),
-            ("workflow_completed", MetricType::Counter, "Number of workflows completed", "1"),
-            ("workflow_failed", MetricType::Counter, "Number of workflows failed", "1"),
-            ("workflow_cancelled", MetricType::Counter, "Number of workflows cancelled", "1"),
-            ("workflow_continued_as_new", MetricType::Counter, "Number of workflows continued as new", "1"),
-            ("workflow_task_latency", MetricType::Timer, "Workflow task processing latency", "ms"),
-            ("activity_task_latency", MetricType::Timer, "Activity task processing latency", "ms"),
-            ("matching_latency", MetricType::Timer, "Matching engine latency", "ms"),
-            ("history_size", MetricType::Histogram, "Workflow history size", "bytes"),
-            ("mutable_state_size", MetricType::Histogram, "Mutable state size", "bytes"),
-            ("persistence_latency", MetricType::Timer, "Persistence operation latency", "ms"),
-            ("replication_latency", MetricType::Timer, "Replication latency", "ms"),
-            ("task_queue_depth", MetricType::Gauge, "Current task queue depth", "1"),
-            ("active_pollers", MetricType::Gauge, "Number of active pollers", "1"),
+            (
+                "workflow_started",
+                MetricType::Counter,
+                "Number of workflows started",
+                "1",
+            ),
+            (
+                "workflow_completed",
+                MetricType::Counter,
+                "Number of workflows completed",
+                "1",
+            ),
+            (
+                "workflow_failed",
+                MetricType::Counter,
+                "Number of workflows failed",
+                "1",
+            ),
+            (
+                "workflow_cancelled",
+                MetricType::Counter,
+                "Number of workflows cancelled",
+                "1",
+            ),
+            (
+                "workflow_continued_as_new",
+                MetricType::Counter,
+                "Number of workflows continued as new",
+                "1",
+            ),
+            (
+                "workflow_task_latency",
+                MetricType::Timer,
+                "Workflow task processing latency",
+                "ms",
+            ),
+            (
+                "activity_task_latency",
+                MetricType::Timer,
+                "Activity task processing latency",
+                "ms",
+            ),
+            (
+                "matching_latency",
+                MetricType::Timer,
+                "Matching engine latency",
+                "ms",
+            ),
+            (
+                "history_size",
+                MetricType::Histogram,
+                "Workflow history size",
+                "bytes",
+            ),
+            (
+                "mutable_state_size",
+                MetricType::Histogram,
+                "Mutable state size",
+                "bytes",
+            ),
+            (
+                "persistence_latency",
+                MetricType::Timer,
+                "Persistence operation latency",
+                "ms",
+            ),
+            (
+                "replication_latency",
+                MetricType::Timer,
+                "Replication latency",
+                "ms",
+            ),
+            (
+                "task_queue_depth",
+                MetricType::Gauge,
+                "Current task queue depth",
+                "1",
+            ),
+            (
+                "active_pollers",
+                MetricType::Gauge,
+                "Number of active pollers",
+                "1",
+            ),
             ("shard_count", MetricType::Gauge, "Number of shards", "1"),
         ];
 
         for (name, metric_type, desc, unit) in defs {
-            fw.definitions.write().unwrap().insert(name.to_string(), MetricDefinition {
-                name: name.to_string(),
-                metric_type,
-                description: desc.to_string(),
-                unit: unit.to_string(),
-            });
+            fw.definitions.write().unwrap().insert(
+                name.to_string(),
+                MetricDefinition {
+                    name: name.to_string(),
+                    metric_type,
+                    description: desc.to_string(),
+                    unit: unit.to_string(),
+                },
+            );
         }
 
         fw
@@ -413,21 +535,33 @@ impl MetricsFramework {
     pub fn record_histogram(&self, scope_name: &str, metric: &str, value: f64) {
         let mut scopes = self.scopes.write().unwrap();
         if let Some(scope) = scopes.get_mut(scope_name) {
-            scope.histograms.entry(metric.to_string()).or_insert_with(Vec::new).push(value);
+            scope
+                .histograms
+                .entry(metric.to_string())
+                .or_insert_with(Vec::new)
+                .push(value);
         }
-        self.stats.histograms_recorded.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .histograms_recorded
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn record_timer(&self, scope_name: &str, metric: &str, duration: Duration) {
         let mut scopes = self.scopes.write().unwrap();
         if let Some(scope) = scopes.get_mut(scope_name) {
-            scope.timers.entry(metric.to_string()).or_insert_with(Vec::new).push(duration);
+            scope
+                .timers
+                .entry(metric.to_string())
+                .or_insert_with(Vec::new)
+                .push(duration);
         }
         self.stats.timers_recorded.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn get_counter(&self, scope_name: &str, metric: &str) -> u64 {
-        self.scopes.read().unwrap()
+        self.scopes
+            .read()
+            .unwrap()
             .get(scope_name)
             .and_then(|s| s.counters.get(metric))
             .copied()
@@ -435,7 +569,9 @@ impl MetricsFramework {
     }
 
     pub fn get_gauge(&self, scope_name: &str, metric: &str) -> Option<f64> {
-        self.scopes.read().unwrap()
+        self.scopes
+            .read()
+            .unwrap()
             .get(scope_name)
             .and_then(|s| s.gauges.get(metric))
             .copied()
@@ -445,7 +581,9 @@ impl MetricsFramework {
         self.definitions.read().unwrap().values().cloned().collect()
     }
 
-    pub fn stats(&self) -> &MetricsFrameworkStats { &self.stats }
+    pub fn stats(&self) -> &MetricsFrameworkStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -507,13 +645,17 @@ impl TaskFramework {
     }
 
     pub fn register_executor(&self, executor: Arc<dyn TaskExecutor>) {
-        self.task_executors.write().unwrap().insert(executor.task_type().to_string(), executor);
+        self.task_executors
+            .write()
+            .unwrap()
+            .insert(executor.task_type().to_string(), executor);
     }
 
     pub fn execute_task(&self, task: &FrameworkTask) -> Result<TaskResult, TaskError> {
         let executors = self.task_executors.read().unwrap();
-        let executor = executors.get(&task.task_type)
-            .ok_or_else(|| TaskError::ExecutionFailed(format!("no executor for task type: {}", task.task_type)))?;
+        let executor = executors.get(&task.task_type).ok_or_else(|| {
+            TaskError::ExecutionFailed(format!("no executor for task type: {}", task.task_type))
+        })?;
 
         self.stats.tasks_executed.fetch_add(1, Ordering::Relaxed);
         match executor.execute(task) {
@@ -533,7 +675,9 @@ impl TaskFramework {
         }
     }
 
-    pub fn stats(&self) -> &TaskFrameworkStats { &self.stats }
+    pub fn stats(&self) -> &TaskFrameworkStats {
+        &self.stats
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -583,7 +727,10 @@ impl VersioningManager {
             default_build_id: default_build_id.to_string(),
             redirect_rules: vec![],
         };
-        self.version_sets.write().unwrap().insert(task_queue.to_string(), set);
+        self.version_sets
+            .write()
+            .unwrap()
+            .insert(task_queue.to_string(), set);
         task_queue.to_string()
     }
 
@@ -608,7 +755,9 @@ impl VersioningManager {
         let mut current = requested.to_string();
         let mut visited = HashSet::new();
         loop {
-            if visited.contains(&current) { break; }
+            if visited.contains(&current) {
+                break;
+            }
             visited.insert(current.clone());
 
             let rules = self.redirect_rules.read().unwrap();
@@ -632,18 +781,26 @@ impl VersioningManager {
     }
 
     pub fn add_redirect_rule(&self, source: &str, target: &str) {
-        self.redirect_rules.write().unwrap().push(VersionRedirectRule {
-            source: source.to_string(),
-            target: target.to_string(),
-            created_at_ms: now_ms(),
-        });
+        self.redirect_rules
+            .write()
+            .unwrap()
+            .push(VersionRedirectRule {
+                source: source.to_string(),
+                target: target.to_string(),
+                created_at_ms: now_ms(),
+            });
     }
 
-    pub fn stats(&self) -> &VersioningStats { &self.stats }
+    pub fn stats(&self) -> &VersioningStats {
+        &self.stats
+    }
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -700,15 +857,24 @@ mod tests {
         assert!(mgr.get_attribute("ExecutionStatus").is_some());
 
         // Validate values
-        mgr.validate_value("WorkflowId", &SearchAttributeValue::Keyword("wf-1".to_string())).unwrap();
-        assert!(mgr.validate_value("WorkflowId", &SearchAttributeValue::Int(42)).is_err());
+        mgr.validate_value(
+            "WorkflowId",
+            &SearchAttributeValue::Keyword("wf-1".to_string()),
+        )
+        .unwrap();
+        assert!(mgr
+            .validate_value("WorkflowId", &SearchAttributeValue::Int(42))
+            .is_err());
 
         // Register custom attribute
-        mgr.register_custom_attribute("ns1", "CustomField", SearchAttributeFieldType::Text).unwrap();
+        mgr.register_custom_attribute("ns1", "CustomField", SearchAttributeFieldType::Text)
+            .unwrap();
         assert!(mgr.get_attribute("CustomField").is_some());
 
         // Duplicate should fail
-        assert!(mgr.register_custom_attribute("ns1", "CustomField", SearchAttributeFieldType::Text).is_err());
+        assert!(mgr
+            .register_custom_attribute("ns1", "CustomField", SearchAttributeFieldType::Text)
+            .is_err());
     }
 
     #[test]
@@ -717,7 +883,8 @@ mod tests {
         let system = mgr.list_system_attributes();
         assert!(system.len() >= 15);
 
-        mgr.register_custom_attribute("ns1", "MyAttr", SearchAttributeFieldType::Int).unwrap();
+        mgr.register_custom_attribute("ns1", "MyAttr", SearchAttributeFieldType::Int)
+            .unwrap();
         let custom = mgr.list_custom_attributes("ns1");
         assert_eq!(custom.len(), 1);
     }
@@ -725,7 +892,10 @@ mod tests {
     #[test]
     fn test_metrics_framework() {
         let fw = MetricsFramework::new();
-        let scope = fw.create_scope("test_scope", HashMap::from([("ns".to_string(), "ns1".to_string())]));
+        let scope = fw.create_scope(
+            "test_scope",
+            HashMap::from([("ns".to_string(), "ns1".to_string())]),
+        );
 
         fw.record_counter(&scope, "workflow_started", 1);
         fw.record_counter(&scope, "workflow_started", 1);
@@ -750,9 +920,16 @@ mod tests {
     fn test_task_framework() {
         struct TestExecutor;
         impl TaskExecutor for TestExecutor {
-            fn task_type(&self) -> &str { "transfer" }
+            fn task_type(&self) -> &str {
+                "transfer"
+            }
             fn execute(&self, task: &FrameworkTask) -> Result<TaskResult, TaskError> {
-                Ok(TaskResult { success: true, ack: true, nack_reason: None, retry: false })
+                Ok(TaskResult {
+                    success: true,
+                    ack: true,
+                    nack_reason: None,
+                    retry: false,
+                })
             }
         }
 
@@ -760,10 +937,16 @@ mod tests {
         fw.register_executor(Arc::new(TestExecutor));
 
         let task = FrameworkTask {
-            task_id: 1, task_type: "transfer".to_string(),
-            namespace_id: "ns1".to_string(), workflow_id: "wf1".to_string(),
-            run_id: "run1".to_string(), shard_id: 1, visibility_time_ms: 0,
-            version: 1, payload: vec![], attempt: 1,
+            task_id: 1,
+            task_type: "transfer".to_string(),
+            namespace_id: "ns1".to_string(),
+            workflow_id: "wf1".to_string(),
+            run_id: "run1".to_string(),
+            shard_id: 1,
+            visibility_time_ms: 0,
+            version: 1,
+            payload: vec![],
+            attempt: 1,
         };
 
         let result = fw.execute_task(&task).unwrap();
@@ -775,10 +958,16 @@ mod tests {
     fn test_task_framework_unknown_type() {
         let fw = TaskFramework::new();
         let task = FrameworkTask {
-            task_id: 1, task_type: "unknown".to_string(),
-            namespace_id: "ns1".to_string(), workflow_id: "wf1".to_string(),
-            run_id: "run1".to_string(), shard_id: 1, visibility_time_ms: 0,
-            version: 1, payload: vec![], attempt: 1,
+            task_id: 1,
+            task_type: "unknown".to_string(),
+            namespace_id: "ns1".to_string(),
+            workflow_id: "wf1".to_string(),
+            run_id: "run1".to_string(),
+            shard_id: 1,
+            visibility_time_ms: 0,
+            version: 1,
+            payload: vec![],
+            attempt: 1,
         };
         assert!(fw.execute_task(&task).is_err());
     }

@@ -3,10 +3,10 @@
 //! Implements multi-level partition trees where tasks flow from root → L1 → L2...
 
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock, Condvar};
-use std::sync::atomic::{AtomicU64, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Condvar, Mutex, RwLock};
 
-use crate::task_queue::{TaskQueue, TaskItem, TaskKind};
+use crate::task_queue::{TaskItem, TaskKind, TaskQueue};
 
 /// A single partition of a task queue with hierarchical depth.
 pub struct TaskQueuePartition {
@@ -158,7 +158,10 @@ impl PartitionManager {
     pub fn create_partition_at_depth(&self, task_queue_hash: u64, depth: u32) -> u32 {
         let partition_id = self.next_partition_id.fetch_add(1, Ordering::Relaxed) as u32;
         let partition = TaskQueuePartition::new_child(partition_id, task_queue_hash, depth);
-        self.partitions.write().unwrap().insert(partition_id, partition);
+        self.partitions
+            .write()
+            .unwrap()
+            .insert(partition_id, partition);
         partition_id
     }
 
@@ -169,7 +172,9 @@ impl PartitionManager {
             partitions.get(&parent_id).map(|p| p.depth)?
         };
 
-        if parent_depth >= self.max_depth { return None; }
+        if parent_depth >= self.max_depth {
+            return None;
+        }
 
         let child_id = self.create_partition_at_depth(task_queue_hash, parent_depth + 1);
 
@@ -230,7 +235,9 @@ impl PartitionManager {
 
         // Try local partition first
         if let Some(p) = partitions.get(&partition_id) {
-            if !p.is_read_partition { return None; }
+            if !p.is_read_partition {
+                return None;
+            }
             if let Some(task) = p.try_poll() {
                 return Some(task);
             }
@@ -252,7 +259,8 @@ impl PartitionManager {
     /// Returns the number of tasks forwarded.
     pub fn push_to_children(&self, partition_id: u32) -> usize {
         let partitions = self.partitions.read().unwrap();
-        let child_ids: Vec<u32> = partitions.get(&partition_id)
+        let child_ids: Vec<u32> = partitions
+            .get(&partition_id)
             .map(|p| p.child_partitions.clone())
             .unwrap_or_default();
 
@@ -260,7 +268,8 @@ impl PartitionManager {
         for child_id in child_ids {
             if let Some(child) = partitions.get(&child_id) {
                 if child.has_workers() {
-                    while let Some(task) = partitions.get(&partition_id).and_then(|p| p.try_poll()) {
+                    while let Some(task) = partitions.get(&partition_id).and_then(|p| p.try_poll())
+                    {
                         child.enqueue(task);
                         count += 1;
                     }
@@ -274,7 +283,8 @@ impl PartitionManager {
     /// Get the total pending task count across all partitions for a task queue.
     pub fn total_pending(&self, task_queue_hash: u64) -> usize {
         let partitions = self.partitions.read().unwrap();
-        partitions.values()
+        partitions
+            .values()
             .filter(|p| p.task_queue_hash == task_queue_hash)
             .map(|p| p.pending_count())
             .sum()
@@ -311,19 +321,28 @@ impl PartitionManager {
     /// Evaluate auto-scaling for all partitions of a task queue.
     pub fn evaluate_scaling(&self, task_queue_hash: u64) -> ScaleDecision {
         let partitions = self.partitions.read().unwrap();
-        let matching: Vec<&TaskQueuePartition> = partitions.values()
+        let matching: Vec<&TaskQueuePartition> = partitions
+            .values()
             .filter(|p| p.task_queue_hash == task_queue_hash)
             .collect();
 
-        if matching.is_empty() { return ScaleDecision::None; }
+        if matching.is_empty() {
+            return ScaleDecision::None;
+        }
 
         // Check if any partition needs scale-up
         let needs_up = matching.iter().any(|p| p.needs_scale_up());
-        if needs_up { return ScaleDecision::ScaleUp; }
+        if needs_up {
+            return ScaleDecision::ScaleUp;
+        }
 
         // Check if partitions are underutilized (all have 0 backlog and no workers)
-        let all_idle = matching.iter().all(|p| p.backlog() == 0 && !p.has_workers());
-        if all_idle && matching.len() > 1 { return ScaleDecision::ScaleDown; }
+        let all_idle = matching
+            .iter()
+            .all(|p| p.backlog() == 0 && !p.has_workers());
+        if all_idle && matching.len() > 1 {
+            return ScaleDecision::ScaleDown;
+        }
 
         ScaleDecision::None
     }
@@ -333,7 +352,8 @@ impl PartitionManager {
         let mut new_children = Vec::new();
         let partition_ids: Vec<u32> = {
             let partitions = self.partitions.read().unwrap();
-            partitions.values()
+            partitions
+                .values()
                 .filter(|p| p.task_queue_hash == task_queue_hash && p.needs_scale_up())
                 .map(|p| p.partition_id)
                 .collect()
@@ -358,12 +378,15 @@ impl PartitionManager {
     }
 
     /// Get the maximum depth.
-    pub fn max_depth(&self) -> u32 { self.max_depth }
+    pub fn max_depth(&self) -> u32 {
+        self.max_depth
+    }
 
     /// Get the total backlog across all partitions for a task queue.
     pub fn total_backlog(&self, task_queue_hash: u64) -> u64 {
         let partitions = self.partitions.read().unwrap();
-        partitions.values()
+        partitions
+            .values()
             .filter(|p| p.task_queue_hash == task_queue_hash)
             .map(|p| p.backlog())
             .sum()
@@ -371,19 +394,27 @@ impl PartitionManager {
 
     /// Get the hierarchy depth of a specific partition.
     pub fn partition_depth(&self, partition_id: u32) -> Option<u32> {
-        self.partitions.read().unwrap().get(&partition_id).map(|p| p.depth)
+        self.partitions
+            .read()
+            .unwrap()
+            .get(&partition_id)
+            .map(|p| p.depth)
     }
 
     /// Get child partition IDs for a given partition.
     pub fn child_partitions(&self, partition_id: u32) -> Vec<u32> {
-        self.partitions.read().unwrap().get(&partition_id)
+        self.partitions
+            .read()
+            .unwrap()
+            .get(&partition_id)
             .map(|p| p.child_partitions.clone())
             .unwrap_or_default()
     }
 
     fn select_partition(&self, task_queue_hash: u64) -> u32 {
         let partitions = self.partitions.read().unwrap();
-        let matching: Vec<u32> = partitions.values()
+        let matching: Vec<u32> = partitions
+            .values()
             .filter(|p| p.task_queue_hash == task_queue_hash)
             .map(|p| p.partition_id)
             .collect();
@@ -398,7 +429,9 @@ impl PartitionManager {
 }
 
 impl Default for PartitionManager {
-    fn default() -> Self { Self::new(4) }
+    fn default() -> Self {
+        Self::new(4)
+    }
 }
 
 /// Information about a task queue partition.
@@ -422,10 +455,15 @@ mod tests {
 
     fn make_task(wk: u64, step: u32) -> TaskItem {
         TaskItem {
-            task_id: 0, kind: TaskKind::WorkflowTask,
-            workflow_key: wk, task_queue_hash: 42,
-            step_index: step, activity_name_id: 0, attempt: 1,
-            priority: 0, deadline_ms: 0,
+            task_id: 0,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: wk,
+            task_queue_hash: 42,
+            step_index: step,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 0,
+            deadline_ms: 0,
         }
     }
 

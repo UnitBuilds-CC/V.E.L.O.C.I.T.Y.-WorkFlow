@@ -7,12 +7,12 @@ pub const NDA_MAGIC: u32 = 0x3141444E; // "NDA1" (0x3141444E)
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct NdaHeader {
-    pub magic: u32,               // 4 Bytes: "NDA1"
-    pub flags: u32,               // 4 Bytes: Config / bitmask flags
-    pub merkle_root: [u8; 32],    // 32 Bytes: Cryptographic SHA-256 Merkle root
-    pub triple_count: u32,        // 4 Bytes: Semantic triples count
-    pub command_count: u16,       // 2 Bytes: Canvas command count
-    pub string_pool_offset: u16,  // 2 Bytes: Offset to string pool
+    pub magic: u32,              // 4 Bytes: "NDA1"
+    pub flags: u32,              // 4 Bytes: Config / bitmask flags
+    pub merkle_root: [u8; 32],   // 32 Bytes: Cryptographic SHA-256 Merkle root
+    pub triple_count: u32,       // 4 Bytes: Semantic triples count
+    pub command_count: u16,      // 2 Bytes: Canvas command count
+    pub string_pool_offset: u16, // 2 Bytes: Offset to string pool
 }
 
 impl NdaHeader {

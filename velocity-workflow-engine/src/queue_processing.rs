@@ -9,9 +9,12 @@
 //! 6. **QueueExecutor**: Common executor framework with retry and error handling
 //! 7. **TaskScheduler**: Priority-based task scheduling across queues
 
-use std::collections::{HashMap, VecDeque, BinaryHeap};
 use std::cmp::Ordering as CmpOrdering;
-use std::sync::{Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
+use std::collections::{BinaryHeap, HashMap, VecDeque};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── 1. Queue Executor Framework ──────────────────────────────────────────────
@@ -249,7 +252,10 @@ impl TransferQueueProcessor {
         let mut sorted = latencies.clone();
         sorted.sort();
         let p50 = sorted.get(sorted.len() / 2).copied().unwrap_or(0);
-        let p99 = sorted.get((sorted.len() as f64 * 0.99) as usize).copied().unwrap_or(0);
+        let p99 = sorted
+            .get((sorted.len() as f64 * 0.99) as usize)
+            .copied()
+            .unwrap_or(0);
 
         QueueProcessorStats {
             name: self.config.name.clone(),
@@ -301,15 +307,21 @@ struct TimerTaskEntry {
 }
 
 impl PartialEq for TimerTaskEntry {
-    fn eq(&self, other: &Self) -> bool { self.expiry_time_ms == other.expiry_time_ms }
+    fn eq(&self, other: &Self) -> bool {
+        self.expiry_time_ms == other.expiry_time_ms
+    }
 }
 impl Eq for TimerTaskEntry {}
 
 impl PartialOrd for TimerTaskEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> { Some(other.expiry_time_ms.cmp(&self.expiry_time_ms)) }
+    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
+        Some(other.expiry_time_ms.cmp(&self.expiry_time_ms))
+    }
 }
 impl Ord for TimerTaskEntry {
-    fn cmp(&self, other: &Self) -> CmpOrdering { other.expiry_time_ms.cmp(&self.expiry_time_ms) }
+    fn cmp(&self, other: &Self) -> CmpOrdering {
+        other.expiry_time_ms.cmp(&self.expiry_time_ms)
+    }
 }
 
 /// Timer queue processor with priority scheduling.
@@ -361,10 +373,10 @@ impl TimerQueueProcessor {
                     if top.expiry_time_ms <= now {
                         heap.pop().map(|e| e.task)
                     } else {
-                        break
+                        break;
                     }
                 } else {
-                    break
+                    break;
                 }
             };
 
@@ -506,7 +518,9 @@ impl VisibilityQueueProcessor {
         processed
     }
 
-    pub fn depth(&self) -> usize { self.queue.lock().unwrap().len() }
+    pub fn depth(&self) -> usize {
+        self.queue.lock().unwrap().len()
+    }
 
     pub fn stats(&self) -> (u64, u64, u64) {
         (
@@ -581,13 +595,16 @@ impl ReplicationQueueProcessor {
         let mut processed = 0;
         for _task in &tasks {
             self.total_completed.fetch_add(1, Ordering::Relaxed);
-            self.total_replicated_bytes.fetch_add(1024, Ordering::Relaxed); // Simulated
+            self.total_replicated_bytes
+                .fetch_add(1024, Ordering::Relaxed); // Simulated
             processed += 1;
         }
         processed
     }
 
-    pub fn depth(&self) -> usize { self.queue.lock().unwrap().len() }
+    pub fn depth(&self) -> usize {
+        self.queue.lock().unwrap().len()
+    }
 
     pub fn total_replicated_bytes(&self) -> u64 {
         self.total_replicated_bytes.load(Ordering::Relaxed)
@@ -655,11 +672,14 @@ impl ArchivalQueueProcessor {
             queue.drain(..n).collect()
         };
         let count = tasks.len();
-        self.total_completed.fetch_add(count as u64, Ordering::Relaxed);
+        self.total_completed
+            .fetch_add(count as u64, Ordering::Relaxed);
         count
     }
 
-    pub fn depth(&self) -> usize { self.queue.lock().unwrap().len() }
+    pub fn depth(&self) -> usize {
+        self.queue.lock().unwrap().len()
+    }
 }
 
 // ─── 7. Task Scheduler ────────────────────────────────────────────────────────
@@ -685,11 +705,21 @@ impl QueueTaskScheduler {
     }
 
     /// Get a reference to the transfer queue.
-    pub fn transfer_queue(&self) -> &TransferQueueProcessor { &self.transfer }
-    pub fn timer_queue(&self) -> &TimerQueueProcessor { &self.timer }
-    pub fn visibility_queue(&self) -> &VisibilityQueueProcessor { &self.visibility }
-    pub fn replication_queue(&self) -> &ReplicationQueueProcessor { &self.replication }
-    pub fn archival_queue(&self) -> &ArchivalQueueProcessor { &self.archival }
+    pub fn transfer_queue(&self) -> &TransferQueueProcessor {
+        &self.transfer
+    }
+    pub fn timer_queue(&self) -> &TimerQueueProcessor {
+        &self.timer
+    }
+    pub fn visibility_queue(&self) -> &VisibilityQueueProcessor {
+        &self.visibility
+    }
+    pub fn replication_queue(&self) -> &ReplicationQueueProcessor {
+        &self.replication
+    }
+    pub fn archival_queue(&self) -> &ArchivalQueueProcessor {
+        &self.archival
+    }
 
     /// Process all queues. Returns total tasks processed.
     pub fn process_all(&self) -> usize {
@@ -707,8 +737,11 @@ impl QueueTaskScheduler {
         AllQueueStats {
             transfer: self.transfer.stats(),
             timer: self.timer.stats(),
-            total_depth: self.transfer.depth() + self.timer.depth()
-                + self.visibility.depth() + self.replication.depth() + self.archival.depth(),
+            total_depth: self.transfer.depth()
+                + self.timer.depth()
+                + self.visibility.depth()
+                + self.replication.depth()
+                + self.archival.depth(),
         }
     }
 }
@@ -722,7 +755,9 @@ pub struct AllQueueStats {
 }
 
 impl Default for QueueTaskScheduler {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Time Helper ──────────────────────────────────────────────────────────────
@@ -744,9 +779,15 @@ mod tests {
     fn test_transfer_queue_submit_and_process() {
         let proc = TransferQueueProcessor::new(QueueProcessorConfig::new("test-transfer"));
         proc.submit(TransferQueueTask {
-            task_id: 1, workflow_key: 100, task_type: TransferQueueTaskType::ActivityTask,
-            target_event_id: 10, target_namespace_id: 1, target_task_queue: "q1".into(),
-            visibility_time_ms: now_ms(), attempt: 1, created_at_ms: now_ms(),
+            task_id: 1,
+            workflow_key: 100,
+            task_type: TransferQueueTaskType::ActivityTask,
+            target_event_id: 10,
+            target_namespace_id: 1,
+            target_task_queue: "q1".into(),
+            visibility_time_ms: now_ms(),
+            attempt: 1,
+            created_at_ms: now_ms(),
         });
 
         assert_eq!(proc.depth(), 1);
@@ -763,11 +804,19 @@ mod tests {
     #[test]
     fn test_transfer_queue_batch() {
         let proc = TransferQueueProcessor::new(QueueProcessorConfig::new("test"));
-        let tasks = (0..5).map(|i| TransferQueueTask {
-            task_id: i, workflow_key: 100, task_type: TransferQueueTaskType::RecordWorkflowStarted,
-            target_event_id: i as u64, target_namespace_id: 1, target_task_queue: String::new(),
-            visibility_time_ms: now_ms(), attempt: 1, created_at_ms: now_ms(),
-        }).collect();
+        let tasks = (0..5)
+            .map(|i| TransferQueueTask {
+                task_id: i,
+                workflow_key: 100,
+                task_type: TransferQueueTaskType::RecordWorkflowStarted,
+                target_event_id: i as u64,
+                target_namespace_id: 1,
+                target_task_queue: String::new(),
+                visibility_time_ms: now_ms(),
+                attempt: 1,
+                created_at_ms: now_ms(),
+            })
+            .collect();
 
         proc.submit_batch(tasks);
         assert_eq!(proc.depth(), 5);
@@ -782,13 +831,22 @@ mod tests {
 
         let proc = TransferQueueProcessor::new(config);
         proc.submit(TransferQueueTask {
-            task_id: 1, workflow_key: 100, task_type: TransferQueueTaskType::ActivityTask,
-            target_event_id: 10, target_namespace_id: 1, target_task_queue: String::new(), // Empty = error
-            visibility_time_ms: now_ms(), attempt: 1, created_at_ms: now_ms(),
+            task_id: 1,
+            workflow_key: 100,
+            task_type: TransferQueueTaskType::ActivityTask,
+            target_event_id: 10,
+            target_namespace_id: 1,
+            target_task_queue: String::new(), // Empty = error
+            visibility_time_ms: now_ms(),
+            attempt: 1,
+            created_at_ms: now_ms(),
         });
 
         let results = proc.process_batch();
-        assert!(matches!(results[0].1, TaskExecutionResult::NonRetryableError(_)));
+        assert!(matches!(
+            results[0].1,
+            TaskExecutionResult::NonRetryableError(_)
+        ));
         let stats = proc.stats();
         assert_eq!(stats.total_tasks_failed, 1);
     }
@@ -799,16 +857,24 @@ mod tests {
 
         // Schedule a timer that's already expired
         proc.schedule(TimerQueueTask {
-            task_id: 1, workflow_key: 100, task_type: TimerQueueTaskType::UserTimer,
-            timer_id: 42, expiry_time_ms: now_ms() - 1000, // In the past
-            attempt: 1, created_at_ms: now_ms(),
+            task_id: 1,
+            workflow_key: 100,
+            task_type: TimerQueueTaskType::UserTimer,
+            timer_id: 42,
+            expiry_time_ms: now_ms() - 1000, // In the past
+            attempt: 1,
+            created_at_ms: now_ms(),
         });
 
         // Schedule a timer in the future
         proc.schedule(TimerQueueTask {
-            task_id: 2, workflow_key: 100, task_type: TimerQueueTaskType::UserTimer,
-            timer_id: 43, expiry_time_ms: now_ms() + 60000, // Far future
-            attempt: 1, created_at_ms: now_ms(),
+            task_id: 2,
+            workflow_key: 100,
+            task_type: TimerQueueTaskType::UserTimer,
+            timer_id: 43,
+            expiry_time_ms: now_ms() + 60000, // Far future
+            attempt: 1,
+            created_at_ms: now_ms(),
         });
 
         assert_eq!(proc.depth(), 2);
@@ -824,16 +890,31 @@ mod tests {
         let now = now_ms();
 
         proc.schedule(TimerQueueTask {
-            task_id: 3, workflow_key: 100, task_type: TimerQueueTaskType::UserTimer,
-            timer_id: 3, expiry_time_ms: now - 3000, attempt: 1, created_at_ms: now,
+            task_id: 3,
+            workflow_key: 100,
+            task_type: TimerQueueTaskType::UserTimer,
+            timer_id: 3,
+            expiry_time_ms: now - 3000,
+            attempt: 1,
+            created_at_ms: now,
         });
         proc.schedule(TimerQueueTask {
-            task_id: 1, workflow_key: 100, task_type: TimerQueueTaskType::UserTimer,
-            timer_id: 1, expiry_time_ms: now - 1000, attempt: 1, created_at_ms: now,
+            task_id: 1,
+            workflow_key: 100,
+            task_type: TimerQueueTaskType::UserTimer,
+            timer_id: 1,
+            expiry_time_ms: now - 1000,
+            attempt: 1,
+            created_at_ms: now,
         });
         proc.schedule(TimerQueueTask {
-            task_id: 2, workflow_key: 100, task_type: TimerQueueTaskType::UserTimer,
-            timer_id: 2, expiry_time_ms: now - 2000, attempt: 1, created_at_ms: now,
+            task_id: 2,
+            workflow_key: 100,
+            task_type: TimerQueueTaskType::UserTimer,
+            timer_id: 2,
+            expiry_time_ms: now - 2000,
+            attempt: 1,
+            created_at_ms: now,
         });
 
         let expired = proc.process_expired();
@@ -848,10 +929,16 @@ mod tests {
     fn test_visibility_queue() {
         let proc = VisibilityQueueProcessor::new(QueueProcessorConfig::new("test-vis"));
         proc.submit(VisibilityQueueTask {
-            task_id: 1, workflow_key: 100, task_type: VisibilityQueueTaskType::RecordStart,
-            namespace_id: 1, workflow_type: "wf".into(), status: 1,
-            start_time_ms: now_ms(), close_time_ms: None,
-            search_attributes: HashMap::new(), created_at_ms: now_ms(),
+            task_id: 1,
+            workflow_key: 100,
+            task_type: VisibilityQueueTaskType::RecordStart,
+            namespace_id: 1,
+            workflow_type: "wf".into(),
+            status: 1,
+            start_time_ms: now_ms(),
+            close_time_ms: None,
+            search_attributes: HashMap::new(),
+            created_at_ms: now_ms(),
         });
 
         assert_eq!(proc.depth(), 1);
@@ -864,11 +951,16 @@ mod tests {
     fn test_replication_queue() {
         let proc = ReplicationQueueProcessor::new(QueueProcessorConfig::new("test-repl"));
         proc.submit(ReplicationQueueTask {
-            task_id: 1, workflow_key: 100,
+            task_id: 1,
+            workflow_key: 100,
             task_type: ReplicationQueueTaskType::HistoryReplication,
-            source_cluster: "cluster-a".into(), target_clusters: vec!["cluster-b".into()],
-            first_event_id: 1, next_event_id: 10, branch_token: vec![],
-            version: 1, created_at_ms: now_ms(),
+            source_cluster: "cluster-a".into(),
+            target_clusters: vec!["cluster-b".into()],
+            first_event_id: 1,
+            next_event_id: 10,
+            branch_token: vec![],
+            version: 1,
+            created_at_ms: now_ms(),
         });
 
         let count = proc.process_batch();
@@ -880,9 +972,11 @@ mod tests {
     fn test_archival_queue() {
         let proc = ArchivalQueueProcessor::new(QueueProcessorConfig::new("test-arch"));
         proc.submit(ArchivalQueueTask {
-            task_id: 1, workflow_key: 100,
+            task_id: 1,
+            workflow_key: 100,
             task_type: ArchivalQueueTaskType::ArchiveHistory,
-            branch_token: vec![], created_at_ms: now_ms(),
+            branch_token: vec![],
+            created_at_ms: now_ms(),
         });
 
         let count = proc.process_batch();
@@ -895,14 +989,25 @@ mod tests {
 
         // Submit to different queues
         scheduler.transfer_queue().submit(TransferQueueTask {
-            task_id: 1, workflow_key: 100, task_type: TransferQueueTaskType::ActivityTask,
-            target_event_id: 10, target_namespace_id: 1, target_task_queue: "q".into(),
-            visibility_time_ms: now_ms(), attempt: 1, created_at_ms: now_ms(),
+            task_id: 1,
+            workflow_key: 100,
+            task_type: TransferQueueTaskType::ActivityTask,
+            target_event_id: 10,
+            target_namespace_id: 1,
+            target_task_queue: "q".into(),
+            visibility_time_ms: now_ms(),
+            attempt: 1,
+            created_at_ms: now_ms(),
         });
 
         scheduler.timer_queue().schedule(TimerQueueTask {
-            task_id: 2, workflow_key: 100, task_type: TimerQueueTaskType::UserTimer,
-            timer_id: 1, expiry_time_ms: now_ms() - 1000, attempt: 1, created_at_ms: now_ms(),
+            task_id: 2,
+            workflow_key: 100,
+            task_type: TimerQueueTaskType::UserTimer,
+            timer_id: 1,
+            expiry_time_ms: now_ms() - 1000,
+            attempt: 1,
+            created_at_ms: now_ms(),
         });
 
         let total = scheduler.process_all();

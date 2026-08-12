@@ -51,7 +51,11 @@ pub enum ValidationError {
     /// Task queue name must not be empty.
     InvalidTaskQueue,
     /// `step` exceeds `total_steps` or total_steps exceeds the hard limit.
-    StepOutOfRange { step: u32, total_steps: u32, max_allowed: u32 },
+    StepOutOfRange {
+        step: u32,
+        total_steps: u32,
+        max_allowed: u32,
+    },
     /// The workflow has already reached a terminal state.
     WorkflowAlreadyCompleted,
     /// Payload exceeds the maximum allowed size.
@@ -72,12 +76,24 @@ impl fmt::Display for ValidationError {
             Self::InvalidWorkflowId => write!(f, "workflow_id must be greater than 0"),
             Self::InvalidNamespace => write!(f, "namespace_id must be greater than 0"),
             Self::InvalidTaskQueue => write!(f, "task_queue_name must not be empty"),
-            Self::StepOutOfRange { step, total_steps, max_allowed } => {
-                write!(f, "step {} out of range (total_steps={}, max_allowed={})", step, total_steps, max_allowed)
+            Self::StepOutOfRange {
+                step,
+                total_steps,
+                max_allowed,
+            } => {
+                write!(
+                    f,
+                    "step {} out of range (total_steps={}, max_allowed={})",
+                    step, total_steps, max_allowed
+                )
             }
             Self::WorkflowAlreadyCompleted => write!(f, "workflow has already completed"),
             Self::PayloadTooLarge { size, max } => {
-                write!(f, "payload size {} exceeds maximum allowed size {}", size, max)
+                write!(
+                    f,
+                    "payload size {} exceeds maximum allowed size {}",
+                    size, max
+                )
             }
             Self::TooManySignals { count, max } => {
                 write!(f, "too many pending signals ({} > max {})", count, max)
@@ -122,7 +138,11 @@ impl WorkflowValidator {
     }
 
     /// Create a validator with custom limits.
-    pub fn with_limits(max_payload_size: usize, max_pending_signals: u64, max_total_steps: u32) -> Self {
+    pub fn with_limits(
+        max_payload_size: usize,
+        max_pending_signals: u64,
+        max_total_steps: u32,
+    ) -> Self {
         Self {
             max_payload_size,
             max_pending_signals,
@@ -131,7 +151,10 @@ impl WorkflowValidator {
     }
 
     /// Validate a start-workflow request.
-    pub fn validate_start_request(&self, req: &StartWorkflowRequest) -> Result<(), ValidationError> {
+    pub fn validate_start_request(
+        &self,
+        req: &StartWorkflowRequest,
+    ) -> Result<(), ValidationError> {
         if req.workflow_id == 0 {
             return Err(ValidationError::InvalidWorkflowId);
         }
@@ -215,7 +238,12 @@ impl WorkflowValidator {
     }
 
     /// Validate a step completion.
-    pub fn validate_step_completion(&self, _key: u64, step: u32, total_steps: u32) -> Result<(), ValidationError> {
+    pub fn validate_step_completion(
+        &self,
+        _key: u64,
+        step: u32,
+        total_steps: u32,
+    ) -> Result<(), ValidationError> {
         if total_steps == 0 || total_steps > self.max_total_steps {
             return Err(ValidationError::StepOutOfRange {
                 step,
@@ -296,7 +324,10 @@ mod tests {
         let v = WorkflowValidator::new();
         let mut req = valid_start_request();
         req.workflow_id = 0;
-        assert_eq!(v.validate_start_request(&req), Err(ValidationError::InvalidWorkflowId));
+        assert_eq!(
+            v.validate_start_request(&req),
+            Err(ValidationError::InvalidWorkflowId)
+        );
     }
 
     #[test]
@@ -304,7 +335,10 @@ mod tests {
         let v = WorkflowValidator::new();
         let mut req = valid_start_request();
         req.namespace_id = 0;
-        assert_eq!(v.validate_start_request(&req), Err(ValidationError::InvalidNamespace));
+        assert_eq!(
+            v.validate_start_request(&req),
+            Err(ValidationError::InvalidNamespace)
+        );
     }
 
     #[test]
@@ -312,7 +346,10 @@ mod tests {
         let v = WorkflowValidator::new();
         let mut req = valid_start_request();
         req.task_queue_name = String::new();
-        assert_eq!(v.validate_start_request(&req), Err(ValidationError::InvalidTaskQueue));
+        assert_eq!(
+            v.validate_start_request(&req),
+            Err(ValidationError::InvalidTaskQueue)
+        );
     }
 
     #[test]
@@ -377,6 +414,9 @@ mod tests {
         let v = WorkflowValidator::new();
         let mut req = valid_signal_request();
         req.signal_name = String::new();
-        assert_eq!(v.validate_signal_request(&req), Err(ValidationError::InvalidSignalName));
+        assert_eq!(
+            v.validate_signal_request(&req),
+            Err(ValidationError::InvalidSignalName)
+        );
     }
 }

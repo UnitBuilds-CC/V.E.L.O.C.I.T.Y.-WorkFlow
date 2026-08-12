@@ -7,8 +7,11 @@
 //! - **NamespaceRetention**: History TTL, retention policies, cleanup scheduling
 //! - **WorkflowTaskTracker**: Workflow task scheduling, attempt tracking, sticky reset
 
-use std::collections::{HashMap, VecDeque, HashSet};
-use std::sync::{Mutex, RwLock, atomic::{AtomicU64, Ordering}};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── Extended History Event Types ──────────────────────────────────────────
@@ -106,94 +109,110 @@ pub enum ExtendedEventType {
 impl ExtendedEventType {
     /// Whether this event type represents a command (workflow → server).
     pub fn is_command(&self) -> bool {
-        matches!(self,
-            ExtendedEventType::WorkflowTaskCompleted |
-            ExtendedEventType::ActivityTaskScheduled |
-            ExtendedEventType::TimerStarted |
-            ExtendedEventType::StartChildWorkflowExecutionInitiated |
-            ExtendedEventType::SignalExternalWorkflowExecutionInitiated |
-            ExtendedEventType::RequestCancelExternalWorkflowExecutionInitiated |
-            ExtendedEventType::ActivityTaskCancelRequested |
-            ExtendedEventType::TimerCanceled |
-            ExtendedEventType::MarkerRecorded |
-            ExtendedEventType::UpsertWorkflowSearchAttributes
+        matches!(
+            self,
+            ExtendedEventType::WorkflowTaskCompleted
+                | ExtendedEventType::ActivityTaskScheduled
+                | ExtendedEventType::TimerStarted
+                | ExtendedEventType::StartChildWorkflowExecutionInitiated
+                | ExtendedEventType::SignalExternalWorkflowExecutionInitiated
+                | ExtendedEventType::RequestCancelExternalWorkflowExecutionInitiated
+                | ExtendedEventType::ActivityTaskCancelRequested
+                | ExtendedEventType::TimerCanceled
+                | ExtendedEventType::MarkerRecorded
+                | ExtendedEventType::UpsertWorkflowSearchAttributes
         )
     }
 
     /// Whether this event type represents a failure terminal state.
     pub fn is_failure(&self) -> bool {
-        matches!(self,
-            ExtendedEventType::WorkflowExecutionFailed |
-            ExtendedEventType::WorkflowExecutionTimedOut |
-            ExtendedEventType::WorkflowExecutionTerminated |
-            ExtendedEventType::WorkflowExecutionCanceled |
-            ExtendedEventType::ActivityTaskFailed |
-            ExtendedEventType::ActivityTaskTimedOut |
-            ExtendedEventType::ChildWorkflowExecutionFailed |
-            ExtendedEventType::ChildWorkflowExecutionTimedOut |
-            ExtendedEventType::NexusOperationFailed |
-            ExtendedEventType::NexusOperationTimedOut
+        matches!(
+            self,
+            ExtendedEventType::WorkflowExecutionFailed
+                | ExtendedEventType::WorkflowExecutionTimedOut
+                | ExtendedEventType::WorkflowExecutionTerminated
+                | ExtendedEventType::WorkflowExecutionCanceled
+                | ExtendedEventType::ActivityTaskFailed
+                | ExtendedEventType::ActivityTaskTimedOut
+                | ExtendedEventType::ChildWorkflowExecutionFailed
+                | ExtendedEventType::ChildWorkflowExecutionTimedOut
+                | ExtendedEventType::NexusOperationFailed
+                | ExtendedEventType::NexusOperationTimedOut
         )
     }
 
     /// Whether this event type represents a completion terminal state.
     pub fn is_terminal(&self) -> bool {
-        matches!(self,
-            ExtendedEventType::WorkflowExecutionCompleted |
-            ExtendedEventType::WorkflowExecutionFailed |
-            ExtendedEventType::WorkflowExecutionCanceled |
-            ExtendedEventType::WorkflowExecutionTerminated |
-            ExtendedEventType::WorkflowExecutionTimedOut |
-            ExtendedEventType::WorkflowExecutionContinuedAsNew
+        matches!(
+            self,
+            ExtendedEventType::WorkflowExecutionCompleted
+                | ExtendedEventType::WorkflowExecutionFailed
+                | ExtendedEventType::WorkflowExecutionCanceled
+                | ExtendedEventType::WorkflowExecutionTerminated
+                | ExtendedEventType::WorkflowExecutionTimedOut
+                | ExtendedEventType::WorkflowExecutionContinuedAsNew
         )
     }
 
     /// Category name for grouping.
     pub fn category(&self) -> &'static str {
         match *self {
-            Self::WorkflowExecutionStarted | Self::WorkflowExecutionCompleted |
-            Self::WorkflowExecutionFailed | Self::WorkflowExecutionCanceled |
-            Self::WorkflowExecutionTerminated | Self::WorkflowExecutionTimedOut |
-            Self::WorkflowExecutionContinuedAsNew | Self::WorkflowExecutionReset |
-            Self::WorkflowExecutionOptionsUpdated => "workflow",
+            Self::WorkflowExecutionStarted
+            | Self::WorkflowExecutionCompleted
+            | Self::WorkflowExecutionFailed
+            | Self::WorkflowExecutionCanceled
+            | Self::WorkflowExecutionTerminated
+            | Self::WorkflowExecutionTimedOut
+            | Self::WorkflowExecutionContinuedAsNew
+            | Self::WorkflowExecutionReset
+            | Self::WorkflowExecutionOptionsUpdated => "workflow",
 
-            Self::WorkflowTaskScheduled | Self::WorkflowTaskStarted |
-            Self::WorkflowTaskCompleted | Self::WorkflowTaskFailed |
-            Self::WorkflowTaskTimedOut => "workflow_task",
+            Self::WorkflowTaskScheduled
+            | Self::WorkflowTaskStarted
+            | Self::WorkflowTaskCompleted
+            | Self::WorkflowTaskFailed
+            | Self::WorkflowTaskTimedOut => "workflow_task",
 
-            Self::ActivityTaskScheduled | Self::ActivityTaskStarted |
-            Self::ActivityTaskCompleted | Self::ActivityTaskFailed |
-            Self::ActivityTaskTimedOut | Self::ActivityTaskCanceled |
-            Self::ActivityTaskCancelRequested | Self::ActivityTaskPaused |
-            Self::ActivityTaskUnpaused => "activity",
+            Self::ActivityTaskScheduled
+            | Self::ActivityTaskStarted
+            | Self::ActivityTaskCompleted
+            | Self::ActivityTaskFailed
+            | Self::ActivityTaskTimedOut
+            | Self::ActivityTaskCanceled
+            | Self::ActivityTaskCancelRequested
+            | Self::ActivityTaskPaused
+            | Self::ActivityTaskUnpaused => "activity",
 
             Self::TimerStarted | Self::TimerFired | Self::TimerCanceled => "timer",
 
-            Self::WorkflowExecutionSignaled |
-            Self::SignalExternalWorkflowExecutionInitiated |
-            Self::SignalExternalWorkflowExecutionFailed |
-            Self::ExternalWorkflowExecutionSignaled => "signal",
+            Self::WorkflowExecutionSignaled
+            | Self::SignalExternalWorkflowExecutionInitiated
+            | Self::SignalExternalWorkflowExecutionFailed
+            | Self::ExternalWorkflowExecutionSignaled => "signal",
 
-            Self::StartChildWorkflowExecutionInitiated |
-            Self::StartChildWorkflowExecutionFailed |
-            Self::ChildWorkflowExecutionStarted |
-            Self::ChildWorkflowExecutionCompleted |
-            Self::ChildWorkflowExecutionFailed |
-            Self::ChildWorkflowExecutionCanceled |
-            Self::ChildWorkflowExecutionTimedOut |
-            Self::ChildWorkflowExecutionTerminated |
-            Self::ExternalWorkflowExecutionCancelRequested |
-            Self::WorkflowExecutionCancelRequested |
-            Self::RequestCancelExternalWorkflowExecutionInitiated |
-            Self::RequestCancelExternalWorkflowExecutionFailed => "child_workflow",
+            Self::StartChildWorkflowExecutionInitiated
+            | Self::StartChildWorkflowExecutionFailed
+            | Self::ChildWorkflowExecutionStarted
+            | Self::ChildWorkflowExecutionCompleted
+            | Self::ChildWorkflowExecutionFailed
+            | Self::ChildWorkflowExecutionCanceled
+            | Self::ChildWorkflowExecutionTimedOut
+            | Self::ChildWorkflowExecutionTerminated
+            | Self::ExternalWorkflowExecutionCancelRequested
+            | Self::WorkflowExecutionCancelRequested
+            | Self::RequestCancelExternalWorkflowExecutionInitiated
+            | Self::RequestCancelExternalWorkflowExecutionFailed => "child_workflow",
 
             Self::MarkerRecorded | Self::SideEffectMarker => "marker",
-            Self::WorkflowExecutionUpdateAccepted |
-            Self::WorkflowExecutionUpdateCompleted |
-            Self::WorkflowExecutionUpdateRejected => "update",
-            Self::NexusOperationScheduled | Self::NexusOperationStarted |
-            Self::NexusOperationCompleted | Self::NexusOperationFailed |
-            Self::NexusOperationCanceled | Self::NexusOperationTimedOut => "nexus",
+            Self::WorkflowExecutionUpdateAccepted
+            | Self::WorkflowExecutionUpdateCompleted
+            | Self::WorkflowExecutionUpdateRejected => "update",
+            Self::NexusOperationScheduled
+            | Self::NexusOperationStarted
+            | Self::NexusOperationCompleted
+            | Self::NexusOperationFailed
+            | Self::NexusOperationCanceled
+            | Self::NexusOperationTimedOut => "nexus",
             Self::HistoryBranchCreated => "branch",
             Self::UpsertWorkflowSearchAttributes => "search_attributes",
         }
@@ -235,7 +254,12 @@ impl ExtendedHistoryStore {
     }
 
     /// Append an event to a workflow's history.
-    pub fn append(&self, workflow_key: u64, event_type: ExtendedEventType, payload: Vec<u8>) -> u64 {
+    pub fn append(
+        &self,
+        workflow_key: u64,
+        event_type: ExtendedEventType,
+        payload: Vec<u8>,
+    ) -> u64 {
         let event_id = self.next_event_id.fetch_add(1, Ordering::Relaxed);
         let event = ExtendedHistoryEvent {
             event_id,
@@ -246,7 +270,9 @@ impl ExtendedHistoryStore {
             branch_id: None,
             version: 0,
         };
-        self.histories.write().unwrap()
+        self.histories
+            .write()
+            .unwrap()
             .entry(workflow_key)
             .or_default()
             .push(event);
@@ -254,11 +280,19 @@ impl ExtendedHistoryStore {
     }
 
     /// Forward pagination (like Temporal's GetWorkflowExecutionHistory).
-    pub fn get_page_forward(&self, workflow_key: u64, start_id: u64, max_count: usize) -> Vec<ExtendedHistoryEvent> {
-        self.histories.read().unwrap()
+    pub fn get_page_forward(
+        &self,
+        workflow_key: u64,
+        start_id: u64,
+        max_count: usize,
+    ) -> Vec<ExtendedHistoryEvent> {
+        self.histories
+            .read()
+            .unwrap()
             .get(&workflow_key)
             .map(|events| {
-                events.iter()
+                events
+                    .iter()
                     .filter(|e| e.event_id >= start_id)
                     .take(max_count)
                     .cloned()
@@ -269,11 +303,19 @@ impl ExtendedHistoryStore {
 
     /// Reverse pagination (like Temporal's GetWorkflowExecutionHistoryReverse).
     /// Returns events in reverse order starting from the latest.
-    pub fn get_page_reverse(&self, workflow_key: u64, start_id: u64, max_count: usize) -> Vec<ExtendedHistoryEvent> {
-        self.histories.read().unwrap()
+    pub fn get_page_reverse(
+        &self,
+        workflow_key: u64,
+        start_id: u64,
+        max_count: usize,
+    ) -> Vec<ExtendedHistoryEvent> {
+        self.histories
+            .read()
+            .unwrap()
             .get(&workflow_key)
             .map(|events| {
-                events.iter()
+                events
+                    .iter()
                     .rev()
                     .filter(|e| e.event_id <= start_id)
                     .take(max_count)
@@ -285,7 +327,9 @@ impl ExtendedHistoryStore {
 
     /// Get the full history for a workflow.
     pub fn get_full_history(&self, workflow_key: u64) -> Vec<ExtendedHistoryEvent> {
-        self.histories.read().unwrap()
+        self.histories
+            .read()
+            .unwrap()
             .get(&workflow_key)
             .cloned()
             .unwrap_or_default()
@@ -293,7 +337,9 @@ impl ExtendedHistoryStore {
 
     /// Get event count for a workflow.
     pub fn event_count(&self, workflow_key: u64) -> usize {
-        self.histories.read().unwrap()
+        self.histories
+            .read()
+            .unwrap()
             .get(&workflow_key)
             .map(|e| e.len())
             .unwrap_or(0)
@@ -306,7 +352,8 @@ impl ExtendedHistoryStore {
         let events = histories.get(&workflow_key)?;
 
         // Copy events up to fork_event_id
-        let branch_events: Vec<ExtendedHistoryEvent> = events.iter()
+        let branch_events: Vec<ExtendedHistoryEvent> = events
+            .iter()
             .filter(|e| e.event_id <= fork_event_id)
             .cloned()
             .collect();
@@ -314,7 +361,9 @@ impl ExtendedHistoryStore {
         let branch_id = self.next_event_id.fetch_add(1, Ordering::Relaxed);
         drop(histories);
 
-        self.branches.write().unwrap()
+        self.branches
+            .write()
+            .unwrap()
             .entry(workflow_key)
             .or_default()
             .insert(branch_id, branch_events);
@@ -323,8 +372,14 @@ impl ExtendedHistoryStore {
     }
 
     /// Get events from a specific branch.
-    pub fn get_branch_events(&self, workflow_key: u64, branch_id: u64) -> Vec<ExtendedHistoryEvent> {
-        self.branches.read().unwrap()
+    pub fn get_branch_events(
+        &self,
+        workflow_key: u64,
+        branch_id: u64,
+    ) -> Vec<ExtendedHistoryEvent> {
+        self.branches
+            .read()
+            .unwrap()
             .get(&workflow_key)
             .and_then(|branches| branches.get(&branch_id))
             .cloned()
@@ -333,32 +388,51 @@ impl ExtendedHistoryStore {
 
     /// List all branch IDs for a workflow.
     pub fn list_branches(&self, workflow_key: u64) -> Vec<u64> {
-        self.branches.read().unwrap()
+        self.branches
+            .read()
+            .unwrap()
             .get(&workflow_key)
             .map(|b| b.keys().copied().collect())
             .unwrap_or_default()
     }
 
     /// Get events by type.
-    pub fn get_events_by_type(&self, workflow_key: u64, event_type: ExtendedEventType) -> Vec<ExtendedHistoryEvent> {
-        self.histories.read().unwrap()
+    pub fn get_events_by_type(
+        &self,
+        workflow_key: u64,
+        event_type: ExtendedEventType,
+    ) -> Vec<ExtendedHistoryEvent> {
+        self.histories
+            .read()
+            .unwrap()
             .get(&workflow_key)
             .map(|events| {
-                events.iter().filter(|e| e.event_type == event_type).cloned().collect()
+                events
+                    .iter()
+                    .filter(|e| e.event_type == event_type)
+                    .cloned()
+                    .collect()
             })
             .unwrap_or_default()
     }
 
     /// Get the last event in a workflow's history.
     pub fn last_event(&self, workflow_key: u64) -> Option<ExtendedHistoryEvent> {
-        self.histories.read().unwrap()
+        self.histories
+            .read()
+            .unwrap()
             .get(&workflow_key)
             .and_then(|events| events.last().cloned())
     }
 
     /// Remove a workflow's history.
     pub fn remove(&self, workflow_key: u64) -> bool {
-        let removed = self.histories.write().unwrap().remove(&workflow_key).is_some();
+        let removed = self
+            .histories
+            .write()
+            .unwrap()
+            .remove(&workflow_key)
+            .is_some();
         self.branches.write().unwrap().remove(&workflow_key);
         removed
     }
@@ -370,7 +444,12 @@ impl ExtendedHistoryStore {
 
     /// Total event count across all workflows.
     pub fn total_event_count(&self) -> usize {
-        self.histories.read().unwrap().values().map(|e| e.len()).sum()
+        self.histories
+            .read()
+            .unwrap()
+            .values()
+            .map(|e| e.len())
+            .sum()
     }
 }
 
@@ -424,7 +503,12 @@ impl EngineStatistics {
         let mut stats = self.stats.lock().unwrap();
         stats.total_started += 1;
         stats.currently_running += 1;
-        *self.status_counts.lock().unwrap().entry("running".into()).or_insert(0) += 1;
+        *self
+            .status_counts
+            .lock()
+            .unwrap()
+            .entry("running".into())
+            .or_insert(0) += 1;
     }
 
     /// Record a workflow completion with duration.
@@ -599,8 +683,16 @@ impl Default for SizeLimitConfig {
 #[derive(Debug, Clone)]
 pub enum SizeCheckResult {
     Ok,
-    Warn { limit: &'static str, actual: usize, max: usize },
-    Exceeded { limit: &'static str, actual: usize, max: usize },
+    Warn {
+        limit: &'static str,
+        actual: usize,
+        max: usize,
+    },
+    Exceeded {
+        limit: &'static str,
+        actual: usize,
+        max: usize,
+    },
 }
 
 /// Integrated size limit enforcer.
@@ -641,7 +733,9 @@ impl SizeLimitEnforcer {
                 actual: total_bytes,
                 max: self.config.max_history_size,
             }
-        } else if total_bytes as f64 > self.config.max_history_size as f64 * self.config.warn_threshold {
+        } else if total_bytes as f64
+            > self.config.max_history_size as f64 * self.config.warn_threshold
+        {
             SizeCheckResult::Warn {
                 limit: "max_history_size",
                 actual: total_bytes,
@@ -761,18 +855,26 @@ impl PollContextManager {
 
     /// Register an outstanding poll.
     pub fn register(&self, poller_id: String, namespace: String, task_queue: String) {
-        self.outstanding_polls.lock().unwrap().insert(poller_id.clone(), PollContext {
-            poller_id,
-            namespace,
-            task_queue,
-            registered_at: Instant::now(),
-        });
+        self.outstanding_polls.lock().unwrap().insert(
+            poller_id.clone(),
+            PollContext {
+                poller_id,
+                namespace,
+                task_queue,
+                registered_at: Instant::now(),
+            },
+        );
         self.total_registered.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Cancel an outstanding poll. Returns true if found.
     pub fn cancel(&self, poller_id: &str) -> bool {
-        let removed = self.outstanding_polls.lock().unwrap().remove(poller_id).is_some();
+        let removed = self
+            .outstanding_polls
+            .lock()
+            .unwrap()
+            .remove(poller_id)
+            .is_some();
         if removed {
             self.total_canceled.fetch_add(1, Ordering::Relaxed);
         }
@@ -782,7 +884,8 @@ impl PollContextManager {
     /// Cancel all outstanding polls for a namespace. Returns count canceled.
     pub fn cancel_for_namespace(&self, namespace: &str) -> usize {
         let mut polls = self.outstanding_polls.lock().unwrap();
-        let to_remove: Vec<String> = polls.iter()
+        let to_remove: Vec<String> = polls
+            .iter()
             .filter(|(_, ctx)| ctx.namespace == namespace)
             .map(|(id, _)| id.clone())
             .collect();
@@ -790,14 +893,16 @@ impl PollContextManager {
         for id in to_remove {
             polls.remove(&id);
         }
-        self.total_canceled.fetch_add(count as u64, Ordering::Relaxed);
+        self.total_canceled
+            .fetch_add(count as u64, Ordering::Relaxed);
         count
     }
 
     /// Cancel all outstanding polls for a task queue. Returns count canceled.
     pub fn cancel_for_task_queue(&self, task_queue: &str) -> usize {
         let mut polls = self.outstanding_polls.lock().unwrap();
-        let to_remove: Vec<String> = polls.iter()
+        let to_remove: Vec<String> = polls
+            .iter()
             .filter(|(_, ctx)| ctx.task_queue == task_queue)
             .map(|(id, _)| id.clone())
             .collect();
@@ -805,7 +910,8 @@ impl PollContextManager {
         for id in to_remove {
             polls.remove(&id);
         }
-        self.total_canceled.fetch_add(count as u64, Ordering::Relaxed);
+        self.total_canceled
+            .fetch_add(count as u64, Ordering::Relaxed);
         count
     }
 
@@ -816,7 +922,10 @@ impl PollContextManager {
 
     /// Get outstanding polls for a namespace.
     pub fn outstanding_for_namespace(&self, namespace: &str) -> Vec<PollContext> {
-        self.outstanding_polls.lock().unwrap().values()
+        self.outstanding_polls
+            .lock()
+            .unwrap()
+            .values()
             .filter(|ctx| ctx.namespace == namespace)
             .cloned()
             .collect()
@@ -881,7 +990,10 @@ impl NamespaceRetentionManager {
 
     /// Record a workflow completion for TTL tracking.
     pub fn record_completion(&self, workflow_key: u64) {
-        self.completion_times.lock().unwrap().insert(workflow_key, Instant::now());
+        self.completion_times
+            .lock()
+            .unwrap()
+            .insert(workflow_key, Instant::now());
     }
 
     /// Remove a workflow from TTL tracking.
@@ -900,7 +1012,9 @@ impl NamespaceRetentionManager {
         let retention = Duration::from_secs(policy.retention_days as u64 * 86400);
         let now = Instant::now();
 
-        self.completion_times.lock().unwrap()
+        self.completion_times
+            .lock()
+            .unwrap()
             .iter()
             .filter(|(_, completed_at)| now.duration_since(**completed_at) > retention)
             .map(|(key, _)| *key)
@@ -915,7 +1029,8 @@ impl NamespaceRetentionManager {
         for key in &expired {
             times.remove(key);
         }
-        self.total_cleaned.fetch_add(count as u64, Ordering::Relaxed);
+        self.total_cleaned
+            .fetch_add(count as u64, Ordering::Relaxed);
         count
     }
 
@@ -1052,14 +1167,20 @@ impl WorkflowTaskTracker {
 
     /// Get the current attempt number for a workflow task.
     pub fn get_attempt(&self, workflow_key: u64) -> Option<u32> {
-        self.tasks.lock().unwrap().get(&workflow_key).map(|s| s.attempt)
+        self.tasks
+            .lock()
+            .unwrap()
+            .get(&workflow_key)
+            .map(|s| s.attempt)
     }
 
     /// Get the scheduling latency (time from schedule to start).
     pub fn get_schedule_latency(&self, workflow_key: u64) -> Option<Duration> {
         let tasks = self.tasks.lock().unwrap();
         let state = tasks.get(&workflow_key)?;
-        state.started_at.map(|started| started.duration_since(state.scheduled_at))
+        state
+            .started_at
+            .map(|started| started.duration_since(state.scheduled_at))
     }
 
     /// Count of in-flight workflow tasks.
@@ -1093,12 +1214,27 @@ mod tests {
 
     #[test]
     fn test_event_type_categories() {
-        assert_eq!(ExtendedEventType::WorkflowExecutionStarted.category(), "workflow");
-        assert_eq!(ExtendedEventType::ActivityTaskScheduled.category(), "activity");
+        assert_eq!(
+            ExtendedEventType::WorkflowExecutionStarted.category(),
+            "workflow"
+        );
+        assert_eq!(
+            ExtendedEventType::ActivityTaskScheduled.category(),
+            "activity"
+        );
         assert_eq!(ExtendedEventType::TimerStarted.category(), "timer");
-        assert_eq!(ExtendedEventType::WorkflowExecutionSignaled.category(), "signal");
-        assert_eq!(ExtendedEventType::StartChildWorkflowExecutionInitiated.category(), "child_workflow");
-        assert_eq!(ExtendedEventType::NexusOperationScheduled.category(), "nexus");
+        assert_eq!(
+            ExtendedEventType::WorkflowExecutionSignaled.category(),
+            "signal"
+        );
+        assert_eq!(
+            ExtendedEventType::StartChildWorkflowExecutionInitiated.category(),
+            "child_workflow"
+        );
+        assert_eq!(
+            ExtendedEventType::NexusOperationScheduled.category(),
+            "nexus"
+        );
     }
 
     #[test]
@@ -1137,7 +1273,10 @@ mod tests {
 
         let page = store.get_page_forward(1, 1, 10);
         assert_eq!(page.len(), 4);
-        assert_eq!(page[0].event_type, ExtendedEventType::WorkflowExecutionStarted);
+        assert_eq!(
+            page[0].event_type,
+            ExtendedEventType::WorkflowExecutionStarted
+        );
     }
 
     #[test]
@@ -1281,18 +1420,36 @@ mod tests {
 
     #[test]
     fn test_size_limit_event_count() {
-        let config = SizeLimitConfig { max_event_count: 100, ..Default::default() };
+        let config = SizeLimitConfig {
+            max_event_count: 100,
+            ..Default::default()
+        };
         let enforcer = SizeLimitEnforcer::new(config);
-        assert!(matches!(enforcer.check_event_count(50), SizeCheckResult::Ok));
-        assert!(matches!(enforcer.check_event_count(150), SizeCheckResult::Exceeded { .. }));
+        assert!(matches!(
+            enforcer.check_event_count(50),
+            SizeCheckResult::Ok
+        ));
+        assert!(matches!(
+            enforcer.check_event_count(150),
+            SizeCheckResult::Exceeded { .. }
+        ));
     }
 
     #[test]
     fn test_size_limit_pending_signals() {
-        let config = SizeLimitConfig { max_pending_signals: 10, ..Default::default() };
+        let config = SizeLimitConfig {
+            max_pending_signals: 10,
+            ..Default::default()
+        };
         let enforcer = SizeLimitEnforcer::new(config);
-        assert!(matches!(enforcer.check_pending_signals(5), SizeCheckResult::Ok));
-        assert!(matches!(enforcer.check_pending_signals(15), SizeCheckResult::Exceeded { .. }));
+        assert!(matches!(
+            enforcer.check_pending_signals(5),
+            SizeCheckResult::Ok
+        ));
+        assert!(matches!(
+            enforcer.check_pending_signals(15),
+            SizeCheckResult::Exceeded { .. }
+        ));
     }
 
     // --- Poll Context Manager Tests ---
@@ -1349,7 +1506,13 @@ mod tests {
     #[test]
     fn test_retention_policy() {
         let mgr = NamespaceRetentionManager::new();
-        mgr.set_policy("ns1".into(), RetentionPolicy { retention_days: 7, archive_before_delete: true });
+        mgr.set_policy(
+            "ns1".into(),
+            RetentionPolicy {
+                retention_days: 7,
+                archive_before_delete: true,
+            },
+        );
 
         let policy = mgr.get_policy("ns1").unwrap();
         assert_eq!(policy.retention_days, 7);

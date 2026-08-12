@@ -4,10 +4,10 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Write, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, RwLock};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, RwLock};
 
 use crate::engine::WorkflowStatus;
 
@@ -106,7 +106,10 @@ impl FileColdStorage {
 
     /// List archived workflows by namespace.
     pub fn list_by_namespace(&self, namespace_id: u64) -> Vec<ColdStorageRecord> {
-        self.index.read().unwrap().values()
+        self.index
+            .read()
+            .unwrap()
+            .values()
             .filter(|r| r.namespace_id == namespace_id)
             .cloned()
             .collect()
@@ -134,7 +137,11 @@ impl FileColdStorage {
     /// Garbage collect archives older than the given retention period (in milliseconds).
     pub fn gc_older_than(&self, retention_ms: u64, now_ms: u64) -> io::Result<usize> {
         let cutoff = now_ms.saturating_sub(retention_ms);
-        let keys_to_delete: Vec<u64> = self.index.read().unwrap().iter()
+        let keys_to_delete: Vec<u64> = self
+            .index
+            .read()
+            .unwrap()
+            .iter()
             .filter(|(_, r)| r.archived_at_ms <= cutoff)
             .map(|(k, _)| *k)
             .collect();
@@ -188,15 +195,24 @@ impl FileColdStorage {
     }
 
     fn deserialize_record(&self, data: &[u8]) -> io::Result<Option<ColdStorageRecord>> {
-        if data.len() < 53 { return Ok(None); } // Minimum size
-        if &data[0..4] != b"VELC" { return Ok(None); }
+        if data.len() < 53 {
+            return Ok(None);
+        } // Minimum size
+        if &data[0..4] != b"VELC" {
+            return Ok(None);
+        }
 
         let mut pos = 5; // Skip magic + version
-        let workflow_key = u64::from_le_bytes(data[pos..pos+8].try_into().unwrap()); pos += 8;
-        let workflow_id = u64::from_le_bytes(data[pos..pos+8].try_into().unwrap()); pos += 8;
-        let run_id = u64::from_le_bytes(data[pos..pos+8].try_into().unwrap()); pos += 8;
-        let workflow_type_id = u64::from_le_bytes(data[pos..pos+8].try_into().unwrap()); pos += 8;
-        let namespace_id = u64::from_le_bytes(data[pos..pos+8].try_into().unwrap()); pos += 8;
+        let workflow_key = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+        pos += 8;
+        let workflow_id = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+        pos += 8;
+        let run_id = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+        pos += 8;
+        let workflow_type_id = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+        pos += 8;
+        let namespace_id = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+        pos += 8;
         let status = match data[pos] {
             1 => WorkflowStatus::Running,
             2 => WorkflowStatus::Completed,
@@ -208,19 +224,24 @@ impl FileColdStorage {
             _ => WorkflowStatus::Void,
         };
         pos += 1;
-        let archived_at_ms = u64::from_le_bytes(data[pos..pos+8].try_into().unwrap()); pos += 8;
+        let archived_at_ms = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+        pos += 8;
 
-        let (input_data, new_pos) = self.read_opt_bytes(data, pos); pos = new_pos;
-        let (result_data, new_pos) = self.read_opt_bytes(data, pos); pos = new_pos;
+        let (input_data, new_pos) = self.read_opt_bytes(data, pos);
+        pos = new_pos;
+        let (result_data, new_pos) = self.read_opt_bytes(data, pos);
+        pos = new_pos;
 
         // Step results
         let mut step_results = HashMap::new();
         if pos + 4 <= data.len() {
-            let step_count = u32::from_le_bytes(data[pos..pos+4].try_into().unwrap()) as usize;
+            let step_count = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
             pos += 4;
             for _ in 0..step_count {
-                if pos + 4 > data.len() { break; }
-                let step = u32::from_le_bytes(data[pos..pos+4].try_into().unwrap());
+                if pos + 4 > data.len() {
+                    break;
+                }
+                let step = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
                 pos += 4;
                 let (step_data, new_pos) = self.read_opt_bytes(data, pos);
                 pos = new_pos;
@@ -233,11 +254,13 @@ impl FileColdStorage {
         // Event history
         let mut event_history = Vec::new();
         if pos + 4 <= data.len() {
-            let event_count = u32::from_le_bytes(data[pos..pos+4].try_into().unwrap()) as usize;
+            let event_count = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
             pos += 4;
             for _ in 0..event_count {
-                if pos + 8 > data.len() { break; }
-                let event_type = u64::from_le_bytes(data[pos..pos+8].try_into().unwrap());
+                if pos + 8 > data.len() {
+                    break;
+                }
+                let event_type = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
                 pos += 8;
                 let (payload, new_pos) = self.read_opt_bytes(data, pos);
                 pos = new_pos;
@@ -246,9 +269,18 @@ impl FileColdStorage {
         }
 
         Ok(Some(ColdStorageRecord {
-            workflow_key, workflow_id, run_id, workflow_type_id, namespace_id,
-            status, input_data, result_data, step_results, event_history,
-            archived_at_ms, file_path: String::new(),
+            workflow_key,
+            workflow_id,
+            run_id,
+            workflow_type_id,
+            namespace_id,
+            status,
+            input_data,
+            result_data,
+            step_results,
+            event_history,
+            archived_at_ms,
+            file_path: String::new(),
         }))
     }
 
@@ -265,13 +297,15 @@ impl FileColdStorage {
     }
 
     fn read_opt_bytes(&self, data: &[u8], pos: usize) -> (Option<Vec<u8>>, usize) {
-        if pos + 4 > data.len() { return (None, pos); }
-        let len = u32::from_le_bytes(data[pos..pos+4].try_into().unwrap()) as usize;
+        if pos + 4 > data.len() {
+            return (None, pos);
+        }
+        let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
         let new_pos = pos + 4 + len;
         if len == 0 || new_pos > data.len() {
             (None, pos + 4)
         } else {
-            (Some(data[pos+4..new_pos].to_vec()), new_pos)
+            (Some(data[pos + 4..new_pos].to_vec()), new_pos)
         }
     }
 }
@@ -316,20 +350,37 @@ impl MockS3Adapter {
 
 impl CloudStorageAdapter for MockS3Adapter {
     fn archive(&self, record: &ColdStorageRecord) -> io::Result<()> {
-        self.records.write().unwrap().insert(record.workflow_key, record.clone());
+        self.records
+            .write()
+            .unwrap()
+            .insert(record.workflow_key, record.clone());
         Ok(())
     }
     fn retrieve(&self, workflow_key: u64) -> io::Result<ColdStorageRecord> {
-        self.records.read().unwrap().get(&workflow_key).cloned()
+        self.records
+            .read()
+            .unwrap()
+            .get(&workflow_key)
+            .cloned()
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "workflow not found in S3"))
     }
     fn delete(&self, workflow_key: u64) -> io::Result<bool> {
-        Ok(self.records.write().unwrap().remove(&workflow_key).is_some())
+        Ok(self
+            .records
+            .write()
+            .unwrap()
+            .remove(&workflow_key)
+            .is_some())
     }
     fn list_by_namespace(&self, namespace_id: u64) -> io::Result<Vec<ColdStorageRecord>> {
-        Ok(self.records.read().unwrap().values()
+        Ok(self
+            .records
+            .read()
+            .unwrap()
+            .values()
             .filter(|r| r.namespace_id == namespace_id)
-            .cloned().collect())
+            .cloned()
+            .collect())
     }
     fn gc_older_than(&self, retention_ms: u64, now_ms: u64) -> io::Result<usize> {
         let cutoff = now_ms.saturating_sub(retention_ms);
@@ -341,7 +392,9 @@ impl CloudStorageAdapter for MockS3Adapter {
     fn count(&self) -> io::Result<usize> {
         Ok(self.records.read().unwrap().len())
     }
-    fn backend_name(&self) -> &str { "mock-s3" }
+    fn backend_name(&self) -> &str {
+        "mock-s3"
+    }
 }
 
 /// In-memory mock GCS adapter for testing.
@@ -361,20 +414,37 @@ impl MockGcsAdapter {
 
 impl CloudStorageAdapter for MockGcsAdapter {
     fn archive(&self, record: &ColdStorageRecord) -> io::Result<()> {
-        self.records.write().unwrap().insert(record.workflow_key, record.clone());
+        self.records
+            .write()
+            .unwrap()
+            .insert(record.workflow_key, record.clone());
         Ok(())
     }
     fn retrieve(&self, workflow_key: u64) -> io::Result<ColdStorageRecord> {
-        self.records.read().unwrap().get(&workflow_key).cloned()
+        self.records
+            .read()
+            .unwrap()
+            .get(&workflow_key)
+            .cloned()
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "workflow not found in GCS"))
     }
     fn delete(&self, workflow_key: u64) -> io::Result<bool> {
-        Ok(self.records.write().unwrap().remove(&workflow_key).is_some())
+        Ok(self
+            .records
+            .write()
+            .unwrap()
+            .remove(&workflow_key)
+            .is_some())
     }
     fn list_by_namespace(&self, namespace_id: u64) -> io::Result<Vec<ColdStorageRecord>> {
-        Ok(self.records.read().unwrap().values()
+        Ok(self
+            .records
+            .read()
+            .unwrap()
+            .values()
             .filter(|r| r.namespace_id == namespace_id)
-            .cloned().collect())
+            .cloned()
+            .collect())
     }
     fn gc_older_than(&self, retention_ms: u64, now_ms: u64) -> io::Result<usize> {
         let cutoff = now_ms.saturating_sub(retention_ms);
@@ -386,7 +456,9 @@ impl CloudStorageAdapter for MockGcsAdapter {
     fn count(&self) -> io::Result<usize> {
         Ok(self.records.read().unwrap().len())
     }
-    fn backend_name(&self) -> &str { "mock-gcs" }
+    fn backend_name(&self) -> &str {
+        "mock-gcs"
+    }
 }
 
 // ─── Binary Serialization for Cloud Records ─────────────────────────────────
@@ -402,13 +474,23 @@ fn serialize_record_binary(record: &ColdStorageRecord) -> io::Result<Vec<u8>> {
     buf.extend_from_slice(&(record.status as i32).to_le_bytes());
     // Optional input_data
     match &record.input_data {
-        Some(d) => { buf.extend_from_slice(&(d.len() as u32).to_le_bytes()); buf.extend_from_slice(d); }
-        None => { buf.extend_from_slice(&0u32.to_le_bytes()); }
+        Some(d) => {
+            buf.extend_from_slice(&(d.len() as u32).to_le_bytes());
+            buf.extend_from_slice(d);
+        }
+        None => {
+            buf.extend_from_slice(&0u32.to_le_bytes());
+        }
     }
     // Optional result_data
     match &record.result_data {
-        Some(d) => { buf.extend_from_slice(&(d.len() as u32).to_le_bytes()); buf.extend_from_slice(d); }
-        None => { buf.extend_from_slice(&0u32.to_le_bytes()); }
+        Some(d) => {
+            buf.extend_from_slice(&(d.len() as u32).to_le_bytes());
+            buf.extend_from_slice(d);
+        }
+        None => {
+            buf.extend_from_slice(&0u32.to_le_bytes());
+        }
     }
     // step_results
     buf.extend_from_slice(&(record.step_results.len() as u32).to_le_bytes());
@@ -434,23 +516,41 @@ fn serialize_record_binary(record: &ColdStorageRecord) -> io::Result<Vec<u8>> {
 
 /// Deserialize a ColdStorageRecord from binary format downloaded from cloud.
 fn deserialize_record_binary(data: &[u8]) -> io::Result<ColdStorageRecord> {
-    struct Reader<'a> { data: &'a [u8], pos: usize }
+    struct Reader<'a> {
+        data: &'a [u8],
+        pos: usize,
+    }
     impl<'a> Reader<'a> {
         fn read_u64(&mut self) -> io::Result<u64> {
-            if self.pos + 8 > self.data.len() { return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "truncated u64")); }
-            let v = u64::from_le_bytes(self.data[self.pos..self.pos+8].try_into().unwrap());
+            if self.pos + 8 > self.data.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "truncated u64",
+                ));
+            }
+            let v = u64::from_le_bytes(self.data[self.pos..self.pos + 8].try_into().unwrap());
             self.pos += 8;
             Ok(v)
         }
         fn read_u32(&mut self) -> io::Result<u32> {
-            if self.pos + 4 > self.data.len() { return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "truncated u32")); }
-            let v = u32::from_le_bytes(self.data[self.pos..self.pos+4].try_into().unwrap());
+            if self.pos + 4 > self.data.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "truncated u32",
+                ));
+            }
+            let v = u32::from_le_bytes(self.data[self.pos..self.pos + 4].try_into().unwrap());
             self.pos += 4;
             Ok(v)
         }
         fn read_bytes(&mut self, len: usize) -> io::Result<Vec<u8>> {
-            if self.pos + len > self.data.len() { return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "truncated bytes")); }
-            let v = self.data[self.pos..self.pos+len].to_vec();
+            if self.pos + len > self.data.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "truncated bytes",
+                ));
+            }
+            let v = self.data[self.pos..self.pos + len].to_vec();
             self.pos += len;
             Ok(v)
         }
@@ -473,9 +573,17 @@ fn deserialize_record_binary(data: &[u8]) -> io::Result<ColdStorageRecord> {
         _ => WorkflowStatus::Running,
     };
     let input_len = r.read_u32()? as usize;
-    let input_data = if input_len > 0 { Some(r.read_bytes(input_len)?) } else { None };
+    let input_data = if input_len > 0 {
+        Some(r.read_bytes(input_len)?)
+    } else {
+        None
+    };
     let result_len = r.read_u32()? as usize;
-    let result_data = if result_len > 0 { Some(r.read_bytes(result_len)?) } else { None };
+    let result_data = if result_len > 0 {
+        Some(r.read_bytes(result_len)?)
+    } else {
+        None
+    };
     let step_count = r.read_u32()? as usize;
     let mut step_results = HashMap::new();
     for _ in 0..step_count {
@@ -497,9 +605,18 @@ fn deserialize_record_binary(data: &[u8]) -> io::Result<ColdStorageRecord> {
     let file_path = String::from_utf8(r.read_bytes(fp_len)?).unwrap_or_default();
 
     Ok(ColdStorageRecord {
-        workflow_key, workflow_id, run_id, workflow_type_id, namespace_id,
-        status, input_data, result_data, step_results, event_history,
-        archived_at_ms, file_path,
+        workflow_key,
+        workflow_id,
+        run_id,
+        workflow_type_id,
+        namespace_id,
+        status,
+        input_data,
+        result_data,
+        step_results,
+        event_history,
+        archived_at_ms,
+        file_path,
     })
 }
 
@@ -530,7 +647,13 @@ impl S3Adapter {
     }
 
     /// Create with a custom endpoint (for S3-compatible stores like MinIO).
-    pub fn with_endpoint(bucket: &str, region: &str, access_key: &str, secret_key: &str, endpoint: &str) -> Self {
+    pub fn with_endpoint(
+        bucket: &str,
+        region: &str,
+        access_key: &str,
+        secret_key: &str,
+        endpoint: &str,
+    ) -> Self {
         Self {
             client: reqwest::blocking::Client::new(),
             bucket: bucket.to_string(),
@@ -550,10 +673,16 @@ impl S3Adapter {
     }
 
     /// Sign a request using AWS Signature Version 4.
-    fn sign_request(&self, method: &str, path: &str, headers: &[(String, String)], payload_hash: &str) -> Vec<(String, String)> {
-        use std::time::SystemTime;
+    fn sign_request(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(String, String)],
+        payload_hash: &str,
+    ) -> Vec<(String, String)> {
         use hmac::{Hmac, Mac};
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
+        use std::time::SystemTime;
 
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -582,13 +711,16 @@ impl S3Adapter {
 
         let signed_headers: Vec<&str> = canon_headers.iter().map(|(k, _)| k.as_str()).collect();
         let signed_headers_str = signed_headers.join(";");
-        let canonical_headers: String = canon_headers.iter()
+        let canonical_headers: String = canon_headers
+            .iter()
             .map(|(k, v)| format!("{}:{}\n", k, v))
             .collect();
 
         let canonical_request = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
-            method, path, "", /* query string */
+            method,
+            path,
+            "", /* query string */
             canonical_headers,
             signed_headers_str,
             payload_hash
@@ -596,14 +728,16 @@ impl S3Adapter {
 
         let string_to_sign = format!(
             "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-            amz_date, credential_scope,
+            amz_date,
+            credential_scope,
             hex::encode(Sha256::digest(canonical_request.as_bytes()))
         );
 
         // Signing key
         type HmacSha256 = Hmac<Sha256>;
         let k_date = {
-            let mut mac = HmacSha256::new_from_slice(format!("AWS4{}", self.secret_key).as_bytes()).unwrap();
+            let mut mac =
+                HmacSha256::new_from_slice(format!("AWS4{}", self.secret_key).as_bytes()).unwrap();
             mac.update(date_short.as_bytes());
             mac.finalize().into_bytes()
         };
@@ -656,17 +790,24 @@ impl CloudStorageAdapter for S3Adapter {
         let path = format!("/{}", key);
         let auth_headers = self.sign_request("PUT", &path, &[], &payload_hash);
 
-        let mut req = self.client.put(self.full_url(&path))
+        let mut req = self
+            .client
+            .put(self.full_url(&path))
             .header("Content-Type", "application/octet-stream")
             .body(data);
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req.send().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let resp = req
+            .send()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, format!("S3 PUT failed: {}", resp.status())))
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("S3 PUT failed: {}", resp.status()),
+            ))
         }
     }
 
@@ -680,14 +821,24 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req.send().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let resp = req
+            .send()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(io::Error::new(io::ErrorKind::NotFound, "workflow not found in S3"));
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "workflow not found in S3",
+            ));
         }
         if !resp.status().is_success() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("S3 GET failed: {}", resp.status())));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("S3 GET failed: {}", resp.status()),
+            ));
         }
-        let bytes = resp.bytes().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let bytes = resp
+            .bytes()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         deserialize_record_binary(&bytes)
     }
 
@@ -701,7 +852,9 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req.send().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let resp = req
+            .send()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         Ok(resp.status().is_success() || resp.status() == reqwest::StatusCode::NO_CONTENT)
     }
 
@@ -716,11 +869,18 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req.send().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let resp = req
+            .send()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("S3 LIST failed: {}", resp.status())));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("S3 LIST failed: {}", resp.status()),
+            ));
         }
-        let body = resp.text().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let body = resp
+            .text()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         // Parse XML response for <Key> elements
         let mut records = Vec::new();
@@ -730,7 +890,10 @@ impl CloudStorageAdapter for S3Adapter {
             if let Some(end) = body[key_start..].find("</Key>") {
                 let key = &body[key_start..key_start + end];
                 // Extract workflow_key from the key path: workflows/{key}/record.bin
-                if let Some(wk_str) = key.strip_prefix("workflows/").and_then(|s| s.strip_suffix("/record.bin")) {
+                if let Some(wk_str) = key
+                    .strip_prefix("workflows/")
+                    .and_then(|s| s.strip_suffix("/record.bin"))
+                {
                     if let Ok(wk) = wk_str.parse::<u64>() {
                         if let Ok(record) = self.retrieve(wk) {
                             if record.namespace_id == namespace_id {
@@ -758,11 +921,18 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req.send().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let resp = req
+            .send()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("S3 LIST failed: {}", resp.status())));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("S3 LIST failed: {}", resp.status()),
+            ));
         }
-        let body = resp.text().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let body = resp
+            .text()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         let mut deleted = 0;
         let mut search_from = 0;
@@ -770,7 +940,10 @@ impl CloudStorageAdapter for S3Adapter {
             let key_start = search_from + start + 5;
             if let Some(end) = body[key_start..].find("</Key>") {
                 let key = &body[key_start..key_start + end];
-                if let Some(wk_str) = key.strip_prefix("workflows/").and_then(|s| s.strip_suffix("/record.bin")) {
+                if let Some(wk_str) = key
+                    .strip_prefix("workflows/")
+                    .and_then(|s| s.strip_suffix("/record.bin"))
+                {
                     if let Ok(wk) = wk_str.parse::<u64>() {
                         // Try to retrieve and check archived_at_ms
                         if let Ok(record) = self.retrieve(wk) {
@@ -799,18 +972,27 @@ impl CloudStorageAdapter for S3Adapter {
         for (k, v) in &auth_headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req.send().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let resp = req
+            .send()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("S3 LIST failed: {}", resp.status())));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("S3 LIST failed: {}", resp.status()),
+            ));
         }
-        let body = resp.text().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let body = resp
+            .text()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         // Count <Key> occurrences
         let count = body.matches("<Key>").count();
         Ok(count)
     }
 
-    fn backend_name(&self) -> &str { "s3" }
+    fn backend_name(&self) -> &str {
+        "s3"
+    }
 }
 
 // ─── Real Google Cloud Storage Adapter (feature-gated) ──────────────────────
@@ -837,11 +1019,17 @@ impl GcsAdapter {
     }
 
     fn api_base(&self) -> String {
-        format!("https://storage.googleapis.com/storage/v1/b/{}/o", self.bucket)
+        format!(
+            "https://storage.googleapis.com/storage/v1/b/{}/o",
+            self.bucket
+        )
     }
 
     fn upload_base(&self) -> String {
-        format!("https://storage.googleapis.com/upload/storage/v1/b/{}/o", self.bucket)
+        format!(
+            "https://storage.googleapis.com/upload/storage/v1/b/{}/o",
+            self.bucket
+        )
     }
 }
 
@@ -851,7 +1039,9 @@ impl CloudStorageAdapter for GcsAdapter {
         let name = Self::object_name(record.workflow_key);
         let data = serialize_record_binary(record)?;
         let url = format!("{}?uploadType=media&name={}", self.upload_base(), name);
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Content-Type", "application/octet-stream")
             .body(data)
@@ -860,7 +1050,10 @@ impl CloudStorageAdapter for GcsAdapter {
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, format!("GCS upload failed: {}", resp.status())))
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("GCS upload failed: {}", resp.status()),
+            ))
         }
     }
 
@@ -868,24 +1061,36 @@ impl CloudStorageAdapter for GcsAdapter {
         let name = Self::object_name(workflow_key);
         let url = format!("{}?alt=media", self.api_base())
             .replace("/o", &format!("/o/{}", urlencoding(&name)));
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(io::Error::new(io::ErrorKind::NotFound, "workflow not found in GCS"));
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "workflow not found in GCS",
+            ));
         }
         if !resp.status().is_success() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("GCS GET failed: {}", resp.status())));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("GCS GET failed: {}", resp.status()),
+            ));
         }
-        let bytes = resp.bytes().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let bytes = resp
+            .bytes()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         deserialize_record_binary(&bytes)
     }
 
     fn delete(&self, workflow_key: u64) -> io::Result<bool> {
         let name = Self::object_name(workflow_key);
         let url = format!("{}/{}", self.api_base(), urlencoding(&name));
-        let resp = self.client.delete(&url)
+        let resp = self
+            .client
+            .delete(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
@@ -894,14 +1099,21 @@ impl CloudStorageAdapter for GcsAdapter {
 
     fn list_by_namespace(&self, namespace_id: u64) -> io::Result<Vec<ColdStorageRecord>> {
         let url = format!("{}?prefix=workflows/", self.api_base());
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("GCS LIST failed: {}", resp.status())));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("GCS LIST failed: {}", resp.status()),
+            ));
         }
-        let body = resp.text().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let body = resp
+            .text()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         // Parse JSON response for object names
         let mut records = Vec::new();
@@ -910,7 +1122,10 @@ impl CloudStorageAdapter for GcsAdapter {
             let name_start = search_from + start + 8;
             if let Some(end) = body[name_start..].find('"') {
                 let name = &body[name_start..name_start + end];
-                if let Some(wk_str) = name.strip_prefix("workflows/").and_then(|s| s.strip_suffix("/record.bin")) {
+                if let Some(wk_str) = name
+                    .strip_prefix("workflows/")
+                    .and_then(|s| s.strip_suffix("/record.bin"))
+                {
                     if let Ok(wk) = wk_str.parse::<u64>() {
                         if let Ok(record) = self.retrieve(wk) {
                             if record.namespace_id == namespace_id {
@@ -931,14 +1146,21 @@ impl CloudStorageAdapter for GcsAdapter {
         let cutoff = now_ms.saturating_sub(retention_ms);
         // List all, retrieve each, delete if older than cutoff
         let url = format!("{}?prefix=workflows/", self.api_base());
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("GCS LIST failed: {}", resp.status())));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("GCS LIST failed: {}", resp.status()),
+            ));
         }
-        let body = resp.text().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let body = resp
+            .text()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         let mut deleted = 0;
         let mut search_from = 0;
@@ -946,7 +1168,10 @@ impl CloudStorageAdapter for GcsAdapter {
             let name_start = search_from + start + 8;
             if let Some(end) = body[name_start..].find('"') {
                 let name = &body[name_start..name_start + end];
-                if let Some(wk_str) = name.strip_prefix("workflows/").and_then(|s| s.strip_suffix("/record.bin")) {
+                if let Some(wk_str) = name
+                    .strip_prefix("workflows/")
+                    .and_then(|s| s.strip_suffix("/record.bin"))
+                {
                     if let Ok(wk) = wk_str.parse::<u64>() {
                         if let Ok(record) = self.retrieve(wk) {
                             if record.archived_at_ms < cutoff {
@@ -967,19 +1192,28 @@ impl CloudStorageAdapter for GcsAdapter {
 
     fn count(&self) -> io::Result<usize> {
         let url = format!("{}?prefix=workflows/", self.api_base());
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .send()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("GCS LIST failed: {}", resp.status())));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("GCS LIST failed: {}", resp.status()),
+            ));
         }
-        let body = resp.text().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let body = resp
+            .text()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         let count = body.matches("\"name\":").count();
         Ok(count)
     }
 
-    fn backend_name(&self) -> &str { "gcs" }
+    fn backend_name(&self) -> &str {
+        "gcs"
+    }
 }
 
 /// Simple URL encoding for GCS object names (encode '/' as '%2F').
@@ -1018,19 +1252,39 @@ mod chrono_like {
             let mut y = 1970u32;
             loop {
                 let days_in_year = if is_leap(y) { 366 } else { 365 };
-                if days < days_in_year as u64 { break; }
+                if days < days_in_year as u64 {
+                    break;
+                }
                 days -= days_in_year as u64;
                 y += 1;
             }
             // Month
             let leap = is_leap(y);
-            let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            let month_days = [
+                31,
+                if leap { 29 } else { 28 },
+                31,
+                30,
+                31,
+                30,
+                31,
+                31,
+                30,
+                31,
+                30,
+                31,
+            ];
             let mut m = 0u32;
             for (i, &md) in month_days.iter().enumerate() {
-                if days < md as u64 { m = i as u32 + 1; break; }
+                if days < md as u64 {
+                    m = i as u32 + 1;
+                    break;
+                }
                 days -= md as u64;
             }
-            if m == 0 { m = 12; }
+            if m == 0 {
+                m = 12;
+            }
             let d = days as u32 + 1;
             (y, m, d, hh, mm, ss)
         }
@@ -1045,7 +1299,8 @@ mod tests {
     use super::*;
 
     fn temp_dir(suffix: &str) -> String {
-        let dir = std::env::temp_dir().join(format!("vel_cold_test_{}_{}", std::process::id(), suffix));
+        let dir =
+            std::env::temp_dir().join(format!("vel_cold_test_{}_{}", std::process::id(), suffix));
         let dir_str = dir.to_string_lossy().to_string();
         let _ = fs::remove_dir_all(&dir_str);
         dir_str
@@ -1090,11 +1345,18 @@ mod tests {
         let storage = FileColdStorage::new(&dir).unwrap();
 
         let record = ColdStorageRecord {
-            workflow_key: 99, workflow_id: 1, run_id: 2, workflow_type_id: 1,
-            namespace_id: 0, status: WorkflowStatus::Completed,
-            input_data: None, result_data: None,
-            step_results: HashMap::new(), event_history: vec![],
-            archived_at_ms: 1000, file_path: String::new(),
+            workflow_key: 99,
+            workflow_id: 1,
+            run_id: 2,
+            workflow_type_id: 1,
+            namespace_id: 0,
+            status: WorkflowStatus::Completed,
+            input_data: None,
+            result_data: None,
+            step_results: HashMap::new(),
+            event_history: vec![],
+            archived_at_ms: 1000,
+            file_path: String::new(),
         };
 
         storage.archive(record).unwrap();
@@ -1112,10 +1374,16 @@ mod tests {
 
         for i in 0..5 {
             let record = ColdStorageRecord {
-                workflow_key: i, workflow_id: i, run_id: i + 100, workflow_type_id: 1,
-                namespace_id: 0, status: WorkflowStatus::Completed,
-                input_data: None, result_data: None,
-                step_results: HashMap::new(), event_history: vec![],
+                workflow_key: i,
+                workflow_id: i,
+                run_id: i + 100,
+                workflow_type_id: 1,
+                namespace_id: 0,
+                status: WorkflowStatus::Completed,
+                input_data: None,
+                result_data: None,
+                step_results: HashMap::new(),
+                event_history: vec![],
                 archived_at_ms: i * 1000,
                 file_path: String::new(),
             };

@@ -4,9 +4,12 @@
 //! task queue counters, matching workers, version set management, redirect rules,
 //! task forwarding protocol, sticky matching, and rate-limited dispatch.
 
-use std::collections::{HashMap, HashSet, VecDeque, BTreeMap};
-use std::sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
-use std::time::{SystemTime, Instant, Duration};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 // ─── Task Queue Group ────────────────────────────────────────────────────────
 
@@ -59,7 +62,10 @@ pub struct Ramp {
 
 impl TaskQueueGroup {
     pub fn new(namespace_id: &str, name: &str, tq_type: DeepTaskQueueType) -> Self {
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         Self {
             namespace_id: namespace_id.to_string(),
             task_queue_name: name.to_string(),
@@ -80,7 +86,10 @@ impl TaskQueueGroup {
     pub fn add_version(&mut self, version: TaskQueueVersion) -> usize {
         let idx = self.versions.len();
         self.versions.push(version);
-        self.last_update_time_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+        self.last_update_time_ms = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
         idx
     }
 
@@ -93,7 +102,9 @@ impl TaskQueueGroup {
         let mut current = requested_build_id.to_string();
         let mut visited = HashSet::new();
         loop {
-            if visited.contains(&current) { break; }
+            if visited.contains(&current) {
+                break;
+            }
             visited.insert(current.clone());
             let mut found_redirect = false;
             for version in &self.versions {
@@ -104,9 +115,13 @@ impl TaskQueueGroup {
                         break;
                     }
                 }
-                if found_redirect { break; }
+                if found_redirect {
+                    break;
+                }
             }
-            if !found_redirect { break; }
+            if !found_redirect {
+                break;
+            }
         }
         current
     }
@@ -130,7 +145,9 @@ impl TaskQueueGroup {
         version.build_id.clone()
     }
 
-    pub fn version_count(&self) -> usize { self.versions.len() }
+    pub fn version_count(&self) -> usize {
+        self.versions.len()
+    }
 }
 
 // ─── Sync Match Protocol ─────────────────────────────────────────────────────
@@ -197,15 +214,22 @@ impl SyncMatchProtocol {
 
         // Check for waiting pollers
         let mut pending = self.pending_matches.write().unwrap();
-        let match_key = format!("{}:{}:{}", task.task_queue, task.build_id, task.task_type as u8);
+        let match_key = format!(
+            "{}:{}:{}",
+            task.task_queue, task.build_id, task.task_type as u8
+        );
 
         // Look for a waiting poller
-        let waiting_poller = pending.iter()
+        let waiting_poller = pending
+            .iter()
             .find(|(k, _)| k.starts_with(&format!("poller:{}", match_key)))
             .map(|(k, _)| k.clone());
 
         if let Some(poller_key) = waiting_poller {
-            let poller_id = poller_key.strip_prefix("poller:").unwrap_or(&poller_key).to_string();
+            let poller_id = poller_key
+                .strip_prefix("poller:")
+                .unwrap_or(&poller_key)
+                .to_string();
             pending.remove(&poller_key);
             self.stats.sync_matches.fetch_add(1, Ordering::Relaxed);
             return SyncMatchResult {
@@ -217,15 +241,18 @@ impl SyncMatchProtocol {
         }
 
         // No poller waiting, queue the task
-        pending.insert(task_id.clone(), PendingMatch {
-            task_id: task_id.clone(),
-            task_queue: task.task_queue.clone(),
-            build_id: task.build_id.clone(),
-            task,
-            created_at: Instant::now(),
-            timeout_ms,
-            matched_poller: None,
-        });
+        pending.insert(
+            task_id.clone(),
+            PendingMatch {
+                task_id: task_id.clone(),
+                task_queue: task.task_queue.clone(),
+                build_id: task.build_id.clone(),
+                task,
+                created_at: Instant::now(),
+                timeout_ms,
+                matched_poller: None,
+            },
+        );
 
         self.stats.async_matches.fetch_add(1, Ordering::Relaxed);
         SyncMatchResult {
@@ -236,15 +263,21 @@ impl SyncMatchProtocol {
         }
     }
 
-    pub fn poll_for_task(&self, task_queue: &str, build_id: &str, tq_type: DeepTaskQueueType, poller_id: &str, timeout_ms: u64) -> Option<DeepPhysicalTask> {
+    pub fn poll_for_task(
+        &self,
+        task_queue: &str,
+        build_id: &str,
+        tq_type: DeepTaskQueueType,
+        poller_id: &str,
+        timeout_ms: u64,
+    ) -> Option<DeepPhysicalTask> {
         let match_key = format!("{}:{}:{}", task_queue, build_id, tq_type as u8);
         let mut pending = self.pending_matches.write().unwrap();
 
         // Look for a waiting task
-        let task_key = pending.iter()
-            .find(|(_, v)| {
-                v.task_queue == task_queue && v.build_id == build_id
-            })
+        let task_key = pending
+            .iter()
+            .find(|(_, v)| v.task_queue == task_queue && v.build_id == build_id)
             .map(|(k, _)| k.clone());
 
         if let Some(key) = task_key {
@@ -255,20 +288,30 @@ impl SyncMatchProtocol {
 
         // No task available, register poller as waiting
         let poller_key = format!("poller:{}", match_key);
-        pending.insert(poller_key, PendingMatch {
-            task_id: format!("poller-{}", poller_id),
-            task_queue: task_queue.to_string(),
-            build_id: build_id.to_string(),
-            task: DeepPhysicalTask {
-                task_id: 0, namespace_id: String::new(), workflow_id: String::new(),
-                run_id: String::new(), task_type: tq_type, task_queue: task_queue.to_string(),
-                build_id: build_id.to_string(), scheduled_time_ms: 0, priority: 0,
-                forwarded_from: None, payload: vec![],
+        pending.insert(
+            poller_key,
+            PendingMatch {
+                task_id: format!("poller-{}", poller_id),
+                task_queue: task_queue.to_string(),
+                build_id: build_id.to_string(),
+                task: DeepPhysicalTask {
+                    task_id: 0,
+                    namespace_id: String::new(),
+                    workflow_id: String::new(),
+                    run_id: String::new(),
+                    task_type: tq_type,
+                    task_queue: task_queue.to_string(),
+                    build_id: build_id.to_string(),
+                    scheduled_time_ms: 0,
+                    priority: 0,
+                    forwarded_from: None,
+                    payload: vec![],
+                },
+                created_at: Instant::now(),
+                timeout_ms,
+                matched_poller: Some(poller_id.to_string()),
             },
-            created_at: Instant::now(),
-            timeout_ms,
-            matched_poller: Some(poller_id.to_string()),
-        });
+        );
 
         None
     }
@@ -276,7 +319,8 @@ impl SyncMatchProtocol {
     pub fn cleanup_expired(&self) -> usize {
         let mut pending = self.pending_matches.write().unwrap();
         let now = Instant::now();
-        let expired: Vec<String> = pending.iter()
+        let expired: Vec<String> = pending
+            .iter()
             .filter(|(_, v)| now.duration_since(v.created_at).as_millis() as u64 > v.timeout_ms)
             .map(|(k, _)| k.clone())
             .collect();
@@ -284,11 +328,15 @@ impl SyncMatchProtocol {
         for key in expired {
             pending.remove(&key);
         }
-        self.stats.timeouts.fetch_add(count as u64, Ordering::Relaxed);
+        self.stats
+            .timeouts
+            .fetch_add(count as u64, Ordering::Relaxed);
         count
     }
 
-    pub fn stats(&self) -> &SyncMatchStats { &self.stats }
+    pub fn stats(&self) -> &SyncMatchStats {
+        &self.stats
+    }
 }
 
 // ─── Task Queue Counter ──────────────────────────────────────────────────────
@@ -302,7 +350,11 @@ struct AtomicU64Wrapper {
 }
 
 impl AtomicU64Wrapper {
-    fn new() -> Self { Self { value: AtomicU64::new(0) } }
+    fn new() -> Self {
+        Self {
+            value: AtomicU64::new(0),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,7 +366,9 @@ pub enum CounterPartition {
 
 impl TaskQueueCounter {
     pub fn new() -> Self {
-        Self { counts: RwLock::new(HashMap::new()) }
+        Self {
+            counts: RwLock::new(HashMap::new()),
+        }
     }
 
     fn make_key(task_queue: &str, build_id: &str, partition: CounterPartition) -> String {
@@ -325,31 +379,51 @@ impl TaskQueueCounter {
         }
     }
 
-    pub fn increment(&self, task_queue: &str, build_id: &str, partition: CounterPartition, count: u64) {
+    pub fn increment(
+        &self,
+        task_queue: &str,
+        build_id: &str,
+        partition: CounterPartition,
+        count: u64,
+    ) {
         let key = Self::make_key(task_queue, build_id, partition);
         let mut counts = self.counts.write().unwrap();
         let entry = counts.entry(key).or_insert_with(AtomicU64Wrapper::new);
         entry.value.fetch_add(count, Ordering::Relaxed);
     }
 
-    pub fn decrement(&self, task_queue: &str, build_id: &str, partition: CounterPartition, count: u64) {
+    pub fn decrement(
+        &self,
+        task_queue: &str,
+        build_id: &str,
+        partition: CounterPartition,
+        count: u64,
+    ) {
         let key = Self::make_key(task_queue, build_id, partition);
         let mut counts = self.counts.write().unwrap();
         if let Some(entry) = counts.get(&key) {
             let current = entry.value.load(Ordering::Relaxed);
-            entry.value.store(current.saturating_sub(count), Ordering::Relaxed);
+            entry
+                .value
+                .store(current.saturating_sub(count), Ordering::Relaxed);
         }
     }
 
     pub fn get_count(&self, task_queue: &str, build_id: &str, partition: CounterPartition) -> u64 {
         let key = Self::make_key(task_queue, build_id, partition);
         let counts = self.counts.read().unwrap();
-        counts.get(&key).map(|e| e.value.load(Ordering::Relaxed)).unwrap_or(0)
+        counts
+            .get(&key)
+            .map(|e| e.value.load(Ordering::Relaxed))
+            .unwrap_or(0)
     }
 
     pub fn total_tasks(&self) -> u64 {
         let counts = self.counts.read().unwrap();
-        counts.values().map(|e| e.value.load(Ordering::Relaxed)).sum()
+        counts
+            .values()
+            .map(|e| e.value.load(Ordering::Relaxed))
+            .sum()
     }
 
     pub fn reset(&self) {
@@ -381,7 +455,10 @@ impl MatchingWorker {
     }
 
     pub fn register_task_queue(&self, task_queue: &str) {
-        self.task_queues.write().unwrap().insert(task_queue.to_string());
+        self.task_queues
+            .write()
+            .unwrap()
+            .insert(task_queue.to_string());
     }
 
     pub fn unregister_task_queue(&self, task_queue: &str) {
@@ -432,24 +509,38 @@ impl MatchingWorkerManager {
     }
 
     pub fn register_worker(&self, worker: Arc<MatchingWorker>) {
-        self.workers.write().unwrap().insert(worker.worker_id.clone(), worker);
-        self.stats.workers_registered.fetch_add(1, Ordering::Relaxed);
+        self.workers
+            .write()
+            .unwrap()
+            .insert(worker.worker_id.clone(), worker);
+        self.stats
+            .workers_registered
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn deregister_worker(&self, worker_id: &str) -> Option<Arc<MatchingWorker>> {
         let removed = self.workers.write().unwrap().remove(worker_id);
         if removed.is_some() {
-            self.stats.workers_deregistered.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .workers_deregistered
+                .fetch_add(1, Ordering::Relaxed);
         }
         removed
     }
 
-    pub fn get_workers_for_queue(&self, task_queue: &str, build_id: &str) -> Vec<Arc<MatchingWorker>> {
+    pub fn get_workers_for_queue(
+        &self,
+        task_queue: &str,
+        build_id: &str,
+    ) -> Vec<Arc<MatchingWorker>> {
         let workers = self.workers.read().unwrap();
-        workers.values()
+        workers
+            .values()
             .filter(|w| {
                 let queues = w.task_queues.read().unwrap();
-                queues.contains(task_queue) && (build_id.is_empty() || w.build_id == build_id) && !w.is_draining()
+                queues.contains(task_queue)
+                    && (build_id.is_empty() || w.build_id == build_id)
+                    && !w.is_draining()
             })
             .cloned()
             .collect()
@@ -471,10 +562,17 @@ impl MatchingWorkerManager {
     }
 
     pub fn active_workers(&self) -> usize {
-        self.workers.read().unwrap().values().filter(|w| !w.is_draining()).count()
+        self.workers
+            .read()
+            .unwrap()
+            .values()
+            .filter(|w| !w.is_draining())
+            .count()
     }
 
-    pub fn stats(&self) -> &MatchingWorkerManagerStats { &self.stats }
+    pub fn stats(&self) -> &MatchingWorkerManagerStats {
+        &self.stats
+    }
 }
 
 // ─── Task Forwarding Protocol ────────────────────────────────────────────────
@@ -517,11 +615,17 @@ impl TaskForwarder {
 
         let target = req.target_partition;
         self.forward_count.fetch_add(1, Ordering::Relaxed);
-        ForwardResult::Forwarded { target_partition: target }
+        ForwardResult::Forwarded {
+            target_partition: target,
+        }
     }
 
-    pub fn forward_count(&self) -> u64 { self.forward_count.load(Ordering::Relaxed) }
-    pub fn drop_count(&self) -> u64 { self.drop_count.load(Ordering::Relaxed) }
+    pub fn forward_count(&self) -> u64 {
+        self.forward_count.load(Ordering::Relaxed)
+    }
+    pub fn drop_count(&self) -> u64 {
+        self.drop_count.load(Ordering::Relaxed)
+    }
 }
 
 // ─── Sticky Matching ─────────────────────────────────────────────────────────
@@ -557,16 +661,26 @@ impl StickyMatcher {
         }
     }
 
-    pub fn assign(&self, workflow_id: &str, run_id: &str, worker_id: &str, task_queue: &str, ttl_ms: u64) {
+    pub fn assign(
+        &self,
+        workflow_id: &str,
+        run_id: &str,
+        worker_id: &str,
+        task_queue: &str,
+        ttl_ms: u64,
+    ) {
         let key = format!("{}:{}", workflow_id, run_id);
-        self.sticky_assignments.write().unwrap().insert(key, StickyAssignment {
-            workflow_id: workflow_id.to_string(),
-            run_id: run_id.to_string(),
-            worker_id: worker_id.to_string(),
-            task_queue: task_queue.to_string(),
-            assigned_at: Instant::now(),
-            ttl_ms,
-        });
+        self.sticky_assignments.write().unwrap().insert(
+            key,
+            StickyAssignment {
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.to_string(),
+                worker_id: worker_id.to_string(),
+                task_queue: task_queue.to_string(),
+                assigned_at: Instant::now(),
+                ttl_ms,
+            },
+        );
         self.stats.assignments.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -587,7 +701,8 @@ impl StickyMatcher {
 
     pub fn cleanup_expired(&self) -> usize {
         let mut assignments = self.sticky_assignments.write().unwrap();
-        let expired: Vec<String> = assignments.iter()
+        let expired: Vec<String> = assignments
+            .iter()
             .filter(|(_, v)| v.assigned_at.elapsed().as_millis() as u64 > v.ttl_ms)
             .map(|(k, _)| k.clone())
             .collect();
@@ -595,11 +710,15 @@ impl StickyMatcher {
         for key in expired {
             assignments.remove(&key);
         }
-        self.stats.expirations.fetch_add(count as u64, Ordering::Relaxed);
+        self.stats
+            .expirations
+            .fetch_add(count as u64, Ordering::Relaxed);
         count
     }
 
-    pub fn stats(&self) -> &StickyMatchStats { &self.stats }
+    pub fn stats(&self) -> &StickyMatchStats {
+        &self.stats
+    }
 }
 
 // ─── Rate-Limited Dispatch ───────────────────────────────────────────────────
@@ -632,12 +751,15 @@ impl RateLimitedDispatcher {
     }
 
     pub fn set_rate(&self, task_queue: &str, max_per_second: f64) {
-        self.dispatch_rates.write().unwrap().insert(task_queue.to_string(), DispatchRate {
-            task_queue: task_queue.to_string(),
-            max_per_second,
-            current_tokens: max_per_second,
-            last_refill: Instant::now(),
-        });
+        self.dispatch_rates.write().unwrap().insert(
+            task_queue.to_string(),
+            DispatchRate {
+                task_queue: task_queue.to_string(),
+                max_per_second,
+                current_tokens: max_per_second,
+                last_refill: Instant::now(),
+            },
+        );
     }
 
     pub fn try_dispatch(&self, task_queue: &str) -> bool {
@@ -645,7 +767,8 @@ impl RateLimitedDispatcher {
         if let Some(rate) = rates.get_mut(task_queue) {
             let now = Instant::now();
             let elapsed = now.duration_since(rate.last_refill).as_secs_f64();
-            rate.current_tokens = (rate.current_tokens + elapsed * rate.max_per_second).min(rate.max_per_second);
+            rate.current_tokens =
+                (rate.current_tokens + elapsed * rate.max_per_second).min(rate.max_per_second);
             rate.last_refill = now;
 
             if rate.current_tokens >= 1.0 {
@@ -663,7 +786,9 @@ impl RateLimitedDispatcher {
         }
     }
 
-    pub fn stats(&self) -> &DispatchStats { &self.stats }
+    pub fn stats(&self) -> &DispatchStats {
+        &self.stats
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -715,18 +840,24 @@ mod tests {
     #[test]
     fn test_build_id_assignment_with_ramp() {
         let mut group = TaskQueueGroup::new("ns1", "my-queue", DeepTaskQueueType::Workflow);
-        group.versions[0].assignment_rules.push(BuildIdAssignmentRule {
-            target_build_id: "canary".to_string(),
-            rule_id: "r1".to_string(),
-            percentage_ramp: Some(Ramp { target_percentage: 10.0 }),
-            create_time_ms: 0,
-        });
-        group.versions[0].assignment_rules.push(BuildIdAssignmentRule {
-            target_build_id: "stable".to_string(),
-            rule_id: "r2".to_string(),
-            percentage_ramp: None,
-            create_time_ms: 0,
-        });
+        group.versions[0]
+            .assignment_rules
+            .push(BuildIdAssignmentRule {
+                target_build_id: "canary".to_string(),
+                rule_id: "r1".to_string(),
+                percentage_ramp: Some(Ramp {
+                    target_percentage: 10.0,
+                }),
+                create_time_ms: 0,
+            });
+        group.versions[0]
+            .assignment_rules
+            .push(BuildIdAssignmentRule {
+                target_build_id: "stable".to_string(),
+                rule_id: "r2".to_string(),
+                percentage_ramp: None,
+                create_time_ms: 0,
+            });
 
         // 5% randomness -> should hit canary (10% ramp)
         assert_eq!(group.select_build_id(0.05), "canary");
@@ -758,7 +889,13 @@ mod tests {
         assert!(!result.sync);
 
         // Poll for the task
-        let polled = protocol.poll_for_task("my-queue", "build-1", DeepTaskQueueType::Workflow, "poller-1", 5000);
+        let polled = protocol.poll_for_task(
+            "my-queue",
+            "build-1",
+            DeepTaskQueueType::Workflow,
+            "poller-1",
+            5000,
+        );
         assert!(polled.is_some());
         assert_eq!(polled.unwrap().task_id, 1);
     }
@@ -768,7 +905,13 @@ mod tests {
         let protocol = SyncMatchProtocol::new();
 
         // Poller waits first
-        let polled = protocol.poll_for_task("my-queue", "build-1", DeepTaskQueueType::Workflow, "poller-1", 5000);
+        let polled = protocol.poll_for_task(
+            "my-queue",
+            "build-1",
+            DeepTaskQueueType::Workflow,
+            "poller-1",
+            5000,
+        );
         assert!(polled.is_none()); // No task yet
 
         // Task arrives -> sync match
@@ -795,10 +938,16 @@ mod tests {
     fn test_task_queue_counter() {
         let counter = TaskQueueCounter::new();
         counter.increment("queue1", "build1", CounterPartition::Root, 5);
-        assert_eq!(counter.get_count("queue1", "build1", CounterPartition::Root), 5);
+        assert_eq!(
+            counter.get_count("queue1", "build1", CounterPartition::Root),
+            5
+        );
 
         counter.decrement("queue1", "build1", CounterPartition::Root, 2);
-        assert_eq!(counter.get_count("queue1", "build1", CounterPartition::Root), 3);
+        assert_eq!(
+            counter.get_count("queue1", "build1", CounterPartition::Root),
+            3
+        );
 
         counter.increment("queue1", "build1", CounterPartition::Normal(0), 10);
         assert_eq!(counter.total_tasks(), 13);
@@ -834,10 +983,17 @@ mod tests {
 
         let req = ForwardTaskRequest {
             task: DeepPhysicalTask {
-                task_id: 1, namespace_id: "ns1".to_string(), workflow_id: "wf1".to_string(),
-                run_id: "run1".to_string(), task_type: DeepTaskQueueType::Workflow,
-                task_queue: "q".to_string(), build_id: "b1".to_string(),
-                scheduled_time_ms: 0, priority: 0, forwarded_from: None, payload: vec![],
+                task_id: 1,
+                namespace_id: "ns1".to_string(),
+                workflow_id: "wf1".to_string(),
+                run_id: "run1".to_string(),
+                task_type: DeepTaskQueueType::Workflow,
+                task_queue: "q".to_string(),
+                build_id: "b1".to_string(),
+                scheduled_time_ms: 0,
+                priority: 0,
+                forwarded_from: None,
+                payload: vec![],
             },
             source_partition: 1,
             target_partition: 0,
@@ -850,9 +1006,12 @@ mod tests {
         }
 
         // Max levels exceeded
-        let req2 = ForwardTaskRequest { forward_level: 3, ..req.clone() };
+        let req2 = ForwardTaskRequest {
+            forward_level: 3,
+            ..req.clone()
+        };
         match forwarder.forward(&req2) {
-            ForwardResult::MaxLevelsExceeded => {},
+            ForwardResult::MaxLevelsExceeded => {}
             _ => panic!("Expected max levels exceeded"),
         }
 
@@ -893,10 +1052,17 @@ mod tests {
 
         // Offer a task with very short timeout
         let task = DeepPhysicalTask {
-            task_id: 1, namespace_id: "ns1".to_string(), workflow_id: "wf1".to_string(),
-            run_id: "run1".to_string(), task_type: DeepTaskQueueType::Workflow,
-            task_queue: "q".to_string(), build_id: "b".to_string(),
-            scheduled_time_ms: 0, priority: 0, forwarded_from: None, payload: vec![],
+            task_id: 1,
+            namespace_id: "ns1".to_string(),
+            workflow_id: "wf1".to_string(),
+            run_id: "run1".to_string(),
+            task_type: DeepTaskQueueType::Workflow,
+            task_queue: "q".to_string(),
+            build_id: "b".to_string(),
+            scheduled_time_ms: 0,
+            priority: 0,
+            forwarded_from: None,
+            payload: vec![],
         };
         protocol.offer_task(task, 0); // 0ms timeout
 

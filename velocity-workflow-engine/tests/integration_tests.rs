@@ -3,40 +3,44 @@
 //! These tests exercise real module APIs and cross-module interactions,
 //! verifying that subsystems compose correctly end-to-end.
 
-use velocity_workflow_engine::*;
-use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus, ActivityRetryPolicy};
-use velocity_workflow_engine::saga::{SagaOrchestrator, SagaStepDefinition};
-use velocity_workflow_engine::cron::CronScheduler;
-use velocity_workflow_engine::rate_limiter::RateLimiter;
-use velocity_workflow_engine::heartbeat::HeartbeatTracker;
-use velocity_workflow_engine::memo::MemoStore;
-use velocity_workflow_engine::search_index::SearchAttributeIndex;
-use velocity_workflow_engine::visibility::SearchAttributeValue;
-use velocity_workflow_engine::event_history::{HistoryStore, HistoryEventType};
-use velocity_workflow_engine::worker_versioning::WorkerVersioning;
-use velocity_workflow_engine::partition::PartitionManager;
-use velocity_workflow_engine::sharding::ShardManager;
-use velocity_workflow_engine::payload_codec::{CodecChain, XorCodec, PayloadCodec};
-use velocity_workflow_engine::replay::ReplayEngine;
-use velocity_workflow_engine::nexus::{NexusManager, NexusOperationState};
-use velocity_workflow_engine::raft_consensus::{RaftNode, RaftConfig, RaftEventType, RaftState};
-use velocity_workflow_engine::history_compaction::{HistoryCompactor, CompactionConfig, CompactableEventType};
-use velocity_workflow_engine::network_replication::{WireFrame, FrameType};
-use velocity_workflow_engine::hot_swap::{HotSwapRegistry, HotSwapResult};
-use velocity_workflow_engine::db_adapter::{InMemoryAdapter, DatabaseAdapter, WorkflowRecord};
-use velocity_workflow_engine::retry::{RetryPolicy, CircuitBreaker, CircuitBreakerConfig, CircuitState};
-use velocity_workflow_engine::metrics::MetricsRegistry;
-use velocity_workflow_engine::chaos_endurance::{SoakTestConfig, run_soak_test};
-use velocity_workflow_engine::task_queue::{TaskQueue, TaskItem, TaskKind};
-use velocity_workflow_engine::timer_engine::TimerEngine;
-use velocity_workflow_engine::namespace::{NamespaceRegistry, NamespaceConfig};
+use velocity_workflow_engine::archival::{ArchivePolicy, ArchiveRecord, ArchiveStore};
 use velocity_workflow_engine::batch::BatchExecutor;
-use velocity_workflow_engine::archival::{ArchiveStore, ArchiveRecord, ArchivePolicy};
-use velocity_workflow_engine::dynamic_config::{DynamicConfig, ConfigValue};
+use velocity_workflow_engine::chaos_endurance::{run_soak_test, SoakTestConfig};
+use velocity_workflow_engine::cron::CronScheduler;
+use velocity_workflow_engine::db_adapter::{DatabaseAdapter, InMemoryAdapter, WorkflowRecord};
+use velocity_workflow_engine::dynamic_config::{ConfigValue, DynamicConfig};
+use velocity_workflow_engine::engine::{ActivityRetryPolicy, WorkflowEngine, WorkflowStatus};
+use velocity_workflow_engine::event_history::{HistoryEventType, HistoryStore};
+use velocity_workflow_engine::heartbeat::HeartbeatTracker;
+use velocity_workflow_engine::history_compaction::{
+    CompactableEventType, CompactionConfig, HistoryCompactor,
+};
+use velocity_workflow_engine::hot_swap::{HotSwapRegistry, HotSwapResult};
+use velocity_workflow_engine::memo::MemoStore;
+use velocity_workflow_engine::metrics::MetricsRegistry;
+use velocity_workflow_engine::namespace::{NamespaceConfig, NamespaceRegistry};
+use velocity_workflow_engine::network_replication::{FrameType, WireFrame};
+use velocity_workflow_engine::nexus::{NexusManager, NexusOperationState};
+use velocity_workflow_engine::partition::PartitionManager;
+use velocity_workflow_engine::payload_codec::{CodecChain, PayloadCodec, XorCodec};
 use velocity_workflow_engine::query_handler::QueryRegistry;
+use velocity_workflow_engine::raft_consensus::{RaftConfig, RaftEventType, RaftNode, RaftState};
+use velocity_workflow_engine::rate_limiter::RateLimiter;
+use velocity_workflow_engine::replay::ReplayEngine;
+use velocity_workflow_engine::retry::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitState, RetryPolicy,
+};
+use velocity_workflow_engine::saga::{SagaOrchestrator, SagaStepDefinition};
+use velocity_workflow_engine::search_index::SearchAttributeIndex;
+use velocity_workflow_engine::sharding::ShardManager;
+use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
+use velocity_workflow_engine::timer_engine::TimerEngine;
+use velocity_workflow_engine::visibility::SearchAttributeValue;
+use velocity_workflow_engine::worker_versioning::WorkerVersioning;
+use velocity_workflow_engine::*;
 
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Workflow Lifecycle Tests
@@ -102,9 +106,12 @@ fn test_workflow_with_cron_schedule() {
 fn test_workflow_with_saga_compensation() {
     let orchestrator = SagaOrchestrator::new();
     let steps = vec![
-        SagaStepDefinition::new("book_flight", 100).with_compensation(200, Some(b"cancel_flight".to_vec())),
-        SagaStepDefinition::new("book_hotel", 101).with_compensation(201, Some(b"cancel_hotel".to_vec())),
-        SagaStepDefinition::new("book_car", 102).with_compensation(202, Some(b"cancel_car".to_vec())),
+        SagaStepDefinition::new("book_flight", 100)
+            .with_compensation(200, Some(b"cancel_flight".to_vec())),
+        SagaStepDefinition::new("book_hotel", 101)
+            .with_compensation(201, Some(b"cancel_hotel".to_vec())),
+        SagaStepDefinition::new("book_car", 102)
+            .with_compensation(202, Some(b"cancel_car".to_vec())),
     ];
     let saga_id = orchestrator.create_saga(42, steps);
 
@@ -123,7 +130,10 @@ fn test_workflow_with_saga_compensation() {
     orchestrator.complete_compensation(saga_id, 0);
     orchestrator.complete_compensation(saga_id, 1);
     let saga = orchestrator.get_saga(saga_id).unwrap();
-    assert_eq!(saga.status, velocity_workflow_engine::saga::SagaStatus::Compensated);
+    assert_eq!(
+        saga.status,
+        velocity_workflow_engine::saga::SagaStatus::Compensated
+    );
 }
 
 #[test]
@@ -209,13 +219,22 @@ fn test_workflow_with_worker_versioning() {
     let set_id = wv.create_version_set();
     assert!(wv.add_build_id(set_id, "build-v1"));
     assert!(wv.add_build_id(set_id, "build-v2"));
-    assert_eq!(wv.get_current_build_id(set_id), Some("build-v1".to_string()));
+    assert_eq!(
+        wv.get_current_build_id(set_id),
+        Some("build-v1".to_string())
+    );
 
     wv.set_current_build_id(set_id, "build-v2");
-    assert_eq!(wv.get_current_build_id(set_id), Some("build-v2".to_string()));
+    assert_eq!(
+        wv.get_current_build_id(set_id),
+        Some("build-v2".to_string())
+    );
 
     wv.add_routing_rule("my-queue", "build-v2", 100);
-    assert_eq!(wv.resolve_build_id("my-queue"), Some("build-v2".to_string()));
+    assert_eq!(
+        wv.resolve_build_id("my-queue"),
+        Some("build-v2".to_string())
+    );
 }
 
 #[test]
@@ -227,9 +246,15 @@ fn test_workflow_with_partition() {
     assert_ne!(p1, p2);
 
     let item = TaskItem {
-        task_id: 0, kind: TaskKind::WorkflowTask, workflow_key: 100,
-        task_queue_hash: 42, step_index: 0, activity_name_id: 0, attempt: 1,
-        priority: 0, deadline_ms: 0,
+        task_id: 0,
+        kind: TaskKind::WorkflowTask,
+        workflow_key: 100,
+        task_queue_hash: 42,
+        step_index: 0,
+        activity_name_id: 0,
+        attempt: 1,
+        priority: 0,
+        deadline_ms: 0,
     };
     mgr.enqueue(42, item);
     let task = mgr.poll_with_forwarding(42);
@@ -261,7 +286,9 @@ fn test_signal_then_query() {
     let key = engine.start_workflow(1, 1, 0, 42, 2, None);
 
     // Register a query handler
-    engine.query_registry().register_handler(key, 1, Box::new(|_input| b"status=running".to_vec()));
+    engine
+        .query_registry()
+        .register_handler(key, 1, Box::new(|_input| b"status=running".to_vec()));
 
     // Signal the workflow
     engine.signal_workflow(key, 10, b"approval".to_vec());
@@ -292,14 +319,34 @@ fn test_task_queue_priority() {
     let hash = 42u64;
 
     // Enqueue tasks with different priorities
-    tq.enqueue(hash, TaskItem {
-        task_id: 1, kind: TaskKind::WorkflowTask, workflow_key: 1, task_queue_hash: hash,
-        step_index: 0, activity_name_id: 0, attempt: 1, priority: 10, deadline_ms: 0,
-    });
-    tq.enqueue(hash, TaskItem {
-        task_id: 2, kind: TaskKind::WorkflowTask, workflow_key: 2, task_queue_hash: hash,
-        step_index: 0, activity_name_id: 0, attempt: 1, priority: 1, deadline_ms: 0,
-    });
+    tq.enqueue(
+        hash,
+        TaskItem {
+            task_id: 1,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 1,
+            task_queue_hash: hash,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 10,
+            deadline_ms: 0,
+        },
+    );
+    tq.enqueue(
+        hash,
+        TaskItem {
+            task_id: 2,
+            kind: TaskKind::WorkflowTask,
+            workflow_key: 2,
+            task_queue_hash: hash,
+            step_index: 0,
+            activity_name_id: 0,
+            attempt: 1,
+            priority: 1,
+            deadline_ms: 0,
+        },
+    );
 
     // Both should be retrievable
     let t1 = tq.try_poll(hash);
@@ -332,7 +379,9 @@ fn test_batch_operations() {
     let k2 = engine.start_workflow(2, 1, 0, 42, 1, None);
     let k3 = engine.start_workflow(3, 1, 0, 42, 1, None);
 
-    let batch_id = engine.batch_executor().submit_terminate(&engine, vec![k1, k2, k3]);
+    let batch_id = engine
+        .batch_executor()
+        .submit_terminate(&engine, vec![k1, k2, k3]);
     assert!(batch_id > 0);
 
     assert_eq!(engine.get_status(k1), WorkflowStatus::Terminated);
@@ -403,7 +452,15 @@ fn test_nexus_operation_lifecycle() {
     let mgr = NexusManager::new();
     mgr.register_service("payment-svc", "http://payment:8080");
 
-    let op_id = mgr.start_operation("payment-svc", "charge", 42, Some(b"amount=100".to_vec()), None).unwrap();
+    let op_id = mgr
+        .start_operation(
+            "payment-svc",
+            "charge",
+            42,
+            Some(b"amount=100".to_vec()),
+            None,
+        )
+        .unwrap();
     assert!(op_id > 0);
 
     let op = mgr.get_operation(op_id).unwrap();
@@ -420,7 +477,10 @@ fn test_nexus_operation_lifecycle() {
 
 #[test]
 fn test_raft_consensus() {
-    let config = RaftConfig { node_id: 1, ..RaftConfig::default() };
+    let config = RaftConfig {
+        node_id: 1,
+        ..RaftConfig::default()
+    };
     let mut node = RaftNode::new(config);
 
     // Force leader election for single-node cluster
@@ -429,7 +489,9 @@ fn test_raft_consensus() {
     assert_eq!(node.state(), RaftState::Leader);
 
     // Append entries
-    let idx = node.append_entry(42, RaftEventType::WorkflowStarted, b"start".to_vec()).unwrap();
+    let idx = node
+        .append_entry(42, RaftEventType::WorkflowStarted, b"start".to_vec())
+        .unwrap();
     assert!(idx > 0);
 
     // Commit entries
@@ -440,12 +502,19 @@ fn test_raft_consensus() {
 
 #[test]
 fn test_history_compaction() {
-    let config = CompactionConfig { l0_threshold: 5, ..CompactionConfig::default() };
+    let config = CompactionConfig {
+        l0_threshold: 5,
+        ..CompactionConfig::default()
+    };
     let mut compactor = HistoryCompactor::new(config);
 
     // Add events to the compactor
     for _i in 0..10 {
-        compactor.append_event(42, CompactableEventType::ActivityTaskCompleted, b"data".to_vec());
+        compactor.append_event(
+            42,
+            CompactableEventType::ActivityTaskCompleted,
+            b"data".to_vec(),
+        );
     }
 
     let stats = compactor.stats();
@@ -465,8 +534,17 @@ fn test_network_replication_protocol() {
     assert_eq!(decoded.payload, b"replication-data".to_vec());
 
     // Test all frame types
-    for ft in [FrameType::Handshake, FrameType::Ack, FrameType::Ping, FrameType::Pong, FrameType::Shutdown] {
-        let f = WireFrame { frame_type: ft, payload: vec![] };
+    for ft in [
+        FrameType::Handshake,
+        FrameType::Ack,
+        FrameType::Ping,
+        FrameType::Pong,
+        FrameType::Shutdown,
+    ] {
+        let f = WireFrame {
+            frame_type: ft,
+            payload: vec![],
+        };
         let enc = f.encode();
         let dec = WireFrame::decode(&enc).unwrap();
         assert_eq!(dec.frame_type, ft);
@@ -511,7 +589,10 @@ fn test_db_adapter_persistence() {
         current_step: 0,
         total_steps: 3,
         merkle_root: slab.merkle_root.to_vec(),
-        step_bitmask: slab.step_bitmask.bits.iter()
+        step_bitmask: slab
+            .step_bitmask
+            .bits
+            .iter()
             .flat_map(|w| w.to_le_bytes())
             .collect(),
         status: WorkflowStatus::Running,
@@ -601,7 +682,12 @@ fn test_chaos_soak_test() {
     };
     let metrics = run_soak_test(&config);
     // The soak test should complete without panicking
-    assert!(metrics.workflows_started.load(std::sync::atomic::Ordering::Relaxed) > 0);
+    assert!(
+        metrics
+            .workflows_started
+            .load(std::sync::atomic::Ordering::Relaxed)
+            > 0
+    );
 }
 
 #[test]
@@ -622,11 +708,15 @@ fn test_dynamic_config_override() {
 #[test]
 fn test_query_registry_lifecycle() {
     let registry = QueryRegistry::new();
-    registry.register_handler(42, 1, Box::new(|input| {
-        let mut r = input.to_vec();
-        r.extend_from_slice(b"_processed");
-        r
-    }));
+    registry.register_handler(
+        42,
+        1,
+        Box::new(|input| {
+            let mut r = input.to_vec();
+            r.extend_from_slice(b"_processed");
+            r
+        }),
+    );
 
     assert!(registry.has_handler(42, 1));
     assert!(!registry.has_handler(42, 2));
@@ -661,9 +751,15 @@ fn test_engine_metrics_incremented() {
     engine.complete_workflow(k1, Some(b"ok".to_vec()));
     engine.fail_workflow(k2);
 
-    let started = engine.metrics_registry().get_counter("velocity_workflow_started_total");
-    let completed = engine.metrics_registry().get_counter("velocity_workflow_completed_total");
-    let failed = engine.metrics_registry().get_counter("velocity_workflow_failed_total");
+    let started = engine
+        .metrics_registry()
+        .get_counter("velocity_workflow_started_total");
+    let completed = engine
+        .metrics_registry()
+        .get_counter("velocity_workflow_completed_total");
+    let failed = engine
+        .metrics_registry()
+        .get_counter("velocity_workflow_failed_total");
 
     assert_eq!(started, 2);
     assert_eq!(completed, 1);
@@ -683,7 +779,10 @@ fn test_engine_history_recorded() {
     // Engine records workflow-level events: Started and Completed
     assert!(history.len() >= 2);
     assert_eq!(history[0].event_type, HistoryEventType::WorkflowStarted);
-    assert_eq!(history.last().unwrap().event_type, HistoryEventType::WorkflowCompleted);
+    assert_eq!(
+        history.last().unwrap().event_type,
+        HistoryEventType::WorkflowCompleted
+    );
 }
 
 #[test]
@@ -740,8 +839,7 @@ fn test_timer_engine_schedule_and_cancel() {
 #[test]
 fn test_namespace_registration_and_lookup() {
     let registry = NamespaceRegistry::new();
-    let config = NamespaceConfig::new(1, "production")
-        .with_description("Production namespace");
+    let config = NamespaceConfig::new(1, "production").with_description("Production namespace");
     registry.register(config).unwrap();
 
     let ns_id = registry.get_by_name("production");

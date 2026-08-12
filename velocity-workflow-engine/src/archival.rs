@@ -3,7 +3,10 @@
 //! reducing memory footprint while preserving history for compliance/queries.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::engine::WorkflowStatus;
@@ -68,17 +71,23 @@ impl ArchiveStore {
         self.records.lock().unwrap().insert(key, record);
 
         // Update secondary indices
-        self.by_namespace.lock().unwrap()
+        self.by_namespace
+            .lock()
+            .unwrap()
             .entry(ns)
             .or_default()
             .push(key);
 
-        self.by_type.lock().unwrap()
+        self.by_type
+            .lock()
+            .unwrap()
             .entry(wf_type)
             .or_default()
             .push(key);
 
-        self.by_status.lock().unwrap()
+        self.by_status
+            .lock()
+            .unwrap()
             .entry(status_byte)
             .or_default()
             .push(key);
@@ -128,14 +137,18 @@ impl ArchiveStore {
 
     /// Count archived workflows by namespace.
     pub fn count_by_namespace(&self, namespace_id: u64) -> usize {
-        self.by_namespace.lock().unwrap()
+        self.by_namespace
+            .lock()
+            .unwrap()
             .get(&namespace_id)
             .map_or(0, |v| v.len())
     }
 
     /// Count archived workflows by status.
     pub fn count_by_status(&self, status: WorkflowStatus) -> usize {
-        self.by_status.lock().unwrap()
+        self.by_status
+            .lock()
+            .unwrap()
             .get(&(status as u8))
             .map_or(0, |v| v.len())
     }

@@ -138,7 +138,10 @@ impl ReplicationTransport {
     /// Register a remote cluster endpoint for replication.
     pub fn add_link(&self, cluster_name: &str, cluster_id: u64, endpoint: &str) {
         let mut links = self.links.write().unwrap();
-        links.insert(cluster_id, ReplicationLink::new(cluster_name, cluster_id, endpoint));
+        links.insert(
+            cluster_id,
+            ReplicationLink::new(cluster_name, cluster_id, endpoint),
+        );
     }
 
     /// Remove a replication link.
@@ -285,7 +288,7 @@ mod tests {
         let transport = ReplicationTransport::new();
         transport.add_link("cluster-b", 2, "http://cluster-b:9090");
         assert_eq!(transport.active_link_count(), 1);
-        
+
         transport.remove_link(2);
         assert_eq!(transport.active_link_count(), 0);
     }
@@ -294,14 +297,14 @@ mod tests {
     fn test_send_and_pull() {
         let transport = ReplicationTransport::new();
         transport.add_link("cluster-b", 2, "http://cluster-b:9090");
-        
+
         let task = make_task(100, 5);
         assert!(transport.send_to_cluster(2, task));
-        
+
         let pulled = transport.pull_for_cluster(2, 10);
         assert_eq!(pulled.len(), 1);
         assert_eq!(pulled[0].workflow_key, 100);
-        
+
         // Second pull should be empty
         let pulled2 = transport.pull_for_cluster(2, 10);
         assert!(pulled2.is_empty());
@@ -312,11 +315,11 @@ mod tests {
         let transport = ReplicationTransport::new();
         transport.add_link("cluster-b", 2, "http://b:9090");
         transport.add_link("cluster-c", 3, "http://c:9090");
-        
+
         let task = make_task(200, 10);
         let sent = transport.broadcast(task);
         assert_eq!(sent, 2);
-        
+
         assert_eq!(transport.pull_for_cluster(2, 10).len(), 1);
         assert_eq!(transport.pull_for_cluster(3, 10).len(), 1);
     }
@@ -325,11 +328,11 @@ mod tests {
     fn test_push_and_drain() {
         let transport = ReplicationTransport::new();
         transport.add_link("cluster-b", 2, "http://b:9090");
-        
+
         let tasks = vec![make_task(300, 1), make_task(301, 2)];
         let received = transport.push_from_cluster(2, tasks);
         assert_eq!(received, 2);
-        
+
         let drained = transport.drain_incoming(2, 10);
         assert_eq!(drained.len(), 2);
     }
@@ -337,11 +340,11 @@ mod tests {
     #[test]
     fn test_push_without_link() {
         let transport = ReplicationTransport::new();
-        
+
         let tasks = vec![make_task(400, 1)];
         let received = transport.push_from_cluster(99, tasks);
         assert_eq!(received, 1);
-        
+
         // Should be in global buffer
         let drained = transport.drain_global_incoming(10);
         assert_eq!(drained.len(), 1);
@@ -351,10 +354,10 @@ mod tests {
     fn test_deactivate_link() {
         let transport = ReplicationTransport::new();
         transport.add_link("cluster-b", 2, "http://b:9090");
-        
+
         transport.set_link_active(2, false);
         assert_eq!(transport.active_link_count(), 0);
-        
+
         // Can't send to inactive link
         assert!(!transport.send_to_cluster(2, make_task(500, 1)));
     }
@@ -363,10 +366,10 @@ mod tests {
     fn test_link_status() {
         let transport = ReplicationTransport::new();
         transport.add_link("cluster-b", 2, "http://b:9090");
-        
+
         transport.send_to_cluster(2, make_task(600, 5));
         transport.pull_for_cluster(2, 10);
-        
+
         let status = transport.link_status(2).unwrap();
         assert_eq!(status.cluster_name, "cluster-b");
         assert_eq!(status.tasks_sent, 1);
@@ -377,7 +380,7 @@ mod tests {
     fn test_queue_full() {
         let transport = ReplicationTransport::new();
         transport.add_link("cluster-b", 2, "http://b:9090");
-        
+
         // Fill the queue (max is 10_000)
         for i in 0..10_000 {
             assert!(transport.send_to_cluster(2, make_task(i, i as u64)));

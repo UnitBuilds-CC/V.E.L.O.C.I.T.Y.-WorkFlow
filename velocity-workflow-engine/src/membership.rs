@@ -6,8 +6,11 @@
 //! 3. **HealthChecker**: Periodic health checking of cluster members.
 //! 4. **ShardOwnershipManager**: Maps shards to hosts based on ring position.
 
-use std::collections::{HashMap, BTreeMap};
-use std::sync::{Mutex, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── 1. Member ────────────────────────────────────────────────────────────────
@@ -94,7 +97,8 @@ impl ClusterMember {
     }
 
     pub fn is_healthy(&self) -> bool {
-        self.status == MemberStatus::Healthy && self.time_since_heartbeat() < Duration::from_secs(30)
+        self.status == MemberStatus::Healthy
+            && self.time_since_heartbeat() < Duration::from_secs(30)
     }
 
     pub fn endpoint(&self) -> String {
@@ -155,11 +159,15 @@ impl MembershipRing {
     /// Find the owner of a key (shard or workflow).
     pub fn lookup(&self, key: u64) -> Option<ClusterMember> {
         let ring = self.ring.read().unwrap();
-        if ring.is_empty() { return None; }
+        if ring.is_empty() {
+            return None;
+        }
 
         let hash = key;
         // Find the first node clockwise from the hash
-        let host_id = ring.range(hash..).next()
+        let host_id = ring
+            .range(hash..)
+            .next()
             .or_else(|| ring.iter().next()) // Wrap around
             .map(|(_, &v)| v)?;
 
@@ -170,7 +178,9 @@ impl MembershipRing {
     pub fn lookup_n(&self, key: u64, n: usize) -> Vec<ClusterMember> {
         let ring = self.ring.read().unwrap();
         let members = self.members.read().unwrap();
-        if ring.is_empty() { return Vec::new(); }
+        if ring.is_empty() {
+            return Vec::new();
+        }
 
         let mut result = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -178,11 +188,15 @@ impl MembershipRing {
         // Start from the hash position and walk clockwise
         let mut iter = ring.range(key..).chain(ring.range(..key));
         for (_, &host_id) in iter.by_ref() {
-            if seen.contains(&host_id) { continue; }
+            if seen.contains(&host_id) {
+                continue;
+            }
             if let Some(member) = members.get(&host_id) {
                 result.push(member.clone());
                 seen.insert(host_id);
-                if result.len() >= n { break; }
+                if result.len() >= n {
+                    break;
+                }
             }
         }
         result
@@ -195,7 +209,10 @@ impl MembershipRing {
 
     /// Get healthy members.
     pub fn healthy_members(&self) -> Vec<ClusterMember> {
-        self.members.read().unwrap().values()
+        self.members
+            .read()
+            .unwrap()
+            .values()
             .filter(|m| m.is_healthy())
             .cloned()
             .collect()
@@ -203,17 +220,28 @@ impl MembershipRing {
 
     /// Get members by role.
     pub fn members_by_role(&self, role: MemberRole) -> Vec<ClusterMember> {
-        self.members.read().unwrap().values()
+        self.members
+            .read()
+            .unwrap()
+            .values()
             .filter(|m| m.role == role || m.role == MemberRole::All)
             .cloned()
             .collect()
     }
 
     /// Total member count.
-    pub fn member_count(&self) -> usize { self.members.read().unwrap().len() }
-    pub fn ring_size(&self) -> usize { self.ring.read().unwrap().len() }
-    pub fn total_joins(&self) -> u64 { self.total_joins.load(Ordering::Relaxed) }
-    pub fn total_leaves(&self) -> u64 { self.total_leaves.load(Ordering::Relaxed) }
+    pub fn member_count(&self) -> usize {
+        self.members.read().unwrap().len()
+    }
+    pub fn ring_size(&self) -> usize {
+        self.ring.read().unwrap().len()
+    }
+    pub fn total_joins(&self) -> u64 {
+        self.total_joins.load(Ordering::Relaxed)
+    }
+    pub fn total_leaves(&self) -> u64 {
+        self.total_leaves.load(Ordering::Relaxed)
+    }
 
     fn hash_key(&self, key: &str) -> u64 {
         // Simple hash function
@@ -226,7 +254,9 @@ impl MembershipRing {
 }
 
 impl Default for MembershipRing {
-    fn default() -> Self { Self::new(128) }
+    fn default() -> Self {
+        Self::new(128)
+    }
 }
 
 // ─── 3. Health Checker ───────────────────────────────────────────────────────
@@ -270,14 +300,21 @@ impl ClusterHealthChecker {
             is_healthy,
             latency_ms: 1, // Simulated
             checked_at: Instant::now(),
-            failure_reason: if is_healthy { None } else { Some("Heartbeat timeout".to_string()) },
+            failure_reason: if is_healthy {
+                None
+            } else {
+                Some("Heartbeat timeout".to_string())
+            },
         };
 
         if !is_healthy {
             self.total_failures.fetch_add(1, Ordering::Relaxed);
         }
 
-        self.results.write().unwrap().insert(member.host_id, result.clone());
+        self.results
+            .write()
+            .unwrap()
+            .insert(member.host_id, result.clone());
         result
     }
 
@@ -293,18 +330,27 @@ impl ClusterHealthChecker {
 
     /// Get all unhealthy members.
     pub fn unhealthy_members(&self) -> Vec<HealthCheckResult> {
-        self.results.read().unwrap().values()
+        self.results
+            .read()
+            .unwrap()
+            .values()
             .filter(|r| !r.is_healthy)
             .cloned()
             .collect()
     }
 
-    pub fn total_checks(&self) -> u64 { self.total_checks.load(Ordering::Relaxed) }
-    pub fn total_failures(&self) -> u64 { self.total_failures.load(Ordering::Relaxed) }
+    pub fn total_checks(&self) -> u64 {
+        self.total_checks.load(Ordering::Relaxed)
+    }
+    pub fn total_failures(&self) -> u64 {
+        self.total_failures.load(Ordering::Relaxed)
+    }
 }
 
 impl Default for ClusterHealthChecker {
-    fn default() -> Self { Self::new(5000, 30000) }
+    fn default() -> Self {
+        Self::new(5000, 30000)
+    }
 }
 
 // ─── 4. Shard Ownership Manager ──────────────────────────────────────────────
@@ -352,14 +398,19 @@ impl ShardOwnershipManager {
 
     /// Get all shards owned by a host.
     pub fn shards_for_host(&self, host_id: u64) -> Vec<u32> {
-        self.ownership.read().unwrap().iter()
+        self.ownership
+            .read()
+            .unwrap()
+            .iter()
             .filter(|(_, &owner)| owner == host_id)
             .map(|(&shard, _)| shard)
             .collect()
     }
 
     /// Total shard movements.
-    pub fn total_movements(&self) -> u64 { self.total_movements.load(Ordering::Relaxed) }
+    pub fn total_movements(&self) -> u64 {
+        self.total_movements.load(Ordering::Relaxed)
+    }
 
     /// Ownership distribution stats.
     pub fn distribution(&self) -> HashMap<u64, usize> {
@@ -426,7 +477,10 @@ mod tests {
         assert_eq!(owners.len(), 3);
         // All different hosts
         let ids: Vec<u64> = owners.iter().map(|o| o.host_id).collect();
-        assert_eq!(ids.iter().collect::<std::collections::HashSet<_>>().len(), 3);
+        assert_eq!(
+            ids.iter().collect::<std::collections::HashSet<_>>().len(),
+            3
+        );
     }
 
     #[test]

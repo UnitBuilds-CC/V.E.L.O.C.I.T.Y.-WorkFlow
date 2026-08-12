@@ -4,7 +4,10 @@
 //! schema versioning, and type conversion.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Serialization Types
@@ -45,14 +48,20 @@ pub struct SerializerStats {
 
 impl EventSerializer {
     pub fn new(encoding: EncodingType) -> Self {
-        Self { encoding, stats: SerializerStats::default() }
+        Self {
+            encoding,
+            stats: SerializerStats::default(),
+        }
     }
 
-    pub fn serialize_event(&self, event: &SerializableEvent) -> Result<SerializedData, SerializationError> {
+    pub fn serialize_event(
+        &self,
+        event: &SerializableEvent,
+    ) -> Result<SerializedData, SerializationError> {
         let mut buf = Vec::new();
         // Magic bytes
         buf.extend_from_slice(&[0x56, 0x45]); // "VE"
-        // Schema version
+                                              // Schema version
         buf.extend_from_slice(&event.schema_version.to_be_bytes());
         // Event type
         buf.extend_from_slice(&(event.event_type as u32).to_be_bytes());
@@ -73,7 +82,9 @@ impl EventSerializer {
         }
 
         self.stats.serialized_count.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_bytes_written.fetch_add(buf.len() as u64, Ordering::Relaxed);
+        self.stats
+            .total_bytes_written
+            .fetch_add(buf.len() as u64, Ordering::Relaxed);
 
         Ok(SerializedData {
             data: buf,
@@ -82,41 +93,108 @@ impl EventSerializer {
         })
     }
 
-    pub fn deserialize_event(&self, data: &SerializedData) -> Result<SerializableEvent, SerializationError> {
+    pub fn deserialize_event(
+        &self,
+        data: &SerializedData,
+    ) -> Result<SerializableEvent, SerializationError> {
         let buf = &data.data;
-        if buf.len() < 26 { return Err(SerializationError::InvalidData("too short".to_string())); }
-        if buf[0] != 0x56 || buf[1] != 0x45 { return Err(SerializationError::InvalidData("bad magic".to_string())); }
+        if buf.len() < 26 {
+            return Err(SerializationError::InvalidData("too short".to_string()));
+        }
+        if buf[0] != 0x56 || buf[1] != 0x45 {
+            return Err(SerializationError::InvalidData("bad magic".to_string()));
+        }
 
         let mut offset = 2;
-        let schema_version = i32::from_be_bytes([buf[offset], buf[offset+1], buf[offset+2], buf[offset+3]]);
+        let schema_version = i32::from_be_bytes([
+            buf[offset],
+            buf[offset + 1],
+            buf[offset + 2],
+            buf[offset + 3],
+        ]);
         offset += 4;
-        let event_type = u32::from_be_bytes([buf[offset], buf[offset+1], buf[offset+2], buf[offset+3]]);
+        let event_type = u32::from_be_bytes([
+            buf[offset],
+            buf[offset + 1],
+            buf[offset + 2],
+            buf[offset + 3],
+        ]);
         offset += 4;
-        let event_id = i64::from_be_bytes([buf[offset], buf[offset+1], buf[offset+2], buf[offset+3], buf[offset+4], buf[offset+5], buf[offset+6], buf[offset+7]]);
+        let event_id = i64::from_be_bytes([
+            buf[offset],
+            buf[offset + 1],
+            buf[offset + 2],
+            buf[offset + 3],
+            buf[offset + 4],
+            buf[offset + 5],
+            buf[offset + 6],
+            buf[offset + 7],
+        ]);
         offset += 8;
-        let timestamp = i64::from_be_bytes([buf[offset], buf[offset+1], buf[offset+2], buf[offset+3], buf[offset+4], buf[offset+5], buf[offset+6], buf[offset+7]]);
+        let timestamp = i64::from_be_bytes([
+            buf[offset],
+            buf[offset + 1],
+            buf[offset + 2],
+            buf[offset + 3],
+            buf[offset + 4],
+            buf[offset + 5],
+            buf[offset + 6],
+            buf[offset + 7],
+        ]);
         offset += 8;
-        let attr_count = u32::from_be_bytes([buf[offset], buf[offset+1], buf[offset+2], buf[offset+3]]) as usize;
+        let attr_count = u32::from_be_bytes([
+            buf[offset],
+            buf[offset + 1],
+            buf[offset + 2],
+            buf[offset + 3],
+        ]) as usize;
         offset += 4;
 
         let mut attributes = HashMap::new();
         for _ in 0..attr_count {
-            if offset + 4 > buf.len() { return Err(SerializationError::InvalidData("truncated key len".to_string())); }
-            let key_len = u32::from_be_bytes([buf[offset], buf[offset+1], buf[offset+2], buf[offset+3]]) as usize;
+            if offset + 4 > buf.len() {
+                return Err(SerializationError::InvalidData(
+                    "truncated key len".to_string(),
+                ));
+            }
+            let key_len = u32::from_be_bytes([
+                buf[offset],
+                buf[offset + 1],
+                buf[offset + 2],
+                buf[offset + 3],
+            ]) as usize;
             offset += 4;
-            if offset + key_len > buf.len() { return Err(SerializationError::InvalidData("truncated key".to_string())); }
-            let key = String::from_utf8(buf[offset..offset+key_len].to_vec()).map_err(|_| SerializationError::InvalidUtf8)?;
+            if offset + key_len > buf.len() {
+                return Err(SerializationError::InvalidData("truncated key".to_string()));
+            }
+            let key = String::from_utf8(buf[offset..offset + key_len].to_vec())
+                .map_err(|_| SerializationError::InvalidUtf8)?;
             offset += key_len;
-            if offset + 4 > buf.len() { return Err(SerializationError::InvalidData("truncated val len".to_string())); }
-            let val_len = u32::from_be_bytes([buf[offset], buf[offset+1], buf[offset+2], buf[offset+3]]) as usize;
+            if offset + 4 > buf.len() {
+                return Err(SerializationError::InvalidData(
+                    "truncated val len".to_string(),
+                ));
+            }
+            let val_len = u32::from_be_bytes([
+                buf[offset],
+                buf[offset + 1],
+                buf[offset + 2],
+                buf[offset + 3],
+            ]) as usize;
             offset += 4;
-            if offset + val_len > buf.len() { return Err(SerializationError::InvalidData("truncated val".to_string())); }
-            attributes.insert(key, buf[offset..offset+val_len].to_vec());
+            if offset + val_len > buf.len() {
+                return Err(SerializationError::InvalidData("truncated val".to_string()));
+            }
+            attributes.insert(key, buf[offset..offset + val_len].to_vec());
             offset += val_len;
         }
 
-        self.stats.deserialized_count.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_bytes_read.fetch_add(data.data.len() as u64, Ordering::Relaxed);
+        self.stats
+            .deserialized_count
+            .fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_bytes_read
+            .fetch_add(data.data.len() as u64, Ordering::Relaxed);
 
         Ok(SerializableEvent {
             event_type: event_type as i32,
@@ -127,7 +205,9 @@ impl EventSerializer {
         })
     }
 
-    pub fn stats(&self) -> &SerializerStats { &self.stats }
+    pub fn stats(&self) -> &SerializerStats {
+        &self.stats
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -152,7 +232,10 @@ impl BatchSerializer {
         Self { encoding }
     }
 
-    pub fn serialize_batch(&self, events: &[SerializableEvent]) -> Result<SerializedData, SerializationError> {
+    pub fn serialize_batch(
+        &self,
+        events: &[SerializableEvent],
+    ) -> Result<SerializedData, SerializationError> {
         let serializer = EventSerializer::new(self.encoding);
         let mut combined = Vec::new();
         combined.extend_from_slice(&(events.len() as u32).to_be_bytes());
@@ -168,19 +251,37 @@ impl BatchSerializer {
         })
     }
 
-    pub fn deserialize_batch(&self, data: &SerializedData) -> Result<Vec<SerializableEvent>, SerializationError> {
+    pub fn deserialize_batch(
+        &self,
+        data: &SerializedData,
+    ) -> Result<Vec<SerializableEvent>, SerializationError> {
         let buf = &data.data;
-        if buf.len() < 4 { return Err(SerializationError::InvalidData("too short".to_string())); }
+        if buf.len() < 4 {
+            return Err(SerializationError::InvalidData("too short".to_string()));
+        }
         let count = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
         let serializer = EventSerializer::new(self.encoding);
         let mut events = Vec::new();
         let mut offset = 4;
         for _ in 0..count {
-            if offset + 4 > buf.len() { break; }
-            let len = u32::from_be_bytes([buf[offset], buf[offset+1], buf[offset+2], buf[offset+3]]) as usize;
+            if offset + 4 > buf.len() {
+                break;
+            }
+            let len = u32::from_be_bytes([
+                buf[offset],
+                buf[offset + 1],
+                buf[offset + 2],
+                buf[offset + 3],
+            ]) as usize;
             offset += 4;
-            if offset + len > buf.len() { break; }
-            let single = SerializedData { data: buf[offset..offset+len].to_vec(), encoding: data.encoding, schema_version: data.schema_version };
+            if offset + len > buf.len() {
+                break;
+            }
+            let single = SerializedData {
+                data: buf[offset..offset + len].to_vec(),
+                encoding: data.encoding,
+                schema_version: data.schema_version,
+            };
             events.push(serializer.deserialize_event(&single)?);
             offset += len;
         }
@@ -224,11 +325,16 @@ pub enum FieldType {
 
 impl SchemaRegistry {
     pub fn new() -> Self {
-        Self { schemas: RwLock::new(HashMap::new()) }
+        Self {
+            schemas: RwLock::new(HashMap::new()),
+        }
     }
 
     pub fn register(&self, entry: SchemaEntry) {
-        self.schemas.write().unwrap().insert(entry.name.clone(), entry);
+        self.schemas
+            .write()
+            .unwrap()
+            .insert(entry.name.clone(), entry);
     }
 
     pub fn get(&self, name: &str) -> Option<SchemaEntry> {
@@ -286,7 +392,10 @@ mod tests {
         assert_eq!(deserialized.event_type, 1);
         assert_eq!(deserialized.event_id, 42);
         assert_eq!(deserialized.timestamp, 1700000000000);
-        assert_eq!(deserialized.attributes.get("workflow_id"), Some(&b"wf-1".to_vec()));
+        assert_eq!(
+            deserialized.attributes.get("workflow_id"),
+            Some(&b"wf-1".to_vec())
+        );
     }
 
     #[test]
@@ -303,8 +412,17 @@ mod tests {
         let serializer = EventSerializer::new(EncodingType::Proto3);
         serializer.serialize_event(&make_event()).unwrap();
         serializer.serialize_event(&make_event()).unwrap();
-        assert_eq!(serializer.stats().serialized_count.load(Ordering::Relaxed), 2);
-        assert!(serializer.stats().total_bytes_written.load(Ordering::Relaxed) > 0);
+        assert_eq!(
+            serializer.stats().serialized_count.load(Ordering::Relaxed),
+            2
+        );
+        assert!(
+            serializer
+                .stats()
+                .total_bytes_written
+                .load(Ordering::Relaxed)
+                > 0
+        );
     }
 
     #[test]
@@ -314,8 +432,16 @@ mod tests {
             name: "HistoryEvent".to_string(),
             version: 2,
             fields: vec![
-                SchemaField { name: "event_id".to_string(), field_type: FieldType::Int64, required: true },
-                SchemaField { name: "event_type".to_string(), field_type: FieldType::Enum, required: true },
+                SchemaField {
+                    name: "event_id".to_string(),
+                    field_type: FieldType::Int64,
+                    required: true,
+                },
+                SchemaField {
+                    name: "event_type".to_string(),
+                    field_type: FieldType::Enum,
+                    required: true,
+                },
             ],
         });
 
@@ -328,7 +454,11 @@ mod tests {
     #[test]
     fn test_deserialize_invalid() {
         let serializer = EventSerializer::new(EncodingType::Proto3);
-        let bad_data = SerializedData { data: vec![0, 0, 0], encoding: EncodingType::Proto3, schema_version: 1 };
+        let bad_data = SerializedData {
+            data: vec![0, 0, 0],
+            encoding: EncodingType::Proto3,
+            schema_version: 1,
+        };
         assert!(serializer.deserialize_event(&bad_data).is_err());
     }
 }

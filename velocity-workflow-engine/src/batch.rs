@@ -3,7 +3,10 @@
 //! many workflows in a single operation — mirroring Temporal's BatchService.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 
 use crate::engine::{WorkflowEngine, WorkflowStatus};
 
@@ -78,18 +81,28 @@ impl BatchExecutor {
     /// Submit a batch terminate operation for the given workflow keys.
     pub fn submit_terminate(&self, engine: &WorkflowEngine, workflow_keys: Vec<u64>) -> u64 {
         let batch_id = self.next_batch_id.fetch_add(1, Ordering::Relaxed);
-        let result = self.execute_batch(engine, batch_id, BatchOperationType::Terminate, &workflow_keys, None, None);
+        let result = self.execute_batch(
+            engine,
+            batch_id,
+            BatchOperationType::Terminate,
+            &workflow_keys,
+            None,
+            None,
+        );
 
         let mut batches = self.batches.lock().unwrap();
-        batches.insert(batch_id, BatchOperation {
+        batches.insert(
             batch_id,
-            operation: BatchOperationType::Terminate,
-            workflow_keys,
-            signal_name_id: None,
-            signal_payload: None,
-            status: BatchStatus::Completed,
-            result: Some(result),
-        });
+            BatchOperation {
+                batch_id,
+                operation: BatchOperationType::Terminate,
+                workflow_keys,
+                signal_name_id: None,
+                signal_payload: None,
+                status: BatchStatus::Completed,
+                result: Some(result),
+            },
+        );
 
         batch_id
     }
@@ -97,18 +110,28 @@ impl BatchExecutor {
     /// Submit a batch cancel operation.
     pub fn submit_cancel(&self, engine: &WorkflowEngine, workflow_keys: Vec<u64>) -> u64 {
         let batch_id = self.next_batch_id.fetch_add(1, Ordering::Relaxed);
-        let result = self.execute_batch(engine, batch_id, BatchOperationType::Cancel, &workflow_keys, None, None);
+        let result = self.execute_batch(
+            engine,
+            batch_id,
+            BatchOperationType::Cancel,
+            &workflow_keys,
+            None,
+            None,
+        );
 
         let mut batches = self.batches.lock().unwrap();
-        batches.insert(batch_id, BatchOperation {
+        batches.insert(
             batch_id,
-            operation: BatchOperationType::Cancel,
-            workflow_keys,
-            signal_name_id: None,
-            signal_payload: None,
-            status: BatchStatus::Completed,
-            result: Some(result),
-        });
+            BatchOperation {
+                batch_id,
+                operation: BatchOperationType::Cancel,
+                workflow_keys,
+                signal_name_id: None,
+                signal_payload: None,
+                status: BatchStatus::Completed,
+                result: Some(result),
+            },
+        );
 
         batch_id
     }
@@ -122,18 +145,28 @@ impl BatchExecutor {
         payload: Vec<u8>,
     ) -> u64 {
         let batch_id = self.next_batch_id.fetch_add(1, Ordering::Relaxed);
-        let result = self.execute_batch(engine, batch_id, BatchOperationType::Signal, &workflow_keys, Some(signal_name_id), Some(payload.clone()));
+        let result = self.execute_batch(
+            engine,
+            batch_id,
+            BatchOperationType::Signal,
+            &workflow_keys,
+            Some(signal_name_id),
+            Some(payload.clone()),
+        );
 
         let mut batches = self.batches.lock().unwrap();
-        batches.insert(batch_id, BatchOperation {
+        batches.insert(
             batch_id,
-            operation: BatchOperationType::Signal,
-            workflow_keys,
-            signal_name_id: Some(signal_name_id),
-            signal_payload: Some(payload),
-            status: BatchStatus::Completed,
-            result: Some(result),
-        });
+            BatchOperation {
+                batch_id,
+                operation: BatchOperationType::Signal,
+                workflow_keys,
+                signal_name_id: Some(signal_name_id),
+                signal_payload: Some(payload),
+                status: BatchStatus::Completed,
+                result: Some(result),
+            },
+        );
 
         batch_id
     }
@@ -141,18 +174,28 @@ impl BatchExecutor {
     /// Submit a batch query (status check) operation.
     pub fn submit_query_status(&self, engine: &WorkflowEngine, workflow_keys: Vec<u64>) -> u64 {
         let batch_id = self.next_batch_id.fetch_add(1, Ordering::Relaxed);
-        let result = self.execute_batch(engine, batch_id, BatchOperationType::QueryStatus, &workflow_keys, None, None);
+        let result = self.execute_batch(
+            engine,
+            batch_id,
+            BatchOperationType::QueryStatus,
+            &workflow_keys,
+            None,
+            None,
+        );
 
         let mut batches = self.batches.lock().unwrap();
-        batches.insert(batch_id, BatchOperation {
+        batches.insert(
             batch_id,
-            operation: BatchOperationType::QueryStatus,
-            workflow_keys,
-            signal_name_id: None,
-            signal_payload: None,
-            status: BatchStatus::Completed,
-            result: Some(result),
-        });
+            BatchOperation {
+                batch_id,
+                operation: BatchOperationType::QueryStatus,
+                workflow_keys,
+                signal_name_id: None,
+                signal_payload: None,
+                status: BatchStatus::Completed,
+                result: Some(result),
+            },
+        );
 
         batch_id
     }
@@ -183,7 +226,10 @@ impl BatchExecutor {
                         item_results.push(BatchItemResult {
                             workflow_key: key,
                             success: false,
-                            error_message: Some(format!("Workflow not running (status={:?})", status)),
+                            error_message: Some(format!(
+                                "Workflow not running (status={:?})",
+                                status
+                            )),
                         });
                         continue;
                     }
@@ -198,7 +244,10 @@ impl BatchExecutor {
                         item_results.push(BatchItemResult {
                             workflow_key: key,
                             success: false,
-                            error_message: Some(format!("Workflow not running (status={:?})", status)),
+                            error_message: Some(format!(
+                                "Workflow not running (status={:?})",
+                                status
+                            )),
                         });
                         continue;
                     }
@@ -206,7 +255,8 @@ impl BatchExecutor {
                 BatchOperationType::Signal => {
                     let status = engine.get_status(key);
                     if status == WorkflowStatus::Running {
-                        if let (Some(sig_id), Some(ref payload)) = (signal_name_id, &signal_payload) {
+                        if let (Some(sig_id), Some(ref payload)) = (signal_name_id, &signal_payload)
+                        {
                             engine.signal_workflow(key, sig_id, payload.clone());
                             true
                         } else {
@@ -223,7 +273,10 @@ impl BatchExecutor {
                         item_results.push(BatchItemResult {
                             workflow_key: key,
                             success: false,
-                            error_message: Some(format!("Workflow not running (status={:?})", status)),
+                            error_message: Some(format!(
+                                "Workflow not running (status={:?})",
+                                status
+                            )),
                         });
                         continue;
                     }
@@ -256,14 +309,18 @@ impl BatchExecutor {
 
     /// Get the result of a previously submitted batch operation.
     pub fn get_result(&self, batch_id: u64) -> Option<BatchResult> {
-        self.batches.lock().unwrap()
+        self.batches
+            .lock()
+            .unwrap()
             .get(&batch_id)
             .and_then(|b| b.result.clone())
     }
 
     /// Get the status of a batch operation.
     pub fn get_status(&self, batch_id: u64) -> Option<BatchStatus> {
-        self.batches.lock().unwrap()
+        self.batches
+            .lock()
+            .unwrap()
             .get(&batch_id)
             .map(|b| b.status)
     }

@@ -10,9 +10,12 @@
 //! 7. **TaskQueueUserData**: Per-task-queue versioning and user data management.
 //! 8. **PriorityMatcher**: Priority-based task matching with starvation prevention.
 
-use std::collections::{HashMap, HashSet, VecDeque, BinaryHeap};
 use std::cmp::Ordering as CmpOrdering;
-use std::sync::{Mutex, RwLock, Arc, atomic::{AtomicU64, AtomicBool, Ordering}};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc, Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 
 // ─── 1. Task Queue Partition ──────────────────────────────────────────────────
@@ -37,7 +40,11 @@ impl PartitionConfig {
     }
 }
 
-impl Default for PartitionConfig { fn default() -> Self { Self::new() } }
+impl Default for PartitionConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// A partition of a task queue.
 #[derive(Debug, Clone)]
@@ -86,12 +93,18 @@ impl PartitionManager {
                 owner_host: String::new(),
                 created_at: Instant::now(),
             };
-            self.partitions.write().unwrap().insert(id, partition.clone());
+            self.partitions
+                .write()
+                .unwrap()
+                .insert(id, partition.clone());
             partition_ids.push(id);
             partitions.push(partition);
         }
 
-        self.queue_to_partitions.write().unwrap().insert(queue_name.to_string(), partition_ids);
+        self.queue_to_partitions
+            .write()
+            .unwrap()
+            .insert(queue_name.to_string(), partition_ids);
         partitions
     }
 
@@ -100,19 +113,31 @@ impl PartitionManager {
         let ids = self.queue_to_partitions.read().unwrap();
         let partitions = self.partitions.read().unwrap();
         ids.get(queue_name)
-            .map(|ids| ids.iter().filter_map(|id| partitions.get(id).cloned()).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| partitions.get(id).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
     /// Get the root partition for a queue.
     pub fn get_root_partition(&self, queue_name: &str) -> Option<TaskQueuePartition> {
-        self.get_partitions(queue_name).into_iter().find(|p| p.is_root)
+        self.get_partitions(queue_name)
+            .into_iter()
+            .find(|p| p.is_root)
     }
 
     /// Route a task to a partition based on hash.
-    pub fn route_to_partition(&self, queue_name: &str, routing_key: u64) -> Option<TaskQueuePartition> {
+    pub fn route_to_partition(
+        &self,
+        queue_name: &str,
+        routing_key: u64,
+    ) -> Option<TaskQueuePartition> {
         let partitions = self.get_partitions(queue_name);
-        if partitions.is_empty() { return None; }
+        if partitions.is_empty() {
+            return None;
+        }
         let idx = (routing_key as usize) % partitions.len();
         Some(partitions[idx].clone())
     }
@@ -124,7 +149,9 @@ impl PartitionManager {
 }
 
 impl Default for PartitionManager {
-    fn default() -> Self { Self::new(PartitionConfig::new()) }
+    fn default() -> Self {
+        Self::new(PartitionConfig::new())
+    }
 }
 
 // ─── 2. Physical Task Queue ──────────────────────────────────────────────────
@@ -179,7 +206,9 @@ impl PhysicalTaskQueue {
     /// Add a task to the queue.
     pub fn add_task(&self, task: PhysicalTask) -> bool {
         let mut tasks = self.tasks.lock().unwrap();
-        if tasks.len() >= self.max_buffer_size { return false; }
+        if tasks.len() >= self.max_buffer_size {
+            return false;
+        }
         let idx = tasks.len();
         self.task_index.lock().unwrap().insert(task.task_id, idx);
         tasks.push_back(task);
@@ -198,7 +227,9 @@ impl PhysicalTaskQueue {
                 self.task_index.lock().unwrap().insert(t.task_id, i);
             }
             Some(task)
-        } else { None }
+        } else {
+            None
+        }
     }
 
     /// Remove expired tasks.
@@ -209,7 +240,8 @@ impl PhysicalTaskQueue {
         tasks.retain(|t| t.expiry.map_or(true, |e| e > now));
         let removed = before - tasks.len();
         if removed > 0 {
-            self.total_expired.fetch_add(removed as u64, Ordering::Relaxed);
+            self.total_expired
+                .fetch_add(removed as u64, Ordering::Relaxed);
             // Rebuild index
             let mut index = self.task_index.lock().unwrap();
             index.clear();
@@ -221,7 +253,9 @@ impl PhysicalTaskQueue {
     }
 
     /// Queue depth.
-    pub fn depth(&self) -> usize { self.tasks.lock().unwrap().len() }
+    pub fn depth(&self) -> usize {
+        self.tasks.lock().unwrap().len()
+    }
 
     /// Stats.
     pub fn stats(&self) -> PhysicalQueueStats {
@@ -277,14 +311,25 @@ impl LogicalTaskQueue {
 
     /// Register a physical partition.
     pub fn register_partition(&self, partition_id: u64) -> Arc<PhysicalTaskQueue> {
-        let pq = Arc::new(PhysicalTaskQueue::new(&self.queue_name, partition_id, self.max_physical_buffer));
-        self.physical_queues.write().unwrap().insert(partition_id, pq.clone());
+        let pq = Arc::new(PhysicalTaskQueue::new(
+            &self.queue_name,
+            partition_id,
+            self.max_physical_buffer,
+        ));
+        self.physical_queues
+            .write()
+            .unwrap()
+            .insert(partition_id, pq.clone());
         pq
     }
 
     /// Get the physical queue for a partition.
     pub fn get_physical(&self, partition_id: u64) -> Option<Arc<PhysicalTaskQueue>> {
-        self.physical_queues.read().unwrap().get(&partition_id).cloned()
+        self.physical_queues
+            .read()
+            .unwrap()
+            .get(&partition_id)
+            .cloned()
     }
 
     /// Add a task to the appropriate physical queue.
@@ -292,17 +337,28 @@ impl LogicalTaskQueue {
         let queues = self.physical_queues.read().unwrap();
         if let Some(pq) = queues.get(&partition_id) {
             pq.add_task(task)
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Poll from a specific physical queue.
     pub fn poll_task(&self, partition_id: u64) -> Option<PhysicalTask> {
-        self.physical_queues.read().unwrap().get(&partition_id)?.poll_task()
+        self.physical_queues
+            .read()
+            .unwrap()
+            .get(&partition_id)?
+            .poll_task()
     }
 
     /// Total depth across all physical queues.
     pub fn total_depth(&self) -> usize {
-        self.physical_queues.read().unwrap().values().map(|q| q.depth()).sum()
+        self.physical_queues
+            .read()
+            .unwrap()
+            .values()
+            .map(|q| q.depth())
+            .sum()
     }
 
     /// Number of physical partitions.
@@ -310,8 +366,12 @@ impl LogicalTaskQueue {
         self.physical_queues.read().unwrap().len()
     }
 
-    pub fn queue_name(&self) -> &str { &self.queue_name }
-    pub fn queue_type(&self) -> TaskQueueType { self.task_queue_type }
+    pub fn queue_name(&self) -> &str {
+        &self.queue_name
+    }
+    pub fn queue_type(&self) -> TaskQueueType {
+        self.task_queue_type
+    }
 }
 
 // ─── 4. Matching Engine ──────────────────────────────────────────────────────
@@ -333,10 +393,20 @@ pub struct Poller {
 /// Result of a matching attempt.
 #[derive(Debug)]
 pub enum MatchResult {
-    Matched { poller_id: u64, task: PhysicalTask },
-    NoTask { poller_id: u64 },
-    NoPoller { task: PhysicalTask },
-    Forwarded { task: PhysicalTask, to_partition: u64 },
+    Matched {
+        poller_id: u64,
+        task: PhysicalTask,
+    },
+    NoTask {
+        poller_id: u64,
+    },
+    NoPoller {
+        task: PhysicalTask,
+    },
+    Forwarded {
+        task: PhysicalTask,
+        to_partition: u64,
+    },
 }
 
 /// Core matching engine.
@@ -373,7 +443,11 @@ impl MatchingEngineConfig {
     }
 }
 
-impl Default for MatchingEngineConfig { fn default() -> Self { Self::new() } }
+impl Default for MatchingEngineConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl MatchingEngineCore {
     pub fn new(config: MatchingEngineConfig) -> Self {
@@ -390,12 +464,19 @@ impl MatchingEngineCore {
     }
 
     /// Register or get a logical task queue.
-    pub fn ensure_queue(&self, queue_name: &str, queue_type: TaskQueueType) -> Arc<LogicalTaskQueue> {
+    pub fn ensure_queue(
+        &self,
+        queue_name: &str,
+        queue_type: TaskQueueType,
+    ) -> Arc<LogicalTaskQueue> {
         let queues = self.logical_queues.read().unwrap();
-        if let Some(q) = queues.get(queue_name) { return q.clone(); }
+        if let Some(q) = queues.get(queue_name) {
+            return q.clone();
+        }
         drop(queues);
         let mut queues = self.logical_queues.write().unwrap();
-        queues.entry(queue_name.to_string())
+        queues
+            .entry(queue_name.to_string())
             .or_insert_with(|| Arc::new(LogicalTaskQueue::new(queue_name, queue_type, 1000)))
             .clone()
     }
@@ -409,7 +490,13 @@ impl MatchingEngineCore {
     }
 
     /// Create and register a new poller.
-    pub fn add_poller(&self, identity: &str, queue_name: &str, queue_type: TaskQueueType, partition_id: u64) -> u64 {
+    pub fn add_poller(
+        &self,
+        identity: &str,
+        queue_name: &str,
+        queue_type: TaskQueueType,
+        partition_id: u64,
+    ) -> u64 {
         let id = self.next_poller_id.fetch_add(1, Ordering::Relaxed);
         let poller = Poller {
             poller_id: id,
@@ -427,7 +514,11 @@ impl MatchingEngineCore {
 
     /// Remove a poller.
     pub fn remove_poller(&self, poller_id: u64) -> bool {
-        self.poller_registry.lock().unwrap().remove(&poller_id).is_some()
+        self.poller_registry
+            .lock()
+            .unwrap()
+            .remove(&poller_id)
+            .is_some()
     }
 
     /// Try to match a task to a poller.
@@ -446,7 +537,9 @@ impl MatchingEngineCore {
         let mut poller_idx = None;
         for (i, &pid) in pending.iter().enumerate() {
             if let Some(poller) = pollers.get(&pid) {
-                if poller.task_queue_name == queue_name && poller.partition_id == task.source_partition_id {
+                if poller.task_queue_name == queue_name
+                    && poller.partition_id == task.source_partition_id
+                {
                     // Check build ID compatibility
                     if self.build_ids_compatible(poller, &task) {
                         poller_idx = Some(i);
@@ -472,7 +565,10 @@ impl MatchingEngineCore {
             if let Some(root_queue) = queue.get_physical(0) {
                 if root_queue.add_task(task.clone()) {
                     self.total_forwards.fetch_add(1, Ordering::Relaxed);
-                    return MatchResult::Forwarded { task, to_partition: 0 };
+                    return MatchResult::Forwarded {
+                        task,
+                        to_partition: 0,
+                    };
                 }
             }
         }
@@ -493,11 +589,16 @@ impl MatchingEngineCore {
         if let Some(queue) = queues.get(&poller.task_queue_name) {
             if let Some(task) = queue.poll_task(poller.partition_id) {
                 self.total_matches.fetch_add(1, Ordering::Relaxed);
-                return MatchResult::Matched { poller_id: poller.poller_id, task };
+                return MatchResult::Matched {
+                    poller_id: poller.poller_id,
+                    task,
+                };
             }
         }
 
-        MatchResult::NoTask { poller_id: poller.poller_id }
+        MatchResult::NoTask {
+            poller_id: poller.poller_id,
+        }
     }
 
     fn build_ids_compatible(&self, poller: &Poller, _task: &PhysicalTask) -> bool {
@@ -572,9 +673,19 @@ impl PollerRegistry {
         let build_id = info.build_id.clone();
 
         self.pollers.write().unwrap().insert(id, info);
-        self.by_queue.write().unwrap().entry(queue).or_default().insert(id);
+        self.by_queue
+            .write()
+            .unwrap()
+            .entry(queue)
+            .or_default()
+            .insert(id);
         if let Some(bid) = build_id {
-            self.by_build_id.write().unwrap().entry(bid).or_default().insert(id);
+            self.by_build_id
+                .write()
+                .unwrap()
+                .entry(bid)
+                .or_default()
+                .insert(id);
         }
         self.total_connected.fetch_add(1, Ordering::Relaxed);
     }
@@ -582,13 +693,25 @@ impl PollerRegistry {
     /// Disconnect a poller.
     pub fn disconnect(&self, poller_id: u64) -> bool {
         if let Some(info) = self.pollers.write().unwrap().remove(&poller_id) {
-            self.by_queue.write().unwrap().entry(info.task_queue).or_default().remove(&poller_id);
+            self.by_queue
+                .write()
+                .unwrap()
+                .entry(info.task_queue)
+                .or_default()
+                .remove(&poller_id);
             if let Some(bid) = &info.build_id {
-                self.by_build_id.write().unwrap().entry(bid.clone()).or_default().remove(&poller_id);
+                self.by_build_id
+                    .write()
+                    .unwrap()
+                    .entry(bid.clone())
+                    .or_default()
+                    .remove(&poller_id);
             }
             self.total_disconnected.fetch_add(1, Ordering::Relaxed);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Get pollers for a queue.
@@ -596,7 +719,11 @@ impl PollerRegistry {
         let ids = self.by_queue.read().unwrap();
         let pollers = self.pollers.read().unwrap();
         ids.get(queue_name)
-            .map(|ids| ids.iter().filter_map(|id| pollers.get(id).cloned()).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| pollers.get(id).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -605,7 +732,11 @@ impl PollerRegistry {
         let ids = self.by_build_id.read().unwrap();
         let pollers = self.pollers.read().unwrap();
         ids.get(build_id)
-            .map(|ids| ids.iter().filter_map(|id| pollers.get(id).cloned()).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| pollers.get(id).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -618,12 +749,22 @@ impl PollerRegistry {
     }
 
     /// Total connected pollers.
-    pub fn connected_count(&self) -> usize { self.pollers.read().unwrap().len() }
-    pub fn total_connected(&self) -> u64 { self.total_connected.load(Ordering::Relaxed) }
-    pub fn total_disconnected(&self) -> u64 { self.total_disconnected.load(Ordering::Relaxed) }
+    pub fn connected_count(&self) -> usize {
+        self.pollers.read().unwrap().len()
+    }
+    pub fn total_connected(&self) -> u64 {
+        self.total_connected.load(Ordering::Relaxed)
+    }
+    pub fn total_disconnected(&self) -> u64 {
+        self.total_disconnected.load(Ordering::Relaxed)
+    }
 }
 
-impl Default for PollerRegistry { fn default() -> Self { Self::new() } }
+impl Default for PollerRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── 6. Fair Task Reader ─────────────────────────────────────────────────────
 
@@ -664,7 +805,9 @@ impl FairTaskReader {
             *self.last_read_position.lock().unwrap() += 1;
             self.total_read.fetch_add(1, Ordering::Relaxed);
             Some(task)
-        } else { None }
+        } else {
+            None
+        }
     }
 
     /// Skip tasks that have expired.
@@ -674,12 +817,15 @@ impl FairTaskReader {
         let before = buffer.len();
         buffer.retain(|t| t.expiry.map_or(true, |e| e > now));
         let skipped = before - buffer.len();
-        self.total_skipped.fetch_add(skipped as u64, Ordering::Relaxed);
+        self.total_skipped
+            .fetch_add(skipped as u64, Ordering::Relaxed);
         skipped
     }
 
     /// Buffer depth.
-    pub fn buffer_depth(&self) -> usize { self.read_buffer.lock().unwrap().len() }
+    pub fn buffer_depth(&self) -> usize {
+        self.read_buffer.lock().unwrap().len()
+    }
 
     /// Stats.
     pub fn stats(&self) -> TaskReaderStats {
@@ -746,7 +892,9 @@ impl UserDataManager {
     /// Get or create user data for a queue.
     pub fn get_or_create(&self, queue_name: &str) -> TaskQueueUserData {
         let data = self.data.read().unwrap();
-        if let Some(ud) = data.get(queue_name) { return ud.clone(); }
+        if let Some(ud) = data.get(queue_name) {
+            return ud.clone();
+        }
         drop(data);
 
         let ud = TaskQueueUserData {
@@ -756,20 +904,25 @@ impl UserDataManager {
             metadata: HashMap::new(),
             updated_at: Instant::now(),
         };
-        self.data.write().unwrap().insert(queue_name.to_string(), ud.clone());
+        self.data
+            .write()
+            .unwrap()
+            .insert(queue_name.to_string(), ud.clone());
         ud
     }
 
     /// Update versioning data.
     pub fn update_versioning(&self, queue_name: &str, versioning: VersioningData) {
         let mut data = self.data.write().unwrap();
-        let ud = data.entry(queue_name.to_string()).or_insert_with(|| TaskQueueUserData {
-            queue_name: queue_name.to_string(),
-            versioning_data: None,
-            primary_build_id: None,
-            metadata: HashMap::new(),
-            updated_at: Instant::now(),
-        });
+        let ud = data
+            .entry(queue_name.to_string())
+            .or_insert_with(|| TaskQueueUserData {
+                queue_name: queue_name.to_string(),
+                versioning_data: None,
+                primary_build_id: None,
+                metadata: HashMap::new(),
+                updated_at: Instant::now(),
+            });
         ud.versioning_data = Some(versioning);
         ud.updated_at = Instant::now();
         self.total_updates.fetch_add(1, Ordering::Relaxed);
@@ -778,13 +931,15 @@ impl UserDataManager {
     /// Add a redirect rule.
     pub fn add_redirect_rule(&self, queue_name: &str, source: &str, target: &str) {
         let mut data = self.data.write().unwrap();
-        let ud = data.entry(queue_name.to_string()).or_insert_with(|| TaskQueueUserData {
-            queue_name: queue_name.to_string(),
-            versioning_data: None,
-            primary_build_id: None,
-            metadata: HashMap::new(),
-            updated_at: Instant::now(),
-        });
+        let ud = data
+            .entry(queue_name.to_string())
+            .or_insert_with(|| TaskQueueUserData {
+                queue_name: queue_name.to_string(),
+                versioning_data: None,
+                primary_build_id: None,
+                metadata: HashMap::new(),
+                updated_at: Instant::now(),
+            });
         let vd = ud.versioning_data.get_or_insert(VersioningData {
             default_version: None,
             supported_versions: Vec::new(),
@@ -814,10 +969,16 @@ impl UserDataManager {
         build_id.to_string()
     }
 
-    pub fn total_updates(&self) -> u64 { self.total_updates.load(Ordering::Relaxed) }
+    pub fn total_updates(&self) -> u64 {
+        self.total_updates.load(Ordering::Relaxed)
+    }
 }
 
-impl Default for UserDataManager { fn default() -> Self { Self::new() } }
+impl Default for UserDataManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ─── 8. Priority Matcher ─────────────────────────────────────────────────────
 
@@ -875,15 +1036,26 @@ impl PriorityMatcher {
 
     /// Total pending tasks across all priorities.
     pub fn total_pending(&self) -> usize {
-        self.priority_queues.read().unwrap().values().map(|q| q.len()).sum()
+        self.priority_queues
+            .read()
+            .unwrap()
+            .values()
+            .map(|q| q.len())
+            .sum()
     }
 
-    pub fn total_matched(&self) -> u64 { self.total_matched.load(Ordering::Relaxed) }
-    pub fn total_starved(&self) -> u64 { self.total_starved.load(Ordering::Relaxed) }
+    pub fn total_matched(&self) -> u64 {
+        self.total_matched.load(Ordering::Relaxed)
+    }
+    pub fn total_starved(&self) -> u64 {
+        self.total_starved.load(Ordering::Relaxed)
+    }
 }
 
 impl Default for PriorityMatcher {
-    fn default() -> Self { Self::new(5000) }
+    fn default() -> Self {
+        Self::new(5000)
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -916,9 +1088,14 @@ mod tests {
     fn test_physical_queue_add_poll() {
         let q = PhysicalTaskQueue::new("test", 1, 100);
         let task = PhysicalTask {
-            task_id: 1, workflow_key: 100, task_type: "activity".into(),
-            priority: 0, created_at: Instant::now(), expiry: None,
-            source_partition_id: 1, redirect_info: None,
+            task_id: 1,
+            workflow_key: 100,
+            task_type: "activity".into(),
+            priority: 0,
+            created_at: Instant::now(),
+            expiry: None,
+            source_partition_id: 1,
+            redirect_info: None,
         };
         assert!(q.add_task(task));
         assert_eq!(q.depth(), 1);
@@ -933,12 +1110,21 @@ mod tests {
         let q = PhysicalTaskQueue::new("test", 1, 2);
         for i in 0..3 {
             let task = PhysicalTask {
-                task_id: i, workflow_key: 100, task_type: "a".into(),
-                priority: 0, created_at: Instant::now(), expiry: None,
-                source_partition_id: 1, redirect_info: None,
+                task_id: i,
+                workflow_key: 100,
+                task_type: "a".into(),
+                priority: 0,
+                created_at: Instant::now(),
+                expiry: None,
+                source_partition_id: 1,
+                redirect_info: None,
             };
             let added = q.add_task(task);
-            if i < 2 { assert!(added); } else { assert!(!added); }
+            if i < 2 {
+                assert!(added);
+            } else {
+                assert!(!added);
+            }
         }
         assert_eq!(q.depth(), 2);
     }
@@ -951,9 +1137,14 @@ mod tests {
         assert_eq!(lq.partition_count(), 2);
 
         let task = PhysicalTask {
-            task_id: 1, workflow_key: 100, task_type: "a".into(),
-            priority: 0, created_at: Instant::now(), expiry: None,
-            source_partition_id: 1, redirect_info: None,
+            task_id: 1,
+            workflow_key: 100,
+            task_type: "a".into(),
+            priority: 0,
+            created_at: Instant::now(),
+            expiry: None,
+            source_partition_id: 1,
+            redirect_info: None,
         };
         assert!(lq.add_task(1, task));
         assert_eq!(lq.total_depth(), 1);
@@ -974,9 +1165,14 @@ mod tests {
 
         // Add a task
         let task = PhysicalTask {
-            task_id: 1, workflow_key: 100, task_type: "wf".into(),
-            priority: 0, created_at: Instant::now(), expiry: None,
-            source_partition_id: 1, redirect_info: None,
+            task_id: 1,
+            workflow_key: 100,
+            task_type: "wf".into(),
+            priority: 0,
+            created_at: Instant::now(),
+            expiry: None,
+            source_partition_id: 1,
+            redirect_info: None,
         };
 
         let result = engine.match_task_to_poller("wf-queue", task);
@@ -992,9 +1188,14 @@ mod tests {
         queue.register_partition(1);
 
         let task = PhysicalTask {
-            task_id: 1, workflow_key: 100, task_type: "wf".into(),
-            priority: 0, created_at: Instant::now(), expiry: None,
-            source_partition_id: 1, redirect_info: None,
+            task_id: 1,
+            workflow_key: 100,
+            task_type: "wf".into(),
+            priority: 0,
+            created_at: Instant::now(),
+            expiry: None,
+            source_partition_id: 1,
+            redirect_info: None,
         };
 
         let result = engine.match_task_to_poller("wf-queue", task);
@@ -1006,16 +1207,26 @@ mod tests {
     fn test_poller_registry() {
         let reg = PollerRegistry::new();
         reg.connect(PollerInfo {
-            poller_id: 1, identity: "w1".into(), task_queue: "q1".into(),
-            build_id: Some("v1".into()), connected_at: Instant::now(),
-            last_activity: Instant::now(), tasks_completed: 0,
-            is_long_poll: false, rate_limit: None,
+            poller_id: 1,
+            identity: "w1".into(),
+            task_queue: "q1".into(),
+            build_id: Some("v1".into()),
+            connected_at: Instant::now(),
+            last_activity: Instant::now(),
+            tasks_completed: 0,
+            is_long_poll: false,
+            rate_limit: None,
         });
         reg.connect(PollerInfo {
-            poller_id: 2, identity: "w2".into(), task_queue: "q1".into(),
-            build_id: Some("v2".into()), connected_at: Instant::now(),
-            last_activity: Instant::now(), tasks_completed: 0,
-            is_long_poll: false, rate_limit: None,
+            poller_id: 2,
+            identity: "w2".into(),
+            task_queue: "q1".into(),
+            build_id: Some("v2".into()),
+            connected_at: Instant::now(),
+            last_activity: Instant::now(),
+            tasks_completed: 0,
+            is_long_poll: false,
+            rate_limit: None,
         });
 
         assert_eq!(reg.connected_count(), 2);
@@ -1029,11 +1240,18 @@ mod tests {
     #[test]
     fn test_fair_task_reader() {
         let reader = FairTaskReader::new(100);
-        let tasks = (0..5).map(|i| PhysicalTask {
-            task_id: i, workflow_key: 100, task_type: "a".into(),
-            priority: 0, created_at: Instant::now(), expiry: None,
-            source_partition_id: 1, redirect_info: None,
-        }).collect();
+        let tasks = (0..5)
+            .map(|i| PhysicalTask {
+                task_id: i,
+                workflow_key: 100,
+                task_type: "a".into(),
+                priority: 0,
+                created_at: Instant::now(),
+                expiry: None,
+                source_partition_id: 1,
+                redirect_info: None,
+            })
+            .collect();
         reader.feed(tasks);
         assert_eq!(reader.buffer_depth(), 5);
 
@@ -1059,14 +1277,24 @@ mod tests {
     fn test_priority_matcher() {
         let matcher = PriorityMatcher::new(5000);
         matcher.submit(PhysicalTask {
-            task_id: 1, workflow_key: 100, task_type: "a".into(),
-            priority: 5, created_at: Instant::now(), expiry: None,
-            source_partition_id: 1, redirect_info: None,
+            task_id: 1,
+            workflow_key: 100,
+            task_type: "a".into(),
+            priority: 5,
+            created_at: Instant::now(),
+            expiry: None,
+            source_partition_id: 1,
+            redirect_info: None,
         });
         matcher.submit(PhysicalTask {
-            task_id: 2, workflow_key: 100, task_type: "a".into(),
-            priority: 10, created_at: Instant::now(), expiry: None,
-            source_partition_id: 1, redirect_info: None,
+            task_id: 2,
+            workflow_key: 100,
+            task_type: "a".into(),
+            priority: 10,
+            created_at: Instant::now(),
+            expiry: None,
+            source_partition_id: 1,
+            redirect_info: None,
         });
 
         assert_eq!(matcher.total_pending(), 2);
