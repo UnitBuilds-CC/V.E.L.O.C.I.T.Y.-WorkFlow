@@ -133,6 +133,10 @@ pub mod predictive_autoscaler;
 pub mod chaos_engineering;
 pub mod deep_observability;
 pub mod workflow_commands;
+pub mod multi_backend_persistence;
+pub mod history_event_applier;
+pub mod replication_manager;
+pub mod workflow_replay;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.
 // Requires protoc to be installed for proto compilation.
@@ -838,4 +842,44 @@ pub use workflow_commands::{
     WorkflowResult as WcWorkflowResult,
     CommandExecutorStats, CommandExecutionResult,
     CommandPipeline, CommandPipelineStats,
+};
+
+// multi_backend_persistence: connection pooling, query builder, schema management, failover
+pub use multi_backend_persistence::{
+    BackendConfig as MbBackendConfig, BackendType as MbBackendType, PersistenceRetryPolicy,
+    ConnectionPool as MbConnectionPool, PoolConnection as MbPoolConnection, ConnectionState as MbConnectionState, ConnectionPoolStats as MbConnectionPoolStats,
+    QueryBuilder as MbQueryBuilder, QueryCondition as MbQueryCondition, QueryOperator as MbQueryOperator, QueryValue as MbQueryValue, OrderByClause as MbOrderByClause, BuiltQuery as MbBuiltQuery,
+    SchemaManager as MbSchemaManager, Migration as MbMigration, SchemaManagerStats as MbSchemaManagerStats,
+    PersistenceFailover as MbPersistenceFailover, BackendStatus as MbBackendStatus, FailoverStats as MbFailoverStats,
+    BatchOperations as MbBatchOperations, BatchOpsStats as MbBatchOpsStats,
+    DataCompaction as MbDataCompaction, CompactionRule as MbCompactionRule, CompactionResult as MbCompactionResult, CompactionStats as MbCompactionStats,
+};
+
+// history_event_applier: event application to mutable state, 35+ event types
+pub use history_event_applier::{
+    HistoryEventType as HeHistoryEventType, TimeoutType as HeTimeoutType,
+    HistoryEvent as HeHistoryEvent,
+    EventApplier, AppliedState, AppliedActivity, AppliedActivityState,
+    AppliedTimer, AppliedTimerState, AppliedChildWorkflow, AppliedChildState,
+    AppliedSignal, AppliedMarker, EventApplierStats, ApplyError,
+};
+
+// replication_manager: multi-cluster replication, conflict resolution
+pub use replication_manager::{
+    ClusterReplicationConfig as RmClusterReplicationConfig, ReplicationClusterStatus,
+    ReplicationTask as RmReplicationTask, ReplicationTaskType as RmReplicationTaskType, ReplicationTaskStatus as RmReplicationTaskStatus,
+    ReplicationStream as RmReplicationStream, ReplicationStreamStats as RmReplicationStreamStats,
+    ConflictResolver as RmConflictResolver, ReplicationConflict as RmReplicationConflict, ConflictResolution as RmConflictResolution,
+    ConflictResolutionPolicy, ConflictResolverStats as RmConflictResolverStats,
+    ReplicationManager, ReplicationManagerStats,
+};
+
+// workflow_replay: replay engine, determinism checking, debugging
+pub use workflow_replay::{
+    ReplayEngine as WfReplayEngine, ReplaySession, ReplayStatus, ReplayError, ReplayErrorType,
+    ReplayEngineStats as WfReplayEngineStats,
+    DeterminismChecker as WfDeterminismChecker, DeterminismCheck as WfDeterminismCheck, DeterminismCheckType,
+    DeterminismResult as WfDeterminismResult, DeterminismViolation as WfDeterminismViolation, DeterminismViolationType,
+    ViolationSeverity as WfViolationSeverity, DeterminismCheckerStats as WfDeterminismCheckerStats,
+    ReplayDebugger, ReplayBreakpoint, DebugEvent, StepResult as WfStepResult, ReplayDebuggerStats,
 };
