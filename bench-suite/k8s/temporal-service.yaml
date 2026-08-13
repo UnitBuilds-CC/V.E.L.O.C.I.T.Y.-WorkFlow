@@ -1,0 +1,70 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal-service
+  namespace: benchmark
+  labels:
+    app: temporal-service
+    engine: temporal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temporal-service
+  template:
+    metadata:
+      labels:
+        app: temporal-service
+    spec:
+      containers:
+        - name: temporal-service
+          image: velocity-bench/temporal:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: temporal-server:7233
+            - name: TEMPORAL_NAMESPACE
+              value: default
+            - name: TEMPORAL_HTTP_PORT
+              value: "8080"
+            - name: TEMPORAL_TASK_QUEUE
+              value: bench-queue
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal-service
+  namespace: benchmark
+  labels:
+    app: temporal-service
+spec:
+  selector:
+    app: temporal-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

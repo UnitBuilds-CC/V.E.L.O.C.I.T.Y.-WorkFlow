@@ -1,0 +1,49 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bench-job
+  namespace: benchmark
+  labels:
+    app: bench-job
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: bench-job
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bench-client
+          image: velocity-bench/client:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: BENCH_PROFILE
+              value: smoke
+            - name: VELOCITY_CLASSIC_ADDR
+              value: http://velocity-classic:7234
+            - name: VELOCITY_RUNTIME_ADDR
+              value: http://velocity-runtime:7234
+            - name: VELOCITY_EMBEDDED_ADDR
+              value: http://velocity-embedded:7234
+            - name: DBOS_ADDR
+              value: http://dbos-service:8080
+            - name: RESTATE_INGRESS_ADDR
+              value: http://restate-server:8080
+            - name: TEMPORAL_ADDR
+              value: http://temporal-service:8080
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: results
+          persistentVolumeClaim:
+            claimName: bench-results

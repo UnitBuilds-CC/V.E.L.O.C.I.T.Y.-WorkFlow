@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: benchmark
+
+resources:
+  - ../../k8s/namespace.yaml
+  - ../../k8s/velocity-classic.yaml
+  - ../../k8s/velocity-runtime.yaml
+  - ../../k8s/velocity-embedded.yaml
+  - ../../k8s/dbos-postgres.yaml
+  - ../../k8s/dbos-service.yaml
+  - ../../k8s/restate-server.yaml
+  - ../../k8s/restate-service.yaml
+  - ../../k8s/temporal-server.yaml
+  - ../../k8s/temporal-service.yaml

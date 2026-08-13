@@ -1,0 +1,66 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-classic
+  namespace: benchmark
+  labels:
+    app: velocity-classic
+    engine: velocity
+    flavor: classic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity-classic
+  template:
+    metadata:
+      labels:
+        app: velocity-classic
+    spec:
+      containers:
+        - name: velocity-classic
+          image: velocity-bench/velocity-classic:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 7234
+              name: grpc
+          args:
+            - --ip
+            - 0.0.0.0
+            - --grpc-port
+            - "7234"
+            - --real-engine
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 7234
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 7234
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velocity-classic
+  namespace: benchmark
+  labels:
+    app: velocity-classic
+spec:
+  selector:
+    app: velocity-classic
+  ports:
+    - name: grpc
+      port: 7234
+      targetPort: 7234
+  type: ClusterIP

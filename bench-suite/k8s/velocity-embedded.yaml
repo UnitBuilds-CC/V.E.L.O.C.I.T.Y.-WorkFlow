@@ -1,0 +1,90 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-embedded
+  namespace: benchmark
+  labels:
+    app: velocity-embedded
+    engine: velocity
+    flavor: embedded
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity-embedded
+  template:
+    metadata:
+      labels:
+        app: velocity-embedded
+    spec:
+      containers:
+        - name: velocity-embedded
+          image: velocity-bench/velocity-embedded:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 7234
+              name: grpc
+          args:
+            - --ip
+            - 0.0.0.0
+            - --grpc-port
+            - "7234"
+            - --real-engine
+            - --storage
+            - sqlite
+          env:
+            - name: VELOCITY_DATA_DIR
+              value: /data
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 7234
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 7234
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: velocity-embedded-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velocity-embedded
+  namespace: benchmark
+  labels:
+    app: velocity-embedded
+spec:
+  selector:
+    app: velocity-embedded
+  ports:
+    - name: grpc
+      port: 7234
+      targetPort: 7234
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: velocity-embedded-data
+  namespace: benchmark
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

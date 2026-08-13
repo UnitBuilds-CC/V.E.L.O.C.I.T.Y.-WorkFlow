@@ -1,0 +1,94 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbos-postgres
+  namespace: benchmark
+  labels:
+    app: dbos-postgres
+    engine: dbos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dbos-postgres
+  template:
+    metadata:
+      labels:
+        app: dbos-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: dbos
+            - name: POSTGRES_PASSWORD
+              value: dbos_bench
+            - name: POSTGRES_DB
+              value: dbos_bench
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - dbos
+                - -d
+                - dbos_bench
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - dbos
+                - -d
+                - dbos_bench
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: dbos-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dbos-postgres
+  namespace: benchmark
+  labels:
+    app: dbos-postgres
+spec:
+  selector:
+    app: dbos-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dbos-postgres-data
+  namespace: benchmark
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

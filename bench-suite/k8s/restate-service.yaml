@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restate-service
+  namespace: benchmark
+  labels:
+    app: restate-service
+    engine: restate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: restate-service
+  template:
+    metadata:
+      labels:
+        app: restate-service
+    spec:
+      containers:
+        - name: restate-service
+          image: velocity-bench/restate:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9080
+              name: http
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 9080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 9080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: restate-service
+  namespace: benchmark
+  labels:
+    app: restate-service
+spec:
+  selector:
+    app: restate-service
+  ports:
+    - name: http
+      port: 9080
+      targetPort: 9080
+  type: ClusterIP

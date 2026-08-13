@@ -1,0 +1,73 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-runtime
+  namespace: benchmark
+  labels:
+    app: velocity-runtime
+    engine: velocity
+    flavor: runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity-runtime
+  template:
+    metadata:
+      labels:
+        app: velocity-runtime
+    spec:
+      containers:
+        - name: velocity-runtime
+          image: velocity-bench/velocity-runtime:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 7234
+              name: grpc
+            - containerPort: 8080
+              name: http
+          args:
+            - --ip
+            - 0.0.0.0
+            - --grpc-port
+            - "7234"
+            - --real-engine
+            - --http-port
+            - "8080"
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 7234
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 7234
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velocity-runtime
+  namespace: benchmark
+  labels:
+    app: velocity-runtime
+spec:
+  selector:
+    app: velocity-runtime
+  ports:
+    - name: grpc
+      port: 7234
+      targetPort: 7234
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
