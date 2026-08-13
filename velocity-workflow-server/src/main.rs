@@ -623,7 +623,10 @@ impl RealEngineAdapter {
 
     /// Look up the engine workflow_key for a given namespace + workflow_id.
     fn lookup_key(&self, namespace: &str, workflow_id: &str) -> Result<u64, String> {
-        let map = self.workflow_map.lock().map_err(|e| format!("lock: {}", e))?;
+        let map = self
+            .workflow_map
+            .lock()
+            .map_err(|e| format!("lock: {}", e))?;
         map.get(&Self::map_key(namespace, workflow_id))
             .copied()
             .ok_or_else(|| format!("workflow not found: {}:{}", namespace, workflow_id))
@@ -659,7 +662,10 @@ impl RealEngineAdapter {
 
         // Store mapping for signal/query/describe lookups
         {
-            let mut map = self.workflow_map.lock().map_err(|e| format!("lock: {}", e))?;
+            let mut map = self
+                .workflow_map
+                .lock()
+                .map_err(|e| format!("lock: {}", e))?;
             map.insert(Self::map_key(namespace, workflow_id), workflow_key);
         }
 
@@ -689,7 +695,8 @@ impl RealEngineAdapter {
     ) -> Result<(), String> {
         let workflow_key = self.lookup_key(namespace, workflow_id)?;
         let signal_name_id = signal_name.len() as u64; // Simple hash matching start_workflow pattern
-        self.engine.signal_workflow(workflow_key, signal_name_id, payload);
+        self.engine
+            .signal_workflow(workflow_key, signal_name_id, payload);
         Ok(())
     }
 
@@ -713,7 +720,10 @@ impl RealEngineAdapter {
         let status = self.engine.get_status(workflow_key);
 
         // If workflow is still Running (e.g. signal_target), complete it directly.
-        if matches!(status, velocity_workflow_engine::engine::WorkflowStatus::Running) {
+        if matches!(
+            status,
+            velocity_workflow_engine::engine::WorkflowStatus::Running
+        ) {
             self.engine.complete_workflow(workflow_key, Some(vec![]));
         }
 
@@ -1329,8 +1339,14 @@ impl EngineBackend {
     ) -> Result<u32, String> {
         match self {
             EngineBackend::Real(e) => {
-                e.batch_signal_workflow(namespace, workflow_id, signal_name, signal_count, payload_template)
-                    .await
+                e.batch_signal_workflow(
+                    namespace,
+                    workflow_id,
+                    signal_name,
+                    signal_count,
+                    payload_template,
+                )
+                .await
             }
             EngineBackend::Mock(_) => {
                 // Mock: just acknowledge all signals

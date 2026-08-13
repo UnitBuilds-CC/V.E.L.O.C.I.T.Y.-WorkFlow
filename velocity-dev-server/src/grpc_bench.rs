@@ -1265,4 +1265,61 @@ impl BenchmarkService for BenchmarkServiceImpl {
             })),
         }
     }
+
+    // ─── BatchSignalWorkflow ────────────────────────────────────────────
+    async fn batch_signal_workflow(
+        &self,
+        request: Request<BatchSignalWorkflowRequest>,
+    ) -> Result<Response<BatchSignalWorkflowResponse>, Status> {
+        let start = Instant::now();
+        let req = request.into_inner();
+        let namespace = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+
+        let mut processed = 0i32;
+        for i in 0..req.signal_count {
+            let mut payload_value = serde_json::Value::Null;
+            if !req.payload_template.is_empty() {
+                payload_value = serde_json::from_slice(&req.payload_template)
+                    .unwrap_or(serde_json::Value::Null);
+            }
+            // Append signal index to make each signal unique
+            let payload = if payload_value.is_null() {
+                serde_json::json!({ "index": i })
+            } else {
+                let mut obj = payload_value;
+                if let Some(map) = obj.as_object_mut() {
+                    map.insert("index".to_string(), serde_json::json!(i));
+                }
+                obj
+            };
+
+            match self.engine.signal_workflow(
+                namespace,
+                &req.workflow_id,
+                &req.signal_name,
+                payload,
+            ) {
+                Ok(()) => processed += 1,
+                Err(e) => {
+                    return Ok(Response::new(BatchSignalWorkflowResponse {
+                        success: false,
+                        total_latency_us: start.elapsed().as_micros() as i64,
+                        signals_processed: processed,
+                        error: e,
+                    }));
+                }
+            }
+        }
+
+        Ok(Response::new(BatchSignalWorkflowResponse {
+            success: true,
+            total_latency_us: start.elapsed().as_micros() as i64,
+            signals_processed: processed,
+            error: String::new(),
+        }))
+    }
 }
