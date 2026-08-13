@@ -1,10 +1,11 @@
-feat(bench-suite): add CLI flags to per-engine benchmark clients
+fix(bench-suite): fix Docker compose issues found during local testing
 
-Phase 2c: Update per-engine clients for bench-suite integration.
-
-- DBOS client: add --base-url, --output, argparse CLI
-- Temporal client: add --base-url, --output, argparse CLI
-- Restate client: add --ingress, --output, manual arg parsing
-
-All clients now support configurable service URLs and output paths
-for use with the bench-suite orchestrator scripts.
+- Fix Velocity Runtime/Embedded: remove invalid --storage and --http-port
+  flags (server only supports gRPC + WAL). Differentiate via --wal-path
+- Fix Temporal: add PostgreSQL container (auto-setup doesn't support sqlite),
+  fix healthcheck to use $(hostname) instead of localhost (binds to container IP)
+- Fix Restate service: upgrade Node.js 20→22 (Promise.withResolvers requires
+  Node 22+), remove broken /health healthcheck (SDK uses protocol-level conn)
+- Add runtime-data and temporal-pg-data volumes
+- All 6 engines now pass smoke tests: Restate/DBOS/Temporal return HTTP 200
+  with completed workflow, Velocity gRPC ports all reachable

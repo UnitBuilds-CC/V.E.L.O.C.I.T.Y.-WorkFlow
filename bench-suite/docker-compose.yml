@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Velocity Runtime — gRPC + HTTP + WAL
+  # Velocity Runtime — gRPC + WAL (separate WAL path for isolation)
   # ═══════════════════════════════════════════════════════════════════════════
   velocity-runtime:
     build:
@@ -43,8 +43,9 @@ services:
     container_name: bench-velocity-runtime
     ports:
       - "7235:7234"
-      - "8080:8080"
-    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--http-port", "8080"]
+    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--wal-path", "/data/runtime.wal"]
+    volumes:
+      - runtime-data:/data
     deploy:
       resources:
         limits:
@@ -55,7 +56,7 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Velocity Embedded — gRPC + SQLite + WAL
+  # Velocity Embedded — gRPC + WAL (separate WAL path for isolation)
   # ═══════════════════════════════════════════════════════════════════════════
   velocity-embedded:
     build:
@@ -65,11 +66,9 @@ services:
     container_name: bench-velocity-embedded
     ports:
       - "7236:7234"
-    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--storage", "sqlite"]
+    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--wal-path", "/data/embedded.wal"]
     volumes:
       - embedded-data:/data
-    environment:
-      VELOCITY_DATA_DIR: /data
     deploy:
       resources:
         limits:
@@ -171,16 +170,17 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Temporal — Server + Python Worker/FastAPI service
+  # Temporal — Server (PostgreSQL-backed) + Python Worker/FastAPI service
   # ═══════════════════════════════════════════════════════════════════════════
-  temporal-server:
-    image: temporalio/auto-setup:latest
-    container_name: bench-temporal-server
-    ports:
-      - "7233:7233"
+  temporal-postgres:
+    image: postgres:16-alpine
+    container_name: bench-temporal-postgres
     environment:
-      DB: sqlite
-      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/dynamicconfig/development.yaml
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal_bench
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-pg-data:/var/lib/postgresql/data
     deploy:
       resources:
         limits:
@@ -189,7 +189,34 @@ services:
     networks:
       - bench-net
     healthcheck:
-      test: ["CMD-SHELL", "tctl --address localhost:7233 cluster health || exit 1"]
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  temporal-server:
+    image: temporalio/auto-setup:latest
+    container_name: bench-temporal-server
+    ports:
+      - "7233:7233"
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal_bench
+      POSTGRES_SEEDS: temporal-postgres
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD-SHELL", "tctl --address $(hostname):7233 cluster health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -228,5 +255,7 @@ networks:
     driver: bridge
 
 volumes:
+  runtime-data:
   embedded-data:
   dbos-pg-data:
+  temporal-pg-data:
