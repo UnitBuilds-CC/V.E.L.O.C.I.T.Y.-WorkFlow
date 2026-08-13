@@ -712,12 +712,8 @@ impl RealEngineAdapter {
         let workflow_key = self.lookup_key(namespace, workflow_id)?;
         let status = self.engine.get_status(workflow_key);
 
-        // If workflow is still Running (e.g. signal_target), drive it to completion
+        // If workflow is still Running (e.g. signal_target), complete it directly.
         if matches!(status, velocity_workflow_engine::engine::WorkflowStatus::Running) {
-            let total_steps = self.engine.get_total_steps(workflow_key);
-            for step in 0..total_steps {
-                self.engine.complete_step(workflow_key, step, vec![]);
-            }
             self.engine.complete_workflow(workflow_key, Some(vec![]));
         }
 

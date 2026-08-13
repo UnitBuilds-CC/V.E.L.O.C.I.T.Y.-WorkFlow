@@ -1163,9 +1163,8 @@ async fn run_signal_storm(
         }
     }
 
-    // Complete workflow and record completion
+    // Complete workflow — wait_for_completion drives the signal_target to Completed.
     let complete_start = Instant::now();
-    let _ = black_box(engine.complete_step(&handle, 0, b"done").await);
     match engine
         .wait_for_completion(&handle, Duration::from_millis(config.timeout_ms))
         .await
