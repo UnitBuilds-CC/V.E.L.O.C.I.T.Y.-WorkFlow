@@ -12,6 +12,21 @@
  *   profile: smoke, standard, stress (default: standard)
  */
 
+// ─── CLI Argument Parsing ────────────────────────────────────────────────────
+const args = process.argv.slice(2);
+let profile = "standard";
+let outputPath = "/tmp/restate_bench_results.json";
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--output" || args[i] === "-o") {
+    outputPath = args[++i];
+  } else if (args[i] === "--ingress") {
+    process.env.RESTATE_INGRESS = args[++i];
+  } else if (!args[i].startsWith("-")) {
+    profile = args[i];
+  }
+}
+
 const RESTATE_INGRESS = process.env.RESTATE_INGRESS || "http://localhost:8080";
 
 // ─── HTTP Client ─────────────────────────────────────────────────────────────
@@ -223,7 +238,6 @@ async function runAllBenchmarks(profile = "standard") {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const profile = process.argv[2] || "standard";
   console.log(`=== Restate Production Benchmark (profile: ${profile}) ===`);
   console.log(`Target: ${RESTATE_INGRESS}`);
   console.log();
@@ -248,7 +262,6 @@ async function main() {
 
   // Write results
   const fs = require("fs");
-  const outputPath = "/tmp/restate_bench_results.json";
   fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
 
   console.log();

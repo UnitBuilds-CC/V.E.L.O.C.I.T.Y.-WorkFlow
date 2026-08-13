@@ -22,8 +22,21 @@ import os
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 
+import argparse
+
+# Parse CLI arguments first
+parser = argparse.ArgumentParser(description="DBOS Production Benchmark Client")
+parser.add_argument("profile", nargs="?", default="standard",
+                    help="Benchmark profile: smoke, short, standard, stress")
+parser.add_argument("--base-url", default=None,
+                    help="DBOS service base URL (default: from DBOS_HTTP_PORT env or http://localhost:8080)")
+parser.add_argument("--output", "-o", default=None,
+                    help="Output file path (default: /tmp/dbos_bench_results.json)")
+_cli_args = parser.parse_args()
+
 HTTP_PORT = int(os.environ.get("DBOS_HTTP_PORT", "8080"))
-BASE_URL = f"http://localhost:{HTTP_PORT}"
+BASE_URL = _cli_args.base_url or f"http://localhost:{HTTP_PORT}"
+OUTPUT_PATH = _cli_args.output or "/tmp/dbos_bench_results.json"
 
 
 @dataclass
@@ -264,7 +277,7 @@ async def run_all_benchmarks(profile="standard"):
 
 
 async def main():
-    profile = sys.argv[1] if len(sys.argv) > 1 else "standard"
+    profile = _cli_args.profile
     print(f"=== DBOS Production Benchmark (profile: {profile}) ===")
     print(f"Target: {BASE_URL}")
     print()
@@ -284,7 +297,7 @@ async def main():
     print()
     report = await run_all_benchmarks(profile)
 
-    output_path = "/tmp/dbos_bench_results.json"
+    output_path = OUTPUT_PATH
     with open(output_path, "w") as f:
         json.dump(asdict(report), f, indent=2)
 

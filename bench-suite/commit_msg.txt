@@ -1,24 +1,10 @@
-feat(bench-suite): add K8s manifests, Kustomize overlays, and cloud deploy scripts
+feat(bench-suite): add CLI flags to per-engine benchmark clients
 
-Phase 3 + Phase 5 of comprehensive multi-engine benchmark suite:
+Phase 2c: Update per-engine clients for bench-suite integration.
 
-K8s manifests (bench-suite/k8s/):
-- namespace.yaml, velocity-classic/runtime/embedded.yaml
-- dbos-postgres.yaml, dbos-service.yaml
-- restate-server.yaml, restate-service.yaml
-- temporal-server.yaml, temporal-service.yaml
-- bench-job.yaml (Kubernetes Job for benchmark client)
+- DBOS client: add --base-url, --output, argparse CLI
+- Temporal client: add --base-url, --output, argparse CLI
+- Restate client: add --ingress, --output, manual arg parsing
 
-Kustomize overlays (bench-suite/kustomize/):
-- base/kustomization.yaml (references all K8s manifests)
-- overlays/local-docker-desktop/ (1 CPU, 1Gi)
-- overlays/gke-standard/ (4 CPU, 4Gi)
-- overlays/gke-stress/ (8 CPU, 8Gi)
-
-Scripts (bench-suite/scripts/):
-- run_k8s.sh (orchestrate K8s benchmarks)
-
-Cloud deployment (bench-suite/cloud/):
-- deploy_gce.sh (6 GCE VMs, one per engine)
-- deploy_gke.sh (GKE cluster + Kustomize deploy)
-- collect_results.sh (SCP + kubectl logs)
+All clients now support configurable service URLs and output paths
+for use with the bench-suite orchestrator scripts.
