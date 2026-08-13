@@ -1,0 +1,154 @@
+{
+  "_comment": "Canonical workload definitions for the Velocity multi-engine benchmark suite.",
+  "_version": "1.0.0",
+  "_profiles": {
+    "smoke":    { "description": "Sanity check — 30 seconds",  "ops": 10,    "steps": 5,   "concurrency": 1,  "timeout_ms": 10000 },
+    "short":    { "description": "Local Docker verification",  "ops": 100,   "steps": 10,  "concurrency": 1,  "timeout_ms": 30000 },
+    "standard": { "description": "Real benchmark (10-15 min)",  "ops": 1000,  "steps": 10,  "concurrency": 1,  "timeout_ms": 60000 },
+    "stress":   { "description": "Cloud stress test (30 min)",  "ops": 10000, "steps": 10,  "concurrency": 100, "timeout_ms": 120000 }
+  },
+
+  "core_workloads": [
+    {
+      "name": "simple_workflow",
+      "description": "Start -> execute 10 durable steps -> complete. Baseline throughput and latency.",
+      "highlights": "Basic durable execution overhead",
+      "config": { "ops": 1000, "steps": 10, "signals": 0, "queries": 0, "payload_bytes": 256 },
+      "primary_metrics": ["ops_per_sec", "p50_latency_us", "p99_latency_us"],
+      "engines": ["velocity-classic", "velocity-runtime", "velocity-embedded", "dbos", "restate", "temporal"]
+    },
+    {
+      "name": "cold_start",
+      "description": "First workflow execution after engine startup. Measures initialization overhead.",
+      "highlights": "Velocity: 5.5MB RSS, no JVM/CLR warmup",
+      "config": { "ops": 50, "steps": 1, "signals": 0, "queries": 0, "payload_bytes": 128 },
+      "primary_metrics": ["ops_per_sec", "p99_latency_us", "startup_time_ms"],
+      "engines": ["velocity-classic", "velocity-runtime", "velocity-embedded", "dbos", "restate", "temporal"]
+    },
+    {
+      "name": "signal_storm",
+      "description": "Start workflow -> send 100 durable signals -> complete. Each signal is a real durable write.",
+      "highlights": "Velocity: real WAL fsync per signal. Temporal: real event-sourced signals.",
+      "config": { "ops": 100, "steps": 1, "signals": 100, "queries": 0, "payload_bytes": 128 },
+      "primary_metrics": ["ops_per_sec", "p99_latency_us", "per_signal_latency_us"],
+      "engines": ["velocity-classic", "velocity-runtime", "velocity-embedded", "dbos", "restate", "temporal"]
+    },
+    {
+      "name": "high_step",
+      "description": "Single workflow with 50 sequential durable steps. Measures per-step overhead at scale.",
+      "highlights": "Velocity: zero-copy Rust, slab allocator. Competitors: journal/PG commit per step.",
+      "config": { "ops": 200, "steps": 50, "signals": 0, "queries": 0, "payload_bytes": 512 },
+      "primary_metrics": ["ops_per_sec", "p99_latency_us", "per_step_latency_us"],
+      "engines": ["velocity-classic", "velocity-runtime", "velocity-embedded", "dbos", "restate", "temporal"]
+    },
+    {
+      "name": "concurrent_100",
+      "description": "Launch 100 workflows in parallel, each with 10 steps. Measures concurrency handling.",
+      "highlights": "Restate: virtual objects. Velocity: async Rust tokio tasks.",
+      "config": { "ops": 100, "steps": 10, "signals": 0, "queries": 0, "payload_bytes": 256, "concurrency": 100 },
+      "primary_metrics": ["ops_per_sec", "p99_latency_us", "wall_clock_sec"],
+      "engines": ["velocity-classic", "velocity-runtime", "velocity-embedded", "dbos", "restate", "temporal"]
+    },
+    {
+      "name": "memory_scaling",
+      "description": "Create 1K, 10K, 100K workflows and measure RSS at each level. Tests memory efficiency.",
+      "highlights": "Velocity: 5.5MB base RSS. Restate: keyed virtual object state.",
+      "config": { "ops": 100000, "steps": 1, "signals": 0, "queries": 0, "payload_bytes": 256 },
+      "primary_metrics": ["rss_mb_at_1k", "rss_mb_at_10k", "rss_mb_at_100k", "per_workflow_bytes"],
+      "engines": ["velocity-classic", "velocity-runtime", "velocity-embedded", "dbos", "restate", "temporal"]
+    },
+    {
+      "name": "payload_size",
+      "description": "Vary payload from 1KB to 1MB. Measures serialization and storage overhead.",
+      "highlights": "Velocity: slab allocator. DBOS: PostgreSQL TOAST. Restate: journal buffering.",
+      "config": { "ops": 200, "steps": 5, "signals": 0, "queries": 0, "payload_bytes": [1024, 4096, 65536, 1048576] },
+      "primary_metrics": ["ops_per_sec_at_1kb", "ops_per_sec_at_64kb", "ops_per_sec_at_1mb"],
+      "engines": ["velocity-classic", "velocity-runtime", "velocity-embedded", "dbos", "restate", "temporal"]
+    }
+  ],
+
+  "engine_strength_workloads": {
+    "velocity-classic": [
+      {
+        "name": "wal_group_commit",
+        "description": "1000 sequential ops, each requiring WAL fsync. Measures group commit amortization.",
+        "highlights": "Velocity WAL group commit: amortize fsync across multiple ops in same batch.",
+        "config": { "ops": 1000, "steps": 1, "signals": 0, "queries": 0, "payload_bytes": 128, "fsync": true },
+        "primary_metrics": ["ops_per_sec", "fsync_count", "fsync_amortization_ratio"]
+      },
+      {
+        "name": "crash_recovery",
+        "description": "Write 10K workflows, kill engine, restart, verify all data recovered from WAL.",
+        "highlights": "WAL replay speed, zero data loss guarantee.",
+        "config": { "ops": 10000, "steps": 1, "signals": 0, "queries": 0, "payload_bytes": 256 },
+        "primary_metrics": ["write_ops_sec", "recovery_time_ms", "data_integrity_pct"]
+      }
+    ],
+    "velocity-runtime": [
+      {
+        "name": "http_throughput",
+        "description": "Pure HTTP/2 multiplexed requests — 1000 concurrent streams on single connection.",
+        "highlights": "HTTP/2 multiplexing vs gRPC binary framing overhead.",
+        "config": { "ops": 5000, "steps": 1, "signals": 0, "queries": 0, "payload_bytes": 256, "concurrency": 1000 },
+        "primary_metrics": ["ops_per_sec", "p99_latency_us", "connections_used"]
+      }
+    ],
+    "velocity-embedded": [
+      {
+        "name": "embedded_no_network",
+        "description": "In-process execution with zero network overhead. Direct function call to engine.",
+        "highlights": "Eliminates serialization + network hop. Pure Rust in-memory execution.",
+        "config": { "ops": 5000, "steps": 10, "signals": 0, "queries": 0, "payload_bytes": 256, "in_process": true },
+        "primary_metrics": ["ops_per_sec", "p99_latency_us", "network_overhead_eliminated_us"]
+      }
+    ],
+    "dbos": [
+      {
+        "name": "pg_transactional",
+        "description": "Complex multi-table PostgreSQL transaction: insert into 5 tables with FK constraints in one txn.",
+        "highlights": "PostgreSQL ACID transactions — unique to DBOS among workflow engines.",
+        "config": { "ops": 500, "steps": 5, "signals": 0, "queries": 0, "payload_bytes": 512, "tables": 5 },
+        "primary_metrics": ["ops_per_sec", "p99_latency_us", "txn_consistency_verified"]
+      },
+      {
+        "name": "sql_visibility",
+        "description": "Run SQL queries over live workflow state while workflows are executing.",
+        "highlights": "SQL visibility into workflow state — unique to DBOS (PostgreSQL-native).",
+        "config": { "ops": 1000, "steps": 1, "signals": 0, "queries": 100, "payload_bytes": 256 },
+        "primary_metrics": ["query_per_sec", "p99_query_latency_us", "consistency_with_writes"]
+      }
+    ],
+    "restate": [
+      {
+        "name": "virtual_object_contention",
+        "description": "1000 concurrent mutations on the same keyed virtual object. Tests serialization.",
+        "highlights": "Restate virtual objects: automatic single-threaded access per key.",
+        "config": { "ops": 1000, "steps": 1, "signals": 0, "queries": 0, "payload_bytes": 128, "contention_keys": 10 },
+        "primary_metrics": ["ops_per_sec", "p99_latency_us", "contention_queue_us"]
+      },
+      {
+        "name": "reactive_chain",
+        "description": "Handler-to-handler durable call chain: A calls B calls C calls D. Each journaled.",
+        "highlights": "Restate durable handler-to-handler calls with automatic journaling.",
+        "config": { "ops": 500, "steps": 4, "signals": 0, "queries": 0, "payload_bytes": 256, "chain_depth": 4 },
+        "primary_metrics": ["ops_per_sec", "p99_latency_us", "per_hop_latency_us"]
+      }
+    ],
+    "temporal": [
+      {
+        "name": "activity_scheduling",
+        "description": "Workflow schedules 10 real activities with retry policy, timeout, and heartbeat.",
+        "highlights": "Temporal activity framework: real worker processes, retry, timeout, heartbeat.",
+        "config": { "ops": 200, "steps": 10, "signals": 0, "queries": 0, "payload_bytes": 256, "activities": 10, "retry_max_attempts": 3 },
+        "primary_metrics": ["ops_per_sec", "p99_latency_us", "activity_completion_rate"]
+      },
+      {
+        "name": "long_running",
+        "description": "5-minute workflow with timers, signals, and queries interleaved.",
+        "highlights": "Temporal event-sourcing: durable timers, signal handling during wait.",
+        "config": { "ops": 10, "steps": 5, "signals": 10, "queries": 20, "payload_bytes": 256, "duration_secs": 300 },
+        "primary_metrics": ["completion_pct", "signal_delivery_pct", "query_consistency_pct"]
+      }
+    ]
+  }
+}
