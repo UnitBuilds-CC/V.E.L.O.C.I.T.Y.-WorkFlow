@@ -18,7 +18,8 @@ services:
   velocity-classic:
     build:
       context: ..
-      dockerfile: bench-suite/docker/velocity-classic/Dockerfile
+      dockerfile: bench-suite/docker/velocity-server/Dockerfile
+    image: velocity-bench/server:latest
     container_name: bench-velocity-classic
     ports:
       - "7234:7234"
@@ -37,11 +38,13 @@ services:
   velocity-runtime:
     build:
       context: ..
-      dockerfile: bench-suite/docker/velocity-runtime/Dockerfile
+      dockerfile: bench-suite/docker/velocity-server/Dockerfile
+    image: velocity-bench/server:latest
     container_name: bench-velocity-runtime
     ports:
       - "7235:7234"
       - "8080:8080"
+    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--http-port", "8080"]
     deploy:
       resources:
         limits:
@@ -57,12 +60,16 @@ services:
   velocity-embedded:
     build:
       context: ..
-      dockerfile: bench-suite/docker/velocity-embedded/Dockerfile
+      dockerfile: bench-suite/docker/velocity-server/Dockerfile
+    image: velocity-bench/server:latest
     container_name: bench-velocity-embedded
     ports:
       - "7236:7234"
+    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--storage", "sqlite"]
     volumes:
       - embedded-data:/data
+    environment:
+      VELOCITY_DATA_DIR: /data
     deploy:
       resources:
         limits:
