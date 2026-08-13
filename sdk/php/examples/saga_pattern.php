@@ -75,7 +75,7 @@ function runSaga(VelocityClient $client, ?int $simulateFailureAt): bool
 
 echo "=== VELOCITY-WorkFlow PHP SDK — Saga Pattern ===\n\n";
 
-$client = new VelocityClient('localhost:50051');
+$client = new VelocityClient('localhost:7234');
 
 try {
     // Scenario 1: Happy path

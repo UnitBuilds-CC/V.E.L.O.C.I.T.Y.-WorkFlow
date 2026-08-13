@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * Usage:
  * <pre>{@code
- * try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+ * try (VelocityClient client = VelocityClient.create("localhost:7234")) {
  *     WorkflowHandle handle = client.startWorkflow(
  *         StartWorkflowOptions.builder()
  *             .workflowType("order-processing")
@@ -49,7 +49,7 @@ public class VelocityClient implements AutoCloseable {
     /**
      * Create a new client connected to the given gRPC server address.
      *
-     * @param target gRPC server address (e.g., "localhost:50051")
+     * @param target gRPC server address (e.g., "localhost:7234")
      * @return a connected VelocityClient
      */
     public static VelocityClient create(String target) {

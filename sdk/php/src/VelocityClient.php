@@ -22,7 +22,7 @@ use Velocity\SDK\Interceptors\WorkflowInterceptorInterface;
  * or falls back to gRPC if FFI is unavailable.
  *
  * Usage:
- *     $client = new VelocityClient("localhost:50051");
+ *     $client = new VelocityClient("localhost:7234");
  *     $key = $client->startWorkflow("my-workflow", totalSteps: 5);
  *     $client->signalWorkflow($key, "my-signal", "payload");
  *     $status = $client->getWorkflowStatus($key);
@@ -48,14 +48,14 @@ class VelocityClient
     /**
      * Connect to a VELOCITY-WorkFlow server.
      *
-     * @param string $target gRPC server address (e.g. "localhost:50051").
+     * @param string $target gRPC server address (e.g. "localhost:7234").
      * @param string|null $jwtToken Optional JWT bearer token for authentication.
      * @param string|null $libraryPath Optional path to the native engine library.
      *
      * @throws ConnectionException If the connection cannot be established.
      */
     public function __construct(
-        string $target = 'localhost:50051',
+        string $target = 'localhost:7234',
         ?string $jwtToken = null,
         ?string $libraryPath = null,
     ) {

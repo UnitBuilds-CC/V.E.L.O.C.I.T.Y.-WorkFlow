@@ -18,7 +18,7 @@ import java.util.function.Predicate;
  *
  * <p>Usage:
  * <pre>{@code
- * UpdateClient client = new UpdateClient("localhost:50051");
+ * UpdateClient client = new UpdateClient("localhost:7234");
  * client.registerHandler("setAmount", args -> args, null);
  * UpdateResult result = client.executeUpdate(42, "setAmount", args, UpdateWaitPolicy.COMPLETED);
  * }</pre>
@@ -92,7 +92,7 @@ public class UpdateClient {
     }
 
     public UpdateClient() {
-        this("localhost:50051");
+        this("localhost:7234");
     }
 
     /** Register a named update handler. */

@@ -28,7 +28,7 @@ import io.velocity.sdk.SignalMethod;
  */
 public class SimpleWorker {
 
-    private static final String SERVER_ADDR = "localhost:50051";
+    private static final String SERVER_ADDR = "localhost:7234";
     private static final String TASK_QUEUE = "orders";
 
     // ── Workflow definition ──────────────────────────────────────────────

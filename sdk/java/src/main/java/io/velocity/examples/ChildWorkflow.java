@@ -49,7 +49,7 @@ public class ChildWorkflow {
     public static void main(String[] args) {
         System.out.println("=== VELOCITY-WorkFlow Java SDK — Child Workflows ===\n");
 
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
             // 1. Start the parent workflow
             WorkflowHandle parent = client.startWorkflow(
                 StartWorkflowOptions.builder()

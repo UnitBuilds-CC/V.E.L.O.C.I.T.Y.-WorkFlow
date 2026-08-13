@@ -10,7 +10,7 @@
 //! ```rust
 //! use velocity_sdk::update::{UpdateClient, UpdateWaitPolicy};
 //!
-//! let mut client = UpdateClient::new("localhost:50051");
+//! let mut client = UpdateClient::new("localhost:7234");
 //! client.register_handler("setAmount", |args| Ok(args), None);
 //! let result = client.execute_update(42, "setAmount", b"100".to_vec(), UpdateWaitPolicy::Completed);
 //! assert!(result.is_ok());
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn test_register_and_execute_handler() {
-        let mut client = UpdateClient::new("localhost:50051");
+        let mut client = UpdateClient::new("localhost:7234");
         client.register_handler("echo", |args| Ok(args), None);
 
         let result = client.execute_update(1, "echo", b"hello".to_vec(), UpdateWaitPolicy::Completed);
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_unknown_handler() {
-        let client = UpdateClient::new("localhost:50051");
+        let client = UpdateClient::new("localhost:7234");
         let result = client.execute_update(1, "unknown", vec![], UpdateWaitPolicy::Completed);
         assert_eq!(result.status, UpdateStatus::Rejected);
         assert!(result.error.is_some());
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_validation_failure() {
-        let mut client = UpdateClient::new("localhost:50051");
+        let mut client = UpdateClient::new("localhost:7234");
         client.register_handler(
             "validated",
             |args| Ok(args),
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_handler_error() {
-        let mut client = UpdateClient::new("localhost:50051");
+        let mut client = UpdateClient::new("localhost:7234");
         client.register_handler("failing", |_| Err("handler error".to_string()), None);
 
         let result = client.execute_update(1, "failing", vec![], UpdateWaitPolicy::Completed);
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_list_handlers() {
-        let mut client = UpdateClient::new("localhost:50051");
+        let mut client = UpdateClient::new("localhost:7234");
         client.register_handler("a", |args| Ok(args), None);
         client.register_handler("b", |args| Ok(args), None);
 

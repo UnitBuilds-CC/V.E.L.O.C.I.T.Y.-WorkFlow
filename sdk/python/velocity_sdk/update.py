@@ -10,7 +10,7 @@ Unlike signals (fire-and-forget), updates provide:
 Usage:
     from velocity_sdk.update import UpdateClient, UpdateWaitPolicy
 
-    client = UpdateClient("localhost:50051")
+    client = UpdateClient("localhost:7234")
     result = client.execute_update(
         workflow_key=42,
         update_name="setAmount",
@@ -78,7 +78,7 @@ class UpdateClient:
     and support wait policies for different completion levels.
     """
 
-    def __init__(self, server_address: str = "localhost:50051"):
+    def __init__(self, server_address: str = "localhost:7234"):
         self._server_address = server_address
         self._handlers: Dict[str, UpdateHandler] = {}
         self._pending: Dict[str, UpdateResult] = {}

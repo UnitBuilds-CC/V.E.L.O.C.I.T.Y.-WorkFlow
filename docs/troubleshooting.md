@@ -20,7 +20,7 @@
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `Failed to bind to port 50051` | Port already in use | Change `VELOCITY_GRPC_PORT` or stop the conflicting process |
+| `Failed to bind to port 7234` | Port already in use | Change `VELOCITY_GRPC_PORT` or stop the conflicting process |
 | `Rust FFI library not found` | Native library not built | Run `cargo build --release` in `velocity-workflow-core/` |
 | `Data directory not writable` | Permission denied | Check `VELOCITY_DATA_DIR` permissions |
 | `Slab file corrupted` | Previous crash left bad state | Delete corrupted `.slab` files and restart |
@@ -30,15 +30,15 @@
 **Symptom:** Worker throws `ConnectionError` or times out.
 
 ```
-ConnectionError: Failed to connect to localhost:50051
+ConnectionError: Failed to connect to localhost:7234
 ```
 
 **Checklist:**
-1. Verify the server is running: `curl http://localhost:5182/health`
-2. Check the port is correct (default: 50051 for gRPC)
+1. Verify the server is running: `curl http://localhost:7233/health`
+2. Check the port is correct (default: 7234 for gRPC)
 3. Verify no firewall is blocking the port
 4. Check TLS settings match between client and server
-5. If using Docker, ensure port mapping is correct: `-p 50051:50051`
+5. If using Docker, ensure port mapping is correct: `-p 7234:7234`
 
 ### Workflow Stuck in Running State
 
@@ -54,13 +54,13 @@ ConnectionError: Failed to connect to localhost:50051
 **Debug steps:**
 ```bash
 # Check workflow status
-curl http://localhost:5182/api/workflows/{key}
+curl http://localhost:7233/api/workflows/{key}
 
 # Check task queue depth
-curl http://localhost:5182/api/queues/{queue_name}
+curl http://localhost:7233/api/queues/{queue_name}
 
 # Check worker registrations
-curl http://localhost:5182/api/workers
+curl http://localhost:7233/api/workers
 ```
 
 ### Signal Not Received
@@ -136,7 +136,7 @@ Use the HTTP API to inspect raw slab state:
 
 ```bash
 # Get slab header for a workflow
-curl http://localhost:5182/api/slabs/{workflow_key}
+curl http://localhost:7233/api/slabs/{workflow_key}
 
 # Response includes:
 # - version, type_id, ns_id, tq_hash
@@ -150,7 +150,7 @@ curl http://localhost:5182/api/slabs/{workflow_key}
 
 ```bash
 # Verify slab integrity
-curl http://localhost:5182/api/slabs/{workflow_key}/verify
+curl http://localhost:7233/api/slabs/{workflow_key}/verify
 
 # Response:
 # { "valid": true, "merkle_root": "abc123...", "computed": "abc123..." }
@@ -172,10 +172,10 @@ View traces in Jaeger or Zipkin to see step-by-step execution timeline.
 
 ```bash
 # Dump WAL entries for debugging
-curl http://localhost:5182/api/wal/dump?segment=0&limit=100
+curl http://localhost:7233/api/wal/dump?segment=0&limit=100
 
 # Check WAL health
-curl http://localhost:5182/api/wal/health
+curl http://localhost:7233/api/wal/health
 ```
 
 ### SDK-Side Debugging
@@ -189,14 +189,14 @@ logging.basicConfig(level=logging.DEBUG)
 
 **TypeScript:**
 ```typescript
-const client = new VelocityClient('localhost:50051', {
+const client = new VelocityClient('localhost:7234', {
   debug: true,  // Enables request/response logging
 });
 ```
 
 **Go:**
 ```go
-client, _ := velocity_sdk.NewClient("localhost:50051", "", velocity_sdk.WithDebug())
+client, _ := velocity_sdk.NewClient("localhost:7234", "", velocity_sdk.WithDebug())
 ```
 
 ---

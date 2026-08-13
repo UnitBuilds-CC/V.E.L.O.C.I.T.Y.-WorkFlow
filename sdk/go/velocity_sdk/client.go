@@ -5,7 +5,7 @@
 //
 // Usage:
 //
-//	client, err := velocity_sdk.NewClient("localhost:50051", "")
+//	client, err := velocity_sdk.NewClient("localhost:7234", "")
 //	if err != nil { log.Fatal(err) }
 //	defer client.Close()
 //

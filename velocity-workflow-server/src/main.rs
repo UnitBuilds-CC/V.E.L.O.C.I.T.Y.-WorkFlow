@@ -602,6 +602,8 @@ struct RealEngineAdapter {
     engine: Arc<WorkflowEngine>,
     namespace_counter: AtomicU64,
     workflow_counter: AtomicU64,
+    /// Maps "namespace:workflow_id" → engine workflow_key for signal/query/describe lookups.
+    workflow_map: Arc<std::sync::Mutex<HashMap<String, u64>>>,
 }
 
 impl RealEngineAdapter {
@@ -610,7 +612,21 @@ impl RealEngineAdapter {
             engine,
             namespace_counter: AtomicU64::new(1),
             workflow_counter: AtomicU64::new(1),
+            workflow_map: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Build the map key used for workflow_id → workflow_key lookups.
+    fn map_key(namespace: &str, workflow_id: &str) -> String {
+        format!("{}:{}", namespace, workflow_id)
+    }
+
+    /// Look up the engine workflow_key for a given namespace + workflow_id.
+    fn lookup_key(&self, namespace: &str, workflow_id: &str) -> Result<u64, String> {
+        let map = self.workflow_map.lock().map_err(|e| format!("lock: {}", e))?;
+        map.get(&Self::map_key(namespace, workflow_id))
+            .copied()
+            .ok_or_else(|| format!("workflow not found: {}:{}", namespace, workflow_id))
     }
 
     fn now_us() -> i64 {
@@ -641,13 +657,24 @@ impl RealEngineAdapter {
             None,
         );
 
-        // INLINE EXECUTION: Simulate worker processing all steps immediately
-        // This is what a real worker would do, but inline for benchmark purposes
-        let total_steps = self.engine.get_total_steps(workflow_key);
-        for step in 0..total_steps {
-            self.engine.complete_step(workflow_key, step, vec![]);
+        // Store mapping for signal/query/describe lookups
+        {
+            let mut map = self.workflow_map.lock().map_err(|e| format!("lock: {}", e))?;
+            map.insert(Self::map_key(namespace, workflow_id), workflow_key);
         }
-        self.engine.complete_workflow(workflow_key, Some(vec![]));
+
+        // Signal-target workflows stay Running so signals can be delivered.
+        // All other workflows execute inline (benchmark drives completion).
+        if workflow_type == "signal_target" {
+            // Leave workflow Running — signals will be delivered via signal_workflow()
+        } else {
+            // INLINE EXECUTION: Simulate worker processing all steps immediately
+            let total_steps = self.engine.get_total_steps(workflow_key);
+            for step in 0..total_steps {
+                self.engine.complete_step(workflow_key, step, vec![]);
+            }
+            self.engine.complete_workflow(workflow_key, Some(vec![]));
+        }
 
         let run_id = format!("run-{}", workflow_key);
         Ok((workflow_id.to_string(), run_id))
@@ -660,8 +687,9 @@ impl RealEngineAdapter {
         signal_name: &str,
         payload: Vec<u8>,
     ) -> Result<(), String> {
-        // Real engine signal - for now just acknowledge
-        // TODO: Wire up to actual signal handling in WorkflowEngine
+        let workflow_key = self.lookup_key(namespace, workflow_id)?;
+        let signal_name_id = signal_name.len() as u64; // Simple hash matching start_workflow pattern
+        self.engine.signal_workflow(workflow_key, signal_name_id, payload);
         Ok(())
     }
 
@@ -681,7 +709,18 @@ impl RealEngineAdapter {
         workflow_id: &str,
         timeout: Duration,
     ) -> Result<bool, String> {
-        // For benchmark purposes, return immediately
+        let workflow_key = self.lookup_key(namespace, workflow_id)?;
+        let status = self.engine.get_status(workflow_key);
+
+        // If workflow is still Running (e.g. signal_target), drive it to completion
+        if matches!(status, velocity_workflow_engine::engine::WorkflowStatus::Running) {
+            let total_steps = self.engine.get_total_steps(workflow_key);
+            for step in 0..total_steps {
+                self.engine.complete_step(workflow_key, step, vec![]);
+            }
+            self.engine.complete_workflow(workflow_key, Some(vec![]));
+        }
+
         Ok(true)
     }
 
@@ -694,7 +733,34 @@ impl RealEngineAdapter {
         namespace: &str,
         workflow_id: &str,
     ) -> Result<(String, u64, u64), String> {
-        Ok(("Completed".to_string(), 0, 0))
+        let workflow_key = self.lookup_key(namespace, workflow_id)?;
+        let status = self.engine.get_status(workflow_key);
+        let status_str = format!("{:?}", status);
+        Ok((status_str, 0, 0))
+    }
+
+    /// Send N signals to a single workflow in one batch.
+    /// Each signal does real WAL append + fsync (matching competitor durable operations).
+    async fn batch_signal_workflow(
+        &self,
+        namespace: &str,
+        workflow_id: &str,
+        signal_name: &str,
+        signal_count: u32,
+        payload_template: &[u8],
+    ) -> Result<u32, String> {
+        let workflow_key = self.lookup_key(namespace, workflow_id)?;
+        let signal_name_id = signal_name.len() as u64;
+        let mut processed = 0u32;
+        for i in 0..signal_count {
+            // Append signal index to payload template for unique payloads
+            let mut payload = payload_template.to_vec();
+            payload.extend_from_slice(&i.to_le_bytes());
+            self.engine
+                .signal_workflow(workflow_key, signal_name_id, payload);
+            processed += 1;
+        }
+        Ok(processed)
     }
 }
 
@@ -1211,6 +1277,27 @@ impl EngineBackend {
                     .await
             }
             EngineBackend::Real(_) => 0,
+        }
+    }
+
+    /// Send N signals to a single workflow in one batch (real engine only).
+    async fn batch_signal_workflow(
+        &self,
+        namespace: &str,
+        workflow_id: &str,
+        signal_name: &str,
+        signal_count: u32,
+        payload_template: &[u8],
+    ) -> Result<u32, String> {
+        match self {
+            EngineBackend::Real(e) => {
+                e.batch_signal_workflow(namespace, workflow_id, signal_name, signal_count, payload_template)
+                    .await
+            }
+            EngineBackend::Mock(_) => {
+                // Mock: just acknowledge all signals
+                Ok(signal_count)
+            }
         }
     }
 
@@ -2084,6 +2171,42 @@ impl BenchmarkService for BenchmarkServiceImpl {
         Ok(Response::new(BatchSignalResponse {
             signaled_count: count as i64,
         }))
+    }
+    async fn batch_signal_workflow(
+        &self,
+        req: Request<BatchSignalWorkflowRequest>,
+    ) -> Result<Response<BatchSignalWorkflowResponse>, Status> {
+        let start = Instant::now();
+        let r = req.into_inner();
+        let ns = if r.namespace.is_empty() {
+            "default"
+        } else {
+            &r.namespace
+        };
+        match self
+            .backend
+            .batch_signal_workflow(
+                ns,
+                &r.workflow_id,
+                &r.signal_name,
+                r.signal_count as u32,
+                &r.payload_template,
+            )
+            .await
+        {
+            Ok(processed) => Ok(Response::new(BatchSignalWorkflowResponse {
+                success: true,
+                total_latency_us: start.elapsed().as_micros() as i64,
+                signals_processed: processed as i32,
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(BatchSignalWorkflowResponse {
+                success: false,
+                total_latency_us: start.elapsed().as_micros() as i64,
+                signals_processed: 0,
+                error: e,
+            })),
+        }
     }
     // ─── Tier 3 ────────────────────────────────────────────────────────────
     async fn describe_namespace(

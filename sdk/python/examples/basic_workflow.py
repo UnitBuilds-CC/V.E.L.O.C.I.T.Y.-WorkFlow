@@ -29,7 +29,7 @@ from velocity_sdk import VelocityClient, WorkflowStatus, WorkflowStub, WorkflowS
 def main():
     print("=== VELOCITY-WorkFlow Python SDK — Basic Workflow ===\n")
 
-    with VelocityClient("localhost:50051") as client:
+    with VelocityClient("localhost:7234") as client:
         # 1. Start a workflow using the typed stub
         stub = WorkflowStub(client, WorkflowStubOptions(
             workflow_type="order-processing",

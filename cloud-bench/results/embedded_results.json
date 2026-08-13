@@ -1,2963 +1,605 @@
-{
-  "generated_at": "2026-08-12T00:03:26.395011074+00:00",
+﻿{
+  "generated_at": "2026-08-12T15:57:33.576360521+00:00",
   "velocity_version": "0.1.0",
   "temporal_version": "1.26+",
-  "rows": [],
+  "rows": [
+    {
+      "workload_name": "simple_workflow",
+      "workload_description": "Start ÔåÆ execute 10 steps ÔåÆ complete. Measures basic throughput and latency.",
+      "velocity_ops_per_sec": 7276.365720182481,
+      "velocity_p50_us": 874,
+      "velocity_p95_us": 1524,
+      "velocity_p99_us": 1830,
+      "velocity_p999_us": 2144,
+      "velocity_peak_memory_mb": 5.52734375,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 2000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "signal_storm",
+      "workload_description": "Start workflow ÔåÆ send 100 signals ÔåÆ complete. Measures signal throughput.",
+      "velocity_ops_per_sec": 2599.46515749535,
+      "velocity_p50_us": 331,
+      "velocity_p95_us": 580,
+      "velocity_p99_us": 854,
+      "velocity_p999_us": 859,
+      "velocity_peak_memory_mb": 5.5703125,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 102,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "query_burst",
+      "workload_description": "Start workflow ÔåÆ send 100 queries ÔåÆ complete. Measures query throughput.",
+      "velocity_ops_per_sec": 3138.7158227311156,
+      "velocity_p50_us": 277,
+      "velocity_p95_us": 488,
+      "velocity_p99_us": 682,
+      "velocity_p999_us": 706,
+      "velocity_peak_memory_mb": 5.57421875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 102,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "high_step",
+      "workload_description": "Single workflow with 10K steps. Measures step execution overhead.",
+      "velocity_ops_per_sec": 6583.57752919652,
+      "velocity_p50_us": 1332,
+      "velocity_p95_us": 1526,
+      "velocity_p99_us": 1526,
+      "velocity_p999_us": 1526,
+      "velocity_peak_memory_mb": 5.60546875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 20,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "concurrent_1k",
+      "workload_description": "1000 concurrent workflows. Measures concurrent scheduling overhead.",
+      "velocity_ops_per_sec": 12710.343070271707,
+      "velocity_p50_us": 4266,
+      "velocity_p95_us": 8226,
+      "velocity_p99_us": 10092,
+      "velocity_p999_us": 10286,
+      "velocity_peak_memory_mb": 7.546875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 2000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "child_workflows",
+      "workload_description": "Parent spawns 10 children, waits for all. Measures hierarchy overhead.",
+      "velocity_ops_per_sec": 7422.161289576773,
+      "velocity_p50_us": 945,
+      "velocity_p95_us": 1422,
+      "velocity_p99_us": 1743,
+      "velocity_p999_us": 1935,
+      "velocity_peak_memory_mb": 7.6328125,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 200,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "saga_pattern",
+      "workload_description": "5-step saga with compensation. Measures transaction overhead.",
+      "velocity_ops_per_sec": 8179.055222608937,
+      "velocity_p50_us": 839,
+      "velocity_p95_us": 1280,
+      "velocity_p99_us": 1430,
+      "velocity_p999_us": 1432,
+      "velocity_peak_memory_mb": 7.6328125,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 200,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "timer_workflow",
+      "workload_description": "Workflow with timer (sleep). Measures timer scheduling accuracy.",
+      "velocity_ops_per_sec": 6796.0103749253585,
+      "velocity_p50_us": 874,
+      "velocity_p95_us": 1384,
+      "velocity_p99_us": 1554,
+      "velocity_p999_us": 1663,
+      "velocity_peak_memory_mb": 7.6328125,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 200,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "search_attributes",
+      "workload_description": "Start with attributes ÔåÆ query by attributes. Measures visibility performance.",
+      "velocity_ops_per_sec": 8639.214439686686,
+      "velocity_p50_us": 848,
+      "velocity_p95_us": 1470,
+      "velocity_p99_us": 1849,
+      "velocity_p999_us": 2119,
+      "velocity_peak_memory_mb": 7.64453125,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 3000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "signal_query_mix",
+      "workload_description": "Interleaved signals and queries. Measures mixed workload performance.",
+      "velocity_ops_per_sec": 2852.4893842649976,
+      "velocity_p50_us": 308,
+      "velocity_p95_us": 308,
+      "velocity_p99_us": 308,
+      "velocity_p999_us": 308,
+      "velocity_peak_memory_mb": 7.6484375,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 102,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "batch_operations",
+      "workload_description": "Batch start/terminate/query 5000 workflows. Measures admin throughput.",
+      "velocity_ops_per_sec": 7294.613708081411,
+      "velocity_p50_us": 903,
+      "velocity_p95_us": 1543,
+      "velocity_p99_us": 1997,
+      "velocity_p999_us": 4515,
+      "velocity_peak_memory_mb": 7.6796875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 10000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "payload_1kb",
+      "workload_description": "1KB payloads. Measures serialization overhead at typical size.",
+      "velocity_ops_per_sec": 7038.038083260428,
+      "velocity_p50_us": 928,
+      "velocity_p95_us": 1640,
+      "velocity_p99_us": 2011,
+      "velocity_p999_us": 2219,
+      "velocity_peak_memory_mb": 7.6796875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 2000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "payload_1mb",
+      "workload_description": "1MB payloads. Measures large payload handling.",
+      "velocity_ops_per_sec": 7353.273695832569,
+      "velocity_p50_us": 970,
+      "velocity_p95_us": 1488,
+      "velocity_p99_us": 1563,
+      "velocity_p999_us": 1789,
+      "velocity_peak_memory_mb": 7.6796875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 200,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "namespace_isolation",
+      "workload_description": "Workflows across 5 namespaces. Measures isolation overhead.",
+      "velocity_ops_per_sec": 7146.233738298489,
+      "velocity_p50_us": 917,
+      "velocity_p95_us": 1662,
+      "velocity_p99_us": 2024,
+      "velocity_p999_us": 2634,
+      "velocity_peak_memory_mb": 7.6796875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 1000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "throughput_ceiling",
+      "workload_description": "Maximum sustainable throughput. Pushes engine to its limits.",
+      "velocity_ops_per_sec": 12754.39203927652,
+      "velocity_p50_us": 39127,
+      "velocity_p95_us": 78963,
+      "velocity_p99_us": 142238,
+      "velocity_p999_us": 271358,
+      "velocity_peak_memory_mb": 31.01171875,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 200000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "memory_scaling",
+      "workload_description": "Measure memory at 1K, 10K, 100K active workflows.",
+      "velocity_ops_per_sec": 6958.501731786159,
+      "velocity_p50_us": 931,
+      "velocity_p95_us": 1626,
+      "velocity_p99_us": 2026,
+      "velocity_p999_us": 2616,
+      "velocity_peak_memory_mb": 31.83203125,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 200000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "cold_start",
+      "workload_description": "First workflow after engine startup. Measures cold start latency.",
+      "velocity_ops_per_sec": 884.16860741676,
+      "velocity_p50_us": 448,
+      "velocity_p95_us": 448,
+      "velocity_p99_us": 448,
+      "velocity_p999_us": 448,
+      "velocity_peak_memory_mb": 28.90234375,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 2,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "crash_recovery",
+      "workload_description": "Start workflows ÔåÆ simulate crash ÔåÆ restart ÔåÆ verify recovery.",
+      "velocity_ops_per_sec": 4500.799251931158,
+      "velocity_p50_us": 1146,
+      "velocity_p95_us": 7921,
+      "velocity_p99_us": 13790,
+      "velocity_p999_us": 14097,
+      "velocity_peak_memory_mb": 28.90234375,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 200,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "replay_amplification",
+      "workload_description": "Signal a workflow 1000 times. Measures how signal latency scales with history length. Event-sourced engines (Temporal) replay the full event log on each signal ÔÇö O(n┬▓) total. Velocity uses direct mutation ÔÇö O(n) total. The curve should be flat for Velocity and steeply rising for Temporal.",
+      "velocity_ops_per_sec": 3008.9637751571818,
+      "velocity_p50_us": 0,
+      "velocity_p95_us": 0,
+      "velocity_p99_us": 0,
+      "velocity_p999_us": 0,
+      "velocity_peak_memory_mb": 28.90234375,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 1002,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "wal_durability",
+      "workload_description": "High-throughput workflow creation with WAL fsync enabled. Measures how much throughput the durability guarantee costs. Velocity's group commit amortizes fsync across many workflows.",
+      "velocity_ops_per_sec": 10654.0102366266,
+      "velocity_p50_us": 3065,
+      "velocity_p95_us": 5002,
+      "velocity_p99_us": 6020,
+      "velocity_p999_us": 7275,
+      "velocity_peak_memory_mb": 28.90234375,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 10000,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    },
+    {
+      "workload_name": "tail_latency_sustained",
+      "workload_description": "Sustained load at high concurrency for 2 minutes. Measures p99/p999 tail latency stability. Shows whether the engine maintains consistent latency or degrades under prolonged pressure.",
+      "velocity_ops_per_sec": 11371.176250766843,
+      "velocity_p50_us": 5397,
+      "velocity_p95_us": 9491,
+      "velocity_p99_us": 11483,
+      "velocity_p999_us": 14336,
+      "velocity_peak_memory_mb": 39.42578125,
+      "velocity_peak_cpu": 0.0,
+      "velocity_error_rate": 0.0,
+      "velocity_total_ops": 1364600,
+      "temporal_ops_per_sec": 0.0,
+      "temporal_p50_us": 0,
+      "temporal_p95_us": 0,
+      "temporal_p99_us": 0,
+      "temporal_p999_us": 0,
+      "temporal_peak_memory_mb": 0.0,
+      "temporal_peak_cpu": 0.0,
+      "temporal_error_rate": 0.0,
+      "temporal_total_ops": 0,
+      "throughput_delta_pct": null,
+      "p50_latency_delta_pct": 0.0,
+      "p99_latency_delta_pct": 0.0,
+      "memory_delta_pct": 0.0,
+      "error_rate_delta_pct": 0.0,
+      "verdict": "VELOCITY faster"
+    }
+  ],
   "summary": {
-    "total_workloads": 0,
-    "velocity_wins": 0,
+    "total_workloads": 21,
+    "velocity_wins": 21,
     "temporal_wins": 0,
     "comparable": 0,
-    "avg_throughput_delta_pct": 0.0,
+    "avg_throughput_delta_pct": null,
     "avg_p99_latency_delta_pct": 0.0,
     "avg_memory_delta_pct": 0.0,
-    "overall_verdict": "VELOCITY and Temporal are roughly comparable"
-  },
-  "statistical_summary": {
-    "runs_per_workload": 3,
-    "velocity_aggregates": [
-      {
-        "workload": "simple_workflow",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 0.33277482083361737,
-          "stddev": 6.770547235461173e-6,
-          "min": 0.3327670500839482,
-          "max": 0.3327794491061918,
-          "ci95_lower": 0.33275800050442905,
-          "ci95_upper": 0.3327916411628057,
-          "cv_pct": 0.0020345731742866294
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 16207.666666666666,
-          "stddev": 1613.2124265989687,
-          "min": 14862.0,
-          "max": 17996.0,
-          "ci95_lower": 12199.90139712545,
-          "ci95_upper": 20215.431936207882,
-          "cv_pct": 9.953390946253638
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 47926.666666666664,
-          "stddev": 2284.5343799849747,
-          "min": 45938.0,
-          "max": 50422.0,
-          "ci95_lower": 42251.11061824259,
-          "ci95_upper": 53602.22271509074,
-          "cv_pct": 4.766729127802841
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 6.032552083333333,
-          "stddev": 0.19094065395649332,
-          "min": 5.82421875,
-          "max": 6.19921875,
-          "ci95_lower": 5.558190921187045,
-          "ci95_upper": 6.5069132454796215,
-          "cv_pct": 3.1651720750828165
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 100.0,
-          "stddev": 0.0,
-          "min": 100.0,
-          "max": 100.0,
-          "ci95_lower": 100.0,
-          "ci95_upper": 100.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 100.0,
-          "stddev": 0.0,
-          "min": 100.0,
-          "max": 100.0,
-          "ci95_lower": 100.0,
-          "ci95_upper": 100.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          0.33277796331071213,
-          0.3327670500839482,
-          0.3327794491061918
-        ],
-        "per_run_p99_us": [
-          50422.0,
-          45938.0,
-          47420.0
-        ]
-      },
-      {
-        "workload": "signal_storm",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 3.3313860050259407,
-          "stddev": 0.0013675663110948393,
-          "min": 3.3301944743581937,
-          "max": 3.3328792271086916,
-          "ci95_lower": 3.3279885077868725,
-          "ci95_upper": 3.334783502265009,
-          "cv_pct": 0.041050971248352545
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 3999.3333333333335,
-          "stddev": 295.43583623747026,
-          "min": 3771.0,
-          "max": 4333.0,
-          "ci95_lower": 3265.3707972607413,
-          "ci95_upper": 4733.295869405925,
-          "cv_pct": 7.38712709378572
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 3999.3333333333335,
-          "stddev": 295.43583623747026,
-          "min": 3771.0,
-          "max": 4333.0,
-          "ci95_lower": 3265.3707972607413,
-          "ci95_upper": 4733.295869405925,
-          "cv_pct": 7.38712709378572
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 6.296875,
-          "stddev": 0.0,
-          "min": 6.296875,
-          "max": 6.296875,
-          "ci95_lower": 6.296875,
-          "ci95_upper": 6.296875,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.9900990099009901,
-          "stddev": 0.0,
-          "min": 0.9900990099009901,
-          "max": 0.9900990099009901,
-          "ci95_lower": 0.9900990099009901,
-          "ci95_upper": 0.9900990099009901,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 101.0,
-          "stddev": 0.0,
-          "min": 101.0,
-          "max": 101.0,
-          "ci95_lower": 101.0,
-          "ci95_upper": 101.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          3.3301944743581937,
-          3.3328792271086916,
-          3.3310843136109374
-        ],
-        "per_run_p99_us": [
-          3894.0,
-          4333.0,
-          3771.0
-        ]
-      },
-      {
-        "workload": "query_burst",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 3.3613940230200203,
-          "stddev": 0.0005139121986014688,
-          "min": 3.360858577853968,
-          "max": 3.3618832847722353,
-          "ci95_lower": 3.3601172913093116,
-          "ci95_upper": 3.362670754730729,
-          "cv_pct": 0.015288662831016401
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 4005.0,
-          "stddev": 929.8322429341757,
-          "min": 3209.0,
-          "max": 5027.0,
-          "ci95_lower": 1694.9822315479905,
-          "ci95_upper": 6315.0177684520095,
-          "cv_pct": 23.216785091989404
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 4005.0,
-          "stddev": 929.8322429341757,
-          "min": 3209.0,
-          "max": 5027.0,
-          "ci95_lower": 1694.9822315479905,
-          "ci95_upper": 6315.0177684520095,
-          "cv_pct": 23.216785091989404
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 6.31640625,
-          "stddev": 0.015625,
-          "min": 6.30078125,
-          "max": 6.33203125,
-          "ci95_lower": 6.277588465494953,
-          "ci95_upper": 6.355224034505047,
-          "cv_pct": 0.24737167594310452
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.9900990099009901,
-          "stddev": 0.0,
-          "min": 0.9900990099009901,
-          "max": 0.9900990099009901,
-          "ci95_lower": 0.9900990099009901,
-          "ci95_upper": 0.9900990099009901,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 101.0,
-          "stddev": 0.0,
-          "min": 101.0,
-          "max": 101.0,
-          "ci95_lower": 101.0,
-          "ci95_upper": 101.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          3.3614402064338575,
-          3.3618832847722353,
-          3.360858577853968
-        ],
-        "per_run_p99_us": [
-          3209.0,
-          3779.0,
-          5027.0
-        ]
-      },
-      {
-        "workload": "high_step",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 0.02734686463670677,
-          "stddev": 0.0003274048219470367,
-          "min": 0.027059544728754496,
-          "max": 0.02770331408832058,
-          "ci95_lower": 0.02653348032795457,
-          "ci95_upper": 0.028160248945458967,
-          "cv_pct": 1.1972298334616842
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 3667.6666666666665,
-          "stddev": 193.1458861413655,
-          "min": 3479.0,
-          "max": 3865.0,
-          "ci95_lower": 3187.8269619452763,
-          "ci95_upper": 4147.506371388057,
-          "cv_pct": 5.266178845988335
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 3667.6666666666665,
-          "stddev": 193.1458861413655,
-          "min": 3479.0,
-          "max": 3865.0,
-          "ci95_lower": 3187.8269619452763,
-          "ci95_upper": 4147.506371388057,
-          "cv_pct": 5.266178845988335
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 6.38671875,
-          "stddev": 0.03515625,
-          "min": 6.3515625,
-          "max": 6.421875,
-          "ci95_lower": 6.299378734863646,
-          "ci95_upper": 6.474058765136354,
-          "cv_pct": 0.5504587155963303
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 2.0,
-          "stddev": 0.0,
-          "min": 2.0,
-          "max": 2.0,
-          "ci95_lower": 2.0,
-          "ci95_upper": 2.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          0.027059544728754496,
-          0.02770331408832058,
-          0.027277735093045232
-        ],
-        "per_run_p99_us": [
-          3659.0,
-          3865.0,
-          3479.0
-        ]
-      },
-      {
-        "workload": "concurrent_1k",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 69.66545115849338,
-          "stddev": 3.070251424138891,
-          "min": 66.24180949751575,
-          "max": 72.17442450910654,
-          "ci95_lower": 62.03790823634716,
-          "ci95_upper": 77.29299408063962,
-          "cv_pct": 4.40713635393514
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 141178.33333333334,
-          "stddev": 32752.0539864805,
-          "min": 111803.0,
-          "max": 176494.0,
-          "ci95_lower": 59811.154213663525,
-          "ci95_upper": 222545.51245300315,
-          "cv_pct": 23.199065474976447
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 312979.6666666667,
-          "stddev": 111818.97965163755,
-          "min": 219565.0,
-          "max": 436880.0,
-          "ci95_lower": 35183.50310241594,
-          "ci95_upper": 590775.8302309174,
-          "cv_pct": 35.72723456528195
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.239583333333334,
-          "stddev": 0.21375196073052952,
-          "min": 8.015625,
-          "max": 8.44140625,
-          "ci95_lower": 7.708551170186531,
-          "ci95_upper": 8.770615496480136,
-          "cv_pct": 2.5942083729621785
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 200.0,
-          "stddev": 0.0,
-          "min": 200.0,
-          "max": 200.0,
-          "ci95_lower": 200.0,
-          "ci95_upper": 200.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          72.17442450910654,
-          66.24180949751575,
-          70.58011946885787
-        ],
-        "per_run_p99_us": [
-          282494.0,
-          436880.0,
-          219565.0
-        ]
-      },
-      {
-        "workload": "child_workflows",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 70.4307963681809,
-          "stddev": 0.6284928707446352,
-          "min": 70.01094383069584,
-          "max": 71.15335912962792,
-          "ci95_lower": 68.86940751573142,
-          "ci95_upper": 71.99218522063039,
-          "cv_pct": 0.8923551956720094
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 19591.0,
-          "stddev": 7326.649097643479,
-          "min": 14749.0,
-          "max": 28020.0,
-          "ci95_lower": 1389.1257077493683,
-          "ci95_upper": 37792.874292250635,
-          "cv_pct": 37.3980353103133
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 47272.0,
-          "stddev": 4027.270415554436,
-          "min": 42775.0,
-          "max": 50546.0,
-          "ci95_lower": 37266.89823138943,
-          "ci95_upper": 57277.10176861057,
-          "cv_pct": 8.5193569460874
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.44140625,
-          "stddev": 0.0,
-          "min": 8.44140625,
-          "max": 8.44140625,
-          "ci95_lower": 8.44140625,
-          "ci95_upper": 8.44140625,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 20.0,
-          "stddev": 0.0,
-          "min": 20.0,
-          "max": 20.0,
-          "ci95_lower": 20.0,
-          "ci95_upper": 20.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          71.15335912962792,
-          70.12808614421897,
-          70.01094383069584
-        ],
-        "per_run_p99_us": [
-          50546.0,
-          42775.0,
-          48495.0
-        ]
-      },
-      {
-        "workload": "saga_pattern",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 0.3318504360508845,
-          "stddev": 0.00008124222770246698,
-          "min": 0.3317710469845911,
-          "max": 0.331933412585797,
-          "ci95_lower": 0.331648602880474,
-          "ci95_upper": 0.332052269221295,
-          "cv_pct": 0.024481579313040187
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 16884.666666666668,
-          "stddev": 2303.0875652769555,
-          "min": 15088.0,
-          "max": 19481.0,
-          "ci95_lower": 11163.01823113563,
-          "ci95_upper": 22606.315102197706,
-          "cv_pct": 13.640112717319198
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 44945.666666666664,
-          "stddev": 3397.8230285483282,
-          "min": 42113.0,
-          "max": 48713.0,
-          "ci95_lower": 36504.325091724415,
-          "ci95_upper": 53387.00824160891,
-          "cv_pct": 7.559845654861043
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.44140625,
-          "stddev": 0.0,
-          "min": 8.44140625,
-          "max": 8.44140625,
-          "ci95_lower": 8.44140625,
-          "ci95_upper": 8.44140625,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 100.0,
-          "stddev": 0.0,
-          "min": 100.0,
-          "max": 100.0,
-          "ci95_lower": 100.0,
-          "ci95_upper": 100.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 10.0,
-          "stddev": 0.0,
-          "min": 10.0,
-          "max": 10.0,
-          "ci95_lower": 10.0,
-          "ci95_upper": 10.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          0.3318468485822654,
-          0.331933412585797,
-          0.3317710469845911
-        ],
-        "per_run_p99_us": [
-          44011.0,
-          42113.0,
-          48713.0
-        ]
-      },
-      {
-        "workload": "timer_workflow",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 69.45846895300093,
-          "stddev": 0.9007497323747856,
-          "min": 68.43480415524498,
-          "max": 70.12977820521411,
-          "ci95_lower": 67.22070197672556,
-          "ci95_upper": 71.6962359292763,
-          "cv_pct": 1.2968177184905672
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 15694.333333333334,
-          "stddev": 3172.124261962846,
-          "min": 12739.0,
-          "max": 19046.0,
-          "ci95_lower": 7813.703827790766,
-          "ci95_upper": 23574.9628388759,
-          "cv_pct": 20.21190830212293
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 43648.333333333336,
-          "stddev": 5113.696738498807,
-          "min": 37760.0,
-          "max": 46974.0,
-          "ci95_lower": 30944.181140104247,
-          "ci95_upper": 56352.48552656242,
-          "cv_pct": 11.71567468440675
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.44140625,
-          "stddev": 0.0,
-          "min": 8.44140625,
-          "max": 8.44140625,
-          "ci95_lower": 8.44140625,
-          "ci95_upper": 8.44140625,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 20.0,
-          "stddev": 0.0,
-          "min": 20.0,
-          "max": 20.0,
-          "ci95_lower": 20.0,
-          "ci95_upper": 20.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          70.12977820521411,
-          68.43480415524498,
-          69.8108244985437
-        ],
-        "per_run_p99_us": [
-          37760.0,
-          46211.0,
-          46974.0
-        ]
-      },
-      {
-        "workload": "search_attributes",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 0.6655152012555404,
-          "stddev": 0.000013937638034163813,
-          "min": 0.6654991082785053,
-          "max": 0.665523388533203,
-          "ci95_lower": 0.6654805754488384,
-          "ci95_upper": 0.6655498270622424,
-          "cv_pct": 0.0020942629120821728
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 15667.666666666666,
-          "stddev": 512.3634777512282,
-          "min": 15139.0,
-          "max": 16162.0,
-          "ci95_lower": 14394.782502340058,
-          "ci95_upper": 16940.550830993274,
-          "cv_pct": 3.2701964411924447
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 45191.0,
-          "stddev": 1946.4714228572686,
-          "min": 43210.0,
-          "max": 47101.0,
-          "ci95_lower": 40355.30667278693,
-          "ci95_upper": 50026.69332721307,
-          "cv_pct": 4.307210335813036
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.609375,
-          "stddev": 0.09858929268846846,
-          "min": 8.50390625,
-          "max": 8.69921875,
-          "ci95_lower": 8.364445853242502,
-          "ci95_upper": 8.854304146757498,
-          "cv_pct": 1.1451387898479095
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 50.0,
-          "stddev": 0.0,
-          "min": 50.0,
-          "max": 50.0,
-          "ci95_lower": 50.0,
-          "ci95_upper": 50.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 200.0,
-          "stddev": 0.0,
-          "min": 200.0,
-          "max": 200.0,
-          "ci95_lower": 200.0,
-          "ci95_upper": 200.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          0.665523388533203,
-          0.6654991082785053,
-          0.6655231069549128
-        ],
-        "per_run_p99_us": [
-          47101.0,
-          45262.0,
-          43210.0
-        ]
-      },
-      {
-        "workload": "signal_query_mix",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 3.346685076639042,
-          "stddev": 0.0013557333618474982,
-          "min": 3.3451240877239727,
-          "max": 3.3475680315948178,
-          "ci95_lower": 3.3433169764479063,
-          "ci95_upper": 3.350053176830178,
-          "cv_pct": 0.040509738167805544
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 3585.6666666666665,
-          "stddev": 140.19391332484207,
-          "min": 3474.0,
-          "max": 3743.0,
-          "ci95_lower": 3237.3775712194442,
-          "ci95_upper": 3933.955762113889,
-          "cv_pct": 3.9098423349867644
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 3585.6666666666665,
-          "stddev": 140.19391332484207,
-          "min": 3474.0,
-          "max": 3743.0,
-          "ci95_lower": 3237.3775712194442,
-          "ci95_upper": 3933.955762113889,
-          "cv_pct": 3.9098423349867644
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.6484375,
-          "stddev": 0.0,
-          "min": 8.6484375,
-          "max": 8.6484375,
-          "ci95_lower": 8.6484375,
-          "ci95_upper": 8.6484375,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.9900990099009901,
-          "stddev": 0.0,
-          "min": 0.9900990099009901,
-          "max": 0.9900990099009901,
-          "ci95_lower": 0.9900990099009901,
-          "ci95_upper": 0.9900990099009901,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 101.0,
-          "stddev": 0.0,
-          "min": 101.0,
-          "max": 101.0,
-          "ci95_lower": 101.0,
-          "ci95_upper": 101.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          3.3475680315948178,
-          3.3451240877239727,
-          3.347363110598335
-        ],
-        "per_run_p99_us": [
-          3743.0,
-          3474.0,
-          3540.0
-        ]
-      },
-      {
-        "workload": "batch_operations",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 68.13881502524545,
-          "stddev": 1.739978066334839,
-          "min": 66.54022341194346,
-          "max": 69.99210433839292,
-          "ci95_lower": 63.816121033405906,
-          "ci95_upper": 72.46150901708499,
-          "cv_pct": 2.553578405627067
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 15326.0,
-          "stddev": 965.2838960637436,
-          "min": 14667.0,
-          "max": 16434.0,
-          "ci95_lower": 12927.908335129992,
-          "ci95_upper": 17724.091664870008,
-          "cv_pct": 6.298342007462766
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 51030.333333333336,
-          "stddev": 1320.724927202229,
-          "min": 49557.0,
-          "max": 52108.0,
-          "ci95_lower": 47749.20593400028,
-          "ci95_upper": 54311.46073266639,
-          "cv_pct": 2.5881173822149486
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.6484375,
-          "stddev": 0.0,
-          "min": 8.6484375,
-          "max": 8.6484375,
-          "ci95_lower": 8.6484375,
-          "ci95_upper": 8.6484375,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 1000.0,
-          "stddev": 0.0,
-          "min": 1000.0,
-          "max": 1000.0,
-          "ci95_lower": 1000.0,
-          "ci95_upper": 1000.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          66.54022341194346,
-          69.99210433839292,
-          67.8841173254
-        ],
-        "per_run_p99_us": [
-          52108.0,
-          51426.0,
-          49557.0
-        ]
-      },
-      {
-        "workload": "payload_1kb",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 71.20667490988443,
-          "stddev": 3.062976185023006,
-          "min": 67.695676191662,
-          "max": 73.33161859565185,
-          "ci95_lower": 63.597206142248474,
-          "ci95_upper": 78.81614367752037,
-          "cv_pct": 4.301529581179509
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 17342.0,
-          "stddev": 1221.1392222019567,
-          "min": 16527.0,
-          "max": 18746.0,
-          "ci95_lower": 14308.277172601898,
-          "ci95_upper": 20375.7228273981,
-          "cv_pct": 7.041513217633241
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 46076.0,
-          "stddev": 811.3735268050099,
-          "min": 45345.0,
-          "max": 46949.0,
-          "ci95_lower": 44060.27374613656,
-          "ci95_upper": 48091.72625386344,
-          "cv_pct": 1.7609461038393301
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.6484375,
-          "stddev": 0.0,
-          "min": 8.6484375,
-          "max": 8.6484375,
-          "ci95_lower": 8.6484375,
-          "ci95_upper": 8.6484375,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 200.0,
-          "stddev": 0.0,
-          "min": 200.0,
-          "max": 200.0,
-          "ci95_lower": 200.0,
-          "ci95_upper": 200.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          67.695676191662,
-          73.33161859565185,
-          72.59272994233943
-        ],
-        "per_run_p99_us": [
-          46949.0,
-          45934.0,
-          45345.0
-        ]
-      },
-      {
-        "workload": "payload_1mb",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 71.10322626473688,
-          "stddev": 7.178068300048814,
-          "min": 62.95369230896881,
-          "max": 76.4869954381894,
-          "ci95_lower": 53.27047692497378,
-          "ci95_upper": 88.93597560449997,
-          "cv_pct": 10.095277917942697
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 13960.666666666666,
-          "stddev": 1655.7660865391986,
-          "min": 12398.0,
-          "max": 15696.0,
-          "ci95_lower": 9847.183713831955,
-          "ci95_upper": 18074.149619501375,
-          "cv_pct": 11.860222194779608
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 37876.333333333336,
-          "stddev": 2459.403247402372,
-          "min": 35037.0,
-          "max": 39344.0,
-          "ci95_lower": 31766.34387613806,
-          "ci95_upper": 43986.32279052861,
-          "cv_pct": 6.493245335439998
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.6484375,
-          "stddev": 0.0,
-          "min": 8.6484375,
-          "max": 8.6484375,
-          "ci95_lower": 8.6484375,
-          "ci95_upper": 8.6484375,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 20.0,
-          "stddev": 0.0,
-          "min": 20.0,
-          "max": 20.0,
-          "ci95_lower": 20.0,
-          "ci95_upper": 20.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          76.4869954381894,
-          73.86899104705243,
-          62.95369230896881
-        ],
-        "per_run_p99_us": [
-          39344.0,
-          35037.0,
-          39248.0
-        ]
-      },
-      {
-        "workload": "namespace_isolation",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 73.49684244895425,
-          "stddev": 1.7802350631060222,
-          "min": 71.97415101914916,
-          "max": 75.45413757211398,
-          "ci95_lower": 69.07413646188373,
-          "ci95_upper": 77.91954843602478,
-          "cv_pct": 2.422192578330761
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 14538.333333333334,
-          "stddev": 1604.2120599638108,
-          "min": 13479.0,
-          "max": 16384.0,
-          "ci95_lower": 10552.928018512755,
-          "ci95_upper": 18523.73864815391,
-          "cv_pct": 11.034360151075163
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 47205.333333333336,
-          "stddev": 4729.438162544609,
-          "min": 43290.0,
-          "max": 52460.0,
-          "ci95_lower": 35455.80940222303,
-          "ci95_upper": 58954.85726444364,
-          "cv_pct": 10.018864032054166
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 8.6484375,
-          "stddev": 0.0,
-          "min": 8.6484375,
-          "max": 8.6484375,
-          "ci95_lower": 8.6484375,
-          "ci95_upper": 8.6484375,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 100.0,
-          "stddev": 0.0,
-          "min": 100.0,
-          "max": 100.0,
-          "ci95_lower": 100.0,
-          "ci95_upper": 100.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          75.45413757211398,
-          73.06223875559962,
-          71.97415101914916
-        ],
-        "per_run_p99_us": [
-          43290.0,
-          52460.0,
-          45866.0
-        ]
-      },
-      {
-        "workload": "throughput_ceiling",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 67.82823770167127,
-          "stddev": 1.2607561820713187,
-          "min": 66.40859198631333,
-          "max": 68.81727496223881,
-          "ci95_lower": 64.69609294717212,
-          "ci95_upper": 70.96038245617042,
-          "cv_pct": 1.8587482511583135
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 2014801.6666666667,
-          "stddev": 10676.066191876731,
-          "min": 2007031.0,
-          "max": 2026975.0,
-          "ci95_lower": 1988278.7075116024,
-          "ci95_upper": 2041324.625821731,
-          "cv_pct": 0.5298817431265807
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 4222088.666666667,
-          "stddev": 188770.1479109802,
-          "min": 4004395.0,
-          "max": 4340489.0,
-          "ci95_lower": 3753119.775620642,
-          "ci95_upper": 4691057.557712692,
-          "cv_pct": 4.471013349419161
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 29.575520833333332,
-          "stddev": 0.3574663422930834,
-          "min": 29.3671875,
-          "max": 29.98828125,
-          "ci95_lower": 28.68745354098517,
-          "ci95_upper": 30.463588125681493,
-          "cv_pct": 1.208656119050313
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 20000.0,
-          "stddev": 0.0,
-          "min": 20000.0,
-          "max": 20000.0,
-          "ci95_lower": 20000.0,
-          "ci95_upper": 20000.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          68.81727496223881,
-          68.25884615646167,
-          66.40859198631333
-        ],
-        "per_run_p99_us": [
-          4321382.0,
-          4004395.0,
-          4340489.0
-        ]
-      },
-      {
-        "workload": "memory_scaling",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 63.80990487983623,
-          "stddev": 1.3783987720808784,
-          "min": 62.642405745021755,
-          "max": 65.33050689161753,
-          "ci95_lower": 60.38549614405026,
-          "ci95_upper": 67.23431361562221,
-          "cv_pct": 2.160164279631216
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 17015.666666666668,
-          "stddev": 338.3642022042718,
-          "min": 16625.0,
-          "max": 17216.0,
-          "ci95_lower": 16175.055550801879,
-          "ci95_upper": 17856.277782531455,
-          "cv_pct": 1.9885450792658046
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 56221.0,
-          "stddev": 1168.7993839834105,
-          "min": 54937.0,
-          "max": 57223.0,
-          "ci95_lower": 53317.307032505676,
-          "ci95_upper": 59124.692967494324,
-          "cv_pct": 2.0789373792415833
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 29.9921875,
-          "stddev": 0.0,
-          "min": 29.9921875,
-          "max": 29.9921875,
-          "ci95_lower": 29.9921875,
-          "ci95_upper": 29.9921875,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 20000.0,
-          "stddev": 0.0,
-          "min": 20000.0,
-          "max": 20000.0,
-          "ci95_lower": 20000.0,
-          "ci95_upper": 20000.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          63.456802002869395,
-          62.642405745021755,
-          65.33050689161753
-        ],
-        "per_run_p99_us": [
-          56503.0,
-          57223.0,
-          54937.0
-        ]
-      },
-      {
-        "workload": "cold_start",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 0.03332267094773722,
-          "stddev": 6.428949171620381e-7,
-          "min": 0.03332215646448451,
-          "max": 0.03332339164821992,
-          "ci95_lower": 0.03332107377933058,
-          "ci95_upper": 0.03332426811614386,
-          "cv_pct": 0.0019293018803034872
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 4103.666666666667,
-          "stddev": 574.3355581307267,
-          "min": 3541.0,
-          "max": 4689.0,
-          "ci95_lower": 2676.8228952040104,
-          "ci95_upper": 5530.510438129324,
-          "cv_pct": 13.995667893690033
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 4103.666666666667,
-          "stddev": 574.3355581307267,
-          "min": 3541.0,
-          "max": 4689.0,
-          "ci95_lower": 2676.8228952040104,
-          "ci95_upper": 5530.510438129324,
-          "cv_pct": 13.995667893690033
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 30.0234375,
-          "stddev": 0.027063293868263706,
-          "min": 29.9921875,
-          "max": 30.0390625,
-          "ci95_lower": 29.956203125,
-          "ci95_upper": 30.090671875,
-          "cv_pct": 0.09014055725052705
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 100.0,
-          "stddev": 0.0,
-          "min": 100.0,
-          "max": 100.0,
-          "ci95_lower": 100.0,
-          "ci95_upper": 100.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 1.0,
-          "stddev": 0.0,
-          "min": 1.0,
-          "max": 1.0,
-          "ci95_lower": 1.0,
-          "ci95_upper": 1.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          0.03332339164821992,
-          0.03332215646448451,
-          0.03332246473050724
-        ],
-        "per_run_p99_us": [
-          3541.0,
-          4689.0,
-          4081.0
-        ]
-      },
-      {
-        "workload": "crash_recovery",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 69.20101644690452,
-          "stddev": 2.446019496819236,
-          "min": 67.72474205067972,
-          "max": 72.02445261857159,
-          "ci95_lower": 63.124276752653586,
-          "ci95_upper": 75.27775614115545,
-          "cv_pct": 3.5346583365520075
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 18867.333333333332,
-          "stddev": 4742.966828192385,
-          "min": 14703.0,
-          "max": 24030.0,
-          "ci95_lower": 7084.199621246631,
-          "ci95_upper": 30650.46704542003,
-          "cv_pct": 25.13851186279134
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 37999.666666666664,
-          "stddev": 9477.491246808584,
-          "min": 27084.0,
-          "max": 44135.0,
-          "ci95_lower": 14454.373043173695,
-          "ci95_upper": 61544.96029015964,
-          "cv_pct": 24.94098521954206
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 30.0390625,
-          "stddev": 0.0,
-          "min": 30.0390625,
-          "max": 30.0390625,
-          "ci95_lower": 30.0390625,
-          "ci95_upper": 30.0390625,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 20.0,
-          "stddev": 0.0,
-          "min": 20.0,
-          "max": 20.0,
-          "ci95_lower": 20.0,
-          "ci95_upper": 20.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          67.72474205067972,
-          67.85385467146224,
-          72.02445261857159
-        ],
-        "per_run_p99_us": [
-          42780.0,
-          27084.0,
-          44135.0
-        ]
-      },
-      {
-        "workload": "replay_amplification",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 30.244423885888448,
-          "stddev": 0.16139240413804018,
-          "min": 30.12150744226265,
-          "max": 30.427192325854005,
-          "ci95_lower": 29.843470569755215,
-          "ci95_upper": 30.64537720202168,
-          "cv_pct": 0.5336269745027057
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 30.0390625,
-          "stddev": 0.0,
-          "min": 30.0390625,
-          "max": 30.0390625,
-          "ci95_lower": 30.0390625,
-          "ci95_upper": 30.0390625,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 0.0999000999000999,
-          "stddev": 0.0,
-          "min": 0.0999000999000999,
-          "max": 0.0999000999000999,
-          "ci95_lower": 0.0999000999000999,
-          "ci95_upper": 0.0999000999000999,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 1001.0,
-          "stddev": 0.0,
-          "min": 1001.0,
-          "max": 1001.0,
-          "ci95_lower": 1001.0,
-          "ci95_upper": 1001.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          30.18457188954868,
-          30.12150744226265,
-          30.427192325854005
-        ],
-        "per_run_p99_us": [
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      {
-        "workload": "wal_durability",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 1.6519490095516982,
-          "stddev": 0.001724131873396919,
-          "min": 1.649972994299992,
-          "max": 1.6531471445451906,
-          "ci95_lower": 1.6476656828624308,
-          "ci95_upper": 1.6562323362409657,
-          "cv_pct": 0.10436955762120101
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 97311.33333333333,
-          "stddev": 12545.111013192882,
-          "min": 84021.0,
-          "max": 108947.0,
-          "ci95_lower": 66145.0347156051,
-          "ci95_upper": 128477.63195106156,
-          "cv_pct": 12.891726568189608
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 262044.33333333334,
-          "stddev": 25547.66655358828,
-          "min": 232548.0,
-          "max": 277190.0,
-          "ci95_lower": 198575.28918075943,
-          "ci95_upper": 325513.37748590723,
-          "cv_pct": 9.749368066315094
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 30.0390625,
-          "stddev": 0.0,
-          "min": 30.0390625,
-          "max": 30.0390625,
-          "ci95_lower": 30.0390625,
-          "ci95_upper": 30.0390625,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 100.0,
-          "stddev": 0.0,
-          "min": 100.0,
-          "max": 100.0,
-          "ci95_lower": 100.0,
-          "ci95_upper": 100.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 500.0,
-          "stddev": 0.0,
-          "min": 500.0,
-          "max": 500.0,
-          "ci95_lower": 500.0,
-          "ci95_upper": 500.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          1.6531471445451906,
-          1.6527268898099123,
-          1.649972994299992
-        ],
-        "per_run_p99_us": [
-          277190.0,
-          232548.0,
-          276395.0
-        ]
-      },
-      {
-        "workload": "tail_latency_sustained",
-        "runs": 3,
-        "ops_per_sec": {
-          "n": 3,
-          "mean": 3.258998575992249,
-          "stddev": 0.020832771816885785,
-          "min": 3.2465340251756385,
-          "max": 3.2830488370128377,
-          "ci95_lower": 3.207242924982286,
-          "ci95_upper": 3.3107542270022123,
-          "cv_pct": 0.6392384449122671
-        },
-        "p50_latency_us": {
-          "n": 3,
-          "mean": 216401.33333333334,
-          "stddev": 108549.571119988,
-          "min": 110845.0,
-          "max": 327715.0,
-          "ci95_lower": -53272.51369712336,
-          "ci95_upper": 486075.18036379,
-          "cv_pct": 50.161230269678555
-        },
-        "p99_latency_us": {
-          "n": 3,
-          "mean": 621766.0,
-          "stddev": 239191.07268667032,
-          "min": 345730.0,
-          "max": 767875.0,
-          "ci95_lower": 27534.479034750606,
-          "ci95_upper": 1215997.5209652493,
-          "cv_pct": 38.46962887753115
-        },
-        "peak_memory_mb": {
-          "n": 3,
-          "mean": 30.0390625,
-          "stddev": 0.0,
-          "min": 30.0390625,
-          "max": 30.0390625,
-          "ci95_lower": 30.0390625,
-          "ci95_upper": 30.0390625,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 3,
-          "mean": 100.0,
-          "stddev": 0.0,
-          "min": 100.0,
-          "max": 100.0,
-          "ci95_lower": 100.0,
-          "ci95_upper": 100.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 3,
-          "mean": 100.0,
-          "stddev": 0.0,
-          "min": 100.0,
-          "max": 100.0,
-          "ci95_lower": 100.0,
-          "ci95_upper": 100.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [
-          3.2474128657882715,
-          3.2465340251756385,
-          3.2830488370128377
-        ],
-        "per_run_p99_us": [
-          751693.0,
-          767875.0,
-          345730.0
-        ]
-      }
-    ],
-    "temporal_aggregates": [
-      {
-        "workload": "simple_workflow",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "signal_storm",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "query_burst",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "high_step",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "concurrent_1k",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "child_workflows",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "saga_pattern",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "timer_workflow",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "search_attributes",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "signal_query_mix",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "batch_operations",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "payload_1kb",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "payload_1mb",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "namespace_isolation",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "throughput_ceiling",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "memory_scaling",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "cold_start",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "crash_recovery",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "replay_amplification",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "wal_durability",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      },
-      {
-        "workload": "tail_latency_sustained",
-        "runs": 0,
-        "ops_per_sec": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p50_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "p99_latency_us": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "peak_memory_mb": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "error_rate_pct": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "total_ops": {
-          "n": 0,
-          "mean": 0.0,
-          "stddev": 0.0,
-          "min": 0.0,
-          "max": 0.0,
-          "ci95_lower": 0.0,
-          "ci95_upper": 0.0,
-          "cv_pct": 0.0
-        },
-        "per_run_ops_per_sec": [],
-        "per_run_p99_us": []
-      }
-    ]
+    "overall_verdict": "VELOCITY is a viable Temporal replacement ÔÇö significantly faster in most workloads"
   }
 }

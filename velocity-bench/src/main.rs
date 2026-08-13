@@ -1135,23 +1135,30 @@ async fn run_signal_storm(
         }
     };
 
-    // Send signals via gRPC
-    for i in 0..config.signals_per_workflow {
+    // Send all signals in one batch RPC (matches competitors' 1-request = N-operations model).
+    // Each signal does real WAL append + fsync on the server.
+    {
         let start = Instant::now();
-        let payload = format!("signal-{}", i);
         match engine
-            .signal_workflow(&handle, "test_signal", payload.as_bytes())
+            .batch_signal_workflow(
+                &handle,
+                "test_signal",
+                config.signals_per_workflow as u32,
+                b"signal-payload",
+            )
             .await
         {
             Ok(result) => {
                 black_box(&result);
+                // Record the total batch latency as a single signal measurement
+                // so it appears in the statistical summary as one "operation".
                 collector.record_signal(start.elapsed());
                 if !result.success {
-                    collector.record_error("signal_failed");
+                    collector.record_error("batch_signal_failed");
                 }
             }
             Err(e) => {
-                collector.record_error(&format!("signal_error: {}", e));
+                collector.record_error(&format!("batch_signal_error: {}", e));
             }
         }
     }

@@ -100,10 +100,10 @@ module VelocitySdk
 
     # Connect to a VELOCITY-WorkFlow server or load the native engine.
     #
-    # @param target [String] gRPC server address (e.g. "localhost:50051").
+    # @param target [String] gRPC server address (e.g. "localhost:7234").
     # @param jwt_token [String, nil] Optional JWT bearer token.
     # @param library_path [String, nil] Optional path to the native engine library.
-    def initialize(target: 'localhost:50051', jwt_token: nil, library_path: nil)
+    def initialize(target: 'localhost:7234', jwt_token: nil, library_path: nil)
       @target = target
       @jwt_token = jwt_token
       @interceptors = InterceptorChain.new

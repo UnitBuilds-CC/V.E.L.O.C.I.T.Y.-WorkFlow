@@ -1,6 +1,6 @@
-# VELOCITY-WorkFlow Deployment Guide
+# VELOCITY-WorkFlow Deployment Reference
 
-> From local development to multi-region production clusters.
+> Docker, Kubernetes, and configuration quick reference. For the complete deployment walkthrough including local development, scaling, and disaster recovery, see the [Deployment Guide](deployment_guide.md).
 
 ---
 
@@ -56,8 +56,8 @@ services:
   velocity-server:
     build: .
     ports:
-      - "50051:50051"   # gRPC
-      - "5182:5182"     # HTTP API
+      - "7234:7234"   # gRPC
+      - "7233:7233"   # HTTP API
     environment:
       - VELOCITY_LOG_LEVEL=info
       - VELOCITY_DATA_DIR=/data
@@ -65,7 +65,7 @@ services:
     volumes:
       - velocity-data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5182/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:7233/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -101,7 +101,7 @@ RUN dotnet publish src/Velocity.Workflow.Server -c Release -o /app
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview
 WORKDIR /app
 COPY --from=server-builder /app .
-EXPOSE 50051 5182
+EXPOSE 7234 7233
 ENTRYPOINT ["dotnet", "Velocity.Workflow.Server.dll"]
 ```
 
@@ -171,8 +171,8 @@ autoscaling:
 
 service:
   type: ClusterIP
-  grpcPort: 50051
-  httpPort: 5182
+  grpcPort: 7234
+  httpPort: 7233
 
 config:
   logLevel: "info"
@@ -194,7 +194,7 @@ kubectl get pods -n velocity
 kubectl logs -n velocity deployment/velocity-workflow --tail=100
 
 # Port-forward for local testing
-kubectl port-forward -n velocity svc/velocity-workflow 50051:50051
+kubectl port-forward -n velocity svc/velocity-workflow 7234:7234
 ```
 
 ---
@@ -207,8 +207,8 @@ kubectl port-forward -n velocity svc/velocity-workflow 50051:50051
 |----------|---------|-------------|
 | `VELOCITY_LOG_LEVEL` | `info` | Log level: `trace`, `debug`, `info`, `warn`, `error` |
 | `VELOCITY_DATA_DIR` | `./data` | Directory for slab files and WAL segments |
-| `VELOCITY_GRPC_PORT` | `50051` | gRPC server listen port |
-| `VELOCITY_HTTP_PORT` | `5182` | HTTP API listen port |
+| `VELOCITY_GRPC_PORT` | `7234` | gRPC server listen port |
+| `VELOCITY_HTTP_PORT` | `7233` | HTTP API listen port |
 | `VELOCITY_MAX_WORKFLOWS` | `100000` | Maximum concurrent workflow instances |
 | `VELOCITY_SLAB_SIZE` | `4096` | Default slab size in bytes |
 | `VELOCITY_WAL_SYNC_POLICY` | `batch` | WAL sync: `every`, `batch`, `timed` |
@@ -226,8 +226,8 @@ For complex deployments, use a TOML configuration file:
 
 ```toml
 [server]
-grpc_port = 50051
-http_port = 5182
+grpc_port = 7234
+http_port = 7233
 log_level = "info"
 
 [storage]
@@ -239,7 +239,7 @@ wal_segment_size = 4194304
 [replication]
 enabled = true
 factor = 3
-peers = ["node2:50051", "node3:50051"]
+peers = ["node2:7234", "node3:7234"]
 
 [auth]
 enabled = true
@@ -270,7 +270,7 @@ key_path = "/etc/velocity/tls/key.pem"
 - [ ] 10 Gbps network between nodes (for replication)
 - [ ] Dedicated disk for slab files (avoid shared storage)
 - [ ] NTP synchronized across all nodes
-- [ ] Firewall rules: allow gRPC port 50051, HTTP port 5182
+- [ ] Firewall rules: allow gRPC port 7234, HTTP port 7233
 
 ### Security
 
@@ -302,7 +302,7 @@ key_path = "/etc/velocity/tls/key.pem"
 
 ### Prometheus Metrics
 
-The server exposes Prometheus metrics at `http://localhost:5182/metrics`:
+The server exposes Prometheus metrics at `http://localhost:7233/metrics`:
 
 ```
 # Workflow metrics
@@ -426,7 +426,7 @@ echo "Backup completed: $BACKUP_DIR"
 4. **Replay WAL**: The server automatically replays unflushed WAL entries on startup
 5. **Verify Merkle roots**: Server validates slab integrity via SHA-256 Merkle proofs
 6. **Start the server**: `systemctl start velocity-server`
-7. **Verify health**: `curl http://localhost:5182/health`
+7. **Verify health**: `curl http://localhost:7233/health`
 
 ### Point-in-Time Recovery
 

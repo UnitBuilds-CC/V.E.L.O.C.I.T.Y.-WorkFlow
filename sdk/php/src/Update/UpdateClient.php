@@ -9,7 +9,7 @@
  * - Named update handlers registered by workflows
  *
  * Usage:
- *   $client = new \Velocity\SDK\Update\UpdateClient('localhost:50051');
+ *   $client = new \Velocity\SDK\Update\UpdateClient('localhost:7234');
  *   $client->registerHandler('setAmount', fn($args) => $args);
  *   $result = $client->executeUpdate(42, 'setAmount', ['amount' => 100]);
  */
@@ -70,7 +70,7 @@ class UpdateClient
     /** @var array<string, UpdateResult> */
     private array $pending = [];
 
-    public function __construct(string $serverAddress = 'localhost:50051')
+    public function __construct(string $serverAddress = 'localhost:7234')
     {
         $this->serverAddress = $serverAddress;
     }

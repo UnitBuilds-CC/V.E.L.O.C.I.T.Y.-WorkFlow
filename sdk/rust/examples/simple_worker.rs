@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 // ── Configuration ────────────────────────────────────────────────────────
 
-const SERVER_ADDR: &str = "localhost:50051";
+const SERVER_ADDR: &str = "localhost:7234";
 const TASK_QUEUE: &str = "orders";
 
 // ── Task handler type ────────────────────────────────────────────────────

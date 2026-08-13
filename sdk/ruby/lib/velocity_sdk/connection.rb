@@ -8,7 +8,7 @@ module VelocitySdk
   # on failure. Supports both FFI (local) and gRPC (remote) backends.
   #
   # @example
-  #   pool = VelocitySdk::Connection.new(max_size: 10, target: 'localhost:50051')
+  #   pool = VelocitySdk::Connection.new(max_size: 10, target: 'localhost:7234')
   #   pool.with_connection do |client|
   #     key = client.start_workflow("my-workflow")
   #     client.signal_workflow(key, "approve", "yes")
@@ -30,7 +30,7 @@ module VelocitySdk
     # @param max_size [Integer] Maximum number of pooled connections.
     # @param jwt_token [String, nil] Optional JWT bearer token.
     # @param library_path [String, nil] Optional path to the native engine library.
-    def initialize(target: 'localhost:50051', max_size: 5, jwt_token: nil, library_path: nil)
+    def initialize(target: 'localhost:7234', max_size: 5, jwt_token: nil, library_path: nil)
       @target = target
       @max_size = max_size
       @jwt_token = jwt_token

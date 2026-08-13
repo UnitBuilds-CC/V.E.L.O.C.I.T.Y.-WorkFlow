@@ -1,0 +1,4 @@
+temporalio
+fastapi
+uvicorn
+aiohttp

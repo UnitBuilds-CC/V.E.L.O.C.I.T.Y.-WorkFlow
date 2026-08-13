@@ -24,7 +24,7 @@ public class BasicWorkflow {
     public static void main(String[] args) {
         System.out.println("=== VELOCITY-WorkFlow Java SDK — Basic Workflow ===\n");
 
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
             // 1. Verify connectivity
             boolean connected = client.ping();
             System.out.println("1. Connected: " + connected);

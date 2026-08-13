@@ -41,7 +41,7 @@ async function runChildWorkflow(
 async function main(): Promise<void> {
   console.log('=== VELOCITY-WorkFlow TypeScript SDK — Child Workflows ===\n');
 
-  const client = new VelocityClient('localhost:50051');
+  const client = new VelocityClient('localhost:7234');
   await client.connect();
 
   // 1. Start the parent workflow

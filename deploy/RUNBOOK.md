@@ -21,7 +21,7 @@ This runbook covers common operational procedures for the Velocity Workflow plat
 
 | Component         | Port(s)         | Health Endpoint      | Default Replicas |
 |-------------------|-----------------|----------------------|------------------|
-| velocity-server   | 5000 (HTTP), 50051 (gRPC) | `GET /health` | 2 |
+| velocity-server   | 7233 (HTTP), 7234 (gRPC) | `GET /health` | 2 |
 | PostgreSQL        | 5432            | `pg_isready`         | 1 |
 | Prometheus        | 9090            | `/-/healthy`         | 1 |
 | Grafana           | 3000            | `/api/health`        | 1 |
@@ -240,7 +240,7 @@ kubectl -n velocity-system logs <pod-name> --previous
 **Common Causes:**
 - Database connection failure → Check PostgreSQL is healthy and credentials are correct
 - Missing native library → Verify `LD_LIBRARY_PATH` includes `/app/lib`
-- Port conflict → Ensure ports 5000/50051 are not already bound
+- Port conflict → Ensure ports 7233/7234 are not already bound
 
 ### Issue: High Workflow Latency
 

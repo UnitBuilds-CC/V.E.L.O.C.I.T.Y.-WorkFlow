@@ -9,7 +9,7 @@
 # Usage:
 #   require 'velocity_sdk'
 #
-#   client = VelocitySdk::VelocityClient.new("localhost:50051")
+#   client = VelocitySdk::VelocityClient.new("localhost:7234")
 #   key = client.start_workflow("my-workflow", total_steps: 5)
 #   client.signal_workflow(key, "my-signal", "payload")
 #   status = client.get_status(key)

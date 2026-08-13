@@ -28,7 +28,7 @@ use Velocity\SDK\Exceptions\VelocityException;
 
 // ── Configuration ────────────────────────────────────────────────────────
 
-const SERVER_ADDR  = 'localhost:50051';
+const SERVER_ADDR  = 'localhost:7234';
 const TASK_QUEUE   = 'orders';
 const POLL_INTERVAL_US = 1_000_000; // 1 second in microseconds
 

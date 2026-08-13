@@ -1,0 +1,5 @@
+dbos
+fastapi
+uvicorn
+aiohttp
+psycopg[binary]

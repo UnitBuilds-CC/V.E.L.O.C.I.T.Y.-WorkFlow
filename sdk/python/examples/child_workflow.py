@@ -45,7 +45,7 @@ def run_child_workflow(client, child_type: str, order_id: int) -> int:
 def main():
     print("=== VELOCITY-WorkFlow Python SDK — Child Workflows ===\n")
 
-    with VelocityClient("localhost:50051") as client:
+    with VelocityClient("localhost:7234") as client:
         # 1. Start the parent workflow
         parent = client.start_workflow(
             workflow_type="order-orchestrator",

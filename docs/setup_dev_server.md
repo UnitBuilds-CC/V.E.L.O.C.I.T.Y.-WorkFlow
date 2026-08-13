@@ -100,9 +100,11 @@ cargo run --release -p velocity-dev-server
 The server starts and logs:
 ```
 [VELOCITY] Dev Server starting...
-[VELOCITY] HTTP API: http://0.0.0.0:7233
-[VELOCITY] Health: http://0.0.0.0:7233/health
-[VELOCITY] Metrics: http://0.0.0.0:7233/metrics
+[VELOCITY] HTTP API: http://127.0.0.1:7233
+[VELOCITY] gRPC:     http://127.0.0.1:7234
+[VELOCITY] Web UI:   http://127.0.0.1:8233
+[VELOCITY] Health:   http://127.0.0.1:7233/health
+[VELOCITY] Metrics:  http://127.0.0.1:7233/metrics
 [VELOCITY] Ready to accept connections
 ```
 
@@ -321,13 +323,32 @@ Usage: velocity-dev-server [OPTIONS]
 
 Options:
   --port <PORT>              HTTP API port [default: 7233]
-  --grpc-port <PORT>         gRPC port (enables gRPC when set)
-  --ip <IP>                  Bind IP address [default: 0.0.0.0]
+  --grpc-port <PORT>         gRPC port [default: 7234]
+  --ui-port <PORT>           Web UI port (0 to disable) [default: 8233]
+  --ip <IP>                  Bind IP address [default: 127.0.0.1]
   --namespace <NS>           Default namespace [default: default]
-  --log-level <LEVEL>        Log level [default: info]
-  --embedded-mode            Enable PostgreSQL embedded mode
+  --log-level <LEVEL>        Log level (trace, debug, info, warn, error) [default: info]
+  --shards <N>               Number of history shards [default: 4]
+  --retention-days <N>       Workflow retention period in days [default: 7]
+  --dynamic-config           Enable dynamic config updates via API [default: true]
+  --sqlite-path <PATH>       SQLite database path (empty for in-memory) [default: ""]
+  --cluster-mode             Enable cluster mode (multi-node simulation) [default: false]
+  --cluster-nodes <N>        Number of simulated cluster nodes [default: 3]
+  --auto-compact             Enable auto-compaction [default: true]
+  --compact-interval-secs <N> Compaction interval in seconds [default: 300]
+  --chaos                    Enable chaos testing mode [default: false]
+  --otel                     Enable OpenTelemetry export [default: false]
+  --otel-endpoint <URL>      OpenTelemetry endpoint [default: http://localhost:4317]
+  --headless                 Headless mode (no interactive console) [default: false]
+  --data-dir <PATH>          Data directory for persistence [default: ""]
+  --search-attributes        Enable workflow search attributes [default: true]
+  --max-history-size <N>     Max workflow execution history size (events) [default: 50000]
+  --rate-limiting            Enable namespace-level rate limiting [default: false]
+  --rate-limit-rps <N>       Rate limit (requests per second per namespace) [default: 1000]
   --tls-cert <PATH>          TLS certificate PEM file
   --tls-key <PATH>           TLS private key PEM file
+  --auth-token <TOKEN>       Auth bearer token for API requests
+  --embedded-mode            Enable PostgreSQL embedded mode
   --max-body-size <BYTES>    Max request body size [default: 10485760]
   -h, --help                 Print help
   -V, --version              Print version

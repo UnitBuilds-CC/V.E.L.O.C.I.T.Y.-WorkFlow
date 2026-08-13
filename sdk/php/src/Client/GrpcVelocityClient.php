@@ -19,7 +19,7 @@ use Velocity\SDK\Exceptions\VelocityException;
  * Requires the `grpc/grpc` and `google/protobuf` Composer packages.
  *
  * Usage:
- *     $client = new GrpcVelocityClient("localhost:50051");
+ *     $client = new GrpcVelocityClient("localhost:7234");
  *     $exec = $client->startWorkflow("my-workflow");
  *     $client->signalWorkflow($exec->getKey(), "approve", "yes");
  *     $client->close();
@@ -42,12 +42,12 @@ class GrpcVelocityClient implements VelocityClientInterface
     private ?string $jwtToken;
 
     /**
-     * @param string $target gRPC server address (e.g. "localhost:50051").
+     * @param string $target gRPC server address (e.g. "localhost:7234").
      * @param string|null $jwtToken Optional JWT bearer token.
      * @param array<string, string> $channelOptions Additional gRPC channel options.
      */
     public function __construct(
-        string $target = 'localhost:50051',
+        string $target = 'localhost:7234',
         ?string $jwtToken = null,
         array $channelOptions = [],
     ) {

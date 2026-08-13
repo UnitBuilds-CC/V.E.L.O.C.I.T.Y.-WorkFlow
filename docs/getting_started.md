@@ -129,7 +129,7 @@ cd src/Velocity.Workflow.Server
 dotnet run
 ```
 
-The server starts on `localhost:50051` (gRPC) and `localhost:5182` (HTTP API).
+The server starts on `localhost:7234` (gRPC) and `localhost:7233` (HTTP API).
 
 ### 2. Install Your Language SDK
 
@@ -182,7 +182,7 @@ bundle install
 docker compose up -d
 
 # Verify the server is running
-curl http://localhost:5182/health
+curl http://localhost:7233/health
 ```
 
 ---
@@ -216,7 +216,7 @@ async function sendNotification(message: string): Promise<void> {
 ```typescript
 import { VelocityClient } from '@velocity/core';
 
-const client = new VelocityClient('localhost:50051');
+const client = new VelocityClient('localhost:7234');
 
 // Register the worker on a task queue
 const worker = await client.createWorker({
@@ -247,7 +247,7 @@ console.log(`Result: ${result}`);
 ```python
 from velocity_sdk import VelocityClient
 
-client = VelocityClient("localhost:50051")
+client = VelocityClient("localhost:7234")
 
 # Start a workflow
 handle = client.start_workflow(
@@ -337,6 +337,7 @@ Now that you have a running workflow, explore the deeper topics:
 
 | Topic | Description |
 |-------|-------------|
+| [User Guide](user_guide.md) | Complete guide: concepts, patterns, SDKs, testing, production |
 | [Architecture Guide](architecture.md) | Deep dive into the slab engine, WAL, and replication |
 | [SDK Guide](sdk_guide.md) | Language-specific SDK documentation for all 7 languages |
 | [Deployment Guide](deployment.md) | Docker, Kubernetes, and production deployment |

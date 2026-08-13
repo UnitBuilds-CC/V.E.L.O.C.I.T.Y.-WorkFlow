@@ -39,7 +39,7 @@ logging.basicConfig(
 logger = logging.getLogger("velocity-worker")
 
 # ── Configuration ────────────────────────────────────────────────────────
-SERVER_ADDR = "localhost:50051"
+SERVER_ADDR = "localhost:7234"
 TASK_QUEUE = "orders"
 POLL_INTERVAL_SEC = 1.0
 MAX_RETRIES = 3

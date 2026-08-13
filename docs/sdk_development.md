@@ -98,7 +98,7 @@ In-process test server for unit testing workflows without a running engine. See 
 ### Connection
 
 ```
-Client ──gRPC──► WorkflowService (port 50051)
+Client ──gRPC──► WorkflowService (port 7234)
 ```
 
 Configure the gRPC connection with:
@@ -228,7 +228,7 @@ chain := interceptors.NewInterceptorChain(
     interceptors.NewTracingInterceptor(tracer),
 )
 
-client := velocity_sdk.NewClientWithInterceptors("localhost:50051", chain)
+client := velocity_sdk.NewClientWithInterceptors("localhost:7234", chain)
 ```
 
 ### Built-in Interceptors

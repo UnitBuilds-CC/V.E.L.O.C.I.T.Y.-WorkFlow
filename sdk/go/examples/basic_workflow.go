@@ -32,7 +32,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := velocity_sdk.NewClient("localhost:50051", "")
+	client, err := velocity_sdk.NewClient("localhost:7234", "")
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}

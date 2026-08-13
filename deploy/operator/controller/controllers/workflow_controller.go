@@ -299,7 +299,7 @@ func VelocityServerAddress() string {
 	if addr := os.Getenv("VELOCITY_SERVER_URL"); addr != "" {
 		return addr
 	}
-	return "velocity-server.velocity-system.svc.cluster.local:50051"
+	return "velocity-server.velocity-system.svc.cluster.local:7234"
 }
 
 // Ensure corev1 is used (for Event creation in extended implementations).

@@ -5,14 +5,14 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	client, err := NewClient("localhost:50051", "")
+	client, err := NewClient("localhost:7234", "")
 	if err != nil {
 		t.Fatalf("NewClient failed: %v", err)
 	}
 	defer client.Close()
 
-	if client.Target() != "localhost:50051" {
-		t.Errorf("expected target localhost:50051, got %s", client.Target())
+	if client.Target() != "localhost:7234" {
+		t.Errorf("expected target localhost:7234, got %s", client.Target())
 	}
 }
 
@@ -36,7 +36,7 @@ func TestWorkflowStatusString(t *testing.T) {
 }
 
 func TestClientWithJWT(t *testing.T) {
-	client, err := NewClient("localhost:50051", "test-jwt-token")
+	client, err := NewClient("localhost:7234", "test-jwt-token")
 	if err != nil {
 		t.Fatalf("NewClient with JWT failed: %v", err)
 	}

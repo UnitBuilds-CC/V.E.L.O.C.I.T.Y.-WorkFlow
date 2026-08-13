@@ -1401,6 +1401,19 @@ impl BenchmarkService for BenchmarkServiceImpl {
             signaled_count: count as i64,
         }))
     }
+    async fn batch_signal_workflow(
+        &self,
+        req: Request<BatchSignalWorkflowRequest>,
+    ) -> Result<Response<BatchSignalWorkflowResponse>, Status> {
+        let r = req.into_inner();
+        // For the temporal bridge mock, just acknowledge all signals
+        Ok(Response::new(BatchSignalWorkflowResponse {
+            success: true,
+            total_latency_us: 0,
+            signals_processed: r.signal_count,
+            error: String::new(),
+        }))
+    }
     async fn describe_namespace(
         &self,
         req: Request<DescribeNamespaceRequest>,

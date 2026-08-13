@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   console.log('=== VELOCITY-WorkFlow TypeScript SDK Example ===\n');
 
   // Connect to the server (no JWT = anonymous access)
-  const client = new VelocityClient('localhost:50051');
+  const client = new VelocityClient('localhost:7234');
 
   console.log(`Target: ${client.getTarget()}`);
   console.log(`Auth: ${client.hasAuth() ? 'JWT' : 'Anonymous'}`);

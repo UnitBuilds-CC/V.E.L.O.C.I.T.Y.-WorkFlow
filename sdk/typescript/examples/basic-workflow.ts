@@ -21,7 +21,7 @@ import { VelocityClient, WorkflowStatus, WorkflowStub } from '../src';
 async function main(): Promise<void> {
   console.log('=== VELOCITY-WorkFlow TypeScript SDK — Basic Workflow ===\n');
 
-  const client = new VelocityClient('localhost:50051');
+  const client = new VelocityClient('localhost:7234');
 
   // 1. Connect and verify
   const connected = await client.connect();

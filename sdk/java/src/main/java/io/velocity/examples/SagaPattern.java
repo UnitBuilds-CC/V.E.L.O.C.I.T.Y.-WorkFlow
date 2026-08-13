@@ -79,7 +79,7 @@ public class SagaPattern {
     public static void main(String[] args) {
         System.out.println("=== VELOCITY-WorkFlow Java SDK — Saga Pattern ===\n");
 
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
             // Scenario 1: Happy path
             System.out.println("Scenario 1: Happy path");
             runSaga(client, null);

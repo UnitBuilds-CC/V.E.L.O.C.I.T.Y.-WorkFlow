@@ -83,7 +83,7 @@ def run_saga(client, simulate_failure_at: int | None = None) -> bool:
 def main():
     print("=== VELOCITY-WorkFlow Python SDK — Saga Pattern ===\n")
 
-    with VelocityClient("localhost:50051") as client:
+    with VelocityClient("localhost:7234") as client:
         # Scenario 1: Happy path — all steps succeed
         print("Scenario 1: Happy path")
         run_saga(client, simulate_failure_at=None)

@@ -28,7 +28,7 @@ CRON_EXPRESSION = "*/5 * * * *"  # Every 5 minutes
 def main():
     print("=== VELOCITY-WorkFlow Python SDK — Cron Schedule ===\n")
 
-    with VelocityClient("localhost:50051") as client:
+    with VelocityClient("localhost:7234") as client:
         # 1. Start a workflow with a cron schedule memo
         handle = client.start_workflow(
             workflow_type="periodic-report",

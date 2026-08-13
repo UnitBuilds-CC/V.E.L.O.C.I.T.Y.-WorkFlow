@@ -9,7 +9,7 @@
 # - Named update handlers registered by workflows
 #
 # Usage:
-#   client = VelocitySdk::UpdateClient.new('localhost:50051')
+#   client = VelocitySdk::UpdateClient.new('localhost:7234')
 #   client.register_handler('setAmount', ->(args) { args })
 #   result = client.execute_update(workflow_key: 42, update_name: 'setAmount', args: { amount: 100 })
 
@@ -40,7 +40,7 @@ module VelocitySdk
 
   # Client for executing workflow updates.
   class UpdateClient
-    def initialize(server_address = 'localhost:50051')
+    def initialize(server_address = 'localhost:7234')
       @server_address = server_address
       @handlers = {}
       @pending = {}

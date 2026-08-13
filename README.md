@@ -416,6 +416,7 @@ cargo run --release -p velocity-bench --bin velocity-bench -- \
 
 | Guide | Description |
 |-------|-------------|
+| [**User Guide**](docs/user_guide.md) | **Complete guide: concepts, SDKs, patterns, testing, production** |
 | [Getting Started](docs/getting_started.md) | Installation, first workflow, all 3 flavors |
 | [Dev Server Setup](docs/setup_dev_server.md) | One-command local development (HTTP, gRPC, UI) |
 | [Architecture](docs/architecture.md) | System design, slab memory model, WAL, security |

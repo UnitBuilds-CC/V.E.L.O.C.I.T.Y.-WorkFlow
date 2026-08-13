@@ -27,7 +27,7 @@ Complete reference for the `WorkflowService` gRPC API — the primary external s
 
 ```
 service WorkflowService {
-  // Lifecycle
+  // Lifecycle (6 RPCs)
   rpc StartWorkflowExecution(StartWorkflowExecutionRequest) returns (StartWorkflowExecutionResponse);
   rpc SignalWorkflowExecution(SignalWorkflowExecutionRequest) returns (SignalWorkflowExecutionResponse);
   rpc SignalWithStartWorkflowExecution(SignalWithStartWorkflowExecutionRequest) returns (SignalWithStartWorkflowExecutionResponse);
@@ -35,12 +35,12 @@ service WorkflowService {
   rpc CancelWorkflowExecution(CancelWorkflowExecutionRequest) returns (CancelWorkflowExecutionResponse);
   rpc TerminateWorkflowExecution(TerminateWorkflowExecutionRequest) returns (TerminateWorkflowExecutionResponse);
 
-  // Visibility
+  // Visibility (3 RPCs)
   rpc DescribeWorkflowExecution(DescribeWorkflowExecutionRequest) returns (DescribeWorkflowExecutionResponse);
   rpc ListWorkflowExecutions(ListWorkflowExecutionsRequest) returns (ListWorkflowExecutionsResponse);
   rpc GetWorkflowExecutionHistory(GetWorkflowExecutionHistoryRequest) returns (GetWorkflowExecutionHistoryResponse);
 
-  // Task Dispatch
+  // Task Dispatch (6 RPCs)
   rpc PollWorkflowTaskQueue(PollWorkflowTaskQueueRequest) returns (PollWorkflowTaskQueueResponse);
   rpc PollActivityTaskQueue(PollActivityTaskQueueRequest) returns (PollActivityTaskQueueResponse);
   rpc RespondWorkflowTaskCompleted(RespondWorkflowTaskCompletedRequest) returns (RespondWorkflowTaskCompletedResponse);
@@ -48,18 +48,36 @@ service WorkflowService {
   rpc RespondActivityTaskFailed(RespondActivityTaskFailedRequest) returns (RespondActivityTaskFailedResponse);
   rpc RespondQueryTaskCompleted(RespondQueryTaskCompletedRequest) returns (RespondQueryTaskCompletedResponse);
 
-  // Namespace
+  // Namespace (4 RPCs)
   rpc RegisterNamespace(RegisterNamespaceRequest) returns (RegisterNamespaceResponse);
   rpc DescribeNamespace(DescribeNamespaceRequest) returns (DescribeNamespaceResponse);
   rpc ListNamespaces(ListNamespacesRequest) returns (ListNamespacesResponse);
   rpc UpdateNamespace(UpdateNamespaceRequest) returns (UpdateNamespaceResponse);
 
-  // System
+  // System (1 RPC)
   rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
+
+  // Advanced Visibility (4 RPCs)
+  rpc CountWorkflowExecutions(CountWorkflowExecutionsRequest) returns (CountWorkflowExecutionsResponse);
+  rpc ScanWorkflowExecutions(ScanWorkflowExecutionsRequest) returns (ScanWorkflowExecutionsResponse);
+  rpc ResetWorkflowExecution(ResetWorkflowExecutionRequest) returns (ResetWorkflowExecutionResponse);
+  rpc UpdateWorkflowExecution(UpdateWorkflowExecutionRequest) returns (UpdateWorkflowExecutionResponse);
+
+  // Schedules (5 RPCs)
+  rpc CreateSchedule(CreateScheduleRequest) returns (CreateScheduleResponse);
+  rpc DescribeSchedule(DescribeScheduleRequest) returns (DescribeScheduleResponse);
+  rpc ListSchedules(ListSchedulesRequest) returns (ListSchedulesResponse);
+  rpc DeleteSchedule(DeleteScheduleRequest) returns (DeleteScheduleResponse);
+  rpc UpdateSchedule(UpdateScheduleRequest) returns (UpdateScheduleResponse);
+
+  // Batch Operations (3 RPCs)
+  rpc StartBatchOperation(StartBatchOperationRequest) returns (StartBatchOperationResponse);
+  rpc DescribeBatchOperation(DescribeBatchOperationRequest) returns (DescribeBatchOperationResponse);
+  rpc ListBatchOperations(ListBatchOperationsRequest) returns (ListBatchOperationsResponse);
 }
 ```
 
-**Total: 21 RPCs** across 5 functional groups.
+**Total: 32 RPCs** across 7 functional groups (Lifecycle, Visibility, Task Dispatch, Namespace, System, Advanced Visibility, Schedules, Batch Operations).
 
 ---
 
@@ -741,7 +759,7 @@ grpcurl -plaintext -d '{
   "totalSteps": 5,
   "workflowExecutionTimeout": "3600s",
   "identity": "cli-admin"
-}' localhost:50051 velocity.v1.WorkflowService/StartWorkflowExecution
+}' localhost:7234 velocity.v1.WorkflowService/StartWorkflowExecution
 ```
 
 ### Signal a Workflow
@@ -754,7 +772,7 @@ grpcurl -plaintext -d '{
   "signal_name_id": 1,
   "input": { "data": "eyJhbW91bnQiOiA5OS45OX0=", "encoding": "ENCODING_JSON" },
   "identity": "payment-service"
-}' localhost:50051 velocity.v1.WorkflowService/SignalWorkflowExecution
+}' localhost:7234 velocity.v1.WorkflowService/SignalWorkflowExecution
 ```
 
 ### Query a Workflow
@@ -764,7 +782,7 @@ grpcurl -plaintext -d '{
   "namespace": "default",
   "workflow_execution": { "workflow_id": "order-12345" },
   "query": { "query_type": "get_status", "query_name_id": 1 }
-}' localhost:50051 velocity.v1.WorkflowService/QueryWorkflow
+}' localhost:7234 velocity.v1.WorkflowService/QueryWorkflow
 ```
 
 ### List Workflows with Pagination
@@ -774,7 +792,7 @@ grpcurl -plaintext -d '{
   "namespace": "default",
   "page_size": 50,
   "status_filter": "WORKFLOW_EXECUTION_STATUS_RUNNING"
-}' localhost:50051 velocity.v1.WorkflowService/ListWorkflowExecutions
+}' localhost:7234 velocity.v1.WorkflowService/ListWorkflowExecutions
 ```
 
 ### Register a Namespace
@@ -785,13 +803,13 @@ grpcurl -plaintext -d '{
   "description": "Production workloads",
   "workflowExecutionRetentionPeriod": "7200s",
   "maxConcurrentWorkflows": 10000
-}' localhost:50051 velocity.v1.WorkflowService/RegisterNamespace
+}' localhost:7234 velocity.v1.WorkflowService/RegisterNamespace
 ```
 
 ### Get System Info
 
 ```bash
-grpcurl -plaintext localhost:50051 velocity.v1.WorkflowService/GetSystemInfo
+grpcurl -plaintext localhost:7234 velocity.v1.WorkflowService/GetSystemInfo
 ```
 
 ---

@@ -10,15 +10,15 @@ class VelocityClientTest {
 
     @Test
     void testCreateClient() {
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
-            assertEquals("localhost:50051", client.target());
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
+            assertEquals("localhost:7234", client.target());
             assertTrue(client.ping());
         }
     }
 
     @Test
     void testStartWorkflow() {
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
             WorkflowHandle handle = client.startWorkflow(
                     StartWorkflowOptions.builder()
                             .workflowType("order-processing")
@@ -34,7 +34,7 @@ class VelocityClientTest {
 
     @Test
     void testDescribeWorkflow() {
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
             WorkflowHandle handle = client.startWorkflow(
                     StartWorkflowOptions.builder()
                             .workflowType("test-workflow")
@@ -49,7 +49,7 @@ class VelocityClientTest {
 
     @Test
     void testSignalWorkflow() {
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
             WorkflowHandle handle = client.startWorkflow(
                     StartWorkflowOptions.builder()
                             .workflowType("signal-test")
@@ -61,7 +61,7 @@ class VelocityClientTest {
 
     @Test
     void testWorkflowLifecycle() {
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
             WorkflowHandle handle = client.startWorkflow(
                     StartWorkflowOptions.builder()
                             .workflowType("lifecycle-test")
@@ -108,7 +108,7 @@ class VelocityClientTest {
 
     @Test
     void testWorkerRegistration() {
-        VelocityWorker worker = VelocityWorker.create("localhost:50051", "orders");
+        VelocityWorker worker = VelocityWorker.create("localhost:7234", "orders");
 
         worker.registerWorkflow(SampleWorkflow.class);
 
@@ -120,7 +120,7 @@ class VelocityClientTest {
 
     @Test
     void testWorkerStartStop() {
-        VelocityWorker worker = VelocityWorker.create("localhost:50051", "default");
+        VelocityWorker worker = VelocityWorker.create("localhost:7234", "default");
         assertFalse(worker.isRunning());
 
         worker.start();

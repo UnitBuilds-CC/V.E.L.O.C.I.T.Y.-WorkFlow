@@ -4772,7 +4772,7 @@ impl WorkerService for WorkerServiceImpl {
 /// #[tokio::main]
 /// async fn main() {
 ///     let engine = Arc::new(WorkflowEngine::new());
-///     let addr = "[::1]:50051".parse().unwrap();
+///     let addr = "[::1]:7234".parse().unwrap();
 ///     grpc_server::run_server(engine, addr).await.unwrap();
 /// }
 /// ```

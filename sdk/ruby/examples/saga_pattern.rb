@@ -61,7 +61,7 @@ end
 puts '=== VELOCITY-WorkFlow Ruby SDK — Saga Pattern ==='
 puts
 
-client = VelocitySdk::VelocityClient.new(target: 'localhost:50051')
+client = VelocitySdk::VelocityClient.new(target: 'localhost:7234')
 
 begin
   # Scenario 1: Happy path

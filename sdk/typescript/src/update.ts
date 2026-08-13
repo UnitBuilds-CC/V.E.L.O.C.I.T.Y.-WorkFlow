@@ -10,7 +10,7 @@
  * Usage:
  *   import { UpdateClient, UpdateWaitPolicy } from './update';
  *
- *   const client = new UpdateClient('localhost:50051');
+ *   const client = new UpdateClient('localhost:7234');
  *   const result = await client.executeUpdate({
  *     workflowKey: 42,
  *     updateName: 'setAmount',
@@ -68,7 +68,7 @@ export class UpdateClient {
   private handlers: Map<string, UpdateHandler> = new Map();
   private pending: Map<string, UpdateResult> = new Map();
 
-  constructor(serverAddress: string = 'localhost:50051') {
+  constructor(serverAddress: string = 'localhost:7234') {
     this.serverAddress = serverAddress;
   }
 

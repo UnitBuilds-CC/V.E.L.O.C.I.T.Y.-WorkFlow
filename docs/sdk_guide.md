@@ -113,7 +113,7 @@ pip install -r requirements.txt
 ```python
 from velocity_sdk import VelocityClient, WorkflowStatus
 
-client = VelocityClient("localhost:50051")
+client = VelocityClient("localhost:7234")
 
 # Start a workflow
 handle = client.start_workflow(
@@ -172,7 +172,7 @@ npm install
 ```typescript
 import { VelocityClient, WorkflowStatus } from '@velocity/core';
 
-const client = new VelocityClient('localhost:50051');
+const client = new VelocityClient('localhost:7234');
 await client.connect();
 
 const handle = await client.startWorkflow({
@@ -223,7 +223,7 @@ go mod download
 ```go
 import velocity_sdk "github.com/velocity-workflow/sdk/go/velocity_sdk"
 
-client, err := velocity_sdk.NewClient("localhost:50051", "")
+client, err := velocity_sdk.NewClient("localhost:7234", "")
 if err != nil {
     log.Fatal(err)
 }
@@ -273,7 +273,7 @@ key, err := client.StartWorkflow(ctx, &velocity_sdk.StartWorkflowRequest{
 ### Quick Start
 
 ```java
-VelocityClient client = new VelocityClient("localhost:50051");
+VelocityClient client = new VelocityClient("localhost:7234");
 
 WorkflowHandle handle = client.startWorkflow(
     "order-processing", "default", "orders", 3,
@@ -361,7 +361,7 @@ composer install
 ```php
 use Velocity\SDK\VelocityClient;
 
-$client = new VelocityClient('localhost:50051');
+$client = new VelocityClient('localhost:7234');
 $key = $client->startWorkflow(
     workflowType: 'order-processing',
     namespace: 'default',
@@ -404,7 +404,7 @@ bundle install
 ```ruby
 require_relative 'lib/velocity_sdk'
 
-client = VelocitySdk::VelocityClient.new(target: 'localhost:50051')
+client = VelocitySdk::VelocityClient.new(target: 'localhost:7234')
 key = client.start_workflow('order-processing',
   namespace: 'default', task_queue: 'orders', total_steps: 3,
   input: '{"order_id": 12345}')

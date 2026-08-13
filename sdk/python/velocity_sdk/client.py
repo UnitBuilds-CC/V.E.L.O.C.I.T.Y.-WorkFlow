@@ -8,7 +8,7 @@ can interact with the workflow engine.
 Usage:
     from velocity_sdk import VelocityClient, WorkflowWorker
 
-    client = VelocityClient("localhost:50051")
+    client = VelocityClient("localhost:7234")
     workflow_key = client.start_workflow("my-workflow", total_steps=5)
     client.signal_workflow(workflow_key, "my-signal", b"payload")
     status = client.describe_workflow(workflow_key)
@@ -63,7 +63,7 @@ class VelocityClient:
         Connect to a VELOCITY-WorkFlow gRPC server.
         
         Args:
-            target: gRPC server address (e.g., "localhost:50051")
+            target: gRPC server address (e.g., "localhost:7234")
             jwt_token: Optional JWT bearer token for authentication
         """
         self._target = target

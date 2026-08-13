@@ -125,8 +125,8 @@ dotnet run --project src/Velocity.Workflow.Server/Velocity.Workflow.Server.cspro
 ```
 
 The server starts on:
-- **HTTP API:** `http://localhost:5000`
-- **gRPC:** `localhost:50051` (when gRPC feature is enabled)
+- **HTTP API:** `http://localhost:7233`
+- **gRPC:** `localhost:7234` (when gRPC feature is enabled)
 
 ### 3. Run Tests
 
@@ -160,7 +160,7 @@ The included `docker-compose.yml` starts four services:
 
 | Service | Port | Description |
 |---------|------|-------------|
-| `velocity-server` | 5000 (HTTP), 50051 (gRPC) | Workflow engine + API |
+| `velocity-server` | 7233 (HTTP), 7234 (gRPC) | Workflow engine + API |
 | `postgres` | 5432 | PostgreSQL 16 database |
 | `prometheus` | 9090 | Metrics collection |
 | `grafana` | 3000 | Dashboards and visualization |
@@ -184,9 +184,9 @@ docker compose logs -f velocity-server
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ASPNETCORE_ENVIRONMENT` | `Production` | Runtime environment |
-| `ASPNETCORE_URLS` | `http://+:5000` | HTTP listen addresses |
+| `ASPNETCORE_URLS` | `http://+:7233` | HTTP listen addresses |
 | `ConnectionStrings__Postgres` | — | PostgreSQL connection string |
-| `GRPC__PORT` | `50051` | gRPC listen port |
+| `GRPC__PORT` | `7234` | gRPC listen port |
 | `VELOCITY__METRICS__ENABLED` | `true` | Enable Prometheus metrics |
 | `VELOCITY__LOGGING__LEVEL` | `Information` | Log level (Trace/Debug/Info/Warning/Error) |
 | `POSTGRES_PASSWORD` | `velocity_secret` | Database password |
@@ -203,7 +203,7 @@ The multi-stage `Dockerfile` builds in three stages:
 
 ```bash
 docker build -t velocity-workflow:latest .
-docker run -p 5000:5000 -p 50051:50051 \
+docker run -p 7233:7233 -p 7234:7234 \
   -e ConnectionStrings__Postgres="Host=db;Database=velocity;Username=velocity;Password=secret" \
   velocity-workflow:latest
 ```
@@ -365,12 +365,12 @@ The engine supports active/standby multi-region replication via `MultiRegionRepl
 # Region configuration
 regions:
   - region_id: "us-east-1"
-    endpoint: "velocity-us-east.internal:50051"
+    endpoint: "velocity-us-east.internal:7234"
     priority: 1
     is_active: true
     replication_lag_tolerance_ms: 5000
   - region_id: "eu-west-1"
-    endpoint: "velocity-eu-west.internal:50051"
+    endpoint: "velocity-eu-west.internal:7234"
     priority: 2
     is_active: false
     replication_lag_tolerance_ms: 10000

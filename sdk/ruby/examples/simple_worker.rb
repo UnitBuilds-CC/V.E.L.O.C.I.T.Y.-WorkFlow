@@ -23,7 +23,7 @@ require_relative '../lib/velocity_sdk'
 
 # ── Configuration ────────────────────────────────────────────────────────
 
-SERVER_ADDR = 'localhost:50051'
+SERVER_ADDR = 'localhost:7234'
 TASK_QUEUE  = 'orders'
 POLL_INTERVAL_SEC = 1.0
 

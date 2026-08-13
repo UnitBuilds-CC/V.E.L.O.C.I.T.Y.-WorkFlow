@@ -8,7 +8,7 @@
 //
 // Usage:
 //
-//	client := update.NewUpdateClient("localhost:50051")
+//	client := update.NewUpdateClient("localhost:7234")
 //	client.RegisterHandler("setAmount", func(args interface{}) interface{} {
 //	    return args
 //	}, nil)

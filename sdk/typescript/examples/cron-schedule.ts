@@ -20,7 +20,7 @@ const CRON_EXPRESSION = '*/5 * * * *'; // Every 5 minutes
 async function main(): Promise<void> {
   console.log('=== VELOCITY-WorkFlow TypeScript SDK — Cron Schedule ===\n');
 
-  const client = new VelocityClient('localhost:50051');
+  const client = new VelocityClient('localhost:7234');
   await client.connect();
 
   // 1. Start a workflow with a cron schedule

@@ -8,7 +8,7 @@
  * ```typescript
  * import { VelocityClient } from '@velocity-workflow/sdk';
  *
- * const client = new VelocityClient('localhost:50051');
+ * const client = new VelocityClient('localhost:7234');
  * await client.connect();
  * const handle = await client.startWorkflow({
  *   workflowType: 'order-processing',
@@ -138,7 +138,7 @@ export class VelocityClient {
 
   /**
    * Create a new client.
-   * @param target - gRPC server address (e.g., 'localhost:50051')
+   * @param target - gRPC server address (e.g., 'localhost:7234')
    * @param jwt - Optional JWT token for authenticated access
    * @param protoPath - Optional explicit path to the proto file
    */

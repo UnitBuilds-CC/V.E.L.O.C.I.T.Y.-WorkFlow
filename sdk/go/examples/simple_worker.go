@@ -34,7 +34,7 @@ import (
 // ── Configuration ────────────────────────────────────────────────────────
 
 const (
-	serverAddr   = "localhost:50051"
+	serverAddr   = "localhost:7234"
 	taskQueue    = "orders"
 	pollInterval = 1 * time.Second
 )

@@ -203,7 +203,7 @@ class PaymentWorkflow:
 ```python
 from velocity_sdk import VelocityClient
 
-client = VelocityClient("localhost:50051")
+client = VelocityClient("localhost:7234")
 handle = client.start_workflow(
     workflow_type="payment-workflow",
     task_queue="payments",

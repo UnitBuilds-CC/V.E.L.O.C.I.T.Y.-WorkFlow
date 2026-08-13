@@ -51,8 +51,8 @@ docker compose up -d --build
 **Services:**
 | Service | Port | Description |
 |---------|------|-------------|
-| Velocity HTTP | 5000 | Classic REST API |
-| Velocity gRPC | 50051 | Classic gRPC API |
+| Velocity HTTP | 7233 | Classic REST API |
+| Velocity gRPC | 7234 | Classic gRPC API |
 | PostgreSQL | 5432 | Persistence |
 | Prometheus | 9090 | Metrics |
 | Grafana | 3000 | Dashboards (admin/admin) |
@@ -98,7 +98,7 @@ gcloud compute instances create velocity-test `
 
 # 2. Open ports
 gcloud compute firewall-rules create velocity-ports `
-  --allow=tcp:5000,tcp:50051,tcp:3000,tcp:9090,tcp:8080
+  --allow=tcp:7233,tcp:7234,tcp:3000,tcp:9090,tcp:8080
 
 # 3. SSH in
 gcloud compute ssh velocity-test --zone=us-central1-a

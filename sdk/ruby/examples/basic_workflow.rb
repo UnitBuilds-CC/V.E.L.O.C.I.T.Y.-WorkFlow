@@ -21,7 +21,7 @@ require_relative '../lib/velocity_sdk'
 puts '=== VELOCITY-WorkFlow Ruby SDK — Basic Workflow ==='
 puts
 
-client = VelocitySdk::VelocityClient.new(target: 'localhost:50051')
+client = VelocitySdk::VelocityClient.new(target: 'localhost:7234')
 
 begin
   # 1. Start a workflow

@@ -246,6 +246,16 @@ pub trait BenchmarkEngine: Send + Sync {
         handle: &WorkflowHandle,
         attributes: std::collections::HashMap<String, String>,
     ) -> Result<OperationResult, String>;
+
+    /// Send N signals to a single workflow in one batch.
+    /// Returns the total elapsed time for all signals (server-side processing).
+    async fn batch_signal_workflow(
+        &self,
+        handle: &WorkflowHandle,
+        signal_name: &str,
+        signal_count: u32,
+        payload_template: &[u8],
+    ) -> Result<OperationResult, String>;
 }
 
 // ─── gRPC Client Adapter (shared by both engines) ───────────────────────────
@@ -582,6 +592,36 @@ impl BenchmarkEngine for GrpcAdapter {
             })
             .await
             .map_err(|e| format!("UpsertSearchAttributes gRPC error: {}", e))?;
+
+        let inner = resp.into_inner();
+        if inner.success {
+            Ok(OperationResult::ok(start.elapsed()))
+        } else {
+            Ok(OperationResult::err(start.elapsed(), inner.error))
+        }
+    }
+
+    async fn batch_signal_workflow(
+        &self,
+        handle: &WorkflowHandle,
+        signal_name: &str,
+        signal_count: u32,
+        payload_template: &[u8],
+    ) -> Result<OperationResult, String> {
+        let client = self.require_client()?;
+        let mut client = client.clone();
+
+        let start = Instant::now();
+        let resp = client
+            .batch_signal_workflow(BatchSignalWorkflowRequest {
+                namespace: self.namespace.clone(),
+                workflow_id: handle.workflow_id.clone(),
+                signal_name: signal_name.to_string(),
+                signal_count: signal_count as i32,
+                payload_template: payload_template.to_vec(),
+            })
+            .await
+            .map_err(|e| format!("BatchSignalWorkflow gRPC error: {}", e))?;
 
         let inner = resp.into_inner();
         if inner.success {

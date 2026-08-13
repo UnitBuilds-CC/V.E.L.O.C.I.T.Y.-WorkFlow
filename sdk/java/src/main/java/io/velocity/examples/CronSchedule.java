@@ -25,7 +25,7 @@ public class CronSchedule {
     public static void main(String[] args) {
         System.out.println("=== VELOCITY-WorkFlow Java SDK — Cron Schedule ===\n");
 
-        try (VelocityClient client = VelocityClient.create("localhost:50051")) {
+        try (VelocityClient client = VelocityClient.create("localhost:7234")) {
             // 1. Start a workflow with a cron schedule
             WorkflowHandle handle = client.startWorkflow(
                 StartWorkflowOptions.builder()

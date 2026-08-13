@@ -23,7 +23,7 @@
 import { VelocityClient, VelocityError } from '../src';
 
 // ── Configuration ────────────────────────────────────────────────────────
-const SERVER_ADDR = 'localhost:50051';
+const SERVER_ADDR = 'localhost:7234';
 const TASK_QUEUE = 'orders';
 const POLL_INTERVAL_MS = 1000;
 

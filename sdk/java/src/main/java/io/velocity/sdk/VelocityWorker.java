@@ -11,7 +11,7 @@ import java.util.*;
  * <p>
  * Usage:
  * <pre>{@code
- * VelocityWorker worker = VelocityWorker.create("localhost:50051", "orders");
+ * VelocityWorker worker = VelocityWorker.create("localhost:7234", "orders");
  * worker.registerWorkflow(OrderProcessingWorkflow.class);
  * worker.start();
  * }</pre>

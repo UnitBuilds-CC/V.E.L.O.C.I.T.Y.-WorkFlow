@@ -33,5 +33,5 @@
 php examples/basic_workflow.php
 ```
 
-Each example connects to `localhost:50051` by default. Update the address in the
+Each example connects to `localhost:7234` by default. Update the address in the
 script if your server runs elsewhere.

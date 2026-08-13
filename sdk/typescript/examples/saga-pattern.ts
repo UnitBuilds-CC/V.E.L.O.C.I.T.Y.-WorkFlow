@@ -80,7 +80,7 @@ async function runSaga(
 async function main(): Promise<void> {
   console.log('=== VELOCITY-WorkFlow TypeScript SDK — Saga Pattern ===\n');
 
-  const client = new VelocityClient('localhost:50051');
+  const client = new VelocityClient('localhost:7234');
   await client.connect();
 
   // Scenario 1: Happy path

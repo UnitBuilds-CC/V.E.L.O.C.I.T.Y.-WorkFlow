@@ -22,7 +22,7 @@ struct Cli {
     /// gRPC server address.
     #[arg(
         long,
-        default_value = "http://localhost:50051",
+        default_value = "http://localhost:7234",
         env = "VELOCITY_SERVER",
         global = true
     )]

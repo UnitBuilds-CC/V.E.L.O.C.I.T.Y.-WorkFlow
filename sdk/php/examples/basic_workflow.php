@@ -25,7 +25,7 @@ use Velocity\SDK\VelocityClient;
 
 echo "=== VELOCITY-WorkFlow PHP SDK — Basic Workflow ===\n\n";
 
-$client = new VelocityClient('localhost:50051');
+$client = new VelocityClient('localhost:7234');
 
 try {
     // 1. Start a workflow
