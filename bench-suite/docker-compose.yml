@@ -1,0 +1,225 @@
+# Comprehensive Multi-Engine Benchmark Suite
+#
+# Brings up all 6 engines + their dependencies + a benchmark client
+# on a single Docker host for local verification.
+#
+# Usage:
+#   docker compose up -d              # start everything
+#   docker compose up velocity-classic # start one engine
+#   docker compose ps                  # check health
+#   docker compose logs -f             # tail logs
+#   docker compose down -v             # tear down + volumes
+
+services:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Velocity Classic — gRPC + WAL
+  # ═══════════════════════════════════════════════════════════════════════════
+  velocity-classic:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/velocity-classic/Dockerfile
+    container_name: bench-velocity-classic
+    ports:
+      - "7234:7234"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Velocity Runtime — gRPC + HTTP + WAL
+  # ═══════════════════════════════════════════════════════════════════════════
+  velocity-runtime:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/velocity-runtime/Dockerfile
+    container_name: bench-velocity-runtime
+    ports:
+      - "7235:7234"
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Velocity Embedded — gRPC + SQLite + WAL
+  # ═══════════════════════════════════════════════════════════════════════════
+  velocity-embedded:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/velocity-embedded/Dockerfile
+    container_name: bench-velocity-embedded
+    ports:
+      - "7236:7234"
+    volumes:
+      - embedded-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # DBOS — PostgreSQL + FastAPI service
+  # ═══════════════════════════════════════════════════════════════════════════
+  dbos-postgres:
+    image: postgres:16-alpine
+    container_name: bench-dbos-postgres
+    environment:
+      POSTGRES_USER: dbos
+      POSTGRES_PASSWORD: dbos_bench
+      POSTGRES_DB: dbos_bench
+    ports:
+      - "5433:5432"
+    volumes:
+      - dbos-pg-data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbos -d dbos_bench"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  dbos-service:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/dbos/Dockerfile
+    container_name: bench-dbos-service
+    environment:
+      DBOS_DATABASE_URL: postgresql://dbos:dbos_bench@dbos-postgres:5432/dbos_bench
+      DBOS_HTTP_PORT: "8080"
+    ports:
+      - "8081:8080"
+    depends_on:
+      dbos-postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Restate — Server + Node.js service
+  # ═══════════════════════════════════════════════════════════════════════════
+  restate-server:
+    image: restatedev/restate:latest
+    container_name: bench-restate-server
+    ports:
+      - "8082:8080"
+      - "9082:9070"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9070/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  restate-service:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/restate/Dockerfile
+    container_name: bench-restate-service
+    ports:
+      - "9083:9080"
+    depends_on:
+      restate-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Temporal — Server + Python Worker/FastAPI service
+  # ═══════════════════════════════════════════════════════════════════════════
+  temporal-server:
+    image: temporalio/auto-setup:latest
+    container_name: bench-temporal-server
+    ports:
+      - "7233:7233"
+    environment:
+      DB: sqlite
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/dynamicconfig/development.yaml
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD-SHELL", "tctl --address localhost:7233 cluster health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  temporal-service:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/temporal/Dockerfile
+    container_name: bench-temporal-service
+    environment:
+      TEMPORAL_ADDRESS: temporal-server:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_HTTP_PORT: "8080"
+      TEMPORAL_TASK_QUEUE: bench-queue
+    ports:
+      - "8083:8080"
+    depends_on:
+      temporal-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    restart: unless-stopped
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Networks & Volumes
+# ═══════════════════════════════════════════════════════════════════════════
+networks:
+  bench-net:
+    driver: bridge
+
+volumes:
+  embedded-data:
+  dbos-pg-data:

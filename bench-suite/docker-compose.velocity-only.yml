@@ -1,0 +1,57 @@
+# Velocity-only benchmark compose — 3 flavors side by side.
+#
+# Usage:
+#   docker compose -f docker-compose.velocity-only.yml up -d
+#   # Classic  → localhost:7234
+#   # Runtime  → localhost:7235 (gRPC), localhost:8080 (HTTP)
+#   # Embedded → localhost:7236
+
+services:
+
+  velocity-classic:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/velocity-classic/Dockerfile
+    container_name: bench-velocity-classic
+    ports:
+      - "7234:7234"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    restart: unless-stopped
+
+  velocity-runtime:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/velocity-runtime/Dockerfile
+    container_name: bench-velocity-runtime
+    ports:
+      - "7235:7234"
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    restart: unless-stopped
+
+  velocity-embedded:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/velocity-embedded/Dockerfile
+    container_name: bench-velocity-embedded
+    ports:
+      - "7236:7234"
+    volumes:
+      - embedded-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    restart: unless-stopped
+
+volumes:
+  embedded-data:

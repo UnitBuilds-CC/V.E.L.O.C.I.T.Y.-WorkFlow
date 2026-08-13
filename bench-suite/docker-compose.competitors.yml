@@ -1,0 +1,116 @@
+# Competitors-only benchmark compose — DBOS, Restate, Temporal.
+#
+# Usage:
+#   docker compose -f docker-compose.competitors.yml up -d
+#   # DBOS     → localhost:8081
+#   # Restate  → localhost:8082 (ingress), localhost:9083 (service)
+#   # Temporal → localhost:7233 (server), localhost:8083 (service)
+
+services:
+
+  # ── DBOS ──────────────────────────────────────────────────────────────────
+  dbos-postgres:
+    image: postgres:16-alpine
+    container_name: bench-dbos-postgres
+    environment:
+      POSTGRES_USER: dbos
+      POSTGRES_PASSWORD: dbos_bench
+      POSTGRES_DB: dbos_bench
+    ports:
+      - "5433:5432"
+    volumes:
+      - dbos-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbos -d dbos_bench"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - comp-net
+
+  dbos-service:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/dbos/Dockerfile
+    container_name: bench-dbos-service
+    environment:
+      DBOS_DATABASE_URL: postgresql://dbos:dbos_bench@dbos-postgres:5432/dbos_bench
+      DBOS_HTTP_PORT: "8080"
+    ports:
+      - "8081:8080"
+    depends_on:
+      dbos-postgres:
+        condition: service_healthy
+    networks:
+      - comp-net
+
+  # ── Restate ───────────────────────────────────────────────────────────────
+  restate-server:
+    image: restatedev/restate:latest
+    container_name: bench-restate-server
+    ports:
+      - "8082:8080"
+      - "9082:9070"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9070/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - comp-net
+
+  restate-service:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/restate/Dockerfile
+    container_name: bench-restate-service
+    ports:
+      - "9083:9080"
+    depends_on:
+      restate-server:
+        condition: service_healthy
+    networks:
+      - comp-net
+
+  # ── Temporal ──────────────────────────────────────────────────────────────
+  temporal-server:
+    image: temporalio/auto-setup:latest
+    container_name: bench-temporal-server
+    ports:
+      - "7233:7233"
+    environment:
+      DB: sqlite
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/dynamicconfig/development.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "tctl --address localhost:7233 cluster health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - comp-net
+
+  temporal-service:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/temporal/Dockerfile
+    container_name: bench-temporal-service
+    environment:
+      TEMPORAL_ADDRESS: temporal-server:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_HTTP_PORT: "8080"
+      TEMPORAL_TASK_QUEUE: bench-queue
+    ports:
+      - "8083:8080"
+    depends_on:
+      temporal-server:
+        condition: service_healthy
+    networks:
+      - comp-net
+
+networks:
+  comp-net:
+    driver: bridge
+
+volumes:
+  dbos-pg-data:

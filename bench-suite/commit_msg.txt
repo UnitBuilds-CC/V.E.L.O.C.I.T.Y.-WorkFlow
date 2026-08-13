@@ -1,0 +1,14 @@
+feat(bench-suite): add Dockerfiles, compose files, and orchestrator scripts
+
+Phase 2a-2d of comprehensive multi-engine benchmark suite:
+
+- 6 Dockerfiles: velocity-classic, velocity-runtime, velocity-embedded,
+  dbos, restate, temporal (each with healthchecks)
+- docker-compose.yml: all 6 engines + dependencies (Postgres, Restate
+  server, Temporal server) with resource limits (2 CPU, 2GB each)
+- docker-compose.velocity-only.yml: just the 3 Velocity flavors
+- docker-compose.competitors.yml: DBOS + Restate + Temporal
+- scripts/run_local.sh: orchestrator that starts engines, waits for
+  health, runs benchmarks per-engine, merges results, prints table
+- scripts/wait_for_healthy.sh: generic health-check waiter
+- scripts/merge_results.py: merges per-engine JSON results
