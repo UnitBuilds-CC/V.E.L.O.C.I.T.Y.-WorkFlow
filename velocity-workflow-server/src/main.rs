@@ -856,6 +856,42 @@ impl EngineBackend {
         }
     }
 
+    /// Wait for a workflow to reach Completed status.
+    /// Real engine: actively completes the workflow via the adapter.
+    /// Mock: polls (workflows complete inline during start_workflow).
+    async fn wait_for_completion(
+        &self,
+        namespace: &str,
+        workflow_id: &str,
+        timeout: Duration,
+    ) -> Result<bool, String> {
+        match self {
+            EngineBackend::Real(e) => e.wait_for_completion(namespace, workflow_id, timeout).await,
+            EngineBackend::Mock(_) => {
+                let poll_interval = Duration::from_micros(100);
+                let start = std::time::Instant::now();
+                loop {
+                    if let Some(status) = self.get_workflow_status(namespace, workflow_id).await {
+                        let status_lower = status.to_lowercase();
+                        if status_lower == "completed" || status_lower == "completedasnew" {
+                            return Ok(true);
+                        }
+                        if status_lower == "failed"
+                            || status_lower == "terminated"
+                            || status_lower == "cancelled"
+                        {
+                            return Ok(false);
+                        }
+                    }
+                    if start.elapsed() > timeout {
+                        return Err("timeout".to_string());
+                    }
+                    tokio::time::sleep(poll_interval).await;
+                }
+            }
+        }
+    }
+
     async fn count_workflows(&self, namespace: &str, filter: &str) -> u64 {
         match self {
             EngineBackend::Mock(e) => e.count_workflows(namespace, filter).await,
@@ -866,7 +902,13 @@ impl EngineBackend {
     async fn reset(&self, namespace: &str) -> u64 {
         match self {
             EngineBackend::Mock(e) => e.reset(namespace).await,
-            EngineBackend::Real(_) => 0, // TODO: implement for real engine
+            EngineBackend::Real(e) => {
+                // Clear the workflow_map so state doesn't leak between benchmark runs
+                if let Ok(mut map) = e.workflow_map.lock() {
+                    map.clear();
+                }
+                0
+            }
         }
     }
 
@@ -1504,74 +1546,35 @@ impl BenchmarkService for BenchmarkServiceImpl {
         } else {
             Duration::from_secs(30)
         };
-        let poll_interval = Duration::from_micros(100);
-        loop {
-            if let Some(status) = self
-                .backend
-                .get_workflow_status(namespace, &req.workflow_id)
-                .await
-            {
-                // Case-insensitive match: mock returns "Completed", real engine may return "COMPLETED"
-                let status_lower = status.to_lowercase();
-                match status_lower.as_str() {
-                    "completed" => {
-                        return Ok(Response::new(WaitForCompletionResponse {
-                            success: true,
-                            latency_us: start.elapsed().as_micros() as i64,
-                            result: Vec::new(),
-                            status: "completed".into(),
-                            error: String::new(),
-                        }))
-                    }
-                    "failed" => {
-                        return Ok(Response::new(WaitForCompletionResponse {
-                            success: false,
-                            latency_us: start.elapsed().as_micros() as i64,
-                            result: Vec::new(),
-                            status: "failed".into(),
-                            error: String::new(),
-                        }))
-                    }
-                    "terminated" => {
-                        return Ok(Response::new(WaitForCompletionResponse {
-                            success: false,
-                            latency_us: start.elapsed().as_micros() as i64,
-                            result: Vec::new(),
-                            status: "terminated".into(),
-                            error: String::new(),
-                        }))
-                    }
-                    "cancelled" => {
-                        return Ok(Response::new(WaitForCompletionResponse {
-                            success: false,
-                            latency_us: start.elapsed().as_micros() as i64,
-                            result: Vec::new(),
-                            status: "cancelled".into(),
-                            error: String::new(),
-                        }))
-                    }
-                    "continuedasnew" => {
-                        return Ok(Response::new(WaitForCompletionResponse {
-                            success: true,
-                            latency_us: start.elapsed().as_micros() as i64,
-                            result: Vec::new(),
-                            status: "continued_as_new".into(),
-                            error: String::new(),
-                        }))
-                    }
-                    _ => {} // Running or unknown — keep polling
-                }
-            }
-            if start.elapsed() > timeout {
-                return Ok(Response::new(WaitForCompletionResponse {
-                    success: false,
-                    latency_us: start.elapsed().as_micros() as i64,
-                    result: Vec::new(),
-                    status: "timed_out".into(),
-                    error: "timeout".into(),
-                }));
-            }
-            tokio::time::sleep(poll_interval).await;
+
+        // Delegate to backend: Real engine actively completes the workflow,
+        // Mock polls until status is terminal.
+        match self
+            .backend
+            .wait_for_completion(namespace, &req.workflow_id, timeout)
+            .await
+        {
+            Ok(true) => Ok(Response::new(WaitForCompletionResponse {
+                success: true,
+                latency_us: start.elapsed().as_micros() as i64,
+                result: Vec::new(),
+                status: "completed".into(),
+                error: String::new(),
+            })),
+            Ok(false) => Ok(Response::new(WaitForCompletionResponse {
+                success: false,
+                latency_us: start.elapsed().as_micros() as i64,
+                result: Vec::new(),
+                status: "failed".into(),
+                error: String::new(),
+            })),
+            Err(e) => Ok(Response::new(WaitForCompletionResponse {
+                success: false,
+                latency_us: start.elapsed().as_micros() as i64,
+                result: Vec::new(),
+                status: "timed_out".into(),
+                error: e,
+            })),
         }
     }
     async fn terminate_workflow(
