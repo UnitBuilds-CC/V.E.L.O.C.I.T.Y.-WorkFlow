@@ -658,6 +658,51 @@ impl BenchmarkService for BenchmarkServiceImpl {
         }
     }
 
+    async fn batch_signal_workflow(
+        &self,
+        request: Request<BatchSignalWorkflowRequest>,
+    ) -> Result<Response<BatchSignalWorkflowResponse>, Status> {
+        let start = Instant::now();
+        let req = request.into_inner();
+        let namespace = if req.namespace.is_empty() {
+            "default"
+        } else {
+            &req.namespace
+        };
+
+        let mut total_latency = 0i64;
+        let mut processed = 0i32;
+        for i in 0..req.signal_count {
+            let mut payload = req.payload_template.clone();
+            payload.extend_from_slice(&i.to_le_bytes());
+            match self
+                .engine
+                .signal_workflow(namespace, &req.workflow_id, &req.signal_name, payload)
+                .await
+            {
+                Ok(()) => {
+                    processed += 1;
+                }
+                Err(e) => {
+                    return Ok(Response::new(BatchSignalWorkflowResponse {
+                        success: false,
+                        total_latency_us: start.elapsed().as_micros() as i64,
+                        signals_processed: processed,
+                        error: e,
+                    }));
+                }
+            }
+        }
+        total_latency = start.elapsed().as_micros() as i64;
+
+        Ok(Response::new(BatchSignalWorkflowResponse {
+            success: true,
+            total_latency_us: total_latency,
+            signals_processed: processed,
+            error: String::new(),
+        }))
+    }
+
     async fn query_workflow(
         &self,
         request: Request<QueryWorkflowRequest>,
@@ -1399,19 +1444,6 @@ impl BenchmarkService for BenchmarkServiceImpl {
             .await;
         Ok(Response::new(BatchSignalResponse {
             signaled_count: count as i64,
-        }))
-    }
-    async fn batch_signal_workflow(
-        &self,
-        req: Request<BatchSignalWorkflowRequest>,
-    ) -> Result<Response<BatchSignalWorkflowResponse>, Status> {
-        let r = req.into_inner();
-        // For the temporal bridge mock, just acknowledge all signals
-        Ok(Response::new(BatchSignalWorkflowResponse {
-            success: true,
-            total_latency_us: 0,
-            signals_processed: r.signal_count,
-            error: String::new(),
         }))
     }
     async fn describe_namespace(
