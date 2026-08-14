@@ -247,6 +247,27 @@ services:
       - bench-net
     restart: unless-stopped
 
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Benchmark Client — Rust binary for running benchmarks against any engine
+  # ═══════════════════════════════════════════════════════════════════════════
+  bench-client:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/velocity-bench-client/Dockerfile
+    image: velocity-bench/client:latest
+    container_name: bench-client
+    depends_on:
+      - velocity-classic
+      - velocity-runtime
+      - velocity-embedded
+      - dbos-service
+      - restate-service
+      - temporal-service
+    networks:
+      - bench-net
+    profiles:
+      - bench  # Only starts when explicitly requested
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Networks & Volumes
 # ═══════════════════════════════════════════════════════════════════════════

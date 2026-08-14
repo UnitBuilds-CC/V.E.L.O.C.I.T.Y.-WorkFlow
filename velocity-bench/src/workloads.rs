@@ -444,6 +444,23 @@ impl WorkloadDefinition {
                 ],
             },
             WorkloadDefinition {
+                name: "wal_group_commit".into(),
+                kind: WorkloadKind::WalDurability,
+                config: WorkloadConfig {
+                    workflow_count: 1000,
+                    concurrency: 1,
+                    ..WorkloadConfig::default()
+                },
+                description: "1000 sequential ops with WAL fsync. Measures group commit \
+                    amortization — how many ops share a single fsync call."
+                    .into(),
+                primary_metrics: vec![
+                    "ops/sec".into(),
+                    "fsync_count".into(),
+                    "fsync_amortization_ratio".into(),
+                ],
+            },
+            WorkloadDefinition {
                 name: "tail_latency_sustained".into(),
                 kind: WorkloadKind::TailLatencySustained,
                 config: WorkloadConfig {
