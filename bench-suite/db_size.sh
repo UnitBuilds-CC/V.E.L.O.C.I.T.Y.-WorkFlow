@@ -1,0 +1,11 @@
+#!/bin/sh
+echo "=== DBOS DB SIZE ==="
+psql -U dbos -d dbos_bench -t -c "SELECT pg_size_pretty(pg_database_size('dbos_bench'));"
+echo "=== DBOS TOP TABLES ==="
+psql -U dbos -d dbos_bench -t -c "SELECT relname, pg_size_pretty(pg_total_relation_size(oid)) as size FROM pg_class WHERE relkind='r' ORDER BY pg_total_relation_size(oid) DESC LIMIT 10;"
+echo "=== TEMPORAL DB SIZE ==="
+psql -U temporal -d temporal -t -c "SELECT pg_size_pretty(pg_database_size('temporal'));"
+echo "=== TEMPORAL TOP TABLES ==="
+psql -U temporal -d temporal -t -c "SELECT relname, pg_size_pretty(pg_total_relation_size(oid)) as size FROM pg_class WHERE relkind='r' ORDER BY pg_total_relation_size(oid) DESC LIMIT 10;"
+echo "=== RESTATE DATA ==="
+du -sh /var/lib/restate 2>/dev/null || du -sh /data 2>/dev/null || find / -name "*.log" -path "*/restate/*" -exec du -sh {} \; 2>/dev/null || echo "no restate data found"
