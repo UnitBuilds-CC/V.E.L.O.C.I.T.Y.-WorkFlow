@@ -1,11 +1,15 @@
-fix(bench-suite): fix Docker compose issues found during local testing
+test(bench-suite): add storage density audit tools and gRPC density test
 
-- Fix Velocity Runtime/Embedded: remove invalid --storage and --http-port
-  flags (server only supports gRPC + WAL). Differentiate via --wal-path
-- Fix Temporal: add PostgreSQL container (auto-setup doesn't support sqlite),
-  fix healthcheck to use $(hostname) instead of localhost (binds to container IP)
-- Fix Restate service: upgrade Node.js 20→22 (Promise.withResolvers requires
-  Node 22+), remove broken /health healthcheck (SDK uses protocol-level conn)
-- Add runtime-data and temporal-pg-data volumes
-- All 6 engines now pass smoke tests: Restate/DBOS/Temporal return HTTP 200
-  with completed workflow, Velocity gRPC ports all reachable
+- storage_audit.sh: measure persistence footprint across all engines
+- quick_density_test.py: 20 ops per HTTP engine (DBOS, Temporal, Restate)
+- velocity_grpc_density.py: 20 workflows per Velocity flavor via gRPC
+- db_check.sh / db_check_temporal.sh: PostgreSQL DB size + table analysis
+- dbos_schema_check.sh: DBOS schema table row counts
+- velocity_density_test.sh: grpcurl-based Velocity density test
+- docker/velocity-bench-client/Dockerfile: build velocity-bench in Docker
+
+Results (20 ops per engine):
+  Velocity: 6.9 KB WAL (275 B/op), 57 ops/s
+  DBOS: 7.4 MB DB (0 user rows), 21.6 ops/s
+  Temporal: 10 MB DB (756 history rows), 2.2 ops/s
+  Restate: 108 KB /tmp (ephemeral), 40 ops/s
