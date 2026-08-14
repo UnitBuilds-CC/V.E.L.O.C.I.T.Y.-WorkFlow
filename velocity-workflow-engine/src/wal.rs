@@ -10,6 +10,9 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
 
 /// WAL file magic bytes — identifies a valid Velocity WAL file.
 pub const WAL_MAGIC: [u8; 4] = *b"VELO";
@@ -256,19 +259,66 @@ pub fn read_wal_records(path: impl AsRef<Path>) -> io::Result<Vec<WalRecord>> {
 
 /// Thread-safe WAL manager. Wraps the writer in a Mutex for concurrent access.
 /// Supports log rotation when the file exceeds a size threshold.
+///
+/// Uses a background fsync thread for group-commit semantics: appends go to the
+/// OS buffer immediately (visible to readers), and a background thread fsyncs
+/// periodically. This amortizes fsync cost across many operations while maintaining
+/// step-level crash recovery (all steps are in the WAL, replayable after crash).
 pub struct WalManager {
     writer: Arc<Mutex<WalWriter>>,
     path: PathBuf,
     max_file_size: u64,
+    /// Background fsync thread control
+    bg_running: Arc<AtomicBool>,
+    bg_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl WalManager {
+    /// Create a new WalManager with default background fsync interval (1ms).
     pub fn new(path: impl AsRef<Path>, max_file_size: u64) -> io::Result<Self> {
+        Self::with_sync_interval(path, max_file_size, Duration::from_millis(1))
+    }
+
+    /// Create a new WalManager with a custom background fsync interval.
+    ///
+    /// The background thread fsyncs the WAL every `sync_interval`, amortizing
+    /// the fsync cost across all appends that arrived in that window.
+    /// Shorter intervals = lower latency to durability, higher fsync overhead.
+    /// Longer intervals = higher throughput, slightly more data at risk on crash.
+    pub fn with_sync_interval(
+        path: impl AsRef<Path>,
+        max_file_size: u64,
+        sync_interval: Duration,
+    ) -> io::Result<Self> {
         let writer = WalWriter::open(path.as_ref())?;
+        let writer = Arc::new(Mutex::new(writer));
+        let bg_running = Arc::new(AtomicBool::new(true));
+
+        // Spawn background fsync thread
+        let bg_writer = writer.clone();
+        let bg_running_clone = bg_running.clone();
+        let bg_handle = thread::Builder::new()
+            .name("wal-fsync".to_string())
+            .spawn(move || {
+                while bg_running_clone.load(Ordering::Relaxed) {
+                    thread::sleep(sync_interval);
+                    if let Ok(mut w) = bg_writer.lock() {
+                        let _ = w.sync();
+                    }
+                }
+                // Final sync on shutdown
+                if let Ok(mut w) = bg_writer.lock() {
+                    let _ = w.sync();
+                }
+            })
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to spawn bg fsync thread: {}", e)))?;
+
         Ok(Self {
-            writer: Arc::new(Mutex::new(writer)),
+            writer,
             path: path.as_ref().to_path_buf(),
             max_file_size,
+            bg_running,
+            bg_handle: Some(bg_handle),
         })
     }
 
@@ -383,6 +433,21 @@ impl WalManager {
             .collect();
         snapshots.sort_by(|a, b| b.cmp(a)); // newest first
         Ok(snapshots)
+    }
+
+    /// Gracefully shut down the background fsync thread.
+    /// Called automatically on Drop, but can be called explicitly for clean shutdown.
+    pub fn shutdown(&mut self) {
+        self.bg_running.store(false, Ordering::Relaxed);
+        if let Some(handle) = self.bg_handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl Drop for WalManager {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }
 

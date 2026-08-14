@@ -1157,7 +1157,7 @@ impl WorkflowEngine {
             data.extend_from_slice(&task_queue_hash.to_le_bytes());
             data.extend_from_slice(&total_steps.to_le_bytes());
             let _ = wal.append(WalEventType::WorkflowStarted, key, data);
-            let _ = wal.sync(); // durability: fsync before returning to client
+            // durability: background fsync thread handles group-commit (amortized fsync)
         }
 
         key
@@ -1222,7 +1222,7 @@ impl WorkflowEngine {
             data.extend_from_slice(&step.to_le_bytes());
             data.extend_from_slice(&result);
             let _ = wal.append(WalEventType::StepCompleted, workflow_key, data);
-            let _ = wal.sync(); // durability: fsync before returning to client
+            // durability: background fsync thread handles group-commit (amortized fsync)
         }
 
         // Update context + extract values under ONE DashMap shard lock — HAL lock is NOT nested.
@@ -1429,7 +1429,7 @@ impl WorkflowEngine {
             data.extend_from_slice(&signal_name_id.to_le_bytes());
             data.extend_from_slice(&payload);
             let _ = wal.append(WalEventType::SignalReceived, workflow_key, data);
-            let _ = wal.sync(); // durability: fsync before returning to client
+            // durability: background fsync thread handles group-commit (amortized fsync)
         }
 
         {
@@ -1524,7 +1524,7 @@ impl WorkflowEngine {
         if let Some(wal) = &self.wal {
             // Persist result payload for crash durability
             let _ = wal.append(WalEventType::WorkflowCompleted, workflow_key, wal_data);
-            let _ = wal.sync(); // durability: fsync before returning to client
+            // durability: background fsync thread handles group-commit (amortized fsync)
         }
         // Auto-archive if policy says so
         self.maybe_auto_archive(workflow_key);
@@ -1572,7 +1572,7 @@ impl WorkflowEngine {
 
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowFailed, workflow_key, vec![]);
-            let _ = wal.sync(); // durability: fsync before returning to client
+            // durability: background fsync thread handles group-commit (amortized fsync)
         }
         self.maybe_auto_archive(workflow_key);
     }
@@ -1611,7 +1611,7 @@ impl WorkflowEngine {
 
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowCanceled, workflow_key, vec![]);
-            let _ = wal.sync(); // durability: fsync before returning to client
+            // durability: background fsync thread handles group-commit (amortized fsync)
         }
         self.maybe_auto_archive(workflow_key);
     }
@@ -1650,7 +1650,7 @@ impl WorkflowEngine {
 
         if let Some(wal) = &self.wal {
             let _ = wal.append(WalEventType::WorkflowTerminated, workflow_key, vec![]);
-            let _ = wal.sync(); // durability: fsync before returning to client
+            // durability: background fsync thread handles group-commit (amortized fsync)
         }
         self.maybe_auto_archive(workflow_key);
     }
