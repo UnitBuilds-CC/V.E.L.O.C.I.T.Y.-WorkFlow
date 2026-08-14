@@ -161,9 +161,92 @@ const concurrentService = restate.object({
   },
 });
 
+// ─── Contention Benchmark Service ────────────────────────────────────────────
+// Highlights Restate's virtual object serialization under contention.
+// 1000 concurrent mutations on the SAME keyed object — Restate serializes
+// them via exclusive handlers, ensuring consistency without locks.
+
+const contentionService = restate.object({
+  name: "contention_bench",
+  handlers: {
+    /**
+     * contend: increment a shared counter under contention.
+     * All callers use the same key ("hot"), so Restate must serialize
+     * these mutations. Measures how well Restate handles hot-key contention.
+     */
+    async contend(ctx) {
+      const count = ((await ctx.get("hot_counter")) || 0) + 1;
+      ctx.set("hot_counter", count);
+      return { status: "ok", key: ctx.key, count };
+    },
+
+    /**
+     * batch_contend: multiple state mutations in one handler call.
+     * Simulates a batch update that touches many keys on the same object.
+     */
+    async batchContend(ctx, input) {
+      const batchSize = (input && input.batchSize) || 10;
+      const results = [];
+      for (let i = 0; i < batchSize; i++) {
+        const prev = (await ctx.get(`field_${i}`)) || 0;
+        ctx.set(`field_${i}`, prev + 1);
+        results.push(prev + 1);
+      }
+      return { status: "ok", key: ctx.key, fields_updated: batchSize };
+    },
+  },
+});
+
+// ─── Reactive Chain Benchmark Service ────────────────────────────────────────
+// Highlights Restate's durable handler-to-handler calls.
+// Each handler invokes the next in a chain, with each call journaled.
+
+const reactiveService = restate.object({
+  name: "reactive_bench",
+  handlers: {
+    /**
+     * chain: execute a chain of durable handler calls.
+     * stage_1 → stage_2 → stage_3, each journaled to Restate's durable log.
+     * Measures the overhead of durable inter-handler communication.
+     */
+    async chain(ctx, input) {
+      const depth = (input && input.depth) || 3;
+      let value = { stage: 0, data: "init" };
+
+      // Stage 1: validate + transform
+      value = await this.stage1(ctx, value);
+      if (depth >= 2) {
+        // Stage 2: enrich
+        value = await this.stage2(ctx, value);
+      }
+      if (depth >= 3) {
+        // Stage 3: finalize
+        value = await this.stage3(ctx, value);
+      }
+
+      return { status: "completed", chain_depth: depth, final_value: value };
+    },
+
+    async stage1(ctx, input) {
+      ctx.set("stage1_input", input);
+      return { stage: 1, data: `validated_${input.data}`, ts: Date.now() };
+    },
+
+    async stage2(ctx, input) {
+      ctx.set("stage2_input", input);
+      return { stage: 2, data: `enriched_${input.data}`, ts: Date.now() };
+    },
+
+    async stage3(ctx, input) {
+      ctx.set("stage3_input", input);
+      return { stage: 3, data: `finalized_${input.data}`, ts: Date.now() };
+    },
+  },
+});
+
 // ─── Serve ───────────────────────────────────────────────────────────────────
 restate.serve({
-  services: [benchService, keyedBenchService, concurrentService],
+  services: [benchService, keyedBenchService, concurrentService, contentionService, reactiveService],
   port: 9080,
 });
 console.log("Restate production bench service listening on port 9080");

@@ -45,6 +45,8 @@ from workflows import (
     StatefulWorkflow,
     ConcurrentWorkflow,
     DurablePromiseWorkflow,
+    ActivitySchedulingWorkflow,
+    LongRunningWorkflow,
 )
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -232,6 +234,47 @@ async def bench_durable_promise(request: Request):
     wf_id = f"promise-{uuid.uuid4().hex[:12]}"
     handle = await temporal_client.start_workflow(
         DurablePromiseWorkflow.run,
+        id=wf_id,
+        task_queue=TASK_QUEUE,
+    )
+    result = await handle.result()
+    return JSONResponse(result)
+
+
+# ─── Temporal-Specific Strength Endpoints ────────────────────────────────────
+
+
+@app.post("/bench/activity_scheduling")
+async def bench_activity_scheduling(request: Request):
+    """Activity scheduling benchmark — highlights Temporal's scheduler."""
+    try:
+        body = await request.json()
+        num_activities = body.get("num_activities", 10)
+    except Exception:
+        num_activities = 10
+    wf_id = f"sched-{uuid.uuid4().hex[:12]}"
+    handle = await temporal_client.start_workflow(
+        ActivitySchedulingWorkflow.run,
+        args=[num_activities],
+        id=wf_id,
+        task_queue=TASK_QUEUE,
+    )
+    result = await handle.result()
+    return JSONResponse(result)
+
+
+@app.post("/bench/long_running")
+async def bench_long_running(request: Request):
+    """Long-running workflow benchmark — highlights Temporal's durable timers."""
+    try:
+        body = await request.json()
+        num_stages = body.get("num_stages", 3)
+    except Exception:
+        num_stages = 3
+    wf_id = f"longrun-{uuid.uuid4().hex[:12]}"
+    handle = await temporal_client.start_workflow(
+        LongRunningWorkflow.run,
+        args=[num_stages],
         id=wf_id,
         task_queue=TASK_QUEUE,
     )

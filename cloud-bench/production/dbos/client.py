@@ -240,6 +240,24 @@ async def run_all_benchmarks(profile="standard"):
             20,
             120,
         ),
+        # pg_transactional: multi-table PostgreSQL transactions (DBOS strength)
+        (
+            "pg_transactional",
+            f"{BASE_URL}/bench/pg_transactional",
+            json.dumps({"num_tables": 5, "rows_per_table": 10}).encode(),
+            int(30 * mult),
+            1,
+            120,
+        ),
+        # sql_visibility: SQL queries over workflow state (DBOS strength)
+        (
+            "sql_visibility",
+            f"{BASE_URL}/bench/sql_visibility",
+            json.dumps({"num_queries": 5}).encode(),
+            int(30 * mult),
+            1,
+            120,
+        ),
     ]
 
     results = []

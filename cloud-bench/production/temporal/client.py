@@ -240,6 +240,24 @@ async def run_all_benchmarks(profile="standard"):
             20,
             300,
         ),
+        # activity_scheduling: schedule N activities through Temporal's scheduler (Temporal strength)
+        (
+            "activity_scheduling",
+            f"{BASE_URL}/bench/activity_scheduling",
+            json.dumps({"num_activities": 10}).encode(),
+            int(10 * mult),
+            1,
+            600,
+        ),
+        # long_running: durable timers + checkpoints (Temporal strength)
+        (
+            "long_running",
+            f"{BASE_URL}/bench/long_running",
+            json.dumps({"num_stages": 3}).encode(),
+            int(5 * mult),
+            1,
+            300,
+        ),
     ]
 
     results = []

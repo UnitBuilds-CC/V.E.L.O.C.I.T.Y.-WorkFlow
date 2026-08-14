@@ -204,6 +204,24 @@ async function runAllBenchmarks(profile = "standard") {
       count: Math.round(50 * mult),
       concurrency: 20,
     },
+    // virtual_object_contention: 1000 mutations on same keyed object (Restate strength)
+    {
+      name: "virtual_object_contention",
+      urlFn: (_i) =>
+        `${RESTATE_INGRESS}/contention_bench/hot_key/contend`,
+      payload: {},
+      count: Math.round(50 * mult),
+      concurrency: 20,
+    },
+    // reactive_chain: handler-to-handler durable calls (Restate strength)
+    {
+      name: "reactive_chain",
+      urlFn: (i) =>
+        `${RESTATE_INGRESS}/reactive_bench/chain_${i}/chain`,
+      payload: { depth: 3 },
+      count: Math.round(30 * mult),
+      concurrency: 1,
+    },
   ];
 
   const results = [];

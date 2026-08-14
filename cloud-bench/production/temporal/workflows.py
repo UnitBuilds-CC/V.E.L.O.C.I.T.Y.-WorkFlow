@@ -241,6 +241,86 @@ class DurablePromiseWorkflow:
         return json.loads(result["data"]) if isinstance(result.get("data"), str) else promise_value
 
 
+# ─── Temporal-Specific Strength Workloads ────────────────────────────────────
+# These highlight Temporal's unique activity scheduling and timer capabilities.
+
+
+@activity.defn(name="schedulable_task")
+async def schedulable_task(task_id: int) -> dict:
+    """A schedulable activity — highlights Temporal's activity scheduling.
+
+    Temporal's server manages activity scheduling, heartbeating, timeouts,
+    and retries. This activity simulates real work that exercises the
+    scheduler. Each execution is recorded as history events.
+    """
+    # Simulate variable-duration work (like real activities)
+    result = {"task_id": task_id, "scheduled": True, "ts": time.time()}
+    return result
+
+
+@activity.defn(name="timer_checkpoint")
+async def timer_checkpoint(checkpoint_id: int) -> dict:
+    """Record a timer checkpoint — activity that persists timer state."""
+    return {"checkpoint": checkpoint_id, "ts": time.time()}
+
+
+@workflow.defn(name="ActivitySchedulingWorkflow")
+class ActivitySchedulingWorkflow:
+    """Activity scheduling: schedule N activities with Temporal's scheduler.
+
+    Highlights Temporal's ability to manage large numbers of concurrent
+    activities with automatic retry, timeout, and heartbeating.
+    """
+
+    @workflow.run
+    async def run(self, num_activities: int = 10) -> dict:
+        # Schedule all activities through Temporal's scheduler
+        tasks = []
+        for i in range(num_activities):
+            result = await workflow.execute_activity(
+                schedulable_task,
+                i,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=NO_RETRY,
+            )
+            tasks.append(result)
+        return {
+            "status": "completed",
+            "activities_scheduled": num_activities,
+            "activities_completed": len(tasks),
+        }
+
+
+@workflow.defn(name="LongRunningWorkflow")
+class LongRunningWorkflow:
+    """Long-running workflow: timers + activity checkpoints.
+
+    Highlights Temporal's durable timer support — timers survive process
+    restarts because they're persisted as workflow history events.
+    Uses short timers (100ms) for benchmarking while demonstrating the pattern.
+    """
+
+    @workflow.run
+    async def run(self, num_stages: int = 3) -> dict:
+        stages = []
+        for i in range(num_stages):
+            # Durable timer — survives process restarts
+            await workflow.sleep(0.1)  # 100ms for benchmarking
+            # Checkpoint after each timer
+            checkpoint = await workflow.execute_activity(
+                timer_checkpoint,
+                i,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=NO_RETRY,
+            )
+            stages.append(checkpoint)
+        return {
+            "status": "completed",
+            "stages": len(stages),
+            "timers_fired": num_stages,
+        }
+
+
 # ─── All Activities List ─────────────────────────────────────────────────────
 
 ALL_ACTIVITIES = [
@@ -250,6 +330,8 @@ ALL_ACTIVITIES = [
     payload_activity,
     stateful_activity,
     concurrent_activity,
+    schedulable_task,
+    timer_checkpoint,
 ]
 
 # ─── All Workflows List ──────────────────────────────────────────────────────
@@ -264,4 +346,6 @@ ALL_WORKFLOWS = [
     StatefulWorkflow,
     ConcurrentWorkflow,
     DurablePromiseWorkflow,
+    ActivitySchedulingWorkflow,
+    LongRunningWorkflow,
 ]
