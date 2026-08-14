@@ -122,7 +122,6 @@ impl<O> WorkflowHandle<O> {
 /// - `get_state()` / `set_state()`: Durable key-value state
 pub struct DurableContext {
     workflow_id: String,
-    #[allow(dead_code)]
     storage: Arc<Mutex<Box<dyn StorageBackend>>>,
     sequence_counters: Arc<Mutex<HashMap<String, u64>>>,
     journal: Vec<JournalEntry>,
@@ -135,11 +134,45 @@ impl DurableContext {
         storage: Arc<Mutex<Box<dyn StorageBackend>>>,
         sequence_counters: Arc<Mutex<HashMap<String, u64>>>,
     ) -> Self {
+        // Load existing journal entries from storage for crash recovery.
+        // On replay, previously completed steps will have their cached results
+        // returned without re-executing — this is the step-level recovery.
+        let journal = {
+            let stored = storage
+                .lock()
+                .ok()
+                .and_then(|s| s.load_journal(&workflow_id).ok())
+                .unwrap_or_default();
+
+            stored
+                .into_iter()
+                .filter_map(|v| {
+                    let sequence = v.get("sequence").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let function_name = v.get("function_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let input = v.get("input").cloned();
+                    let output = v.get("output").cloned();
+                    let error = v.get("error").and_then(|v| v.as_str()).map(String::from);
+                    let completed = v.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+                    Some(JournalEntry { sequence, function_name, input, output, error, completed })
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // Restore sequence counters from journal
+        for entry in &journal {
+            let seq_key = format!("{}:{}", workflow_id, entry.function_name);
+            let mut counters = sequence_counters.lock().unwrap();
+            let counter = counters.entry(seq_key).or_insert(0);
+            if entry.sequence >= *counter {
+                *counter = entry.sequence + 1;
+            }
+        }
+
         Self {
             workflow_id,
             storage,
             sequence_counters,
-            journal: Vec::new(),
+            journal,
             state: HashMap::new(),
         }
     }
@@ -203,10 +236,25 @@ impl DurableContext {
             sequence: seq,
             function_name: step_name.to_string(),
             input: None,
-            output: Some(output_value),
+            output: Some(output_value.clone()),
             error: None,
             completed: true,
         });
+
+        // Persist step result to storage immediately for step-level crash recovery.
+        // If the process crashes after this point, the step result is durable
+        // and will be replayed on recovery without re-executing the step.
+        let journal_entry = serde_json::json!({
+            "sequence": seq,
+            "function_name": step_name,
+            "input": null,
+            "output": output_value,
+            "error": null,
+            "completed": true,
+        });
+        if let Ok(storage) = self.storage.lock() {
+            let _ = storage.save_journal_entry(&self.workflow_id, &journal_entry);
+        }
 
         Ok(result)
     }
@@ -235,10 +283,17 @@ impl DurableContext {
     }
 
     /// Set a durable state value.
+    /// Persisted to storage immediately for crash recovery.
     pub fn set_state<T: Serialize>(&mut self, key: &str, value: T) -> Result<(), EmbeddedError> {
         let json = serde_json::to_value(&value)
             .map_err(|e| EmbeddedError::Serialization(e.to_string()))?;
-        self.state.insert(key.to_string(), json);
+        self.state.insert(key.to_string(), json.clone());
+
+        // Persist to storage for durability
+        if let Ok(storage) = self.storage.lock() {
+            let _ = storage.save_state(&self.workflow_id, key, &json);
+        }
+
         Ok(())
     }
 
