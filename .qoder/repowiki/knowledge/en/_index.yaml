@@ -1,0 +1,45 @@
+# Knowledge Cards Index
+# Each knowledge card documents a specific pattern, convention, or architecture decision
+
+cards:
+  - name: "Write-Ahead Log WAL Persistence"
+    kind: persistence_system
+    category: persistence
+    scope:
+      - "velocity-workflow-server/**"
+      - "velocity-workflow-engine/**"
+    source_files:
+      - velocity-workflow-server/src/main.rs
+      - velocity-workflow-engine/src/lib.rs
+    summary: "WAL-based durability for Velocity Server with append-only log and crash recovery"
+    
+  - name: "PostgreSQL Persistence with Connection Pooling"
+    kind: persistence_system
+    category: persistence
+    scope:
+      - "velocity-embedded/**"
+      - "migrations/**"
+    source_files:
+      - velocity-embedded/src/main.rs
+      - migrations/001_initial_schema.sql
+    summary: "PostgreSQL-backed durability with deadpool-postgres connection pooling and ACID transactions"
+    
+  - name: "gRPC Benchmark Service API"
+    kind: api_pattern
+    category: api
+    scope:
+      - "proto/**"
+      - "velocity-workflow-server/**"
+      - "bench-suite/prod-bench/**"
+    source_files:
+      - proto/bench/v1/bench.proto
+      - velocity-workflow-server/src/main.rs
+      - bench-suite/prod-bench/src/velocity_client.rs
+    summary: "Protocol Buffer-defined gRPC API for workflow operations across multiple languages"
+
+# Conventions for knowledge cards:
+# - kind: Type of pattern (persistence_system, api_pattern, error_handling, configuration_system, etc.)
+# - category: Broad category (persistence, api, architecture, testing, deployment)
+# - scope: Glob patterns for files this applies to
+# - source_files: Specific files that implement this pattern
+# - summary: One-line description

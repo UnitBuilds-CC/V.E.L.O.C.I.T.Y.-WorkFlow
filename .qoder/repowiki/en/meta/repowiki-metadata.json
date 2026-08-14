@@ -1,0 +1,127 @@
+# Velocity Workflow Repowiki Metadata
+# Generated: 2026-08-14
+
+project:
+  name: "V.E.L.O.C.I.T.Y. WorkFlow"
+  full_name: "Versatile Engine for Low-latency Orchestration, Coordination, and Intelligent Transaction Yield"
+  description: "High-performance workflow engine ecosystem with multiple deployment flavors"
+  repository: "https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow"
+  license: "MIT"
+
+flavors:
+  - name: "Velocity Server"
+    type: "single-binary"
+    protocol: "gRPC"
+    persistence: "WAL"
+    port: 17234
+    throughput: "43.6 ops/s"
+    memory: "98.76 MiB"
+    
+  - name: "Velocity Embedded"
+    type: "embedded"
+    protocol: "HTTP"
+    persistence: "PostgreSQL"
+    port: 18082
+    throughput: "61.25 ops/s"
+    memory: "1.25 MiB + 68 MiB PG"
+    
+  - name: "Velocity Classic"
+    type: "typescript"
+    protocol: "HTTP"
+    persistence: "In-Memory"
+    port: 18083
+    throughput: "61.54 ops/s"
+    memory: "9.23 MiB"
+
+sdks:
+  - language: "TypeScript"
+    path: "velocity-sdk-typescript"
+    status: "production"
+    
+  - language: "Python"
+    path: "velocity-sdk-python"
+    status: "production"
+    
+  - language: "Go"
+    path: "velocity-sdk-go"
+    status: "production"
+    
+  - language: "Java"
+    path: "velocity-sdk-java"
+    status: "beta"
+
+competitors:
+  - name: "Temporal"
+    throughput: "35.9 ops/s"
+    memory: "563 MiB"
+    
+  - name: "DBOS"
+    throughput: "59.59 ops/s"
+    memory: "63.23 MiB"
+    
+  - name: "Restate"
+    throughput: "41.14 ops/s"
+    memory: "200.36 MiB"
+
+documentation:
+  content:
+    - "Getting Started.md"
+    - "Development Guide.md"
+    - "Architecture Overview.md"
+    
+  knowledge:
+    - "Write-Ahead Log WAL Persistence.md"
+    - "PostgreSQL Persistence with Connection Pooling.md"
+    - "gRPC Benchmark Service API.md"
+
+build:
+  rust:
+    toolchain: "stable"
+    workspace: true
+    crates:
+      - "velocity-workflow-core"
+      - "velocity-workflow-engine"
+      - "velocity-workflow-server"
+      - "velocity-embedded"
+      
+  typescript:
+    node_version: "22+"
+    packages:
+      - "velocity-classic-ts"
+      - "velocity-sdk-typescript"
+      - "velocity-runtime-typescript"
+
+deployment:
+  docker:
+    compose_file: "bench-suite/prod-bench/docker-compose.yml"
+    services:
+      - "velocity"
+      - "velocity-embedded"
+      - "velocity-classic"
+      - "dbos"
+      - "restate"
+      - "temporal"
+      
+  kubernetes:
+    manifests: "deploy/k8s/"
+    helm: "deploy/helm/velocity/"
+
+benchmarking:
+  tool: "bench-suite/prod-bench"
+  profiles:
+    - "quick"
+    - "standard"
+    - "stress"
+    
+  workloads:
+    - "simple_workflow"
+    - "signal_storm"
+    - "query_burst"
+    - "high_step"
+    - "concurrent_100"
+    - "mixed_operations"
+    - "search_attributes"
+    - "throughput_ceiling"
+    - "tail_latency"
+    - "cold_start"
+    - "payload_1kb"
