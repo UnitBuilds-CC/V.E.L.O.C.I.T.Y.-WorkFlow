@@ -1,7 +1,13 @@
 # =============================================================================
 # Production Benchmark Suite — Real Engines, Real APIs, Real Persistence
 # =============================================================================
-# Engines: Velocity | Temporal | DBOS (Python + PostgreSQL) | Restate
+# Engines:
+#   - Velocity Server (gRPC + WAL)
+#   - Velocity Embedded (HTTP + PostgreSQL)
+#   - Velocity Classic (HTTP, Temporal-compatible)
+#   - DBOS (Python + PostgreSQL)
+#   - Restate (Durable Execution)
+#   - Temporal (gRPC + SQLite)
 #
 # Usage:
 #   docker compose up -d           # Start all engines
@@ -10,7 +16,7 @@
 # =============================================================================
 
 services:
-  # ── Velocity (Real gRPC + WAL persistence) ──────────────────────────────
+  # ── Velocity Server (Real gRPC + WAL persistence) ────────────────────────
   velocity:
     build:
       context: ../..
@@ -35,6 +41,76 @@ services:
           cpus: "2.0"
           memory: 1G
     restart: unless-stopped
+
+  # ── Velocity Embedded (HTTP + PostgreSQL-backed) ─────────────────────────
+  velocity-embedded-postgres:
+    image: postgres:16-alpine
+    container_name: pb-velocity-embedded-pg
+    environment:
+      POSTGRES_DB: velocity_embedded
+      POSTGRES_USER: velocity
+      POSTGRES_PASSWORD: velocity
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velocity -d velocity_embedded"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  velocity-embedded:
+    build:
+      context: ../..
+      dockerfile: velocity-embedded-server/Dockerfile
+    container_name: pb-velocity-embedded
+    ports:
+      - "8082:8082"   # HTTP API
+    environment:
+      DATABASE_URL: postgresql://velocity:velocity@velocity-embedded-postgres:5432/velocity_embedded
+    depends_on:
+      velocity-embedded-postgres:
+        condition: service_healthy
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ── Velocity Classic (HTTP, Temporal-compatible) ─────────────────────────
+  velocity-classic:
+    build:
+      context: ../..
+      dockerfile: velocity-classic-ts/Dockerfile
+    container_name: pb-velocity-classic
+    ports:
+      - "8083:8083"   # HTTP API
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8083/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
 
   # ── DBOS (Python HTTP + PostgreSQL) ──────────────────────────────────────
   dbos-postgres:
@@ -191,12 +267,18 @@ services:
     depends_on:
       velocity:
         condition: service_healthy
+      velocity-embedded:
+        condition: service_healthy
+      velocity-classic:
+        condition: service_healthy
       dbos:
         condition: service_healthy
       restate:
         condition: service_healthy
     environment:
       VELOCITY_URL: http://velocity:7234
+      VELOCITY_EMBEDDED_URL: http://velocity-embedded:8082
+      VELOCITY_CLASSIC_URL: http://velocity-classic:8083
       DBOS_URL: http://dbos:8080
       RESTATE_URL: http://restate:8080
     networks:

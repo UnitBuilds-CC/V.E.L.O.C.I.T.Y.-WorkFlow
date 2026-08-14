@@ -8,6 +8,7 @@ members = [
     "velocity-dev-server",
     "velocity-test-framework",
     "velocity-embedded",
+    "velocity-embedded-server",
     "velocity-classic",
     "bench-suite/prod-bench",
 ]

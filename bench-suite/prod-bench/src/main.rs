@@ -14,11 +14,15 @@ use std::time::Instant;
 use tracing::{error, info, warn};
 
 mod velocity_client;
+mod velocity_embedded_client;
+mod velocity_classic_client;
 mod dbos_client;
 mod restate_client;
 mod workloads;
 
 use velocity_client::VelocityClient;
+use velocity_embedded_client::VelocityEmbeddedClient;
+use velocity_classic_client::VelocityClassicClient;
 use dbos_client::DbosClient;
 use restate_client::RestateClient;
 use workloads::WorkloadDef;
@@ -28,7 +32,7 @@ use workloads::WorkloadDef;
 #[derive(Parser)]
 #[command(name = "prod-bench", about = "Production benchmark: Velocity vs DBOS vs Restate")]
 struct Cli {
-    /// Comma-separated engines to benchmark: velocity,dbos,restate,all
+    /// Comma-separated engines to benchmark: velocity,velocity-embedded,velocity-classic,dbos,restate,all
     #[arg(long, default_value = "all")]
     engines: String,
 
@@ -40,16 +44,24 @@ struct Cli {
     #[arg(long, default_value = "standard")]
     profile: String,
 
-    /// Velocity gRPC address (production server with WAL)
-    #[arg(long, default_value = "http://localhost:7234")]
+    /// Velocity Server gRPC address (production server with WAL)
+    #[arg(long, env = "VELOCITY_URL", default_value = "http://localhost:7234")]
     velocity_url: String,
 
+    /// Velocity Embedded HTTP address (PostgreSQL-backed)
+    #[arg(long, env = "VELOCITY_EMBEDDED_URL", default_value = "http://localhost:8082")]
+    velocity_embedded_url: String,
+
+    /// Velocity Classic HTTP address (Temporal-compatible)
+    #[arg(long, env = "VELOCITY_CLASSIC_URL", default_value = "http://localhost:8083")]
+    velocity_classic_url: String,
+
     /// DBOS HTTP address
-    #[arg(long, default_value = "http://localhost:8081")]
+    #[arg(long, env = "DBOS_URL", default_value = "http://localhost:8081")]
     dbos_url: String,
 
     /// Restate HTTP address
-    #[arg(long, default_value = "http://localhost:9070")]
+    #[arg(long, env = "RESTATE_URL", default_value = "http://localhost:9070")]
     restate_url: String,
 
     /// Output format: json, markdown, csv
@@ -120,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Vec<_>>();
 
     let engines: Vec<&str> = if cli.engines == "all" {
-        vec!["velocity", "dbos", "restate"]
+        vec!["velocity", "velocity-embedded", "velocity-classic", "dbos", "restate"]
     } else {
         cli.engines.split(',').map(|s| s.trim()).collect()
     };
@@ -131,9 +143,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut all_results: Vec<EngineResult> = Vec::new();
 
-    // ─── Velocity ──────────────────────────────────────────────────────
+    // ─── Velocity Server (gRPC + WAL) ──────────────────────────────────
     if engines.contains(&"velocity") {
-        info!("━━━ VELOCITY (Real gRPC + WAL persistence) ━━━");
+        info!("━━━ VELOCITY SERVER (Real gRPC + WAL persistence) ━━━");
         info!("Target: {}", cli.velocity_url);
 
         match VelocityClient::new(&cli.velocity_url).await {
@@ -149,15 +161,79 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     results.push(r);
                 }
                 all_results.push(EngineResult {
-                    engine: "Velocity".into(),
+                    engine: "Velocity-Server".into(),
                     engine_version: "0.1.0".into(),
                     workloads: results,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 });
             }
             Err(e) => {
-                error!("Velocity connection failed: {}", e);
-                warn!("Skipping Velocity — is the dev server running at {}?", cli.velocity_url);
+                error!("Velocity Server connection failed: {}", e);
+                warn!("Skipping Velocity Server — is the server running at {}?", cli.velocity_url);
+            }
+        }
+        info!("");
+    }
+
+    // ─── Velocity Embedded (PostgreSQL-backed) ─────────────────────────
+    if engines.contains(&"velocity-embedded") {
+        info!("━━━ VELOCITY EMBEDDED (PostgreSQL-backed) ━━━");
+        info!("Target: {}", cli.velocity_embedded_url);
+
+        match VelocityEmbeddedClient::new(&cli.velocity_embedded_url).await {
+            Ok(client) => {
+                let mut results = Vec::new();
+                for w in &workloads {
+                    info!("  Running {} ({} ops)...", w.name, w.config.workflow_count);
+                    let r = run_velocity_embedded_workload(&client, w).await;
+                    info!(
+                        "    -> {:.1} ops/sec, p99={:.0}µs, errors={:.1}%",
+                        r.ops_per_second, r.latency_p99_us, r.error_rate_pct
+                    );
+                    results.push(r);
+                }
+                all_results.push(EngineResult {
+                    engine: "Velocity-Embedded".into(),
+                    engine_version: "0.1.0".into(),
+                    workloads: results,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                });
+            }
+            Err(e) => {
+                error!("Velocity Embedded connection failed: {}", e);
+                warn!("Skipping Velocity Embedded — is the server running at {}?", cli.velocity_embedded_url);
+            }
+        }
+        info!("");
+    }
+
+    // ─── Velocity Classic (Temporal-compatible) ────────────────────────
+    if engines.contains(&"velocity-classic") {
+        info!("━━━ VELOCITY CLASSIC (Temporal-compatible) ━━━");
+        info!("Target: {}", cli.velocity_classic_url);
+
+        match VelocityClassicClient::new(&cli.velocity_classic_url).await {
+            Ok(client) => {
+                let mut results = Vec::new();
+                for w in &workloads {
+                    info!("  Running {} ({} ops)...", w.name, w.config.workflow_count);
+                    let r = run_velocity_classic_workload(&client, w).await;
+                    info!(
+                        "    -> {:.1} ops/sec, p99={:.0}µs, errors={:.1}%",
+                        r.ops_per_second, r.latency_p99_us, r.error_rate_pct
+                    );
+                    results.push(r);
+                }
+                all_results.push(EngineResult {
+                    engine: "Velocity-Classic".into(),
+                    engine_version: "0.1.0".into(),
+                    workloads: results,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                });
+            }
+            Err(e) => {
+                error!("Velocity Classic connection failed: {}", e);
+                warn!("Skipping Velocity Classic — is the server running at {}?", cli.velocity_classic_url);
             }
         }
         info!("");
@@ -252,6 +328,124 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 // ─── Workload Runners ────────────────────────────────────────────────────────
 
 async fn run_velocity_workload(client: &VelocityClient, w: &WorkloadDef) -> WorkloadResult {
+    let count = w.config.workflow_count;
+    let concurrency = w.config.concurrency.max(1) as usize;
+    let mut latencies: Vec<f64> = Vec::new();
+    let mut success = 0u64;
+    let mut fail = 0u64;
+    let bench_start = Instant::now();
+
+    for batch_start in (0..count).step_by(concurrency) {
+        let batch_end = (batch_start + concurrency as u64).min(count);
+        let wf_ids: Vec<String> = (batch_start..batch_end)
+            .map(|i| format!("{}-{}", w.name, i))
+            .collect();
+        let mut futs = Vec::new();
+        for wf_id in &wf_ids {
+            futs.push(client.run_workflow(wf_id, &w.name, &w.kind));
+        }
+        let results = futures::future::join_all(futs).await;
+        for r in results {
+            match r {
+                Ok(latency_us) => {
+                    success += 1;
+                    latencies.push(latency_us);
+                }
+                Err(_) => fail += 1,
+            }
+        }
+    }
+
+    let wall = bench_start.elapsed().as_secs_f64();
+    let ops_sec = success as f64 / wall;
+    latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = latencies.len();
+    let p50 = if n > 0 { latencies[n * 50 / 100] } else { 0.0 };
+    let p99 = if n > 0 { latencies[n * 99 / 100] } else { 0.0 };
+    let p999 = if n > 0 { latencies[n * 999 / 1000.min(n)] } else { 0.0 };
+    let mean = if n > 0 { latencies.iter().sum::<f64>() / n as f64 } else { 0.0 };
+    let err_rate = if (success + fail) > 0 {
+        fail as f64 / (success + fail) as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    WorkloadResult {
+        name: w.name.to_string(),
+        description: w.description.to_string(),
+        total_operations: count,
+        successful_operations: success,
+        failed_operations: fail,
+        ops_per_second: ops_sec,
+        latency_p50_us: p50,
+        latency_p99_us: p99,
+        latency_p999_us: p999,
+        latency_mean_us: mean,
+        peak_memory_mb: 0.0,
+        error_rate_pct: err_rate,
+    }
+}
+
+async fn run_velocity_embedded_workload(client: &VelocityEmbeddedClient, w: &WorkloadDef) -> WorkloadResult {
+    let count = w.config.workflow_count;
+    let concurrency = w.config.concurrency.max(1) as usize;
+    let mut latencies: Vec<f64> = Vec::new();
+    let mut success = 0u64;
+    let mut fail = 0u64;
+    let bench_start = Instant::now();
+
+    for batch_start in (0..count).step_by(concurrency) {
+        let batch_end = (batch_start + concurrency as u64).min(count);
+        let wf_ids: Vec<String> = (batch_start..batch_end)
+            .map(|i| format!("{}-{}", w.name, i))
+            .collect();
+        let mut futs = Vec::new();
+        for wf_id in &wf_ids {
+            futs.push(client.run_workflow(wf_id, &w.name, &w.kind));
+        }
+        let results = futures::future::join_all(futs).await;
+        for r in results {
+            match r {
+                Ok(latency_us) => {
+                    success += 1;
+                    latencies.push(latency_us);
+                }
+                Err(_) => fail += 1,
+            }
+        }
+    }
+
+    let wall = bench_start.elapsed().as_secs_f64();
+    let ops_sec = success as f64 / wall;
+    latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = latencies.len();
+    let p50 = if n > 0 { latencies[n * 50 / 100] } else { 0.0 };
+    let p99 = if n > 0 { latencies[n * 99 / 100] } else { 0.0 };
+    let p999 = if n > 0 { latencies[n * 999 / 1000.min(n)] } else { 0.0 };
+    let mean = if n > 0 { latencies.iter().sum::<f64>() / n as f64 } else { 0.0 };
+    let err_rate = if (success + fail) > 0 {
+        fail as f64 / (success + fail) as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    WorkloadResult {
+        name: w.name.to_string(),
+        description: w.description.to_string(),
+        total_operations: count,
+        successful_operations: success,
+        failed_operations: fail,
+        ops_per_second: ops_sec,
+        latency_p50_us: p50,
+        latency_p99_us: p99,
+        latency_p999_us: p999,
+        latency_mean_us: mean,
+        peak_memory_mb: 0.0,
+        error_rate_pct: err_rate,
+    }
+}
+
+async fn run_velocity_classic_workload(client: &VelocityClassicClient, w: &WorkloadDef) -> WorkloadResult {
     let count = w.config.workflow_count;
     let concurrency = w.config.concurrency.max(1) as usize;
     let mut latencies: Vec<f64> = Vec::new();

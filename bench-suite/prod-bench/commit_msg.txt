@@ -1,15 +1,26 @@
-feat(bench-suite): add production benchmark suite with real engine deployments
+feat(bench): add all 3 Velocity variants to production benchmark suite
 
-Replace mock-based benchmarks with production-grade benchmarking:
+Velocity has 3 deployment variants, each with different persistence and API characteristics:
 
-- prod-bench Rust binary: benchmarks Velocity, DBOS, Restate via real HTTP APIs
-- Temporal Go SDK client: benchmarks real Temporal server via gRPC
-- Docker Compose: spins up all 4 engines with real persistence
-  - Velocity dev-server (real HTTP API)
-  - DBOS (Python + PostgreSQL with real DB roundtrips)
-  - Restate (official image + durable execution service)
-  - Temporal (auto-setup with SQLite persistence)
-- Unified runner script (run.sh) for one-command benchmarking
-- Per-engine bench clients using production APIs (no mocks)
-- DBOS service uses asyncpg for real PostgreSQL transactions
-- Restate service uses @restatedev/restate-sdk for durable execution
+1. Velocity Server (gRPC + WAL) — Full production server with Write-Ahead Log persistence
+2. Velocity Embedded (HTTP + PostgreSQL) — DBOS-compatible in-process engine with PostgreSQL backend
+3. Velocity Classic (HTTP, Temporal-compatible) — Temporal-compatible API via TypeScript HTTP server
+
+Changes:
+- Create velocity-embedded-server: Rust HTTP wrapper around EmbeddedEngine with PostgreSQL
+- Create velocity-embedded-client: Bench client for Embedded variant (HTTP API)
+- Create velocity-classic-client: Bench client for Classic variant (HTTP API)
+- Update prod-bench main.rs to support all 3 Velocity variants with separate URLs
+- Update docker-compose.yml with services for all 3 variants + PostgreSQL for Embedded
+- Update run.sh with health checks and URLs for all 3 variants
+- Add Dockerfile for velocity-embedded-server and velocity-classic-ts
+
+The benchmark suite now compares:
+- Velocity-Server (gRPC, WAL)
+- Velocity-Embedded (HTTP, PostgreSQL)
+- Velocity-Classic (HTTP, Temporal-compatible)
+- DBOS (HTTP, PostgreSQL)
+- Restate (HTTP, RocksDB)
+- Temporal (gRPC, SQLite)
+
+All engines run with REAL persistence — no mocks.

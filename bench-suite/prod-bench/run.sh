@@ -69,7 +69,7 @@ echo ""
 
 # ─── Step 2: Start engines ───────────────────────────────────────────────────
 echo "━━━ Step 2/4: Starting engines ━━━"
-docker compose up -d velocity dbos-postgres dbos restate restate-bench-svc temporal 2>&1
+docker compose up -d velocity velocity-embedded-postgres velocity-embedded velocity-classic dbos-postgres dbos restate restate-bench-svc temporal 2>&1
 
 echo "  Waiting for engines to become healthy..."
 MAX_WAIT=120
@@ -78,12 +78,30 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
     HEALTHY=0
     TOTAL=0
 
-    # Check Velocity (gRPC)
+    # Check Velocity Server (gRPC)
     if nc -z localhost 7234 2>/dev/null; then
         HEALTHY=$((HEALTHY + 1))
-        echo "    ✓ Velocity (gRPC port 7234)"
+        echo "    ✓ Velocity Server (gRPC port 7234)"
     else
-        echo "    ⏳ Velocity..."
+        echo "    ⏳ Velocity Server..."
+    fi
+    TOTAL=$((TOTAL + 1))
+
+    # Check Velocity Embedded (HTTP)
+    if curl -sf http://localhost:8082/health > /dev/null 2>&1; then
+        HEALTHY=$((HEALTHY + 1))
+        echo "    ✓ Velocity Embedded (port 8082)"
+    else
+        echo "    ⏳ Velocity Embedded..."
+    fi
+    TOTAL=$((TOTAL + 1))
+
+    # Check Velocity Classic (HTTP)
+    if curl -sf http://localhost:8083/api/health > /dev/null 2>&1; then
+        HEALTHY=$((HEALTHY + 1))
+        echo "    ✓ Velocity Classic (port 8083)"
+    else
+        echo "    ⏳ Velocity Classic..."
     fi
     TOTAL=$((TOTAL + 1))
 
@@ -155,6 +173,8 @@ echo ""
 
 # Build the velocity URLs for the bench client
 VELOCITY_URL="http://localhost:7234"
+VELOCITY_EMBEDDED_URL="http://localhost:8082"
+VELOCITY_CLASSIC_URL="http://localhost:8083"
 DBOS_URL="http://localhost:8081"
 RESTATE_URL="http://localhost:9070"
 
@@ -166,6 +186,8 @@ if command -v cargo &> /dev/null && [ -f "Cargo.toml" ]; then
         --engines "$ENGINES" \
         --profile "$PROFILE" \
         --velocity-url "$VELOCITY_URL" \
+        --velocity-embedded-url "$VELOCITY_EMBEDDED_URL" \
+        --velocity-classic-url "$VELOCITY_CLASSIC_URL" \
         --dbos-url "$DBOS_URL" \
         --restate-url "$RESTATE_URL" \
         --format "$FORMAT" \

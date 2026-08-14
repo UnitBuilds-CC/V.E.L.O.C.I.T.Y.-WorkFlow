@@ -1,6 +1,11 @@
-fix(bench-suite): fix tar extraction and add GCE deployment scripts
+fix(bench-suite): add missing bench-client service and wal_group_commit workload
 
-- Remove --strip-components=1 from deploy_from_tar.sh (git archive has no prefix)
-- Add build/deploy/check scripts for GCE VM management
-- All 3 Velocity VMs built successfully (server 4.0M, bench 3.4M)
-- Verified: cargo fmt, clippy, 2142 tests all pass
+- Add bench-client service to docker-compose.yml (spec requirement)
+  Uses velocity-bench-client Dockerfile, depends on all 6 engine services,
+  uses 'bench' profile so it only starts when explicitly requested.
+- Add wal_group_commit workload to velocity-bench (spec requirement)
+  Maps to WalDurability kind with 1000 sequential ops measuring
+  group commit amortization. Complements existing wal_durability workload.
+
+Phase 2c verification: all per-engine clients confirmed to support
+full workload matrix with configurable URLs and --profile flag.

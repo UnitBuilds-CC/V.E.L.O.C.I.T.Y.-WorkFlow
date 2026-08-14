@@ -1,0 +1,17 @@
+[package]
+name = "velocity-embedded-server"
+version = "0.1.0"
+edition = "2021"
+authors = ["UnitBuilds <ian@unitbuilds.com>"]
+description = "HTTP server wrapping Velocity Embedded (DBOS-compatible, PostgreSQL-backed)"
+
+[dependencies]
+velocity-embedded = { path = "../velocity-embedded" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive", "env"] }
+uuid = { version = "1", features = ["v4"] }
