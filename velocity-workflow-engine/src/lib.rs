@@ -151,6 +151,7 @@ pub mod timer_queue_executor;
 pub mod transfer_queue_executor;
 pub mod update;
 pub mod validation;
+pub mod vctp_rpc;
 pub mod vctp_transport;
 pub mod virtual_objects;
 pub mod visibility;
@@ -386,6 +387,11 @@ pub use update::{
 };
 pub use validation::{
     QueryRequest, SignalRequest, StartWorkflowRequest, ValidationError, WorkflowValidator,
+};
+pub use vctp_rpc::{
+    VctpMethods, VctpRpcRequest, VctpRpcResponse, VctpRpcServer, VctpRpcStats,
+    encode_fragment_meta, decode_fragment_meta, fragment_payload, reassemble_fragments,
+    MAX_VCTP_PAYLOAD,
 };
 pub use vctp_transport::{VctpPeer, VctpTransport, VctpTransportConfig, VctpTransportStats};
 pub use visibility::{
