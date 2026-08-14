@@ -3,7 +3,7 @@ name = "velocity-classic-server"
 version = "0.1.0"
 edition = "2021"
 authors = ["Velocity Team"]
-description = "Velocity Classic HTTP server — Temporal-compatible API over the Rust WorkflowEngine with WAL"
+description = "Velocity Classic Server — NMCP transport (shmem + WebSocket)"
 
 [[bin]]
 name = "velocity-classic-server"
@@ -12,11 +12,9 @@ path = "src/main.rs"
 [dependencies]
 velocity-workflow-engine = { path = "../velocity-workflow-engine" }
 velocity-classic = { path = "../velocity-classic" }
-axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1", features = ["v4"] }

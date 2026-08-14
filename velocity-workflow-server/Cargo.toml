@@ -2,22 +2,15 @@
 name = "velocity-workflow-server"
 version = "0.1.0"
 edition = "2021"
-description = "Production VELOCITY-WorkFlow server with BenchmarkService gRPC interface"
+description = "Velocity Workflow Server — VCTP transport (zero-copy UDP)"
 
 [[bin]]
 name = "velocity-server"
 path = "src/main.rs"
 
 [dependencies]
-velocity-workflow-engine = { path = "../velocity-workflow-engine", features = ["grpc"] }
+velocity-workflow-engine = { path = "../velocity-workflow-engine" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tonic = "0.12"
-prost = "0.13"
-prost-types = "0.13"
-
-[build-dependencies]
-tonic-build = "0.12"
-protox = "0.7"

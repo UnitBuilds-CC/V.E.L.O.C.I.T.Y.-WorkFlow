@@ -34,6 +34,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+// ─── NMCP Protocol Modules ──────────────────────────────────────────────────
+
+pub mod nmcp_router;
+pub mod nmcp_shmem;
+pub mod nmcp_websocket;
+
+// Re-export key NMCP types
+pub use nmcp_router::{ClassicFrameTypes, NmcpFrame, NmcpFrameRouter, NmcpRouterStats, NMCP_MAGIC, NMCP_HEADER_SIZE};
+pub use nmcp_shmem::{NmcpShmemClient, NmcpShmemServer, ShmemBuffer, SHMEM_BUFFER_SIZE};
+pub use nmcp_websocket::{NmcpWebSocketClient, NmcpWebSocketServer};
+
 // ─── Re-exports ──────────────────────────────────────────────────────────────
 
 // Re-export core engine types

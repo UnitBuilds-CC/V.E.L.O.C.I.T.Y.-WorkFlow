@@ -23,7 +23,18 @@ mod durable;
 mod postgres_adapter;
 mod storage;
 
+// ─── NMCP Protocol Modules ──────────────────────────────────────────────────
+
+pub mod nmcp_router;
+pub mod nmcp_shmem;
+pub mod nmcp_websocket;
+
 pub use durable::{DurableContext, TransientContext, WorkflowHandle, WorkflowStatus};
+pub use nmcp_router::{
+    EmbeddedFrameTypes, NmcpFrame, NmcpFrameRouter, NmcpRouterStats, NMCP_MAGIC, NMCP_HEADER_SIZE,
+};
+pub use nmcp_shmem::{NmcpShmemClient, NmcpShmemServer, ShmemBuffer, SHMEM_BUFFER_SIZE};
+pub use nmcp_websocket::{NmcpWebSocketClient, NmcpWebSocketServer};
 pub use postgres_adapter::{PostgresAdapter, PostgresConfig};
 pub use storage::{InMemoryStorage, StorageBackend, StorageError};
 

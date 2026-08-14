@@ -1,0 +1,34 @@
+FROM rust:1.88-slim-bookworm AS builder
+
+WORKDIR /app
+
+# Copy core (dependency of engine)
+COPY velocity-workflow-core/ /app/velocity-workflow-core/
+
+# Copy engine (dependency of server)
+COPY velocity-workflow-engine/ /app/velocity-workflow-engine/
+
+# Copy migrations (needed by engine include_str!)
+COPY migrations/ /app/migrations/
+
+# Copy server source
+COPY velocity-workflow-server/ /app/velocity-workflow-server/
+
+# Fix paths for container layout
+RUN sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-workflow-server/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-workflow-engine/Cargo.toml
+
+WORKDIR /app/velocity-workflow-server
+RUN cargo build --profile ci --bin velocity-server
+
+# ─── Runtime ──────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/velocity-workflow-server/target/ci/velocity-server /usr/local/bin/velocity-server
+
+EXPOSE 7234/udp
+
+ENTRYPOINT ["velocity-server"]
+CMD ["--ip", "0.0.0.0", "--vctp-port", "7234"]

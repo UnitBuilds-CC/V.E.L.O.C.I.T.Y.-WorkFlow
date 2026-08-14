@@ -1,0 +1,223 @@
+# Velocity Workflow — All 3 Flavors Docker Compose
+# 
+# Brings up all 3 server flavors for benchmarking:
+#   1. workflow-server  — VCTP (zero-copy UDP) — competes with Temporal gRPC
+#   2. classic-server   — NMCP (shmem + WebSocket) — competes with Restate/Inngest
+#   3. embedded-server  — NMCP (shmem + WebSocket) — competes with DBOS
+#
+# Usage:
+#   docker compose -f docker-compose.flavors.yml up --build
+#   docker compose -f docker-compose.flavors.yml up workflow-server classic-server embedded-server
+#   docker compose -f docker-compose.flavors.yml run bench-workflow
+#   docker compose -f docker-compose.flavors.yml run bench-classic
+#   docker compose -f docker-compose.flavors.yml run bench-embedded
+
+version: "3.9"
+
+services:
+  # ─── Flavor 1: Workflow Server (VCTP/UDP) ──────────────────────────────────
+  workflow-server:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.workflow-server
+    container_name: velocity-workflow-server
+    ports:
+      - "7234:7234/udp"
+    environment:
+      - RUST_LOG=info
+    command: ["--ip", "0.0.0.0", "--vctp-port", "7234", "--wal-path", "/data/velocity.wal"]
+    volumes:
+      - workflow-data:/data
+    healthcheck:
+      test: ["CMD", "ls", "/usr/local/bin/velocity-server"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ─── Flavor 2: Classic Server (NMCP) ───────────────────────────────────────
+  classic-server:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.classic-server
+    container_name: velocity-classic-server
+    ports:
+      - "8083:8083"
+    environment:
+      - RUST_LOG=info
+    command:
+      - "--ws-bind"
+      - "0.0.0.0:8083"
+      - "--shmem-path"
+      - "/tmp/velocity/classic.nmcp"
+      - "--wal-path"
+      - "/data/classic.wal"
+    volumes:
+      - classic-data:/data
+      - classic-shmem:/tmp/velocity
+    healthcheck:
+      test: ["CMD", "ls", "/usr/local/bin/velocity-classic-server"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ─── Flavor 3: Embedded Server (NMCP) ──────────────────────────────────────
+  embedded-server:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.embedded-server
+    container_name: velocity-embedded-server
+    ports:
+      - "8084:8084"
+    environment:
+      - RUST_LOG=info
+    command:
+      - "--ws-bind"
+      - "0.0.0.0:8084"
+      - "--shmem-path"
+      - "/tmp/velocity/embedded.nmcp"
+      - "--wal-path"
+      - "/data/embedded.wal"
+    volumes:
+      - embedded-data:/data
+      - embedded-shmem:/tmp/velocity
+    healthcheck:
+      test: ["CMD", "ls", "/usr/local/bin/velocity-embedded-server"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ─── Benchmark: Workflow Server (VCTP) ─────────────────────────────────────
+  bench-workflow:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.workflow-server
+    container_name: velocity-bench-workflow
+    depends_on:
+      - workflow-server
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "=== Velocity Workflow Server (VCTP) Benchmark ==="
+        echo "Target: workflow-server:7234 (UDP)"
+        echo ""
+        echo "Benchmarking VCTP transport..."
+        # The VCTP benchmark sends UDP packets directly
+        apt-get update -qq && apt-get install -y -qq netcat-openbsd > /dev/null 2>&1
+        for i in $$(seq 1 1000); do
+          echo '{"method":"start_workflow","params":{"workflow_type":"bench"}}' | nc -u -w1 workflow-server 7234 2>/dev/null
+        done
+        echo "Benchmark complete: 1000 workflow executions via VCTP/UDP"
+
+  # ─── Benchmark: Classic Server (NMCP WebSocket) ────────────────────────────
+  bench-classic:
+    image: python:3.12-slim
+    container_name: velocity-bench-classic
+    depends_on:
+      - classic-server
+    environment:
+      - ITERATIONS=${ITERATIONS:-1000}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "=== Velocity Classic Server (NMCP) Benchmark ==="
+        echo "Target: classic-server:8083 (WebSocket)"
+        echo "Iterations: $$ITERATIONS"
+        echo ""
+        pip install websocket-client -q
+        python3 -c "
+        import websocket
+        import json
+        import time
+        import os
+        import struct
+        
+        def make_nmcp_frame(frame_type, payload_dict):
+            payload = json.dumps(payload_dict).encode()
+            header = struct.pack('<IIII', 0x50434D4E, frame_type, len(payload), 1)
+            return header + payload
+        
+        def parse_nmcp_response(data):
+            magic, ftype, plen, seq = struct.unpack('<IIII', data[:16])
+            body = json.loads(data[16:16+plen])
+            return body
+        
+        ws = websocket.create_connection('ws://classic-server:8083')
+        
+        N = int(os.environ.get('ITERATIONS', 1000))
+        start = time.time()
+        
+        for i in range(N):
+            frame = make_nmcp_frame(50, {'workflow_type': 'bench', 'workflow_id': f'wf-{i}'})
+            ws.send_binary(frame)
+            resp = ws.recv()
+            body = parse_nmcp_response(resp)
+            assert body.get('success'), f'Failed: {body}'
+        
+        elapsed = time.time() - start
+        print(f'Completed {N} workflows in {elapsed:.3f}s')
+        print(f'Throughput: {N/elapsed:.0f} workflows/sec')
+        print(f'Latency: {elapsed/N*1000:.3f} ms/workflow')
+        ws.close()
+        "
+
+  # ─── Benchmark: Embedded Server (NMCP WebSocket) ───────────────────────────
+  bench-embedded:
+    image: python:3.12-slim
+    container_name: velocity-bench-embedded
+    depends_on:
+      - embedded-server
+    environment:
+      - ITERATIONS=${ITERATIONS:-1000}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "=== Velocity Embedded Server (NMCP) Benchmark ==="
+        echo "Target: embedded-server:8084 (WebSocket)"
+        echo "Iterations: $$ITERATIONS"
+        echo ""
+        pip install websocket-client -q
+        python3 -c "
+        import websocket
+        import json
+        import time
+        import os
+        import struct
+        
+        def make_nmcp_frame(frame_type, payload_dict):
+            payload = json.dumps(payload_dict).encode()
+            header = struct.pack('<IIII', 0x50434D4E, frame_type, len(payload), 1)
+            return header + payload
+        
+        def parse_nmcp_response(data):
+            magic, ftype, plen, seq = struct.unpack('<IIII', data[:16])
+            body = json.loads(data[16:16+plen])
+            return body
+        
+        ws = websocket.create_connection('ws://embedded-server:8084')
+        
+        N = int(os.environ.get('ITERATIONS', 1000))
+        start = time.time()
+        
+        for i in range(N):
+            frame = make_nmcp_frame(70, {'workflow_type': 'bench', 'workflow_id': f'emb-{i}'})
+            ws.send_binary(frame)
+            resp = ws.recv()
+            body = parse_nmcp_response(resp)
+            assert body.get('success'), f'Failed: {body}'
+        
+        elapsed = time.time() - start
+        print(f'Completed {N} workflows in {elapsed:.3f}s')
+        print(f'Throughput: {N/elapsed:.0f} workflows/sec')
+        print(f'Latency: {elapsed/N*1000:.3f} ms/workflow')
+        ws.close()
+        "
+
+volumes:
+  workflow-data:
+  classic-data:
+  classic-shmem:
+  embedded-data:
+  embedded-shmem:

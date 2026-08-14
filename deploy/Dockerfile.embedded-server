@@ -1,0 +1,42 @@
+FROM rust:1.88-slim-bookworm AS builder
+
+WORKDIR /app
+
+# Copy core (dependency of engine)
+COPY velocity-workflow-core/ /app/velocity-workflow-core/
+
+# Copy engine (dependency of embedded and embedded-server)
+COPY velocity-workflow-engine/ /app/velocity-workflow-engine/
+
+# Copy migrations (needed by engine include_str!)
+COPY migrations/ /app/migrations/
+
+# Copy embedded library (dependency of embedded-server)
+COPY velocity-embedded/ /app/velocity-embedded/
+
+# Copy embedded server source
+COPY velocity-embedded-server/ /app/velocity-embedded-server/
+
+# Fix paths for container layout
+RUN sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-embedded-server/Cargo.toml && \
+    sed -i 's|path = "../velocity-embedded"|path = "/app/velocity-embedded"|g' /app/velocity-embedded-server/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-workflow-engine/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-embedded/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-embedded/Cargo.toml
+
+WORKDIR /app/velocity-embedded-server
+RUN cargo build --profile ci --bin velocity-embedded-server
+
+# ─── Runtime ──────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/velocity-embedded-server/target/ci/velocity-embedded-server /usr/local/bin/velocity-embedded-server
+
+RUN mkdir -p /tmp/velocity
+
+EXPOSE 8084
+
+ENTRYPOINT ["velocity-embedded-server"]
+CMD ["--ws-bind", "0.0.0.0:8084", "--shmem-path", "/tmp/velocity/embedded.nmcp"]

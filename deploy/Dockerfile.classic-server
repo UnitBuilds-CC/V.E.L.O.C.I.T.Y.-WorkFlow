@@ -1,0 +1,43 @@
+FROM rust:1.88-slim-bookworm AS builder
+
+WORKDIR /app
+
+# Copy core (dependency of engine)
+COPY velocity-workflow-core/ /app/velocity-workflow-core/
+
+# Copy engine (dependency of classic and classic-server)
+COPY velocity-workflow-engine/ /app/velocity-workflow-engine/
+
+# Copy migrations (needed by engine include_str!)
+COPY migrations/ /app/migrations/
+
+# Copy classic library (dependency of classic-server)
+COPY velocity-classic/ /app/velocity-classic/
+
+# Copy classic server source
+COPY velocity-classic-server/ /app/velocity-classic-server/
+
+# Fix paths for container layout
+RUN sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-classic-server/Cargo.toml && \
+    sed -i 's|path = "../velocity-classic"|path = "/app/velocity-classic"|g' /app/velocity-classic-server/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-workflow-engine/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-classic/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-classic/Cargo.toml
+
+WORKDIR /app/velocity-classic-server
+RUN cargo build --profile ci --bin velocity-classic-server
+
+# ─── Runtime ──────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/velocity-classic-server/target/ci/velocity-classic-server /usr/local/bin/velocity-classic-server
+
+# Shmem path inside container
+RUN mkdir -p /tmp/velocity
+
+EXPOSE 8083
+
+ENTRYPOINT ["velocity-classic-server"]
+CMD ["--ws-bind", "0.0.0.0:8083", "--shmem-path", "/tmp/velocity/classic.nmcp"]
