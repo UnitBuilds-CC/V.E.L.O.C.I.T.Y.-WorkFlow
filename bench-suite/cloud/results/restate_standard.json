@@ -1,0 +1,109 @@
+{
+  "generated_at": "2026-08-14T09:07:58.312Z",
+  "engine": "Restate",
+  "profile": "standard",
+  "workloads": [
+    {
+      "name": "simple_workflow",
+      "operations": 50,
+      "success_count": 50,
+      "fail_count": 0,
+      "ops_per_second": 54.2,
+      "latency_p50_us": 17645.4,
+      "latency_p99_us": 29152.1,
+      "latency_p999_us": 29152.1,
+      "latency_mean_us": 18433.3
+    },
+    {
+      "name": "signal_storm",
+      "operations": 20,
+      "success_count": 20,
+      "fail_count": 0,
+      "ops_per_second": 40.5,
+      "latency_p50_us": 24892.1,
+      "latency_p99_us": 27273,
+      "latency_p999_us": 27273,
+      "latency_mean_us": 24710.2
+    },
+    {
+      "name": "cold_start",
+      "operations": 10,
+      "success_count": 10,
+      "fail_count": 0,
+      "ops_per_second": 70.2,
+      "latency_p50_us": 14362.5,
+      "latency_p99_us": 15534.6,
+      "latency_p999_us": 15534.6,
+      "latency_mean_us": 14246
+    },
+    {
+      "name": "multi_step",
+      "operations": 10,
+      "success_count": 10,
+      "fail_count": 0,
+      "ops_per_second": 31.5,
+      "latency_p50_us": 31059.6,
+      "latency_p99_us": 36978,
+      "latency_p999_us": 36978,
+      "latency_mean_us": 31778.3
+    },
+    {
+      "name": "echo",
+      "operations": 100,
+      "success_count": 100,
+      "fail_count": 0,
+      "ops_per_second": 71.2,
+      "latency_p50_us": 13912.4,
+      "latency_p99_us": 21969.6,
+      "latency_p999_us": 21969.6,
+      "latency_mean_us": 14047.9
+    },
+    {
+      "name": "payload_1kb",
+      "operations": 100,
+      "success_count": 100,
+      "fail_count": 0,
+      "ops_per_second": 70.7,
+      "latency_p50_us": 14055.5,
+      "latency_p99_us": 17647.3,
+      "latency_p999_us": 17647.3,
+      "latency_mean_us": 14135.7
+    },
+    {
+      "name": "durable_promise",
+      "operations": 50,
+      "success_count": 50,
+      "fail_count": 0,
+      "ops_per_second": 68.3,
+      "latency_p50_us": 14360.1,
+      "latency_p99_us": 18463.1,
+      "latency_p999_us": 18463.1,
+      "latency_mean_us": 14639
+    },
+    {
+      "name": "stateful_keyed",
+      "operations": 50,
+      "success_count": 50,
+      "fail_count": 0,
+      "ops_per_second": 73.1,
+      "latency_p50_us": 13494.5,
+      "latency_p99_us": 17640.8,
+      "latency_p999_us": 17640.8,
+      "latency_mean_us": 13678.6
+    },
+    {
+      "name": "concurrent_20",
+      "operations": 50,
+      "success_count": 50,
+      "fail_count": 0,
+      "ops_per_second": 290.3,
+      "latency_p50_us": 64606.4,
+      "latency_p99_us": 78912.3,
+      "latency_p999_us": 78912.3,
+      "latency_mean_us": 57976.4
+    }
+  ],
+  "total_ops": 440,
+  "total_success": 440,
+  "total_fail": 0
+}

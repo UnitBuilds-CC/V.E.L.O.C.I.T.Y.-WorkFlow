@@ -1,0 +1,120 @@
+{
+  "generated_at": "2026-08-14T09:09:45.634231+00:00",
+  "engine": "Temporal",
+  "engine_version": "latest",
+  "profile": "standard",
+  "workloads": [
+    {
+      "name": "simple_workflow",
+      "operations": 20,
+      "success_count": 20,
+      "fail_count": 0,
+      "ops_per_second": 1.3,
+      "latency_p50_us": 646052.9,
+      "latency_p99_us": 1102162.9,
+      "latency_p999_us": 1102162.9,
+      "latency_mean_us": 747145.8,
+      "peak_memory_mb": 30.02
+    },
+    {
+      "name": "signal_storm",
+      "operations": 10,
+      "success_count": 10,
+      "fail_count": 0,
+      "ops_per_second": 0.6,
+      "latency_p50_us": 1747486.2,
+      "latency_p99_us": 1830479.1,
+      "latency_p999_us": 1830479.1,
+      "latency_mean_us": 1754541.1,
+      "peak_memory_mb": 30.02
+    },
+    {
+      "name": "cold_start",
+      "operations": 10,
+      "success_count": 10,
+      "fail_count": 0,
+      "ops_per_second": 8.3,
+      "latency_p50_us": 120974.2,
+      "latency_p99_us": 131846.5,
+      "latency_p999_us": 131846.5,
+      "latency_mean_us": 120875.1,
+      "peak_memory_mb": 30.02
+    },
+    {
+      "name": "multi_step",
+      "operations": 5,
+      "success_count": 5,
+      "fail_count": 0,
+      "ops_per_second": 0.1,
+      "latency_p50_us": 9101625.1,
+      "latency_p99_us": 10055275.2,
+      "latency_p999_us": 10055275.2,
+      "latency_mean_us": 9349673.8,
+      "peak_memory_mb": 30.02
+    },
+    {
+      "name": "echo",
+      "operations": 30,
+      "success_count": 30,
+      "fail_count": 0,
+      "ops_per_second": 7.8,
+      "latency_p50_us": 130600.6,
+      "latency_p99_us": 145492.5,
+      "latency_p999_us": 145492.5,
+      "latency_mean_us": 128879.2,
+      "peak_memory_mb": 30.02
+    },
+    {
+      "name": "payload_1kb",
+      "operations": 30,
+      "success_count": 30,
+      "fail_count": 0,
+      "ops_per_second": 7.6,
+      "latency_p50_us": 128026.2,
+      "latency_p99_us": 200858.9,
+      "latency_p999_us": 200858.9,
+      "latency_mean_us": 131453.1,
+      "peak_memory_mb": 30.02
+    },
+    {
+      "name": "stateful",
+      "operations": 20,
+      "success_count": 20,
+      "fail_count": 0,
+      "ops_per_second": 2.8,
+      "latency_p50_us": 352296.2,
+      "latency_p99_us": 380267.2,
+      "latency_p999_us": 380267.2,
+      "latency_mean_us": 354974.4,
+      "peak_memory_mb": 30.02
+    },
+    {
+      "name": "durable_promise",
+      "operations": 20,
+      "success_count": 20,
+      "fail_count": 0,
+      "ops_per_second": 8.3,
+      "latency_p50_us": 120809.7,
+      "latency_p99_us": 135912.1,
+      "latency_p999_us": 135912.1,
+      "latency_mean_us": 120850.9,
+      "peak_memory_mb": 30.02
+    },
+    {
+      "name": "concurrent_20",
+      "operations": 20,
+      "success_count": 20,
+      "fail_count": 0,
+      "ops_per_second": 19.8,
+      "latency_p50_us": 790684.2,
+      "latency_p99_us": 1009430.0,
+      "latency_p999_us": 1009430.0,
+      "latency_mean_us": 739410.0,
+      "peak_memory_mb": 30.39
+    }
+  ],
+  "total_ops": 165,
+  "total_success": 165,
+  "total_fail": 0,
+  "overall_ops_per_sec": 1.6
+}
