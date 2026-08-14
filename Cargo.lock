@@ -3381,6 +3381,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "velocity-classic-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "clap",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "velocity-classic",
+ "velocity-workflow-engine",
+]
+
+[[package]]
 name = "velocity-dev-server"
 version = "0.1.0"
 dependencies = [

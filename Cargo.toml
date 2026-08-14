@@ -10,6 +10,7 @@ members = [
     "velocity-embedded",
     "velocity-embedded-server",
     "velocity-classic",
+    "velocity-classic-server",
     "bench-suite/prod-bench",
 ]
 resolver = "2"
