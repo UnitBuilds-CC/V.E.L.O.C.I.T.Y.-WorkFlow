@@ -9,6 +9,7 @@ members = [
     "velocity-test-framework",
     "velocity-embedded",
     "velocity-classic",
+    "bench-suite/prod-bench",
 ]
 resolver = "2"
 

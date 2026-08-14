@@ -1720,6 +1720,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "prod-bench"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "comfy-table",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "proptest"
 version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

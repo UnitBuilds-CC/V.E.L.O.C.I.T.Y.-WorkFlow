@@ -1,0 +1,8 @@
+{
+  "name": "restate-bench-service",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@restatedev/restate-sdk": "^1.4.0"
+  }
+}

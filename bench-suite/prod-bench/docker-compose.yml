@@ -1,0 +1,212 @@
+# =============================================================================
+# Production Benchmark Suite — Real Engines, Real APIs, Real Persistence
+# =============================================================================
+# Engines: Velocity | Temporal | DBOS (Python + PostgreSQL) | Restate
+#
+# Usage:
+#   docker compose up -d           # Start all engines
+#   docker compose run prod-bench  # Run benchmarks
+#   docker compose down -v         # Tear down
+# =============================================================================
+
+services:
+  # ── Velocity (Real HTTP API) ──────────────────────────────────────────────
+  velocity:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.dev-server
+    container_name: pb-velocity
+    ports:
+      - "8080:7233"   # HTTP API
+      - "7234:7234"   # gRPC
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:7233/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    restart: unless-stopped
+
+  # ── DBOS (Python HTTP + PostgreSQL) ──────────────────────────────────────
+  dbos-postgres:
+    image: postgres:16-alpine
+    container_name: pb-dbos-pg
+    environment:
+      POSTGRES_DB: dbos_bench
+      POSTGRES_USER: dbos
+      POSTGRES_PASSWORD: dbos_bench
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbos -d dbos_bench"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  dbos:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbos
+    container_name: pb-dbos
+    ports:
+      - "8081:8080"
+    environment:
+      DATABASE_URL: postgresql://dbos:dbos_bench@dbos-postgres:5432/dbos_bench
+    depends_on:
+      dbos-postgres:
+        condition: service_healthy
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ── Restate (Durable Execution Engine) ───────────────────────────────────
+  restate:
+    image: docker.io/restatedev/restate:1.1
+    container_name: pb-restate
+    ports:
+      - "9070:8080"   # Ingress (HTTP)
+      - "9071:9070"   # Admin
+    command:
+      - "--roles=worker,admin"
+      - "--bootstrap-num-partitions=1"
+      - "--storage-rocksdb-high-priority-thread-pool-num-threads=2"
+      - "--ingress-http-bind-address=0.0.0.0:8080"
+      - "--admin-bind-address=0.0.0.0:9070"
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9070/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # Restate bench service (registers with Restate server)
+  restate-bench-svc:
+    build:
+      context: ./restate-service
+    container_name: pb-restate-svc
+    networks:
+      - bench-net
+    depends_on:
+      restate:
+        condition: service_healthy
+
+  # Register the bench service with Restate after both are up
+  restate-register:
+    image: docker.io/restatedev/restate:1.1
+    container_name: pb-restate-reg
+    depends_on:
+      restate:
+        condition: service_healthy
+      restate-bench-svc:
+        condition: service_started
+    entrypoint: ["restate", "dep", "register", "http://restate-bench-svc:9080"]
+    environment:
+      RESTATE_ADMIN_URL: http://restate:9070
+    networks:
+      - bench-net
+    restart: "no"
+
+  # ── Temporal (Real gRPC + SQLite persistence) ────────────────────────────
+  temporal:
+    image: temporalio/auto-setup:1.24
+    container_name: pb-temporal
+    ports:
+      - "7233:7233"   # gRPC frontend
+    environment:
+      - DB=sqlite
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+      - FRONTEND_BIND_ADDRESS=0.0.0.0:7233
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+  # Temporal bench client (Go SDK)
+  temporal-bench:
+    build:
+      context: ./temporal-bench
+    container_name: pb-temporal-bench
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    networks:
+      - bench-net
+    profiles:
+      - bench
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+  # ── Production Bench Client ──────────────────────────────────────────────
+  prod-bench:
+    build:
+      context: ../..
+      dockerfile: bench-suite/prod-bench/Dockerfile
+    container_name: pb-runner
+    depends_on:
+      velocity:
+        condition: service_healthy
+      dbos:
+        condition: service_healthy
+      restate:
+        condition: service_healthy
+    environment:
+      VELOCITY_URL: http://velocity:7233
+      DBOS_URL: http://dbos:8080
+      RESTATE_URL: http://restate:8080
+    networks:
+      - bench-net
+    profiles:
+      - bench
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+networks:
+  bench-net:
+    driver: bridge
