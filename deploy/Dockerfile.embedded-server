@@ -25,14 +25,14 @@ RUN sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflo
     sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-embedded/Cargo.toml
 
 WORKDIR /app/velocity-embedded-server
-RUN cargo build --profile ci --bin velocity-embedded-server
+RUN cargo build --release --bin velocity-embedded-server
 
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/velocity-embedded-server/target/ci/velocity-embedded-server /usr/local/bin/velocity-embedded-server
+COPY --from=builder /app/velocity-embedded-server/target/release/velocity-embedded-server /usr/local/bin/velocity-embedded-server
 
 RUN mkdir -p /tmp/velocity
 

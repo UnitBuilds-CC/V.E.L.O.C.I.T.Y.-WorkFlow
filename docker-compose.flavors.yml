@@ -12,8 +12,6 @@
 #   docker compose -f docker-compose.flavors.yml run bench-classic
 #   docker compose -f docker-compose.flavors.yml run bench-embedded
 
-version: "3.9"
-
 services:
   # ─── Flavor 1: Workflow Server (VCTP/UDP) ──────────────────────────────────
   workflow-server:
@@ -42,7 +40,7 @@ services:
       dockerfile: deploy/Dockerfile.classic-server
     container_name: velocity-classic-server
     ports:
-      - "8083:8083"
+      - "28083:8083"
     environment:
       - RUST_LOG=info
     command:
@@ -69,7 +67,7 @@ services:
       dockerfile: deploy/Dockerfile.embedded-server
     container_name: velocity-embedded-server
     ports:
-      - "8084:8084"
+      - "28084:8084"
     environment:
       - RUST_LOG=info
     command:

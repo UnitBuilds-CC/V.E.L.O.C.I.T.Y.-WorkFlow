@@ -19,14 +19,14 @@ RUN sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflo
     sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-workflow-engine/Cargo.toml
 
 WORKDIR /app/velocity-workflow-server
-RUN cargo build --profile ci --bin velocity-server
+RUN cargo build --release --bin velocity-server
 
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/velocity-workflow-server/target/ci/velocity-server /usr/local/bin/velocity-server
+COPY --from=builder /app/velocity-workflow-server/target/release/velocity-server /usr/local/bin/velocity-server
 
 EXPOSE 7234/udp
 
