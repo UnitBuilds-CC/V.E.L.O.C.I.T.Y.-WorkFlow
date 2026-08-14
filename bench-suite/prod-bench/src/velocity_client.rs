@@ -1,40 +1,65 @@
-//! Velocity production bench client — talks to the real Velocity dev server
-//! via its HTTP API (POST /api/v1/workflows, signal, query, etc.).
+//! Velocity production bench client — talks to the REAL velocity-workflow-server
+//! via gRPC (BenchmarkService proto) with WAL persistence.
 //!
-//! This measures the ACTUAL production API, not a mock or benchmark adapter.
+//! This measures the ACTUAL production engine with real WAL persistence,
+//! not a mock or in-memory adapter.
 
-use reqwest::Client;
+use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::workloads::WorkloadKind;
 
+// Include the generated gRPC client code from build.rs.
+pub mod velocity_bench_proto {
+    tonic::include_proto!("velocity.bench.v1");
+}
+
+use velocity_bench_proto::benchmark_service_client::BenchmarkServiceClient;
+use velocity_bench_proto::*;
+
 pub struct VelocityClient {
-    client: Client,
-    base_url: String,
+    client: BenchmarkServiceClient<tonic::transport::Channel>,
+    namespace: String,
 }
 
 impl VelocityClient {
-    pub async fn new(base_url: &str) -> Result<Self, String> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
-            .pool_max_idle_per_host(50)
-            .build()
-            .map_err(|e| format!("HTTP client error: {}", e))?;
+    pub async fn new(grpc_url: &str) -> Result<Self, String> {
+        let endpoint = tonic::transport::Channel::from_shared(grpc_url.to_string())
+            .map_err(|e| format!("Invalid gRPC address: {}", e))?
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(120));
+
+        let channel = endpoint
+            .connect()
+            .await
+            .map_err(|e| format!("Velocity gRPC connect to {} failed: {}", grpc_url, e))?;
+
+        let mut client = BenchmarkServiceClient::new(channel);
+
+        // Register benchmark namespace
+        let _ = client
+            .register_namespace(RegisterNamespaceRequest {
+                name: "benchmark".to_string(),
+                description: "Production benchmark namespace".to_string(),
+            })
+            .await;
 
         // Health check
-        let health_url = format!("{}/health", base_url);
-        let resp = client
-            .get(&health_url)
-            .send()
+        let health = client
+            .health_check(HealthCheckRequest {})
             .await
             .map_err(|e| format!("Velocity health check failed: {}", e))?;
 
-        if !resp.status().is_success() {
-            return Err(format!("Velocity health check returned {}", resp.status()));
-        }
+        tracing::info!(
+            "Connected to Velocity (real engine + WAL) at {} — uptime={}s",
+            grpc_url,
+            health.get_ref().uptime_secs
+        );
 
-        tracing::info!("Connected to Velocity at {}", base_url);
-        Ok(Self { client, base_url: base_url.trim_end_matches('/').to_string() })
+        Ok(Self {
+            client,
+            namespace: "benchmark".to_string(),
+        })
     }
 
     /// Run a single workflow end-to-end. Returns latency in microseconds.
@@ -55,171 +80,217 @@ impl VelocityClient {
             | WorkloadKind::ColdStart
             | WorkloadKind::ChildWorkflows
             | WorkloadKind::SagaPattern => {
-                self.start_workflow(wf_id, workload_name).await?;
+                self.start_and_complete_workflow(wf_id, workload_name).await?;
             }
 
             WorkloadKind::SignalStorm => {
-                self.start_workflow(wf_id, "signal_target").await?;
+                let (workflow_id, run_id) = self.start_workflow_raw(wf_id, "signal_target").await?;
                 // Send 100 signals
                 for i in 0..100 {
                     let signal_name = format!("signal_{}", i);
-                    self.signal_workflow(wf_id, &signal_name, b"ping").await?;
+                    self.signal_workflow_raw(&workflow_id, &run_id, &signal_name, b"ping")
+                        .await?;
                 }
+                // Complete the step and wait
+                self.complete_step_raw(&workflow_id, &run_id).await?;
+                self.wait_for_completion_raw(&workflow_id, &run_id).await?;
             }
 
             WorkloadKind::QueryBurst => {
-                self.start_workflow(wf_id, "query_target").await?;
+                let (workflow_id, run_id) = self.start_workflow_raw(wf_id, "query_target").await?;
                 // Send 100 queries
                 for _ in 0..100 {
-                    self.query_workflow(wf_id, "status").await?;
+                    self.query_workflow_raw(&workflow_id, &run_id, "status").await?;
                 }
+                self.complete_step_raw(&workflow_id, &run_id).await?;
+                self.wait_for_completion_raw(&workflow_id, &run_id).await?;
             }
 
             WorkloadKind::MixedOperations => {
-                self.start_workflow(wf_id, workload_name).await?;
-                // Mix of signals and queries
+                let (workflow_id, run_id) =
+                    self.start_workflow_raw(wf_id, workload_name).await?;
                 for i in 0..10 {
-                    self.signal_workflow(wf_id, "data", b"payload").await?;
+                    self.signal_workflow_raw(
+                        &workflow_id,
+                        &run_id,
+                        "data",
+                        b"payload",
+                    )
+                    .await?;
                     if i % 3 == 0 {
-                        let _ = self.query_workflow(wf_id, "status").await;
+                        let _ = self.query_workflow_raw(&workflow_id, &run_id, "status").await;
                     }
                 }
+                self.complete_step_raw(&workflow_id, &run_id).await?;
+                self.wait_for_completion_raw(&workflow_id, &run_id).await?;
             }
 
             WorkloadKind::SearchAttributes => {
-                self.start_workflow_with_attrs(wf_id, workload_name).await?;
+                self.start_and_complete_workflow(wf_id, workload_name).await?;
             }
 
             WorkloadKind::PayloadRoundtrip => {
-                self.start_workflow_with_payload(wf_id, workload_name, 1024).await?;
+                let payload = "x".repeat(1024);
+                let (workflow_id, run_id) = self
+                    .start_workflow_with_input(wf_id, workload_name, payload.as_bytes())
+                    .await?;
+                self.complete_step_raw(&workflow_id, &run_id).await?;
+                self.wait_for_completion_raw(&workflow_id, &run_id).await?;
             }
         }
 
-        let elapsed_us = start.elapsed().as_micros() as f64;
-        Ok(elapsed_us)
+        Ok(start.elapsed().as_micros() as f64)
     }
 
-    async fn start_workflow(&self, wf_id: &str, wf_type: &str) -> Result<(), String> {
-        let url = format!("{}/api/v1/workflows", self.base_url);
-        let body = serde_json::json!({
-            "workflowType": wf_type,
-            "taskQueue": "bench-queue",
-            "namespace": "benchmark",
-            "input": {"bench": true, "id": wf_id},
-        });
-
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
+    /// Reset engine state between workloads.
+    pub async fn reset(&self) -> Result<(), String> {
+        let mut client = self.client.clone();
+        client
+            .reset(ResetRequest {
+                namespace: self.namespace.clone(),
+            })
             .await
-            .map_err(|e| format!("start_workflow HTTP error: {}", e))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(format!("start_workflow {} failed: {} — {}", wf_id, status, body));
-        }
+            .map_err(|e| format!("Reset failed: {}", e))?;
         Ok(())
     }
 
-    async fn start_workflow_with_attrs(&self, wf_id: &str, wf_type: &str) -> Result<(), String> {
-        let url = format!("{}/api/v1/workflows", self.base_url);
-        let body = serde_json::json!({
-            "workflowType": wf_type,
-            "taskQueue": "bench-queue",
-            "namespace": "benchmark",
-            "input": {"bench": true},
-            "searchAttributes": {
-                "environment": "benchmark",
-                "workload": wf_type,
-                "priority": "high",
-            },
-        });
+    // ─── Internal helpers ─────────────────────────────────────────────────
 
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("start_workflow HTTP error: {}", e))?;
-
-        if !resp.status().is_success() {
-            return Err(format!("start_workflow {} failed: {}", wf_id, resp.status()));
-        }
-        Ok(())
-    }
-
-    async fn start_workflow_with_payload(
+    async fn start_and_complete_workflow(
         &self,
         wf_id: &str,
         wf_type: &str,
-        payload_size: usize,
-    ) -> Result<(), String> {
-        let url = format!("{}/api/v1/workflows", self.base_url);
-        let payload = "x".repeat(payload_size);
-        let body = serde_json::json!({
-            "workflowType": wf_type,
-            "taskQueue": "bench-queue",
-            "namespace": "benchmark",
-            "input": {"data": payload},
-        });
-
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("start_workflow HTTP error: {}", e))?;
-
-        if !resp.status().is_success() {
-            return Err(format!("start_workflow {} failed: {}", wf_id, resp.status()));
-        }
-        Ok(())
+    ) -> Result<(String, String), String> {
+        let (workflow_id, run_id) = self.start_workflow_raw(wf_id, wf_type).await?;
+        self.complete_step_raw(&workflow_id, &run_id).await?;
+        self.wait_for_completion_raw(&workflow_id, &run_id).await?;
+        Ok((workflow_id, run_id))
     }
 
-    async fn signal_workflow(
+    async fn start_workflow_raw(
         &self,
         wf_id: &str,
+        wf_type: &str,
+    ) -> Result<(String, String), String> {
+        let mut client = self.client.clone();
+        let resp = client
+            .start_workflow(StartWorkflowRequest {
+                workflow_type: wf_type.to_string(),
+                workflow_id: wf_id.to_string(),
+                namespace: self.namespace.clone(),
+                task_queue: "bench-queue".to_string(),
+                input: vec![],
+                step_count: 1,
+                search_attributes: HashMap::new(),
+                execution_timeout_ms: 30_000,
+            })
+            .await
+            .map_err(|e| format!("start_workflow {} failed: {}", wf_id, e))?;
+
+        let inner = resp.into_inner();
+        Ok((inner.workflow_id, inner.run_id))
+    }
+
+    async fn start_workflow_with_input(
+        &self,
+        wf_id: &str,
+        wf_type: &str,
+        input: &[u8],
+    ) -> Result<(String, String), String> {
+        let mut client = self.client.clone();
+        let resp = client
+            .start_workflow(StartWorkflowRequest {
+                workflow_type: wf_type.to_string(),
+                workflow_id: wf_id.to_string(),
+                namespace: self.namespace.clone(),
+                task_queue: "bench-queue".to_string(),
+                input: input.to_vec(),
+                step_count: 1,
+                search_attributes: HashMap::new(),
+                execution_timeout_ms: 30_000,
+            })
+            .await
+            .map_err(|e| format!("start_workflow {} failed: {}", wf_id, e))?;
+
+        let inner = resp.into_inner();
+        Ok((inner.workflow_id, inner.run_id))
+    }
+
+    async fn signal_workflow_raw(
+        &self,
+        workflow_id: &str,
+        run_id: &str,
         signal_name: &str,
         payload: &[u8],
     ) -> Result<(), String> {
-        let url = format!("{}/api/v1/workflows/{}/signal", self.base_url, wf_id);
-        let body = serde_json::json!({
-            "signalName": signal_name,
-            "input": serde_json::Value::String(String::from_utf8_lossy(payload).to_string()),
-        });
-
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
+        let mut client = self.client.clone();
+        client
+            .signal_workflow(SignalWorkflowRequest {
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.to_string(),
+                signal_name: signal_name.to_string(),
+                payload: payload.to_vec(),
+                namespace: self.namespace.clone(),
+            })
             .await
-            .map_err(|e| format!("signal HTTP error: {}", e))?;
-
-        if !resp.status().is_success() {
-            return Err(format!("signal {} on {} failed: {}", signal_name, wf_id, resp.status()));
-        }
+            .map_err(|e| format!("signal {} on {} failed: {}", signal_name, workflow_id, e))?;
         Ok(())
     }
 
-    async fn query_workflow(&self, wf_id: &str, query_type: &str) -> Result<(), String> {
-        let url = format!("{}/api/v1/workflows/{}/query/{}", self.base_url, wf_id, query_type);
-
-        let resp = self
-            .client
-            .get(&url)
-            .send()
+    async fn query_workflow_raw(
+        &self,
+        workflow_id: &str,
+        run_id: &str,
+        query_type: &str,
+    ) -> Result<Vec<u8>, String> {
+        let mut client = self.client.clone();
+        let resp = client
+            .query_workflow(QueryWorkflowRequest {
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.to_string(),
+                query_type: query_type.to_string(),
+                payload: vec![],
+                namespace: self.namespace.clone(),
+            })
             .await
-            .map_err(|e| format!("query HTTP error: {}", e))?;
+            .map_err(|e| format!("query {} on {} failed: {}", query_type, workflow_id, e))?;
+        Ok(resp.into_inner().result)
+    }
 
-        if !resp.status().is_success() {
-            return Err(format!("query {} on {} failed: {}", query_type, wf_id, resp.status()));
-        }
+    async fn complete_step_raw(
+        &self,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<(), String> {
+        let mut client = self.client.clone();
+        client
+            .complete_step(CompleteStepRequest {
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.to_string(),
+                step_index: 0,
+                result: vec![],
+                namespace: self.namespace.clone(),
+            })
+            .await
+            .map_err(|e| format!("complete_step on {} failed: {}", workflow_id, e))?;
+        Ok(())
+    }
+
+    async fn wait_for_completion_raw(
+        &self,
+        workflow_id: &str,
+        run_id: &str,
+    ) -> Result<(), String> {
+        let mut client = self.client.clone();
+        client
+            .wait_for_completion(WaitForCompletionRequest {
+                workflow_id: workflow_id.to_string(),
+                run_id: run_id.to_string(),
+                namespace: self.namespace.clone(),
+                timeout_ms: 30_000,
+            })
+            .await
+            .map_err(|e| format!("wait_for_completion {} failed: {}", workflow_id, e))?;
         Ok(())
     }
 }

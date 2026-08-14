@@ -40,8 +40,8 @@ struct Cli {
     #[arg(long, default_value = "standard")]
     profile: String,
 
-    /// Velocity HTTP address
-    #[arg(long, default_value = "http://localhost:8080")]
+    /// Velocity gRPC address (production server with WAL)
+    #[arg(long, default_value = "http://localhost:7234")]
     velocity_url: String,
 
     /// DBOS HTTP address
@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ─── Velocity ──────────────────────────────────────────────────────
     if engines.contains(&"velocity") {
-        info!("━━━ VELOCITY (Real HTTP API) ━━━");
+        info!("━━━ VELOCITY (Real gRPC + WAL persistence) ━━━");
         info!("Target: {}", cli.velocity_url);
 
         match VelocityClient::new(&cli.velocity_url).await {

@@ -1,0 +1,15 @@
+feat(bench-suite): add production benchmark suite with real engine deployments
+
+Replace mock-based benchmarks with production-grade benchmarking:
+
+- prod-bench Rust binary: benchmarks Velocity, DBOS, Restate via real HTTP APIs
+- Temporal Go SDK client: benchmarks real Temporal server via gRPC
+- Docker Compose: spins up all 4 engines with real persistence
+  - Velocity dev-server (real HTTP API)
+  - DBOS (Python + PostgreSQL with real DB roundtrips)
+  - Restate (official image + durable execution service)
+  - Temporal (auto-setup with SQLite persistence)
+- Unified runner script (run.sh) for one-command benchmarking
+- Per-engine bench clients using production APIs (no mocks)
+- DBOS service uses asyncpg for real PostgreSQL transactions
+- Restate service uses @restatedev/restate-sdk for durable execution

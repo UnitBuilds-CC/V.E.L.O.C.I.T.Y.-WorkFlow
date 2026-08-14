@@ -78,10 +78,10 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
     HEALTHY=0
     TOTAL=0
 
-    # Check Velocity
-    if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+    # Check Velocity (gRPC)
+    if nc -z localhost 7234 2>/dev/null; then
         HEALTHY=$((HEALTHY + 1))
-        echo "    ✓ Velocity (port 8080)"
+        echo "    ✓ Velocity (gRPC port 7234)"
     else
         echo "    ⏳ Velocity..."
     fi
@@ -154,7 +154,7 @@ echo "━━━ Step 4/4: Running benchmarks ━━━"
 echo ""
 
 # Build the velocity URLs for the bench client
-VELOCITY_URL="http://localhost:8080"
+VELOCITY_URL="http://localhost:7234"
 DBOS_URL="http://localhost:8081"
 RESTATE_URL="http://localhost:9070"
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["UnitBuilds <ian@unitbuilds.com>"]
 description = "Production benchmark suite: Velocity vs Temporal vs DBOS vs Restate"
+build = "build.rs"
 
 [[bin]]
 name = "prod-bench"
@@ -21,3 +22,9 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 comfy-table = "7"
 futures = "0.3"
+tonic = "0.12"
+prost = "0.13"
+
+[build-dependencies]
+tonic-build = "0.12"
+protox = "0.7"
