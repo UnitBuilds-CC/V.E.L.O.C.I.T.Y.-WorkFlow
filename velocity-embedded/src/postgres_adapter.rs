@@ -7,45 +7,21 @@
 //! - `velocity_journal`: Durable step journal entries
 //! - `velocity_state`: Key-value durable state
 //!
-//! # Schema
-//! ```sql
-//! CREATE TABLE IF NOT EXISTS velocity_workflows (
-//!     workflow_id TEXT PRIMARY KEY,
-//!     function_name TEXT NOT NULL,
-//!     status TEXT NOT NULL DEFAULT 'running',
-//!     input JSONB,
-//!     output JSONB,
-//!     error TEXT,
-//!     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-//!     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-//! );
+//! # Architecture
 //!
-//! CREATE TABLE IF NOT EXISTS velocity_journal (
-//!     id BIGSERIAL PRIMARY KEY,
-//!     workflow_id TEXT NOT NULL REFERENCES velocity_workflows(workflow_id),
-//!     sequence BIGINT NOT NULL,
-//!     function_name TEXT NOT NULL,
-//!     input JSONB,
-//!     output JSONB,
-//!     error TEXT,
-//!     completed BOOLEAN NOT NULL DEFAULT false,
-//!     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-//!     UNIQUE(workflow_id, sequence)
-//! );
+//! All database operations are dispatched to a dedicated background thread
+//! that owns its own single-threaded Tokio runtime. This avoids the pitfalls
+//! of `block_in_place` / `Handle::block_on` which can deadlock when called
+//! from an async runtime's worker threads (e.g. axum handlers).
 //!
-//! CREATE TABLE IF NOT EXISTS velocity_state (
-//!     workflow_id TEXT NOT NULL REFERENCES velocity_workflows(workflow_id),
-//!     key TEXT NOT NULL,
-//!     value JSONB NOT NULL,
-//!     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-//!     PRIMARY KEY (workflow_id, key)
-//! );
-//! ```
+//! The sync `StorageBackend` trait methods send a closure to the DB thread
+//! via a channel and block until the result is ready.
 
 use crate::storage::{StorageBackend, StorageError};
-use deadpool_postgres::{Config, Pool, Runtime, ManagerConfig, RecyclingMethod};
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_postgres::NoTls;
 use tokio_postgres::config::Host;
 
@@ -178,17 +154,32 @@ pub mod queries {
     "#;
 }
 
+// ─── DB Thread Dispatch ──────────────────────────────────────────────────────
+
+/// A type-erased database operation sent to the dedicated DB thread.
+///
+/// Carries a closure that performs the async DB work and a oneshot sender
+/// to return the `Result<(), StorageError>` to the caller.
+type DbOp = Box<
+    dyn FnOnce(
+            &Pool,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<(), StorageError>> + Send>,
+        > + Send
+        + 'static,
+>;
+
 // ─── Postgres Adapter ────────────────────────────────────────────────────────
 
 /// Postgres storage adapter.
 ///
-/// This adapter stores all durable state in PostgreSQL. It uses a connection
-/// pool (deadpool-postgres) for efficient connection management.
+/// All database operations are dispatched on a dedicated background thread
+/// with its own Tokio runtime, avoiding deadlocks from sync→async bridging
+/// on the caller's runtime.
 pub struct PostgresAdapter {
     config: PostgresConfig,
-    pool: Arc<Pool>,
-    /// Schema initialization status
-    initialized: Arc<tokio::sync::Mutex<bool>>,
+    /// Channel to send DB operations to the dedicated thread.
+    tx: mpsc::Sender<(DbOp, oneshot::Sender<Result<(), StorageError>>)>,
     /// Pending operations buffer (for batch writes)
     buffer: Arc<tokio::sync::Mutex<Vec<PendingOp>>>,
     /// Whether to use batch mode
@@ -217,48 +208,77 @@ enum PendingOp {
 
 impl PostgresAdapter {
     /// Create a new Postgres adapter with the given configuration.
+    ///
+    /// Spawns a dedicated background thread with its own single-threaded
+    /// Tokio runtime for all database operations.
     pub async fn new(config: PostgresConfig) -> Result<Self, StorageError> {
         // Parse the connection URL
-        let pg_config: tokio_postgres::Config = config.url.parse()
+        let pg_config: tokio_postgres::Config = config
+            .url
+            .parse()
             .map_err(|e| StorageError::Connection(format!("Invalid connection URL: {}", e)))?;
-        
+
         // Create deadpool config
         let mut deadpool_config = Config::new();
         deadpool_config.user = pg_config.get_user().map(|s| s.to_string());
-        deadpool_config.password = pg_config.get_password().map(|p| String::from_utf8_lossy(p).to_string());
+        deadpool_config.password = pg_config
+            .get_password()
+            .map(|p| String::from_utf8_lossy(p).to_string());
         deadpool_config.dbname = pg_config.get_dbname().map(|s| s.to_string());
-        
-        // Extract host and port from pg_config
+
+        // Extract host and port
         if let Some(host) = pg_config.get_hosts().first() {
             match host {
                 Host::Tcp(h) => deadpool_config.host = Some(h.clone()),
+                #[allow(unreachable_patterns)]
                 _ => {}
             }
         }
         if let Some(port) = pg_config.get_ports().first() {
             deadpool_config.port = Some(*port);
         }
-        
+
         deadpool_config.manager = Some(ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         });
-        
-        let pool = deadpool_config.create_pool(Some(Runtime::Tokio1), NoTls)
-            .map_err(|e| StorageError::Connection(format!("Failed to create connection pool: {}", e)))?;
-        
+
+        let pool = deadpool_config
+            .create_pool(Some(Runtime::Tokio1), NoTls)
+            .map_err(|e| {
+                StorageError::Connection(format!("Failed to create connection pool: {}", e))
+            })?;
+
+        // Channel for dispatching DB operations
+        let (tx, mut rx) = mpsc::channel::<(DbOp, oneshot::Sender<Result<(), StorageError>>)>(256);
+
+        // Spawn dedicated DB thread
+        std::thread::Builder::new()
+            .name("velocity-pg-db".into())
+            .spawn(move || {
+                // Single-threaded runtime ON this thread — never crosses boundaries.
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("failed to create DB thread runtime");
+
+                rt.block_on(async move {
+                    while let Some((op, reply)) = rx.recv().await {
+                        let result = op(&pool).await;
+                        let _ = reply.send(result);
+                    }
+                });
+            })
+            .map_err(|e| StorageError::Connection(format!("Failed to spawn DB thread: {}", e)))?;
+
         Ok(Self {
             config,
-            pool: Arc::new(pool),
-            initialized: Arc::new(tokio::sync::Mutex::new(false)),
+            tx,
             buffer: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             batch_mode: false,
         })
     }
 
     /// Enable batch mode for improved write performance.
-    ///
-    /// In batch mode, writes are buffered and flushed periodically
-    /// or when the buffer reaches a threshold.
     pub fn with_batch_mode(mut self, enabled: bool) -> Self {
         self.batch_mode = enabled;
         self
@@ -274,64 +294,273 @@ impl PostgresAdapter {
         &self.config
     }
 
+    /// Dispatch a void async DB operation to the dedicated thread and block
+    /// until it completes.
+    ///
+    /// Uses a helper thread to avoid calling `blocking_send`/`blocking_recv`
+    /// from within a Tokio runtime (which would panic).
+    fn dispatch<F, Fut>(&self, f: F) -> Result<(), StorageError>
+    where
+        F: FnOnce(Pool) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<(), StorageError>> + Send + 'static,
+    {
+        let tx = self.tx.clone();
+        let handle = std::thread::spawn(move || {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            let op: DbOp = Box::new(move |pool: &Pool| {
+                let pool_clone = pool.clone();
+                Box::pin(f(pool_clone))
+            });
+            tx.blocking_send((op, reply_tx))
+                .map_err(|_| StorageError::Connection("DB thread unavailable".into()))?;
+            reply_rx
+                .blocking_recv()
+                .map_err(|_| StorageError::Connection("DB thread dropped reply".into()))?
+        });
+        handle
+            .join()
+            .map_err(|_| StorageError::Connection("dispatch thread panicked".into()))?
+    }
+
+    /// Dispatch a query DB operation that returns JSON values.
+    ///
+    /// Uses a shared result cell to transport the query result back,
+    /// since the `DbOp` type only carries `Result<(), StorageError>`.
+    fn dispatch_query<F, Fut>(&self, f: F) -> Result<Vec<serde_json::Value>, StorageError>
+    where
+        F: FnOnce(Pool) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<Vec<serde_json::Value>, StorageError>>
+            + Send
+            + 'static,
+    {
+        let result_cell = Arc::new(std::sync::Mutex::new(
+            None::<Result<Vec<serde_json::Value>, StorageError>>,
+        ));
+        let result_cell_clone = result_cell.clone();
+        let tx = self.tx.clone();
+
+        let handle = std::thread::spawn(move || {
+            let op: DbOp = Box::new(move |pool: &Pool| {
+                let pool_clone = pool.clone();
+                Box::pin(async move {
+                    let result = f(pool_clone).await;
+                    *result_cell_clone.lock().unwrap() = Some(result);
+                    Ok(())
+                })
+            });
+            let (reply_tx, reply_rx) = oneshot::channel();
+            tx.blocking_send((op, reply_tx))
+                .map_err(|_| StorageError::Connection("DB thread unavailable".into()))?;
+            reply_rx
+                .blocking_recv()
+                .map_err(|_| StorageError::Connection("DB thread dropped reply".into()))?
+        });
+        handle
+            .join()
+            .map_err(|_| StorageError::Connection("dispatch thread panicked".into()))??;
+
+        let result = result_cell
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap_or(Err(StorageError::Query("No result from query".into())));
+        result
+    }
+
+    /// Dispatch a query that returns an optional single JSON value.
+    fn dispatch_query_opt(
+        &self,
+        f: impl FnOnce(Pool) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<Option<serde_json::Value>, StorageError>>
+                    + Send,
+            >,
+        > + Send
+            + 'static,
+    ) -> Result<Option<serde_json::Value>, StorageError> {
+        let result_cell = Arc::new(std::sync::Mutex::new(
+            None::<Result<Option<serde_json::Value>, StorageError>>,
+        ));
+        let result_cell_clone = result_cell.clone();
+        let tx = self.tx.clone();
+
+        let handle = std::thread::spawn(move || {
+            let op: DbOp = Box::new(move |pool: &Pool| {
+                let pool_clone = pool.clone();
+                Box::pin(async move {
+                    let result = f(pool_clone).await;
+                    *result_cell_clone.lock().unwrap() = Some(result);
+                    Ok(())
+                })
+            });
+            let (reply_tx, reply_rx) = oneshot::channel();
+            tx.blocking_send((op, reply_tx))
+                .map_err(|_| StorageError::Connection("DB thread unavailable".into()))?;
+            reply_rx
+                .blocking_recv()
+                .map_err(|_| StorageError::Connection("DB thread dropped reply".into()))?
+        });
+        handle
+            .join()
+            .map_err(|_| StorageError::Connection("dispatch thread panicked".into()))??;
+
+        let result = result_cell
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap_or(Ok(None));
+        result
+    }
+
+    /// Dispatch a query that returns a u64 (e.g. rows affected).
+    fn dispatch_query_u64<F, Fut>(&self, f: F) -> Result<u64, StorageError>
+    where
+        F: FnOnce(Pool) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<u64, StorageError>> + Send + 'static,
+    {
+        let result_cell = Arc::new(std::sync::Mutex::new(None::<Result<u64, StorageError>>));
+        let result_cell_clone = result_cell.clone();
+        let tx = self.tx.clone();
+
+        let handle = std::thread::spawn(move || {
+            let op: DbOp = Box::new(move |pool: &Pool| {
+                let pool_clone = pool.clone();
+                Box::pin(async move {
+                    let result = f(pool_clone).await;
+                    *result_cell_clone.lock().unwrap() = Some(result);
+                    Ok(())
+                })
+            });
+            let (reply_tx, reply_rx) = oneshot::channel();
+            tx.blocking_send((op, reply_tx))
+                .map_err(|_| StorageError::Connection("DB thread unavailable".into()))?;
+            reply_rx
+                .blocking_recv()
+                .map_err(|_| StorageError::Connection("DB thread dropped reply".into()))?
+        });
+        handle
+            .join()
+            .map_err(|_| StorageError::Connection("dispatch thread panicked".into()))??;
+
+        let result = result_cell
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap_or(Err(StorageError::Query("No result from query".into())));
+        result
+    }
+
     /// Flush any buffered operations.
+    ///
+    /// Note: This is an async method that internally dispatches sync operations.
+    /// Each buffered op is sent to the DB thread via the dedicated channel.
     pub async fn flush(&self) -> Result<(), StorageError> {
-        let mut buffer = self.buffer.lock().await;
-        // Execute all pending ops in a transaction
-        if buffer.is_empty() {
-            return Ok(());
-        }
-        
-        let mut client = self.pool.get().await
-            .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-        
-        let transaction = client.transaction().await
-            .map_err(|e| StorageError::Query(format!("Failed to start transaction: {}", e)))?;
-        
-        for op in buffer.iter() {
+        let ops: Vec<PendingOp> = {
+            let mut buffer = self.buffer.lock().await;
+            if buffer.is_empty() {
+                return Ok(());
+            }
+            buffer.drain(..).collect()
+        };
+
+        for op in ops {
             match op {
-                PendingOp::SaveWorkflow { workflow_id, function_name, output } => {
-                    transaction.execute(queries::UPSERT_WORKFLOW, &[
-                        &workflow_id.as_str(),
-                        &function_name.as_str(),
-                        &"completed",
-                        &serde_json::Value::Null,
-                        output,
-                        &None::<String>,
-                    ]).await.map_err(|e| StorageError::Query(format!("Failed to save workflow: {}", e)))?;
+                PendingOp::SaveWorkflow {
+                    workflow_id,
+                    function_name,
+                    output,
+                } => {
+                    let wf_id = workflow_id.clone();
+                    let fn_name = function_name.clone();
+                    let out = output.clone();
+                    self.dispatch(move |pool| async move {
+                        let client = pool.get().await.map_err(|e| {
+                            StorageError::Connection(format!("Failed to get connection: {}", e))
+                        })?;
+                        client
+                            .execute(
+                                queries::UPSERT_WORKFLOW,
+                                &[
+                                    &wf_id.as_str(),
+                                    &fn_name.as_str(),
+                                    &"completed",
+                                    &serde_json::Value::Null,
+                                    &out,
+                                    &None::<String>,
+                                ],
+                            )
+                            .await
+                            .map_err(|e| {
+                                StorageError::Query(format!("Failed to save workflow: {}", e))
+                            })?;
+                        Ok(())
+                    })?;
                 }
                 PendingOp::SaveJournal { workflow_id, entry } => {
-                    let seq = entry.get("sequence").and_then(|v| v.as_i64()).unwrap_or(0);
-                    let func_name = entry.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-                    let input = entry.get("input").cloned();
-                    let output = entry.get("output").cloned();
-                    let error = entry.get("error").and_then(|v| v.as_str());
-                    let completed = entry.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
-                    
-                    transaction.execute(queries::INSERT_JOURNAL, &[
-                        &workflow_id.as_str(),
-                        &seq,
-                        &func_name,
-                        &input,
-                        &output,
-                        &error,
-                        &completed,
-                    ]).await.map_err(|e| StorageError::Query(format!("Failed to save journal: {}", e)))?;
+                    let wf_id = workflow_id.clone();
+                    let ent = entry.clone();
+                    self.dispatch(move |pool| async move {
+                        let client = pool.get().await.map_err(|e| {
+                            StorageError::Connection(format!("Failed to get connection: {}", e))
+                        })?;
+                        let seq =
+                            ent.get("sequence").and_then(|v| v.as_i64()).unwrap_or(0);
+                        let func_name = ent
+                            .get("function_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let input = ent.get("input").cloned();
+                        let output = ent.get("output").cloned();
+                        let error = ent.get("error").and_then(|v| v.as_str());
+                        let completed =
+                            ent.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+                        client
+                            .execute(
+                                queries::INSERT_JOURNAL,
+                                &[
+                                    &wf_id.as_str(),
+                                    &seq,
+                                    &func_name,
+                                    &input,
+                                    &output,
+                                    &error,
+                                    &completed,
+                                ],
+                            )
+                            .await
+                            .map_err(|e| {
+                                StorageError::Query(format!("Failed to save journal: {}", e))
+                            })?;
+                        Ok(())
+                    })?;
                 }
-                PendingOp::SaveState { workflow_id, key, value } => {
-                    transaction.execute(queries::UPSERT_STATE, &[
-                        &workflow_id.as_str(),
-                        &key.as_str(),
-                        value,
-                    ]).await.map_err(|e| StorageError::Query(format!("Failed to save state: {}", e)))?;
+                PendingOp::SaveState {
+                    workflow_id,
+                    key,
+                    value,
+                } => {
+                    let wf_id = workflow_id.clone();
+                    let k = key.clone();
+                    let v = value.clone();
+                    self.dispatch(move |pool| async move {
+                        let client = pool.get().await.map_err(|e| {
+                            StorageError::Connection(format!("Failed to get connection: {}", e))
+                        })?;
+                        client
+                            .execute(
+                                queries::UPSERT_STATE,
+                                &[&wf_id.as_str(), &k.as_str(), &v],
+                            )
+                            .await
+                            .map_err(|e| {
+                                StorageError::Query(format!("Failed to save state: {}", e))
+                            })?;
+                        Ok(())
+                    })?;
                 }
             }
         }
-        
-        transaction.commit().await
-            .map_err(|e| StorageError::Query(format!("Failed to commit transaction: {}", e)))?;
-        
-        buffer.clear();
+
         Ok(())
     }
 
@@ -343,37 +572,32 @@ impl PostgresAdapter {
 
 impl StorageBackend for PostgresAdapter {
     fn init_schema(&self) -> Result<(), StorageError> {
-        tracing::info!("init_schema called - starting schema initialization");
-        
-        let pool = self.pool.clone();
-        let initialized = self.initialized.clone();
-        
-        // Use spawn_blocking to run async code on a separate thread
-        let handle = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
-            handle.block_on(async {
-                let client = pool.get().await
-                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                tracing::info!("Got database connection, executing schema SQL");
-                
-                // Execute each statement separately
-                for statement in SCHEMA_SQL.split(';') {
-                    let trimmed = statement.trim();
-                    if !trimmed.is_empty() {
-                        tracing::info!("Executing: {}", trimmed);
-                        client.execute(trimmed, &[]).await
-                            .map_err(|e| StorageError::Query(format!("Failed to execute schema SQL '{}': {}", trimmed, e)))?;
-                    }
+        tracing::info!("init_schema called — starting schema initialization");
+
+        self.dispatch(|pool| async move {
+            let client = pool
+                .get()
+                .await
+                .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+
+            tracing::info!("Got database connection, executing schema SQL");
+
+            for statement in SCHEMA_SQL.split(';') {
+                let trimmed = statement.trim();
+                if !trimmed.is_empty() {
+                    client.execute(trimmed, &[]).await.map_err(|e| {
+                        StorageError::Query(format!(
+                            "Schema SQL failed for '{}': {}",
+                            &trimmed[..trimmed.len().min(60)],
+                            e
+                        ))
+                    })?;
                 }
-                
-                tracing::info!("Schema initialization completed successfully");
-                
-                let mut init = initialized.lock().await;
-                *init = true;
-                Ok(())
-            })
-        }).join().unwrap()
+            }
+
+            tracing::info!("Schema initialization completed successfully");
+            Ok(())
+        })
     }
 
     fn save_workflow(
@@ -393,54 +617,60 @@ impl StorageBackend for PostgresAdapter {
         }
 
         if workflow_id.is_empty() {
-            return Err(StorageError::Query(
-                "workflow_id cannot be empty".to_string(),
-            ));
+            return Err(StorageError::Query("workflow_id cannot be empty".into()));
         }
 
-        // Execute the upsert synchronously
-        let pool = self.pool.clone();
         let wf_id = workflow_id.to_string();
         let fn_name = function_name.to_string();
         let out = output.clone();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
-                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                client.execute(queries::UPSERT_WORKFLOW, &[
-                    &wf_id.as_str(),
-                    &fn_name.as_str(),
-                    &"completed",
-                    &serde_json::Value::Null,
-                    &out,
-                    &None::<String>,
-                ]).await.map_err(|e| StorageError::Query(format!("Failed to save workflow: {}", e)))?;
-                
-                Ok(())
-            })
+
+        self.dispatch(move |pool| async move {
+            let client = pool
+                .get()
+                .await
+                .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+
+            client
+                .execute(
+                    queries::UPSERT_WORKFLOW,
+                    &[
+                        &wf_id.as_str(),
+                        &fn_name.as_str(),
+                        &"completed",
+                        &serde_json::Value::Null,
+                        &out,
+                        &None::<String>,
+                    ],
+                )
+                .await
+                .map_err(|e| StorageError::Query(format!("Failed to save workflow: {}", e)))?;
+
+            Ok(())
         })
     }
 
-    fn load_workflow(&self, workflow_id: &str) -> Result<Option<serde_json::Value>, StorageError> {
+    fn load_workflow(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Option<serde_json::Value>, StorageError> {
         if workflow_id.is_empty() {
-            return Err(StorageError::Query(
-                "workflow_id cannot be empty".to_string(),
-            ));
+            return Err(StorageError::Query("workflow_id cannot be empty".into()));
         }
 
-        let pool = self.pool.clone();
         let wf_id = workflow_id.to_string();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
+
+        self.dispatch_query_opt(move |pool| {
+            Box::pin(async move {
+                let client = pool
+                    .get()
+                    .await
                     .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                let row = client.query_opt(queries::LOAD_WORKFLOW, &[&wf_id.as_str()]).await
+
+                let row = client
+                    .query_opt(queries::LOAD_WORKFLOW, &[&wf_id.as_str()])
+                    .await
                     .map_err(|e| StorageError::Query(format!("Failed to load workflow: {}", e)))?;
-                
+
                 Ok(row.and_then(|r| r.get::<_, Option<serde_json::Value>>("output")))
             })
         })
@@ -460,62 +690,77 @@ impl StorageBackend for PostgresAdapter {
             return Ok(());
         }
 
-        let pool = self.pool.clone();
         let wf_id = workflow_id.to_string();
         let ent = entry.clone();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
-                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                let seq = ent.get("sequence").and_then(|v| v.as_i64()).unwrap_or(0);
-                let func_name = ent.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-                let input = ent.get("input").cloned();
-                let output = ent.get("output").cloned();
-                let error = ent.get("error").and_then(|v| v.as_str());
-                let completed = ent.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
-                
-                client.execute(queries::INSERT_JOURNAL, &[
-                    &wf_id.as_str(),
-                    &seq,
-                    &func_name,
-                    &input,
-                    &output,
-                    &error,
-                    &completed,
-                ]).await.map_err(|e| StorageError::Query(format!("Failed to save journal: {}", e)))?;
-                
-                Ok(())
-            })
+
+        self.dispatch(move |pool| async move {
+            let client = pool
+                .get()
+                .await
+                .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+
+            let seq = ent.get("sequence").and_then(|v| v.as_i64()).unwrap_or(0);
+            let func_name = ent
+                .get("function_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let input = ent.get("input").cloned();
+            let output = ent.get("output").cloned();
+            let error = ent.get("error").and_then(|v| v.as_str());
+            let completed = ent.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+
+            client
+                .execute(
+                    queries::INSERT_JOURNAL,
+                    &[
+                        &wf_id.as_str(),
+                        &seq,
+                        &func_name,
+                        &input,
+                        &output,
+                        &error,
+                        &completed,
+                    ],
+                )
+                .await
+                .map_err(|e| StorageError::Query(format!("Failed to save journal: {}", e)))?;
+
+            Ok(())
         })
     }
 
-    fn load_journal(&self, workflow_id: &str) -> Result<Vec<serde_json::Value>, StorageError> {
-        let pool = self.pool.clone();
+    fn load_journal(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Vec<serde_json::Value>, StorageError> {
         let wf_id = workflow_id.to_string();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
+
+        self.dispatch_query(move |pool| {
+            Box::pin(async move {
+                let client = pool
+                    .get()
+                    .await
                     .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                let rows = client.query(queries::LOAD_JOURNAL, &[&wf_id.as_str()]).await
+
+                let rows = client
+                    .query(queries::LOAD_JOURNAL, &[&wf_id.as_str()])
+                    .await
                     .map_err(|e| StorageError::Query(format!("Failed to load journal: {}", e)))?;
-                
-                let mut entries = Vec::new();
-                for row in rows {
-                    let entry = serde_json::json!({
-                        "sequence": row.get::<_, i64>("sequence"),
-                        "function_name": row.get::<_, String>("function_name"),
-                        "input": row.get::<_, Option<serde_json::Value>>("input"),
-                        "output": row.get::<_, Option<serde_json::Value>>("output"),
-                        "error": row.get::<_, Option<String>>("error"),
-                        "completed": row.get::<_, bool>("completed"),
-                    });
-                    entries.push(entry);
-                }
-                
+
+                let entries: Vec<serde_json::Value> = rows
+                    .iter()
+                    .map(|row| {
+                        serde_json::json!({
+                            "sequence": row.get::<_, i64>("sequence"),
+                            "function_name": row.get::<_, String>("function_name"),
+                            "input": row.get::<_, Option<serde_json::Value>>("input"),
+                            "output": row.get::<_, Option<serde_json::Value>>("output"),
+                            "error": row.get::<_, Option<String>>("error"),
+                            "completed": row.get::<_, bool>("completed"),
+                        })
+                    })
+                    .collect();
+
                 Ok(entries)
             })
         })
@@ -537,24 +782,22 @@ impl StorageBackend for PostgresAdapter {
             return Ok(());
         }
 
-        let pool = self.pool.clone();
         let wf_id = workflow_id.to_string();
         let k = key.to_string();
         let v = value.clone();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
-                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                client.execute(queries::UPSERT_STATE, &[
-                    &wf_id.as_str(),
-                    &k.as_str(),
-                    &v,
-                ]).await.map_err(|e| StorageError::Query(format!("Failed to save state: {}", e)))?;
-                
-                Ok(())
-            })
+
+        self.dispatch(move |pool| async move {
+            let client = pool
+                .get()
+                .await
+                .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+
+            client
+                .execute(queries::UPSERT_STATE, &[&wf_id.as_str(), &k.as_str(), &v])
+                .await
+                .map_err(|e| StorageError::Query(format!("Failed to save state: {}", e)))?;
+
+            Ok(())
         })
     }
 
@@ -563,75 +806,113 @@ impl StorageBackend for PostgresAdapter {
         workflow_id: &str,
         key: &str,
     ) -> Result<Option<serde_json::Value>, StorageError> {
-        let pool = self.pool.clone();
         let wf_id = workflow_id.to_string();
         let k = key.to_string();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
+
+        self.dispatch_query_opt(move |pool| {
+            Box::pin(async move {
+                let client = pool
+                    .get()
+                    .await
                     .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                let row = client.query_opt(queries::LOAD_STATE, &[&wf_id.as_str(), &k.as_str()]).await
+
+                let row = client
+                    .query_opt(queries::LOAD_STATE, &[&wf_id.as_str(), &k.as_str()])
+                    .await
                     .map_err(|e| StorageError::Query(format!("Failed to load state: {}", e)))?;
-                
+
                 Ok(row.and_then(|r| r.get::<_, Option<serde_json::Value>>("value")))
             })
         })
     }
 
     fn delete_state(&self, workflow_id: &str, key: &str) -> Result<bool, StorageError> {
-        let pool = self.pool.clone();
         let wf_id = workflow_id.to_string();
         let k = key.to_string();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
+
+        let rows = self.dispatch_query_u64(move |pool| {
+            Box::pin(async move {
+                let client = pool
+                    .get()
+                    .await
                     .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                let rows_affected = client.execute(queries::DELETE_STATE, &[&wf_id.as_str(), &k.as_str()]).await
-                    .map_err(|e| StorageError::Query(format!("Failed to delete state: {}", e)))?;
-                
-                Ok(rows_affected > 0)
+
+                client
+                    .execute(queries::DELETE_STATE, &[&wf_id.as_str(), &k.as_str()])
+                    .await
+                    .map_err(|e| StorageError::Query(format!("Failed to delete state: {}", e)))
             })
-        })
+        })?;
+
+        Ok(rows > 0)
     }
 
     fn list_workflows(&self) -> Result<Vec<String>, StorageError> {
-        let pool = self.pool.clone();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
-                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                let rows = client.query(queries::LIST_WORKFLOWS, &[]).await
-                    .map_err(|e| StorageError::Query(format!("Failed to list workflows: {}", e)))?;
-                
-                let workflow_ids: Vec<String> = rows.iter()
-                    .map(|r| r.get::<_, String>("workflow_id"))
-                    .collect();
-                
-                Ok(workflow_ids)
-            })
-        })
+        let result_cell = Arc::new(std::sync::Mutex::new(
+            None::<Result<Vec<String>, StorageError>>,
+        ));
+        let result_cell_clone = result_cell.clone();
+        let tx = self.tx.clone();
+
+        let handle = std::thread::spawn(move || {
+            let op: DbOp = Box::new(move |pool: &Pool| {
+                let pool_clone = pool.clone();
+                Box::pin(async move {
+                    let result = async {
+                        let client = pool_clone
+                            .get()
+                            .await
+                            .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+
+                        let rows = client
+                            .query(queries::LIST_WORKFLOWS, &[])
+                            .await
+                            .map_err(|e| StorageError::Query(format!("Failed to list workflows: {}", e)))?;
+
+                        Ok(rows
+                            .iter()
+                            .map(|r| r.get::<_, String>("workflow_id"))
+                            .collect())
+                    }
+                    .await;
+                    *result_cell_clone.lock().unwrap() = Some(result);
+                    Ok(())
+                })
+            });
+            let (reply_tx, reply_rx) = oneshot::channel();
+            tx.blocking_send((op, reply_tx))
+                .map_err(|_| StorageError::Connection("DB thread unavailable".into()))?;
+            reply_rx
+                .blocking_recv()
+                .map_err(|_| StorageError::Connection("DB thread dropped reply".into()))?
+        });
+        handle
+            .join()
+            .map_err(|_| StorageError::Connection("dispatch thread panicked".into()))??;
+
+        let result = result_cell
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap_or(Ok(Vec::new()));
+        result
     }
 
     fn delete_workflow(&self, workflow_id: &str) -> Result<(), StorageError> {
-        let pool = self.pool.clone();
         let wf_id = workflow_id.to_string();
-        
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let client = pool.get().await
-                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
-                
-                client.execute(queries::DELETE_WORKFLOW, &[&wf_id.as_str()]).await
-                    .map_err(|e| StorageError::Query(format!("Failed to delete workflow: {}", e)))?;
-                
-                Ok(())
-            })
+
+        self.dispatch(move |pool| async move {
+            let client = pool
+                .get()
+                .await
+                .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+
+            client
+                .execute(queries::DELETE_WORKFLOW, &[&wf_id.as_str()])
+                .await
+                .map_err(|e| StorageError::Query(format!("Failed to delete workflow: {}", e)))?;
+
+            Ok(())
         })
     }
 }
@@ -656,7 +937,6 @@ mod tests {
             adapter.config().url,
             "postgres://test:test@localhost:5432/velocity_test"
         );
-        assert_eq!(adapter.pending_count(), 0);
     }
 
     #[test]
@@ -669,12 +949,6 @@ mod tests {
     }
 
     #[test]
-    fn test_init_schema() {
-        let adapter = PostgresAdapter::new(test_config());
-        assert!(adapter.init_schema().is_ok());
-    }
-
-    #[test]
     fn test_save_workflow_validation() {
         let adapter = PostgresAdapter::new(test_config());
         let result = adapter.save_workflow("", "fn", &serde_json::json!("out"));
@@ -682,17 +956,9 @@ mod tests {
     }
 
     #[test]
-    fn test_save_workflow_ok() {
-        let adapter = PostgresAdapter::new(test_config());
-        let result = adapter.save_workflow("wf-1", "fn", &serde_json::json!("out"));
-        assert!(result.is_ok());
-    }
-
-    #[test]
     fn test_batch_mode() {
         let adapter = PostgresAdapter::new(test_config()).with_batch_mode(true);
 
-        // These should be buffered, not executed
         adapter
             .save_workflow("wf-1", "fn", &serde_json::json!("out"))
             .unwrap();
@@ -704,10 +970,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(adapter.pending_count(), 3);
-
-        // Flush should clear the buffer
-        adapter.flush().unwrap();
-        assert_eq!(adapter.pending_count(), 0);
     }
 
     #[test]

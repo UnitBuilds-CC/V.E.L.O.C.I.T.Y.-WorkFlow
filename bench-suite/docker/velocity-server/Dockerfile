@@ -52,6 +52,6 @@ COPY --from=builder /app/velocity-workflow-server/target/release/velocity-server
 
 EXPOSE 7234
 
-# Default: classic mode (override with CMD args)
+# Default: WAL mode (override with CMD args)
 ENTRYPOINT ["velocity-server"]
-CMD ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine"]
+CMD ["--ip", "0.0.0.0", "--grpc-port", "7234"]

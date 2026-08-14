@@ -1,21 +1,21 @@
-# Velocity-only benchmark compose — 3 flavors side by side.
+# Velocity-only benchmark — 3 Rust flavors side by side.
 #
 # Usage:
 #   docker compose -f docker-compose.velocity-only.yml up -d
-#   # Classic  → localhost:7234
-#   # Runtime  → localhost:7235 (gRPC), localhost:8080 (HTTP)
-#   # Embedded → localhost:7236
+#   # Classic  → localhost:8083  (HTTP + WAL, Temporal-compatible)
+#   # Runtime  → localhost:7234  (gRPC), localhost:8080 (HTTP + WAL)
+#   # Embedded → localhost:18082 (HTTP + PostgreSQL)
 
 services:
 
   velocity-classic:
     build:
       context: ..
-      dockerfile: bench-suite/docker/velocity-server/Dockerfile
-    image: velocity-bench/server:latest
+      dockerfile: bench-suite/docker/velocity-classic/Dockerfile
+    image: velocity-bench/classic:latest
     container_name: bench-velocity-classic
     ports:
-      - "7234:7234"
+      - "8083:8083"
     deploy:
       resources:
         limits:
@@ -26,13 +26,11 @@ services:
   velocity-runtime:
     build:
       context: ..
-      dockerfile: bench-suite/docker/velocity-server/Dockerfile
-    image: velocity-bench/server:latest
+      dockerfile: bench-suite/docker/velocity-runtime/Dockerfile
+    image: velocity-bench/runtime:latest
     container_name: bench-velocity-runtime
     ports:
-      - "7235:7234"
-      - "8080:8080"
-    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--http-port", "8080"]
+      - "7234:7234"
     deploy:
       resources:
         limits:
@@ -40,19 +38,39 @@ services:
           memory: 2g
     restart: unless-stopped
 
+  velocity-postgres:
+    image: postgres:16-alpine
+    container_name: bench-velocity-postgres
+    environment:
+      POSTGRES_USER: velocity
+      POSTGRES_PASSWORD: velocity_bench
+      POSTGRES_DB: velocity
+    volumes:
+      - velocity-pg-data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velocity -d velocity"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   velocity-embedded:
     build:
       context: ..
-      dockerfile: bench-suite/docker/velocity-server/Dockerfile
-    image: velocity-bench/server:latest
+      dockerfile: bench-suite/docker/velocity-embedded/Dockerfile
+    image: velocity-bench/embedded:latest
     container_name: bench-velocity-embedded
     ports:
-      - "7236:7234"
-    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--storage", "sqlite"]
-    volumes:
-      - embedded-data:/data
+      - "18082:18082"
     environment:
-      VELOCITY_DATA_DIR: /data
+      DATABASE_URL: postgresql://velocity:velocity_bench@velocity-postgres:5432/velocity
+    depends_on:
+      velocity-postgres:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -61,4 +79,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  embedded-data:
+  velocity-pg-data:

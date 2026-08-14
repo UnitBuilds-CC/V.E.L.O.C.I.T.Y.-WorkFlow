@@ -1,51 +1,41 @@
-# Velocity Classic — Rust gRPC server with WAL (benchmark engine)
+# Velocity Classic — Rust HTTP server with WAL (Temporal-compatible)
 #
-# Builds velocity-workflow-server from source and runs it in "classic" mode:
-# gRPC on port 7234, real WAL with fsync, no HTTP transport.
+# Builds velocity-classic-server: HTTP API on port 8083, WAL persistence.
+# This is the Temporal-compatible deployment flavor.
 #
 # Build context: repository root (velocity-workflow/)
 
-FROM rust:1.88-slim-bookworm
+FROM rust:1.88-slim-bookworm AS builder
 
 RUN apt-get update && \
-    apt-get install -y protobuf-compiler libmnl-dev libnetfilter-log-dev \
-                       iproute2 netcat-openbsd && \
+    apt-get install -y protobuf-compiler && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /build
 
-# ── Proto files (needed by build.rs) ─────────────────────────────────────────
-COPY proto/velocity /proto/velocity
-COPY velocity-bench/proto/ /bench-proto/
+# Minimal workspace manifest for the classic server
+RUN echo '[workspace]\nmembers = ["velocity-workflow-core", "velocity-workflow-engine", "velocity-classic", "velocity-classic-server"]\nresolver = "2"\n\n[profile.release]\nopt-level = 2\nlto = false\ncodegen-units = 16\n' > Cargo.toml
 
-# ── Engine + core source (Rust dependencies) ─────────────────────────────────
-COPY velocity-workflow-engine/ /engine/
-COPY velocity-workflow-core/   /velocity-workflow-core/
+COPY velocity-workflow-core/ ./velocity-workflow-core/
+COPY velocity-workflow-engine/ ./velocity-workflow-engine/
+COPY velocity-classic/         ./velocity-classic/
+COPY velocity-classic-server/  ./velocity-classic-server/
+COPY migrations/               ./migrations/
 
-# ── Migrations (included via include_str!) ───────────────────────────────────
-COPY migrations/ /migrations/
+RUN cargo build --release -p velocity-classic-server
 
-# ── Server source ────────────────────────────────────────────────────────────
-COPY velocity-workflow-server/Cargo.toml velocity-workflow-server/Cargo.toml
-COPY velocity-workflow-server/build.rs   velocity-workflow-server/build.rs
-COPY velocity-workflow-server/src/       velocity-workflow-server/src/
+# ── Runtime image ────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
 
-# Fix proto / dependency paths for the container layout
-RUN sed -i 's|../velocity-bench/proto/|/bench-proto/|g' velocity-workflow-server/build.rs && \
-    sed -i 's|path = "../velocity-workflow-engine"|path = "/engine"|g' velocity-workflow-server/Cargo.toml && \
-    sed -i 's|path = "../velocity-workflow-core"|path = "/velocity-workflow-core"|g' /engine/Cargo.toml
+RUN apt-get update && \
+    apt-get install -y curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# ── Build ────────────────────────────────────────────────────────────────────
-WORKDIR /app/velocity-workflow-server
-RUN cargo build --release
+COPY --from=builder /build/target/release/velocity-classic-server /usr/local/bin/
 
-# ── Runtime ──────────────────────────────────────────────────────────────────
-EXPOSE 7234
+EXPOSE 8083
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-    CMD nc -z localhost 7234 || exit 1
+    CMD curl -f http://localhost:8083/api/health || exit 1
 
-CMD ["./target/release/velocity-server", \
-     "--ip", "0.0.0.0", \
-     "--grpc-port", "7234", \
-     "--real-engine"]
+CMD ["velocity-classic-server", "--bind", "0.0.0.0:8083"]

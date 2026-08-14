@@ -67,10 +67,10 @@ services:
   velocity-embedded:
     build:
       context: ../..
-      dockerfile: velocity-embedded-server/Dockerfile
+      dockerfile: bench-suite/docker/velocity-embedded/Dockerfile
     container_name: pb-velocity-embedded
     ports:
-      - "18082:8082"   # HTTP API
+      - "18082:18082"   # HTTP API
     environment:
       DATABASE_URL: postgresql://velocity:velocity@velocity-embedded-postgres:5432/velocity_embedded
     depends_on:
@@ -79,7 +79,7 @@ services:
     networks:
       - bench-net
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:18082/health"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -90,18 +90,18 @@ services:
           cpus: "1.0"
           memory: 512M
 
-  # ── Velocity Classic (HTTP, Temporal-compatible) ─────────────────────────
+  # ── Velocity Classic (HTTP + WAL, Temporal-compatible) ───────────────────
   velocity-classic:
     build:
       context: ../..
-      dockerfile: velocity-classic-ts/Dockerfile
+      dockerfile: bench-suite/docker/velocity-classic/Dockerfile
     container_name: pb-velocity-classic
     ports:
       - "18083:8083"   # HTTP API
     networks:
       - bench-net
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8083/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8083/api/health"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -292,7 +292,7 @@ services:
         condition: service_healthy
     environment:
       VELOCITY_URL: http://velocity:7234
-      VELOCITY_EMBEDDED_URL: http://velocity-embedded:8082
+      VELOCITY_EMBEDDED_URL: http://velocity-embedded:18082
       VELOCITY_CLASSIC_URL: http://velocity-classic:8083
       DBOS_URL: http://dbos:8080
       RESTATE_URL: http://restate:8080

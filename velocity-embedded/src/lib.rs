@@ -210,6 +210,14 @@ impl EmbeddedEngine {
             workflows.insert(workflow_id.to_string(), record);
         }
 
+        // Persist the workflow record to storage BEFORE running the handler.
+        // This ensures the foreign key (velocity_journal → velocity_workflows)
+        // is satisfied when durable steps insert journal entries.
+        {
+            let storage = self.storage.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
+            let _ = storage.save_workflow(workflow_id, function_name, &serde_json::Value::Null);
+        }
+
         // Create durable context
         let ctx = DurableContext::new(
             workflow_id.to_string(),
@@ -233,13 +241,12 @@ impl EmbeddedEngine {
                     record.updated_at = current_time_ms();
                 }
 
-                // Persist to storage and wait for confirmation
+                // Update storage with completed status and output
                 let storage_result = {
                     let storage = self.storage.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
                     storage.save_workflow(workflow_id, function_name, &output_value)
                 };
                 
-                // Check if persistence succeeded
                 if let Err(e) = storage_result {
                     return Err(EmbeddedError::Storage(format!(
                         "Failed to persist workflow {}: {}",

@@ -13,14 +13,34 @@
 services:
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Velocity Classic — gRPC + WAL
+  # Velocity Classic — HTTP + WAL (Temporal-compatible, port 8083)
   # ═══════════════════════════════════════════════════════════════════════════
   velocity-classic:
     build:
       context: ..
-      dockerfile: bench-suite/docker/velocity-server/Dockerfile
-    image: velocity-bench/server:latest
+      dockerfile: bench-suite/docker/velocity-classic/Dockerfile
+    image: velocity-bench/classic:latest
     container_name: bench-velocity-classic
+    ports:
+      - "8083:8083"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - bench-net
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Velocity Runtime — gRPC + HTTP + WAL (Restate-compatible, ports 7234/8080)
+  # ═══════════════════════════════════════════════════════════════════════════
+  velocity-runtime:
+    build:
+      context: ..
+      dockerfile: bench-suite/docker/velocity-runtime/Dockerfile
+    image: velocity-bench/runtime:latest
+    container_name: bench-velocity-runtime
     ports:
       - "7234:7234"
     deploy:
@@ -33,19 +53,19 @@ services:
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Velocity Runtime — gRPC + WAL (separate WAL path for isolation)
+  # Velocity Embedded — HTTP + PostgreSQL (DBOS-compatible, port 18082)
   # ═══════════════════════════════════════════════════════════════════════════
-  velocity-runtime:
-    build:
-      context: ..
-      dockerfile: bench-suite/docker/velocity-server/Dockerfile
-    image: velocity-bench/server:latest
-    container_name: bench-velocity-runtime
+  velocity-postgres:
+    image: postgres:16-alpine
+    container_name: bench-velocity-postgres
+    environment:
+      POSTGRES_USER: velocity
+      POSTGRES_PASSWORD: velocity_bench
+      POSTGRES_DB: velocity
     ports:
-      - "7235:7234"
-    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--wal-path", "/data/runtime.wal"]
+      - "5434:5432"
     volumes:
-      - runtime-data:/data
+      - velocity-pg-data:/var/lib/postgresql/data
     deploy:
       resources:
         limits:
@@ -53,22 +73,25 @@ services:
           memory: 2g
     networks:
       - bench-net
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velocity -d velocity"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # Velocity Embedded — gRPC + WAL (separate WAL path for isolation)
-  # ═══════════════════════════════════════════════════════════════════════════
   velocity-embedded:
     build:
       context: ..
-      dockerfile: bench-suite/docker/velocity-server/Dockerfile
-    image: velocity-bench/server:latest
+      dockerfile: bench-suite/docker/velocity-embedded/Dockerfile
+    image: velocity-bench/embedded:latest
     container_name: bench-velocity-embedded
     ports:
-      - "7236:7234"
-    command: ["--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--wal-path", "/data/embedded.wal"]
-    volumes:
-      - embedded-data:/data
+      - "18082:18082"
+    environment:
+      DATABASE_URL: postgresql://velocity:velocity_bench@velocity-postgres:5432/velocity
+    depends_on:
+      velocity-postgres:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -276,7 +299,6 @@ networks:
     driver: bridge
 
 volumes:
-  runtime-data:
-  embedded-data:
+  velocity-pg-data:
   dbos-pg-data:
   temporal-pg-data:

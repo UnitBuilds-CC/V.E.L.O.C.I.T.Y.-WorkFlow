@@ -1,47 +1,41 @@
-# Velocity Embedded — Rust gRPC server with SQLite + WAL (benchmark engine)
+# Velocity Embedded — Rust HTTP server with PostgreSQL + WAL
 #
-# Same binary as velocity-classic, but uses SQLite as the storage backend
-# instead of the default in-memory/WAL store.  SQLite data is persisted to
-# /data so it survives container restarts.
+# Builds velocity-embedded-server: HTTP API on port 18082, PostgreSQL persistence.
+# This is the DBOS-compatible deployment flavor.
 #
 # Build context: repository root (velocity-workflow/)
 
-FROM rust:1.88-slim-bookworm
+FROM rust:1.88-slim-bookworm AS builder
 
 RUN apt-get update && \
-    apt-get install -y protobuf-compiler libmnl-dev libnetfilter-log-dev \
-                       iproute2 netcat-openbsd && \
+    apt-get install -y protobuf-compiler && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /build
 
-COPY proto/velocity /proto/velocity
-COPY velocity-bench/proto/ /bench-proto/
-COPY velocity-workflow-engine/ /engine/
-COPY velocity-workflow-core/   /velocity-workflow-core/
-COPY migrations/ /migrations/
+# Minimal workspace manifest for the embedded server
+RUN echo '[workspace]\nmembers = ["velocity-workflow-core", "velocity-workflow-engine", "velocity-embedded", "velocity-embedded-server"]\nresolver = "2"\n\n[profile.release]\nopt-level = 2\nlto = false\ncodegen-units = 16\n' > Cargo.toml
 
-COPY velocity-workflow-server/Cargo.toml velocity-workflow-server/Cargo.toml
-COPY velocity-workflow-server/build.rs   velocity-workflow-server/build.rs
-COPY velocity-workflow-server/src/       velocity-workflow-server/src/
+COPY velocity-workflow-core/    ./velocity-workflow-core/
+COPY velocity-workflow-engine/  ./velocity-workflow-engine/
+COPY velocity-embedded/         ./velocity-embedded/
+COPY velocity-embedded-server/  ./velocity-embedded-server/
+COPY migrations/                ./migrations/
 
-RUN sed -i 's|../velocity-bench/proto/|/bench-proto/|g' velocity-workflow-server/build.rs && \
-    sed -i 's|path = "../velocity-workflow-engine"|path = "/engine"|g' velocity-workflow-server/Cargo.toml && \
-    sed -i 's|path = "../velocity-workflow-core"|path = "/velocity-workflow-core"|g' /engine/Cargo.toml
+RUN cargo build --release -p velocity-embedded-server
 
-WORKDIR /app/velocity-workflow-server
-RUN cargo build --release
+# ── Runtime image ────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
 
-EXPOSE 7234
+RUN apt-get update && \
+    apt-get install -y curl ca-certificates libssl3 && \
+    rm -rf /var/lib/apt/lists/*
 
-VOLUME /data
-ENV VELOCITY_DATA_DIR=/data
+COPY --from=builder /build/target/release/velocity-embedded-server /usr/local/bin/
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-    CMD nc -z localhost 7234 || exit 1
+EXPOSE 18082
 
-CMD ["./target/release/velocity-server", \
-     "--ip", "0.0.0.0", \
-     "--grpc-port", "7234", \
-     "--real-engine", \
-     "--storage", "sqlite"]
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+    CMD curl -f http://localhost:18082/health || exit 1
+
+CMD ["velocity-embedded-server", "--bind", "0.0.0.0:18082"]
