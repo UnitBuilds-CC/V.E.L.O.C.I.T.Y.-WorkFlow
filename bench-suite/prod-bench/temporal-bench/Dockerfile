@@ -2,10 +2,9 @@ FROM golang:1.22-bookworm AS builder
 
 WORKDIR /app
 
-COPY go.mod go.sum* ./
-RUN go mod download 2>/dev/null || true
-
+COPY go.mod .
 COPY main.go .
+RUN go mod tidy
 RUN CGO_ENABLED=0 go build -o /temporal-bench .
 
 FROM debian:bookworm-slim

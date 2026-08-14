@@ -2,22 +2,20 @@ FROM rust:1.88-slim-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    pkg-config \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy workspace files needed for prod-bench
-COPY Cargo.toml Cargo.toml
-COPY bench-suite/prod-bench/Cargo.toml bench-suite/prod-bench/Cargo.toml
+# Create a minimal workspace Cargo.toml with only prod-bench
+RUN echo '[workspace]\nmembers = ["bench-suite/prod-bench"]\nresolver = "2"\n\n[profile.release]\nopt-level = 2\nlto = false\ncodegen-units = 16\n' > Cargo.toml
 
-# Create stub crates for workspace members (so cargo can resolve the workspace)
-RUN for dir in velocity-workflow-core velocity-workflow-engine velocity-workflow-daemon \
-    velocity-workflow-server velocity-bench velocity-dev-server velocity-test-framework \
-    velocity-embedded velocity-classic; do \
-    mkdir -p $dir/src && \
-    echo "fn main() {}" > $dir/src/main.rs && \
-    echo "[package]\nname = \"$dir\"\nversion = \"0.1.0\"\nedition = \"2021\"\n" > $dir/Cargo.toml; \
-    done
+COPY bench-suite/prod-bench/Cargo.toml bench-suite/prod-bench/Cargo.toml
+COPY bench-suite/prod-bench/build.rs bench-suite/prod-bench/build.rs
+
+# Copy proto files (needed by build.rs)
+COPY velocity-bench/proto/ /bench-proto/
 
 # Copy actual prod-bench source
 COPY bench-suite/prod-bench/src/ bench-suite/prod-bench/src/

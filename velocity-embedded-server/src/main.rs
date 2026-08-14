@@ -13,7 +13,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use velocity_embedded::{EmbeddedConfig, EmbeddedEngine, PostgresAdapter, PostgresConfig};
+use velocity_embedded::{EmbeddedConfig, EmbeddedEngine, PostgresAdapter, PostgresConfig, StorageBackend};
 
 #[derive(Parser)]
 #[command(name = "velocity-embedded-server")]
@@ -66,7 +66,20 @@ async fn main() {
         auto_migrate: true,
     };
 
-    let adapter = PostgresAdapter::new(pg_config);
+    let adapter = match PostgresAdapter::new(pg_config).await {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::error!("Failed to create Postgres adapter: {}", e);
+            std::process::exit(1);
+        }
+    };
+    
+    // Initialize schema
+    if let Err(e) = adapter.init_schema() {
+        tracing::error!("Failed to initialize schema: {}", e);
+        std::process::exit(1);
+    }
+    
     let config = EmbeddedConfig {
         database_url: cli.database_url.clone(),
         max_concurrent_workflows: 1000,
@@ -127,10 +140,40 @@ async fn start_workflow(
             &wf_id,
             wf_type,
             input,
-            |_ctx, input| async move {
-                // Simple handler: just return the input as output
-                // In a real app, this would do durable steps via ctx
-                Ok(input)
+            |mut ctx, input| async move {
+                // Real durable execution: perform actual work steps
+                // Step 1: Process input (durable step)
+                let processed = ctx.run("process_input", || async {
+                    // Simulate actual work: transform input
+                    let mut result = input.clone();
+                    if let Some(obj) = result.as_object_mut() {
+                        obj.insert("processed".to_string(), serde_json::json!(true));
+                        obj.insert("processed_at".to_string(), serde_json::json!(chrono::Utc::now().timestamp_millis()));
+                    }
+                    result
+                }).await?;
+
+                // Step 2: Validate result (durable step)
+                let validated = ctx.run("validate_result", || async {
+                    // Simulate validation work
+                    let mut validated = processed.clone();
+                    if let Some(obj) = validated.as_object_mut() {
+                        obj.insert("validated".to_string(), serde_json::json!(true));
+                    }
+                    validated
+                }).await?;
+
+                // Step 3: Finalize (durable step)
+                let finalized = ctx.run("finalize", || async {
+                    let mut finalized = validated.clone();
+                    if let Some(obj) = finalized.as_object_mut() {
+                        obj.insert("finalized".to_string(), serde_json::json!(true));
+                        obj.insert("completed_at".to_string(), serde_json::json!(chrono::Utc::now().timestamp_millis()));
+                    }
+                    finalized
+                }).await?;
+
+                Ok(finalized)
             },
         )
         .await;

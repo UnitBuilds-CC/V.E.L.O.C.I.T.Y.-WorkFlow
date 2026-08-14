@@ -22,15 +22,15 @@ services:
       context: ../..
       dockerfile: deploy/Dockerfile.production-server
     container_name: pb-velocity
-    command: ["./target/release/velocity-server", "--ip", "0.0.0.0", "--grpc-port", "7234", "--real-engine", "--wal-path", "/data/velocity.wal"]
+    command: ["./target/release/velocity-server", "--ip", "0.0.0.0", "--grpc-port", "7234", "--wal-path", "/data/velocity.wal"]
     ports:
-      - "7234:7234"   # gRPC (BenchmarkService)
+      - "17234:7234"   # gRPC (BenchmarkService)
     volumes:
       - velocity-wal:/data
     networks:
       - bench-net
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "7234"]
+      test: ["CMD-SHELL", "timeout 2 bash -c 'echo > /dev/tcp/localhost/7234'"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -70,7 +70,7 @@ services:
       dockerfile: velocity-embedded-server/Dockerfile
     container_name: pb-velocity-embedded
     ports:
-      - "8082:8082"   # HTTP API
+      - "18082:8082"   # HTTP API
     environment:
       DATABASE_URL: postgresql://velocity:velocity@velocity-embedded-postgres:5432/velocity_embedded
     depends_on:
@@ -97,7 +97,7 @@ services:
       dockerfile: velocity-classic-ts/Dockerfile
     container_name: pb-velocity-classic
     ports:
-      - "8083:8083"   # HTTP API
+      - "18083:8083"   # HTTP API
     networks:
       - bench-net
     healthcheck:
@@ -140,7 +140,7 @@ services:
       dockerfile: Dockerfile.dbos
     container_name: pb-dbos
     ports:
-      - "8081:8080"
+      - "18081:8080"
     environment:
       DATABASE_URL: postgresql://dbos:dbos_bench@dbos-postgres:5432/dbos_bench
     depends_on:
@@ -162,25 +162,13 @@ services:
 
   # ── Restate (Durable Execution Engine) ───────────────────────────────────
   restate:
-    image: docker.io/restatedev/restate:1.1
+    image: docker.io/restatedev/restate:latest
     container_name: pb-restate
     ports:
-      - "9070:8080"   # Ingress (HTTP)
-      - "9071:9070"   # Admin
-    command:
-      - "--roles=worker,admin"
-      - "--bootstrap-num-partitions=1"
-      - "--storage-rocksdb-high-priority-thread-pool-num-threads=2"
-      - "--ingress-http-bind-address=0.0.0.0:8080"
-      - "--admin-bind-address=0.0.0.0:9070"
+      - "19070:8080"   # Ingress (HTTP)
+      - "19071:9070"   # Admin
     networks:
       - bench-net
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9070/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
     deploy:
       resources:
         limits:
@@ -196,34 +184,61 @@ services:
       - bench-net
     depends_on:
       restate:
-        condition: service_healthy
+        condition: service_started
 
   # Register the bench service with Restate after both are up
   restate-register:
-    image: docker.io/restatedev/restate:1.1
+    image: docker.io/restatedev/restate:latest
     container_name: pb-restate-reg
     depends_on:
       restate:
-        condition: service_healthy
+        condition: service_started
       restate-bench-svc:
         condition: service_started
-    entrypoint: ["restate", "dep", "register", "http://restate-bench-svc:9080"]
+    entrypoint: ["sh", "-c", "sleep 5 && restate deployments register http://restate-bench-svc:9080 --force --yes"]
     environment:
       RESTATE_ADMIN_URL: http://restate:9070
     networks:
       - bench-net
     restart: "no"
 
-  # ── Temporal (Real gRPC + SQLite persistence) ────────────────────────────
+  # ── Temporal (gRPC + PostgreSQL) ─────────────────────────────────────────
+  temporal-postgres:
+    image: postgres:16-alpine
+    container_name: pb-temporal-pg
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal_bench
+      POSTGRES_DB: temporal
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
   temporal:
     image: temporalio/auto-setup:1.24
     container_name: pb-temporal
     ports:
-      - "7233:7233"   # gRPC frontend
+      - "17233:7233"   # gRPC frontend
     environment:
-      - DB=sqlite
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal_bench
+      - POSTGRES_SEEDS=temporal-postgres
       - FRONTEND_BIND_ADDRESS=0.0.0.0:7233
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
     networks:
       - bench-net
     healthcheck:
@@ -245,7 +260,7 @@ services:
     container_name: pb-temporal-bench
     depends_on:
       temporal:
-        condition: service_healthy
+        condition: service_started
     environment:
       TEMPORAL_ADDRESS: temporal:7233
     networks:

@@ -362,7 +362,7 @@ async fn run_velocity_workload(client: &VelocityClient, w: &WorkloadDef) -> Work
     let n = latencies.len();
     let p50 = if n > 0 { latencies[n * 50 / 100] } else { 0.0 };
     let p99 = if n > 0 { latencies[n * 99 / 100] } else { 0.0 };
-    let p999 = if n > 0 { latencies[n * 999 / 1000.min(n)] } else { 0.0 };
+    let p999 = if n > 0 { latencies[(n * 999 / 1000).min(n - 1)] } else { 0.0 };
     let mean = if n > 0 { latencies.iter().sum::<f64>() / n as f64 } else { 0.0 };
     let err_rate = if (success + fail) > 0 {
         fail as f64 / (success + fail) as f64 * 100.0
@@ -421,7 +421,7 @@ async fn run_velocity_embedded_workload(client: &VelocityEmbeddedClient, w: &Wor
     let n = latencies.len();
     let p50 = if n > 0 { latencies[n * 50 / 100] } else { 0.0 };
     let p99 = if n > 0 { latencies[n * 99 / 100] } else { 0.0 };
-    let p999 = if n > 0 { latencies[n * 999 / 1000.min(n)] } else { 0.0 };
+    let p999 = if n > 0 { latencies[(n * 999 / 1000).min(n - 1)] } else { 0.0 };
     let mean = if n > 0 { latencies.iter().sum::<f64>() / n as f64 } else { 0.0 };
     let err_rate = if (success + fail) > 0 {
         fail as f64 / (success + fail) as f64 * 100.0
@@ -480,7 +480,7 @@ async fn run_velocity_classic_workload(client: &VelocityClassicClient, w: &Workl
     let n = latencies.len();
     let p50 = if n > 0 { latencies[n * 50 / 100] } else { 0.0 };
     let p99 = if n > 0 { latencies[n * 99 / 100] } else { 0.0 };
-    let p999 = if n > 0 { latencies[n * 999 / 1000.min(n)] } else { 0.0 };
+    let p999 = if n > 0 { latencies[(n * 999 / 1000).min(n - 1)] } else { 0.0 };
     let mean = if n > 0 { latencies.iter().sum::<f64>() / n as f64 } else { 0.0 };
     let err_rate = if (success + fail) > 0 {
         fail as f64 / (success + fail) as f64 * 100.0
@@ -536,7 +536,7 @@ async fn run_dbos_workload(client: &DbosClient, w: &WorkloadDef) -> WorkloadResu
     let n = latencies.len();
     let p50 = if n > 0 { latencies[n * 50 / 100] } else { 0.0 };
     let p99 = if n > 0 { latencies[n * 99 / 100] } else { 0.0 };
-    let p999 = if n > 0 { latencies[n * 999 / 1000.min(n)] } else { 0.0 };
+    let p999 = if n > 0 { latencies[(n * 999 / 1000).min(n - 1)] } else { 0.0 };
     let mean = if n > 0 { latencies.iter().sum::<f64>() / n as f64 } else { 0.0 };
     let err_rate = if (success + fail) > 0 {
         fail as f64 / (success + fail) as f64 * 100.0
@@ -592,7 +592,7 @@ async fn run_restate_workload(client: &RestateClient, w: &WorkloadDef) -> Worklo
     let n = latencies.len();
     let p50 = if n > 0 { latencies[n * 50 / 100] } else { 0.0 };
     let p99 = if n > 0 { latencies[n * 99 / 100] } else { 0.0 };
-    let p999 = if n > 0 { latencies[n * 999 / 1000.min(n)] } else { 0.0 };
+    let p999 = if n > 0 { latencies[(n * 999 / 1000).min(n - 1)] } else { 0.0 };
     let mean = if n > 0 { latencies.iter().sum::<f64>() / n as f64 } else { 0.0 };
     let err_rate = if (success + fail) > 0 {
         fail as f64 / (success + fail) as f64 * 100.0

@@ -43,8 +43,11 @@
 //! ```
 
 use crate::storage::{StorageBackend, StorageError};
+use deadpool_postgres::{Config, Pool, Runtime, ManagerConfig, RecyclingMethod};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio_postgres::NoTls;
+use tokio_postgres::config::Host;
 
 // ─── Postgres Config ─────────────────────────────────────────────────────────
 
@@ -179,20 +182,15 @@ pub mod queries {
 
 /// Postgres storage adapter.
 ///
-/// This adapter stores all durable state in PostgreSQL. In production,
-/// it uses a connection pool (e.g., deadpool-postgres or sqlx) for
-/// efficient connection management.
-///
-/// # Note
-/// This implementation provides the schema, query definitions, and
-/// the StorageBackend trait implementation. The actual database
-/// connection is provided by the user via the `with_connection` method.
+/// This adapter stores all durable state in PostgreSQL. It uses a connection
+/// pool (deadpool-postgres) for efficient connection management.
 pub struct PostgresAdapter {
     config: PostgresConfig,
+    pool: Arc<Pool>,
     /// Schema initialization status
-    initialized: Arc<Mutex<bool>>,
+    initialized: Arc<tokio::sync::Mutex<bool>>,
     /// Pending operations buffer (for batch writes)
-    buffer: Arc<Mutex<Vec<PendingOp>>>,
+    buffer: Arc<tokio::sync::Mutex<Vec<PendingOp>>>,
     /// Whether to use batch mode
     batch_mode: bool,
 }
@@ -219,13 +217,42 @@ enum PendingOp {
 
 impl PostgresAdapter {
     /// Create a new Postgres adapter with the given configuration.
-    pub fn new(config: PostgresConfig) -> Self {
-        Self {
-            config,
-            initialized: Arc::new(Mutex::new(false)),
-            buffer: Arc::new(Mutex::new(Vec::new())),
-            batch_mode: false,
+    pub async fn new(config: PostgresConfig) -> Result<Self, StorageError> {
+        // Parse the connection URL
+        let pg_config: tokio_postgres::Config = config.url.parse()
+            .map_err(|e| StorageError::Connection(format!("Invalid connection URL: {}", e)))?;
+        
+        // Create deadpool config
+        let mut deadpool_config = Config::new();
+        deadpool_config.user = pg_config.get_user().map(|s| s.to_string());
+        deadpool_config.password = pg_config.get_password().map(|p| String::from_utf8_lossy(p).to_string());
+        deadpool_config.dbname = pg_config.get_dbname().map(|s| s.to_string());
+        
+        // Extract host and port from pg_config
+        if let Some(host) = pg_config.get_hosts().first() {
+            match host {
+                Host::Tcp(h) => deadpool_config.host = Some(h.clone()),
+                _ => {}
+            }
         }
+        if let Some(port) = pg_config.get_ports().first() {
+            deadpool_config.port = Some(*port);
+        }
+        
+        deadpool_config.manager = Some(ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        });
+        
+        let pool = deadpool_config.create_pool(Some(Runtime::Tokio1), NoTls)
+            .map_err(|e| StorageError::Connection(format!("Failed to create connection pool: {}", e)))?;
+        
+        Ok(Self {
+            config,
+            pool: Arc::new(pool),
+            initialized: Arc::new(tokio::sync::Mutex::new(false)),
+            buffer: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            batch_mode: false,
+        })
     }
 
     /// Enable batch mode for improved write performance.
@@ -248,32 +275,105 @@ impl PostgresAdapter {
     }
 
     /// Flush any buffered operations.
-    pub fn flush(&self) -> Result<(), StorageError> {
-        let mut buffer = self
-            .buffer
-            .lock()
-            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
-        // In a real implementation, this would execute all pending ops in a transaction
+    pub async fn flush(&self) -> Result<(), StorageError> {
+        let mut buffer = self.buffer.lock().await;
+        // Execute all pending ops in a transaction
+        if buffer.is_empty() {
+            return Ok(());
+        }
+        
+        let mut client = self.pool.get().await
+            .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+        
+        let transaction = client.transaction().await
+            .map_err(|e| StorageError::Query(format!("Failed to start transaction: {}", e)))?;
+        
+        for op in buffer.iter() {
+            match op {
+                PendingOp::SaveWorkflow { workflow_id, function_name, output } => {
+                    transaction.execute(queries::UPSERT_WORKFLOW, &[
+                        &workflow_id.as_str(),
+                        &function_name.as_str(),
+                        &"completed",
+                        &serde_json::Value::Null,
+                        output,
+                        &None::<String>,
+                    ]).await.map_err(|e| StorageError::Query(format!("Failed to save workflow: {}", e)))?;
+                }
+                PendingOp::SaveJournal { workflow_id, entry } => {
+                    let seq = entry.get("sequence").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let func_name = entry.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
+                    let input = entry.get("input").cloned();
+                    let output = entry.get("output").cloned();
+                    let error = entry.get("error").and_then(|v| v.as_str());
+                    let completed = entry.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+                    
+                    transaction.execute(queries::INSERT_JOURNAL, &[
+                        &workflow_id.as_str(),
+                        &seq,
+                        &func_name,
+                        &input,
+                        &output,
+                        &error,
+                        &completed,
+                    ]).await.map_err(|e| StorageError::Query(format!("Failed to save journal: {}", e)))?;
+                }
+                PendingOp::SaveState { workflow_id, key, value } => {
+                    transaction.execute(queries::UPSERT_STATE, &[
+                        &workflow_id.as_str(),
+                        &key.as_str(),
+                        value,
+                    ]).await.map_err(|e| StorageError::Query(format!("Failed to save state: {}", e)))?;
+                }
+            }
+        }
+        
+        transaction.commit().await
+            .map_err(|e| StorageError::Query(format!("Failed to commit transaction: {}", e)))?;
+        
         buffer.clear();
         Ok(())
     }
 
     /// Get the number of pending buffered operations.
-    pub fn pending_count(&self) -> usize {
-        self.buffer.lock().unwrap_or_else(|e| e.into_inner()).len()
+    pub async fn pending_count(&self) -> usize {
+        self.buffer.lock().await.len()
     }
 }
 
 impl StorageBackend for PostgresAdapter {
     fn init_schema(&self) -> Result<(), StorageError> {
-        // In a real implementation, this would execute SCHEMA_SQL against the database.
-        // For now, we mark as initialized.
-        let mut init = self
-            .initialized
-            .lock()
-            .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
-        *init = true;
-        Ok(())
+        tracing::info!("init_schema called - starting schema initialization");
+        
+        let pool = self.pool.clone();
+        let initialized = self.initialized.clone();
+        
+        // Use spawn_blocking to run async code on a separate thread
+        let handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            handle.block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                tracing::info!("Got database connection, executing schema SQL");
+                
+                // Execute each statement separately
+                for statement in SCHEMA_SQL.split(';') {
+                    let trimmed = statement.trim();
+                    if !trimmed.is_empty() {
+                        tracing::info!("Executing: {}", trimmed);
+                        client.execute(trimmed, &[]).await
+                            .map_err(|e| StorageError::Query(format!("Failed to execute schema SQL '{}': {}", trimmed, e)))?;
+                    }
+                }
+                
+                tracing::info!("Schema initialization completed successfully");
+                
+                let mut init = initialized.lock().await;
+                *init = true;
+                Ok(())
+            })
+        }).join().unwrap()
     }
 
     fn save_workflow(
@@ -283,10 +383,7 @@ impl StorageBackend for PostgresAdapter {
         output: &serde_json::Value,
     ) -> Result<(), StorageError> {
         if self.batch_mode {
-            let mut buffer = self
-                .buffer
-                .lock()
-                .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+            let mut buffer = self.buffer.blocking_lock();
             buffer.push(PendingOp::SaveWorkflow {
                 workflow_id: workflow_id.to_string(),
                 function_name: function_name.to_string(),
@@ -295,25 +392,58 @@ impl StorageBackend for PostgresAdapter {
             return Ok(());
         }
 
-        // In a real implementation: execute queries::UPSERT_WORKFLOW
-        // For now, validate the inputs
         if workflow_id.is_empty() {
             return Err(StorageError::Query(
                 "workflow_id cannot be empty".to_string(),
             ));
         }
 
-        Ok(())
+        // Execute the upsert synchronously
+        let pool = self.pool.clone();
+        let wf_id = workflow_id.to_string();
+        let fn_name = function_name.to_string();
+        let out = output.clone();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                client.execute(queries::UPSERT_WORKFLOW, &[
+                    &wf_id.as_str(),
+                    &fn_name.as_str(),
+                    &"completed",
+                    &serde_json::Value::Null,
+                    &out,
+                    &None::<String>,
+                ]).await.map_err(|e| StorageError::Query(format!("Failed to save workflow: {}", e)))?;
+                
+                Ok(())
+            })
+        })
     }
 
     fn load_workflow(&self, workflow_id: &str) -> Result<Option<serde_json::Value>, StorageError> {
-        // In a real implementation: execute queries::LOAD_WORKFLOW
         if workflow_id.is_empty() {
             return Err(StorageError::Query(
                 "workflow_id cannot be empty".to_string(),
             ));
         }
-        Ok(None)
+
+        let pool = self.pool.clone();
+        let wf_id = workflow_id.to_string();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                let row = client.query_opt(queries::LOAD_WORKFLOW, &[&wf_id.as_str()]).await
+                    .map_err(|e| StorageError::Query(format!("Failed to load workflow: {}", e)))?;
+                
+                Ok(row.and_then(|r| r.get::<_, Option<serde_json::Value>>("output")))
+            })
+        })
     }
 
     fn save_journal_entry(
@@ -322,10 +452,7 @@ impl StorageBackend for PostgresAdapter {
         entry: &serde_json::Value,
     ) -> Result<(), StorageError> {
         if self.batch_mode {
-            let mut buffer = self
-                .buffer
-                .lock()
-                .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+            let mut buffer = self.buffer.blocking_lock();
             buffer.push(PendingOp::SaveJournal {
                 workflow_id: workflow_id.to_string(),
                 entry: entry.clone(),
@@ -333,13 +460,65 @@ impl StorageBackend for PostgresAdapter {
             return Ok(());
         }
 
-        // In a real implementation: execute queries::INSERT_JOURNAL
-        Ok(())
+        let pool = self.pool.clone();
+        let wf_id = workflow_id.to_string();
+        let ent = entry.clone();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                let seq = ent.get("sequence").and_then(|v| v.as_i64()).unwrap_or(0);
+                let func_name = ent.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
+                let input = ent.get("input").cloned();
+                let output = ent.get("output").cloned();
+                let error = ent.get("error").and_then(|v| v.as_str());
+                let completed = ent.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+                
+                client.execute(queries::INSERT_JOURNAL, &[
+                    &wf_id.as_str(),
+                    &seq,
+                    &func_name,
+                    &input,
+                    &output,
+                    &error,
+                    &completed,
+                ]).await.map_err(|e| StorageError::Query(format!("Failed to save journal: {}", e)))?;
+                
+                Ok(())
+            })
+        })
     }
 
-    fn load_journal(&self, _workflow_id: &str) -> Result<Vec<serde_json::Value>, StorageError> {
-        // In a real implementation: execute queries::LOAD_JOURNAL
-        Ok(Vec::new())
+    fn load_journal(&self, workflow_id: &str) -> Result<Vec<serde_json::Value>, StorageError> {
+        let pool = self.pool.clone();
+        let wf_id = workflow_id.to_string();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                let rows = client.query(queries::LOAD_JOURNAL, &[&wf_id.as_str()]).await
+                    .map_err(|e| StorageError::Query(format!("Failed to load journal: {}", e)))?;
+                
+                let mut entries = Vec::new();
+                for row in rows {
+                    let entry = serde_json::json!({
+                        "sequence": row.get::<_, i64>("sequence"),
+                        "function_name": row.get::<_, String>("function_name"),
+                        "input": row.get::<_, Option<serde_json::Value>>("input"),
+                        "output": row.get::<_, Option<serde_json::Value>>("output"),
+                        "error": row.get::<_, Option<String>>("error"),
+                        "completed": row.get::<_, bool>("completed"),
+                    });
+                    entries.push(entry);
+                }
+                
+                Ok(entries)
+            })
+        })
     }
 
     fn save_state(
@@ -349,10 +528,7 @@ impl StorageBackend for PostgresAdapter {
         value: &serde_json::Value,
     ) -> Result<(), StorageError> {
         if self.batch_mode {
-            let mut buffer = self
-                .buffer
-                .lock()
-                .map_err(|_| StorageError::Connection("lock poisoned".to_string()))?;
+            let mut buffer = self.buffer.blocking_lock();
             buffer.push(PendingOp::SaveState {
                 workflow_id: workflow_id.to_string(),
                 key: key.to_string(),
@@ -361,32 +537,102 @@ impl StorageBackend for PostgresAdapter {
             return Ok(());
         }
 
-        // In a real implementation: execute queries::UPSERT_STATE
-        Ok(())
+        let pool = self.pool.clone();
+        let wf_id = workflow_id.to_string();
+        let k = key.to_string();
+        let v = value.clone();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                client.execute(queries::UPSERT_STATE, &[
+                    &wf_id.as_str(),
+                    &k.as_str(),
+                    &v,
+                ]).await.map_err(|e| StorageError::Query(format!("Failed to save state: {}", e)))?;
+                
+                Ok(())
+            })
+        })
     }
 
     fn load_state(
         &self,
-        _workflow_id: &str,
-        _key: &str,
+        workflow_id: &str,
+        key: &str,
     ) -> Result<Option<serde_json::Value>, StorageError> {
-        // In a real implementation: execute queries::LOAD_STATE
-        Ok(None)
+        let pool = self.pool.clone();
+        let wf_id = workflow_id.to_string();
+        let k = key.to_string();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                let row = client.query_opt(queries::LOAD_STATE, &[&wf_id.as_str(), &k.as_str()]).await
+                    .map_err(|e| StorageError::Query(format!("Failed to load state: {}", e)))?;
+                
+                Ok(row.and_then(|r| r.get::<_, Option<serde_json::Value>>("value")))
+            })
+        })
     }
 
-    fn delete_state(&self, _workflow_id: &str, _key: &str) -> Result<bool, StorageError> {
-        // In a real implementation: execute queries::DELETE_STATE
-        Ok(false)
+    fn delete_state(&self, workflow_id: &str, key: &str) -> Result<bool, StorageError> {
+        let pool = self.pool.clone();
+        let wf_id = workflow_id.to_string();
+        let k = key.to_string();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                let rows_affected = client.execute(queries::DELETE_STATE, &[&wf_id.as_str(), &k.as_str()]).await
+                    .map_err(|e| StorageError::Query(format!("Failed to delete state: {}", e)))?;
+                
+                Ok(rows_affected > 0)
+            })
+        })
     }
 
     fn list_workflows(&self) -> Result<Vec<String>, StorageError> {
-        // In a real implementation: execute queries::LIST_WORKFLOWS
-        Ok(Vec::new())
+        let pool = self.pool.clone();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                let rows = client.query(queries::LIST_WORKFLOWS, &[]).await
+                    .map_err(|e| StorageError::Query(format!("Failed to list workflows: {}", e)))?;
+                
+                let workflow_ids: Vec<String> = rows.iter()
+                    .map(|r| r.get::<_, String>("workflow_id"))
+                    .collect();
+                
+                Ok(workflow_ids)
+            })
+        })
     }
 
-    fn delete_workflow(&self, _workflow_id: &str) -> Result<(), StorageError> {
-        // In a real implementation: execute queries::DELETE_WORKFLOW
-        Ok(())
+    fn delete_workflow(&self, workflow_id: &str) -> Result<(), StorageError> {
+        let pool = self.pool.clone();
+        let wf_id = workflow_id.to_string();
+        
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let client = pool.get().await
+                    .map_err(|e| StorageError::Connection(format!("Failed to get connection: {}", e)))?;
+                
+                client.execute(queries::DELETE_WORKFLOW, &[&wf_id.as_str()]).await
+                    .map_err(|e| StorageError::Query(format!("Failed to delete workflow: {}", e)))?;
+                
+                Ok(())
+            })
+        })
     }
 }
 

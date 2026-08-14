@@ -233,9 +233,18 @@ impl EmbeddedEngine {
                     record.updated_at = current_time_ms();
                 }
 
-                // Persist to storage
-                if let Ok(storage) = self.storage.lock() {
-                    let _ = storage.save_workflow(workflow_id, function_name, &output_value);
+                // Persist to storage and wait for confirmation
+                let storage_result = {
+                    let storage = self.storage.lock().map_err(|_| EmbeddedError::LockPoisoned)?;
+                    storage.save_workflow(workflow_id, function_name, &output_value)
+                };
+                
+                // Check if persistence succeeded
+                if let Err(e) = storage_result {
+                    return Err(EmbeddedError::Storage(format!(
+                        "Failed to persist workflow {}: {}",
+                        workflow_id, e
+                    )));
                 }
 
                 Ok(WorkflowHandle::completed(workflow_id.to_string(), output))

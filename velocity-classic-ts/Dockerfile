@@ -9,4 +9,4 @@ COPY velocity-classic-ts/src ./src
 RUN npx tsc
 
 EXPOSE 8083
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/main.js"]

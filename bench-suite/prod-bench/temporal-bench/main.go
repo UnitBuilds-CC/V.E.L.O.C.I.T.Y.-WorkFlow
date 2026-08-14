@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 )
@@ -51,8 +50,9 @@ func SignalWorkflow(ctx workflow.Context, expectedSignals int) (int, error) {
 	for received < expectedSignals {
 		var signal string
 		ch := workflow.GetSignalChannel(ctx, fmt.Sprintf("signal-%d", received))
-		if err := ch.Receive(ctx, &signal); err != nil {
-			return received, err
+		ok := ch.Receive(ctx, &signal)
+		if !ok {
+			return received, fmt.Errorf("signal channel closed")
 		}
 		received++
 	}
@@ -298,7 +298,10 @@ func computeResult(cfg workloadConfig, success, fail uint64, latencies []float64
 
 func main() {
 	// Parse flags
-	temporalURL := "localhost:7233"
+	temporalURL := os.Getenv("TEMPORAL_ADDRESS")
+	if temporalURL == "" {
+		temporalURL = "localhost:7233"
+	}
 	profile := "standard"
 	outputFile := ""
 	outputFormat := "markdown"
