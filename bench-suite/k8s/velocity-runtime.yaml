@@ -20,25 +20,23 @@ spec:
     spec:
       containers:
         - name: velocity-runtime
-          image: velocity-bench/velocity-runtime:latest
-          imagePullPolicy: IfNotPresent
+          image: us-east1-docker.pkg.dev/velocity-live-test-001/velocity/velocity-runtime:latest
+          imagePullPolicy: Always
+          workingDir: /app/velocity-workflow-server
+          command: ["./target/release/velocity-server"]
           ports:
             - containerPort: 7234
               name: grpc
-            - containerPort: 8080
-              name: http
           args:
             - --ip
             - 0.0.0.0
             - --grpc-port
             - "7234"
             - --real-engine
-            - --http-port
-            - "8080"
           resources:
             requests:
-              cpu: "2"
-              memory: 2Gi
+              cpu: "1"
+              memory: 1Gi
             limits:
               cpu: "2"
               memory: 2Gi
@@ -67,7 +65,4 @@ spec:
     - name: grpc
       port: 7234
       targetPort: 7234
-    - name: http
-      port: 8080
-      targetPort: 8080
   type: ClusterIP
