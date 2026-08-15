@@ -256,6 +256,9 @@ impl NmcpFrameRouter {
         }
         self.engine.complete_workflow(workflow_key, Some(vec![]));
 
+        // Persist to PostgreSQL if DB adapter is enabled.
+        let _ = self.engine.persist_workflow_by_key(workflow_key, "default");
+
         NmcpFrame::json_response(
             frame.sequence_id,
             serde_json::json!({

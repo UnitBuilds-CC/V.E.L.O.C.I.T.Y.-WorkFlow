@@ -73,13 +73,49 @@ impl DatabaseConfig {
         self
     }
 
-    /// Build a PostgreSQL connection string.
+    /// Build a PostgreSQL connection string compatible with tokio-postgres.
     pub fn to_connection_string(&self) -> String {
-        format!(
-            "host={} port={} dbname={} user={} password={} sslmode={} connect_timeout={}ms statement_timeout={}ms",
+        let mut s = format!(
+            "host={} port={} dbname={} user={} password={} sslmode={}",
             self.host, self.port, self.database, self.username, self.password,
-            self.ssl_mode.as_str(), self.connect_timeout_ms, self.statement_timeout_ms
-        )
+            self.ssl_mode.as_str(),
+        );
+        if self.connect_timeout_ms > 0 {
+            // tokio-postgres expects connect_timeout in seconds (integer).
+            let secs = (self.connect_timeout_ms / 1000).max(1);
+            s.push_str(&format!(" connect_timeout={}", secs));
+        }
+        s
+    }
+
+    /// Parse a libpq-style connection string into a `DatabaseConfig`.
+    ///
+    /// Supports: `host=`, `port=`, `dbname=`, `user=`, `password=`, `sslmode=`.
+    /// Unknown keys are silently ignored.
+    pub fn from_connection_string(s: &str) -> Self {
+        let mut cfg = Self::default();
+        for part in s.split_whitespace() {
+            if let Some((key, val)) = part.split_once('=') {
+                match key {
+                    "host" => cfg.host = val.to_string(),
+                    "port" => { if let Ok(p) = val.parse() { cfg.port = p; } }
+                    "dbname" | "database" => cfg.database = val.to_string(),
+                    "user" | "username" => cfg.username = val.to_string(),
+                    "password" => cfg.password = val.to_string(),
+                    "sslmode" => {
+                        cfg.ssl_mode = match val {
+                            "disable" => SslMode::Disable,
+                            "require" => SslMode::Require,
+                            "verify-ca" => SslMode::VerifyCa,
+                            "verify-full" => SslMode::VerifyFull,
+                            _ => SslMode::Prefer,
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
+        cfg
     }
 }
 

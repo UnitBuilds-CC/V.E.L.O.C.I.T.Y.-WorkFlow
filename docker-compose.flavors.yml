@@ -13,6 +13,25 @@
 #   docker compose -f docker-compose.flavors.yml run bench-embedded
 
 services:
+  # ─── PostgreSQL — durable persistence for all flavors ───────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: velocity-postgres
+    environment:
+      POSTGRES_USER: velocity
+      POSTGRES_PASSWORD: velocity
+      POSTGRES_DB: velocity_workflow
+    ports:
+      - "25432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velocity -d velocity_workflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   # ─── Flavor 1: Workflow Server (VCTP/UDP) ──────────────────────────────────
   workflow-server:
     build:
@@ -43,6 +62,9 @@ services:
       - "28083:8083"
     environment:
       - RUST_LOG=info
+    depends_on:
+      postgres:
+        condition: service_healthy
     command:
       - "--ws-bind"
       - "0.0.0.0:8083"
@@ -50,6 +72,8 @@ services:
       - "/tmp/velocity/classic.nmcp"
       - "--wal-path"
       - "/data/classic.wal"
+      - "--postgres"
+      - "host=postgres port=5432 dbname=velocity_workflow user=velocity password=velocity sslmode=disable"
     volumes:
       - classic-data:/data
       - classic-shmem:/tmp/velocity
@@ -70,6 +94,9 @@ services:
       - "28084:8084"
     environment:
       - RUST_LOG=info
+    depends_on:
+      postgres:
+        condition: service_healthy
     command:
       - "--ws-bind"
       - "0.0.0.0:8084"
@@ -77,6 +104,8 @@ services:
       - "/tmp/velocity/embedded.nmcp"
       - "--wal-path"
       - "/data/embedded.wal"
+      - "--postgres"
+      - "host=postgres port=5432 dbname=velocity_workflow user=velocity password=velocity sslmode=disable"
     volumes:
       - embedded-data:/data
       - embedded-shmem:/tmp/velocity
@@ -214,6 +243,7 @@ services:
         "
 
 volumes:
+  pg-data:
   workflow-data:
   classic-data:
   classic-shmem:

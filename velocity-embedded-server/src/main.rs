@@ -16,6 +16,8 @@ use std::sync::{Arc, Mutex};
 use clap::Parser;
 
 use velocity_workflow_engine::engine::WorkflowEngine;
+use velocity_workflow_engine::db_adapter::DatabaseConfig;
+use velocity_workflow_engine::LivePostgresAdapter;
 use velocity_embedded::{NmcpFrameRouter, NmcpShmemServer, NmcpWebSocketServer};
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -38,6 +40,11 @@ struct Cli {
     /// Maximum WAL file size in bytes.
     #[arg(long, default_value_t = 64 * 1024 * 1024)]
     wal_max_size: u64,
+
+    /// PostgreSQL connection string (e.g. "host=pg port=5432 dbname=velocity user=vel password=vel").
+    /// When set, workflow state is durably persisted to PostgreSQL in addition to WAL.
+    #[arg(long, env = "DATABASE_URL")]
+    postgres: Option<String>,
 
     /// Log level filter.
     #[arg(long, default_value = "info")]
@@ -85,6 +92,21 @@ async fn main() {
         }
         e
     };
+
+    // ── Optionally enable PostgreSQL persistence ──────────────────────────
+    let mut engine = engine;
+    if let Some(pg_conn) = cli.postgres {
+        let config = DatabaseConfig::from_connection_string(&pg_conn);
+        match LivePostgresAdapter::new(config) {
+            Ok(adapter) => {
+                tracing::info!("PostgreSQL persistence enabled: {}", pg_conn);
+                engine.enable_db_adapter(std::sync::Arc::new(adapter));
+            }
+            Err(e) => {
+                tracing::warn!("Failed to connect to PostgreSQL (continuing without DB): {}", e);
+            }
+        }
+    }
 
     let engine = Arc::new(engine);
     let workflow_map = Arc::new(Mutex::new(HashMap::new()));

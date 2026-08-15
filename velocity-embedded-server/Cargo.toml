@@ -10,7 +10,7 @@ name = "velocity-embedded-server"
 path = "src/main.rs"
 
 [dependencies]
-velocity-workflow-engine = { path = "../velocity-workflow-engine" }
+velocity-workflow-engine = { path = "../velocity-workflow-engine", features = ["postgres"] }
 velocity-embedded = { path = "../velocity-embedded" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }

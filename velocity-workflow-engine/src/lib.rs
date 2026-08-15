@@ -182,6 +182,13 @@ pub mod zero_alloc;
 #[cfg(feature = "grpc")]
 pub mod grpc_server;
 
+// Live PostgreSQL adapter — only compiled with the `postgres` feature.
+#[cfg(feature = "postgres")]
+pub mod live_postgres;
+
+#[cfg(feature = "postgres")]
+pub use live_postgres::LivePostgresAdapter;
+
 pub use advanced_operations::{
     ActivityControlResponse, ActivityPauseRegistry, ActivityPauseState, ActivityRuntimeOptions,
     DlqAdminController, DlqAdminStats, DlqAdminTask, FairnessStats, FairnessTracker,

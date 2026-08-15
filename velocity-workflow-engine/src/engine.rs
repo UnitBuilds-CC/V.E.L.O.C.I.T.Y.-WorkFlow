@@ -613,6 +613,16 @@ impl WorkflowEngine {
         }
     }
 
+    /// Persist a workflow to the database adapter by key.
+    /// Convenience method that looks up the context and persists it.
+    pub fn persist_workflow_by_key(&self, key: u64, namespace_name: &str) -> Result<(), String> {
+        if let Some(ctx) = self.workflows.get(&key) {
+            self.persist_workflow(&ctx, namespace_name)
+        } else {
+            Err(format!("workflow {} not found", key))
+        }
+    }
+
     /// Get a reference to the WAL manager (if enabled).
     pub fn wal(&self) -> Option<&Arc<WalManager>> {
         self.wal.as_ref()

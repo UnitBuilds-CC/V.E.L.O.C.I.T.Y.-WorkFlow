@@ -12,6 +12,7 @@ members = [
     "velocity-classic",
     "velocity-classic-server",
     "bench-suite/prod-bench",
+    "bench-suite/velocity-bench-server",
 ]
 resolver = "2"
 
