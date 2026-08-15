@@ -125,6 +125,23 @@ CREATE INDEX IF NOT EXISTS idx_search_attrs_string ON search_attributes (attr_na
 CREATE INDEX IF NOT EXISTS idx_search_attrs_int ON search_attributes (attr_name, int_value);
 CREATE INDEX IF NOT EXISTS idx_search_attrs_datetime ON search_attributes (attr_name, datetime_value);
 
+-- ─── Step Journal (append-only WAL for per-step durability) ──────────────────
+--
+-- Each step completion appends one row — no UPSERT, no index scan, no conflict
+-- check.  This mirrors what Restate/DBOS/Temporal do internally: sequential
+-- journal append per step.  The full workflow UPSERT only happens once at
+-- completion (status=Completed/Failed).
+
+CREATE TABLE IF NOT EXISTS step_journal (
+    id              BIGSERIAL PRIMARY KEY,
+    workflow_key    BIGINT NOT NULL,
+    step_number     INTEGER NOT NULL,
+    result_data     BYTEA,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_step_journal_workflow ON step_journal (workflow_key);
+
 -- ─── Workflow Checkpoints (for fast recovery) ────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS workflow_checkpoints (

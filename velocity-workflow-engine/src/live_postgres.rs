@@ -125,6 +125,30 @@ mod inner {
                             }
                         }
 
+                        // Ensure step_journal table exists (handles upgrade from
+                        // older schema that didn't have it).
+                        let journal_exists = client
+                            .query_opt(
+                                "SELECT 1 FROM information_schema.tables WHERE table_name = 'step_journal'",
+                                &[],
+                            )
+                            .await
+                            .ok()
+                            .flatten()
+                            .is_some();
+                        if !journal_exists {
+                            let _ = client.batch_execute(
+                                "CREATE TABLE IF NOT EXISTS step_journal (\
+                                    id BIGSERIAL PRIMARY KEY,\
+                                    workflow_key BIGINT NOT NULL,\
+                                    step_number INTEGER NOT NULL,\
+                                    result_data BYTEA,\
+                                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\
+                                );\
+                                CREATE INDEX IF NOT EXISTS idx_step_journal_workflow ON step_journal (workflow_key);"
+                            ).await;
+                        }
+
                         // Seed default namespace.
                         let _ = client
                             .execute(
@@ -583,6 +607,64 @@ mod inner {
 
         fn adapter_name(&self) -> &str {
             "LivePostgresAdapter"
+        }
+
+        fn save_step(&self, workflow_key: u64, step_number: u32, result_data: Option<&[u8]>) -> DatabaseResult<()> {
+            let wk = workflow_key as i64;
+            let sn = step_number as i32;
+            let rd = result_data.map(|d| d.to_vec());
+
+            self.run_task(move |client_arc| {
+                Box::pin(async move {
+                    let client = client_arc.lock_owned().await;
+                    let c = &*client;
+                    c
+                        .execute(
+                            crate::db_adapter::sql::APPEND_STEP,
+                            &[&wk, &sn, &rd],
+                        )
+                        .await
+                        .map_err(|e| DatabaseError::QueryError(e.to_string()))?;
+                    Ok(())
+                })
+            })
+        }
+
+        fn save_steps_batch(&self, workflow_key: u64, steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()> {
+            if steps.is_empty() {
+                return Ok(());
+            }
+
+            // Build a multi-row INSERT: VALUES ($1,$2,$3), ($4,$5,$6), ...
+            let wk = workflow_key as i64;
+            let mut sql = String::from("INSERT INTO step_journal (workflow_key, step_number, result_data) VALUES ");
+            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::with_capacity(steps.len() * 3);
+            for (i, (step_num, result)) in steps.iter().enumerate() {
+                if i > 0 {
+                    sql.push_str(", ");
+                }
+                let base = i * 3;
+                sql.push_str(&format!(
+                    "(${}, ${}, ${})",
+                    base + 1, base + 2, base + 3
+                ));
+                params.push(Box::new(wk));
+                params.push(Box::new(*step_num as i32));
+                params.push(Box::new(result.clone()));
+            }
+
+            self.run_task(move |client_arc| {
+                Box::pin(async move {
+                    let client = client_arc.lock_owned().await;
+                    let c = &*client;
+                    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+                        params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+                    c.execute(&sql, &param_refs)
+                        .await
+                        .map_err(|e| DatabaseError::QueryError(e.to_string()))?;
+                    Ok(())
+                })
+            })
         }
     }
 

@@ -250,11 +250,9 @@ impl NmcpFrameRouter {
         }
 
         // Embedded mode: execute all steps inline (durable execution)
-        let total_steps = self.engine.get_total_steps(workflow_key);
-        for step in 0..total_steps {
-            // Per-step durable execution: persist each step to PostgreSQL.
-            let _ = self.engine.persist_step(workflow_key, step, "default");
-        }
+        // Batch per-step durable execution: complete all steps in memory,
+        // then write them to the step journal in a single multi-row INSERT.
+        let _ = self.engine.persist_steps_batch(workflow_key, "default");
         self.engine.complete_workflow(workflow_key, Some(vec![]));
 
         // Final persist with completed status.
