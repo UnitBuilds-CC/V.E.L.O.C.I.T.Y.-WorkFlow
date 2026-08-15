@@ -623,6 +623,14 @@ impl WorkflowEngine {
         }
     }
 
+    /// Complete a step AND persist to the database adapter in one call.
+    /// This is the per-step durability primitive — mirrors what DBOS/Temporal/Restate
+    /// do internally: checkpoint after every step so crash → resume from last step.
+    pub fn persist_step(&self, key: u64, step: u32, namespace_name: &str) -> Result<(), String> {
+        self.complete_step(key, step, vec![]);
+        self.persist_workflow_by_key(key, namespace_name)
+    }
+
     /// Get a reference to the WAL manager (if enabled).
     pub fn wal(&self) -> Option<&Arc<WalManager>> {
         self.wal.as_ref()

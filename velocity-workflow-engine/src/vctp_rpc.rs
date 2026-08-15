@@ -484,14 +484,15 @@ impl VctpRpcServer {
             map.insert(wf_id.clone(), workflow_key);
         }
 
-        // Inline execution: complete all steps immediately
+        // Per-step durable execution: persist each step to PostgreSQL as it completes.
+        // This enables crash recovery — resume from the last completed step, not restart.
         let total = self.engine.get_total_steps(workflow_key);
         for step in 0..total {
-            self.engine.complete_step(workflow_key, step, vec![]);
+            let _ = self.engine.persist_step(workflow_key, step, "default");
         }
         self.engine.complete_workflow(workflow_key, Some(vec![]));
 
-        // Persist to PostgreSQL if DB adapter is enabled.
+        // Final persist with completed status.
         let _ = self.engine.persist_workflow_by_key(workflow_key, "default");
 
         let run_id = format!("run-{}", workflow_key);
