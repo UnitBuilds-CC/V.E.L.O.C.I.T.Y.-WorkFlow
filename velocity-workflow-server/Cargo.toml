@@ -9,7 +9,7 @@ name = "velocity-server"
 path = "src/main.rs"
 
 [dependencies]
-velocity-workflow-engine = { path = "../velocity-workflow-engine" }
+velocity-workflow-engine = { path = "../velocity-workflow-engine", features = ["postgres"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 tracing = "0.1"

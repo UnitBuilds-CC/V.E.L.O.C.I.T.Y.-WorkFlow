@@ -491,6 +491,9 @@ impl VctpRpcServer {
         }
         self.engine.complete_workflow(workflow_key, Some(vec![]));
 
+        // Persist to PostgreSQL if DB adapter is enabled.
+        let _ = self.engine.persist_workflow_by_key(workflow_key, "default");
+
         let run_id = format!("run-{}", workflow_key);
         VctpRpcResponse::ok(seq)
             .with_workflow(wf_id, run_id)

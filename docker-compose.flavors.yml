@@ -42,7 +42,18 @@ services:
       - "7234:7234/udp"
     environment:
       - RUST_LOG=info
-    command: ["--ip", "0.0.0.0", "--vctp-port", "7234", "--wal-path", "/data/velocity.wal"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - "--ip"
+      - "0.0.0.0"
+      - "--vctp-port"
+      - "7234"
+      - "--wal-path"
+      - "/data/velocity.wal"
+      - "--postgres"
+      - "host=postgres port=5432 dbname=velocity_workflow user=velocity password=velocity sslmode=disable"
     volumes:
       - workflow-data:/data
     healthcheck:
@@ -116,27 +127,72 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # ─── Benchmark: Workflow Server (VCTP) ─────────────────────────────────────
+  # ─── Benchmark: Workflow Server (VCTP/UDP) ─────────────────────────────
   bench-workflow:
-    build:
-      context: .
-      dockerfile: deploy/Dockerfile.workflow-server
+    image: python:3.12-slim
     container_name: velocity-bench-workflow
     depends_on:
       - workflow-server
+    environment:
+      - ITERATIONS=${ITERATIONS:-5000}
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        echo "=== Velocity Workflow Server (VCTP) Benchmark ==="
+        echo "=== Velocity Workflow Server (VCTP/UDP) Benchmark ==="
         echo "Target: workflow-server:7234 (UDP)"
+        echo "Iterations: $$ITERATIONS"
         echo ""
-        echo "Benchmarking VCTP transport..."
-        # The VCTP benchmark sends UDP packets directly
-        apt-get update -qq && apt-get install -y -qq netcat-openbsd > /dev/null 2>&1
-        for i in $$(seq 1 1000); do
-          echo '{"method":"start_workflow","params":{"workflow_type":"bench"}}' | nc -u -w1 workflow-server 7234 2>/dev/null
-        done
-        echo "Benchmark complete: 1000 workflow executions via VCTP/UDP"
+        python3 -c "
+        import socket, struct, json, time, os, binascii
+        
+        VCTP_MAGIC = 0x50544356
+        VCTP_ACK_MAGIC = 0x4B435656
+        VCTP_HEADER_SIZE = 28
+        
+        def crc32(data):
+            return binascii.crc32(data) & 0xFFFFFFFF
+        
+        def build_packet(seq, wf_id, payload):
+            header = struct.pack('<IQQII', VCTP_MAGIC, seq, wf_id, 0, len(payload))
+            return header + payload + struct.pack('<I', crc32(header + payload))
+        
+        def recv_resp(sock):
+            while True:
+                data, _ = sock.recvfrom(65535)
+                if len(data) >= 4:
+                    m = struct.unpack('<I', data[:4])[0]
+                    if m == VCTP_ACK_MAGIC: continue
+                    if m == VCTP_MAGIC: return data
+        
+        def parse_resp(data):
+            pl = struct.unpack('<I', data[24:28])[0]
+            return json.loads(data[28:28+pl])
+        
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(5.0)
+        N = int(os.environ.get('ITERATIONS', 5000))
+        
+        # Warmup
+        for i in range(10):
+            req = json.dumps({'method':100,'namespace':'default','workflow_id':f'warm-{i}','workflow_type':'bench','total_steps':10}).encode()
+            sock.sendto(build_packet(i, 0, req), ('workflow-server', 7234))
+            recv_resp(sock)
+        
+        start = time.time()
+        ok = 0
+        for i in range(N):
+            req = json.dumps({'method':100,'namespace':'default','workflow_id':f'vctp-{i}','workflow_type':'bench','total_steps':10}).encode()
+            sock.sendto(build_packet(100+i, 0, req), ('workflow-server', 7234))
+            data = recv_resp(sock)
+            resp = parse_resp(data)
+            if resp.get('status') == 0: ok += 1
+        elapsed = time.time() - start
+        
+        print(f'Completed {ok}/{N} workflows in {elapsed:.3f}s')
+        print(f'Throughput: {ok/elapsed:.0f} workflows/sec')
+        print(f'Latency: {elapsed/ok*1000:.3f} ms/workflow')
+        sock.close()
+        "
 
   # ─── Benchmark: Classic Server (NMCP WebSocket) ────────────────────────────
   bench-classic:

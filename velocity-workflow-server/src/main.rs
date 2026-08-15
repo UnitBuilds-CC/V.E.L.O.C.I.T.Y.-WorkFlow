@@ -11,6 +11,8 @@ use std::sync::Arc;
 use clap::Parser;
 
 use velocity_workflow_engine::engine::WorkflowEngine;
+use velocity_workflow_engine::db_adapter::DatabaseConfig;
+use velocity_workflow_engine::LivePostgresAdapter;
 use velocity_workflow_engine::vctp_transport::{VctpTransport, VctpTransportConfig};
 use velocity_workflow_engine::VctpRpcServer;
 
@@ -45,6 +47,11 @@ struct Cli {
     /// Optional encryption passphrase for VCTP traffic.
     #[arg(long, default_value = "")]
     encryption_key: String,
+
+    /// PostgreSQL connection string (e.g. "host=pg port=5432 dbname=velocity user=vel password=vel").
+    /// When set, workflow state is durably persisted to PostgreSQL in addition to WAL.
+    #[arg(long, env = "DATABASE_URL")]
+    postgres: Option<String>,
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -96,6 +103,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         e
     };
+    // ── Optionally enable PostgreSQL persistence ──────────────────────
+    let mut engine = engine;
+    if let Some(pg_conn) = cli.postgres {
+        let config = DatabaseConfig::from_connection_string(&pg_conn);
+        match LivePostgresAdapter::new(config) {
+            Ok(adapter) => {
+                tracing::info!("PostgreSQL persistence enabled: {}", pg_conn);
+                engine.enable_db_adapter(std::sync::Arc::new(adapter));
+            }
+            Err(e) => {
+                tracing::warn!("Failed to connect to PostgreSQL (continuing without DB): {}", e);
+            }
+        }
+    }
+
     let engine = Arc::new(engine);
 
     // ── Create VCTP transport (UDP socket) ────────────────────────────────

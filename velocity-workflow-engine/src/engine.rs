@@ -1268,6 +1268,52 @@ impl WorkflowEngine {
         );
     }
 
+    /// Complete a step with synchronous fsync — ensures durability before returning.
+    /// This matches the durability model of competitors (DBOS/Restate/Temporal) where
+    /// each step is fsynced to disk before the operation returns.
+    pub fn complete_step_sync(&self, workflow_key: u64, step: u32, result: Vec<u8>) {
+        // Persist to WAL and fsync immediately
+        if let Some(wal) = &self.wal {
+            let mut data = Vec::with_capacity(4 + result.len());
+            data.extend_from_slice(&step.to_le_bytes());
+            data.extend_from_slice(&result);
+            let _ = wal.append(WalEventType::StepCompleted, workflow_key, data);
+            let _ = wal.sync(); // Force fsync — synchronous durability
+        }
+
+        // Update context + extract values under ONE DashMap shard lock
+        let (task_queue_hash, merkle_root) = {
+            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+                ctx.complete_step(step, result);
+                (ctx.task_queue_hash, ctx.slab.merkle_root)
+            } else {
+                return;
+            }
+        };
+
+        // HAL: Compute ECC parity
+        self.hal
+            .write()
+            .unwrap()
+            .on_slab_write(workflow_key, &merkle_root, merkle_root);
+
+        // Schedule next workflow task
+        self.task_queue.enqueue(
+            task_queue_hash,
+            TaskItem {
+                task_id: 0,
+                kind: TaskKind::WorkflowTask,
+                workflow_key,
+                task_queue_hash,
+                step_index: step + 1,
+                activity_name_id: 0,
+                attempt: 1,
+                priority: 0,
+                deadline_ms: 0,
+            },
+        );
+    }
+
     /// Schedule an activity for execution with timeout tracking.
     pub fn schedule_activity_with_timeouts(
         &self,
@@ -1538,6 +1584,14 @@ impl WorkflowEngine {
         }
         // Auto-archive if policy says so
         self.maybe_auto_archive(workflow_key);
+    }
+
+    /// Force fsync the WAL — ensures all pending writes are durable on disk.
+    /// Use this for synchronous durability matching competitors (DBOS/Restate/Temporal).
+    pub fn sync_wal(&self) {
+        if let Some(wal) = &self.wal {
+            let _ = wal.sync();
+        }
     }
 
     /// Fail a workflow.
