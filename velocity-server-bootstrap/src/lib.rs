@@ -501,6 +501,8 @@ async fn send_response(stream: &mut dyn AsyncReadWrite, status: &str, content_ty
         body
     );
     let _ = stream.write_all(response.as_bytes()).await;
+    // Properly shut down the write half so TLS clients receive close_notify
+    let _ = stream.shutdown().await;
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
