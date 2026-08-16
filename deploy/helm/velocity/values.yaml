@@ -72,6 +72,7 @@ service:
   type: ClusterIP
   httpPort: 5000
   grpcPort: 50051
+  healthPort: 8093
   annotations: {}
   # Optional static IPs for LoadBalancer type
   loadBalancerIP: ""
@@ -91,6 +92,21 @@ ingress:
   #  - secretName: velocity-tls
   #    hosts:
   #      - velocity.local
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  # Log format: "pretty" (human-readable) or "json" (structured for log aggregation)
+  format: json
+  # Log level: trace, debug, info, warn, error
+  level: info
+
+# ── Metrics Auth ─────────────────────────────────────────────────────────────
+metrics:
+  # Bearer token for /metrics endpoint. Set via secret or env.
+  # If empty, /metrics is open (development mode).
+  token: ""
+  # Name of existing secret with metrics token (key: "token"). Overrides metrics.token.
+  existingSecret: ""
 
 # ── Resources ────────────────────────────────────────────────────────────────
 resources:
@@ -528,10 +544,11 @@ serviceMesh:
 
 # ── Probes ───────────────────────────────────────────────────────────────────
 # Override default probe settings for the velocity-server container.
+# Health/readiness probes target the dedicated health port (separate from HTTP API).
 livenessProbe:
   httpGet:
     path: /health
-    port: http
+    port: health
   initialDelaySeconds: 15
   periodSeconds: 30
   timeoutSeconds: 5
@@ -539,8 +556,8 @@ livenessProbe:
 
 readinessProbe:
   httpGet:
-    path: /health
-    port: http
+    path: /ready
+    port: health
   initialDelaySeconds: 5
   periodSeconds: 10
   timeoutSeconds: 3
@@ -550,7 +567,7 @@ startupProbe:
   enabled: false
   httpGet:
     path: /health
-    port: http
+    port: health
   initialDelaySeconds: 10
   periodSeconds: 5
   failureThreshold: 30

@@ -4,6 +4,8 @@ members = [
     "velocity-workflow-engine",
     "velocity-workflow-daemon",
     "velocity-workflow-server",
+    "velocity-nmcp-protocol",
+    "velocity-server-bootstrap",
     "velocity-bench",
     "velocity-dev-server",
     "velocity-test-framework",

@@ -3436,11 +3436,13 @@ dependencies = [
 name = "velocity-classic"
 version = "0.1.0"
 dependencies = [
+ "dashmap",
  "futures-util",
  "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "velocity-nmcp-protocol",
  "velocity-workflow-core",
  "velocity-workflow-engine",
 ]
@@ -3450,12 +3452,15 @@ name = "velocity-classic-server"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "dashmap",
  "serde",
  "serde_json",
+ "tikv-jemallocator",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "velocity-classic",
+ "velocity-server-bootstrap",
  "velocity-workflow-engine",
 ]
 
@@ -3488,6 +3493,7 @@ name = "velocity-embedded"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dashmap",
  "deadpool-postgres",
  "futures-util",
  "serde",
@@ -3497,6 +3503,7 @@ dependencies = [
  "tokio-postgres",
  "tokio-tungstenite",
  "tracing",
+ "velocity-nmcp-protocol",
  "velocity-workflow-core",
  "velocity-workflow-engine",
 ]
@@ -3506,12 +3513,42 @@ name = "velocity-embedded-server"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "dashmap",
  "serde",
  "serde_json",
+ "tikv-jemallocator",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "velocity-embedded",
+ "velocity-server-bootstrap",
+ "velocity-workflow-engine",
+]
+
+[[package]]
+name = "velocity-nmcp-protocol"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "velocity-server-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "dashmap",
+ "rustls-pemfile",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "velocity-nmcp-protocol",
  "velocity-workflow-engine",
 ]
 

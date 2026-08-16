@@ -14,6 +14,7 @@ Architecture:
 
 import time
 import json
+import hashlib
 from datetime import timedelta
 from temporalio import workflow, activity
 from temporalio.common import RetryPolicy
@@ -23,10 +24,19 @@ from temporalio.common import RetryPolicy
 # is recorded as events in the workflow history.
 
 
+def _compute_work(iterations: int = 2000) -> str:
+    """SHA-256 hash chain — same CPU work across all engines."""
+    h = hashlib.sha256(b"velocity-bench-seed").digest()
+    for _ in range(iterations):
+        h = hashlib.sha256(h).digest()
+    return h.hex()
+
+
 @activity.defn(name="execute_step")
 async def execute_step(step_num: int) -> dict:
-    """A single activity step — recorded in workflow history."""
-    return {"step": step_num, "status": "ok", "ts": time.time()}
+    """A single activity step — real SHA-256 compute work, recorded in workflow history."""
+    result = _compute_work(2000)
+    return {"step": step_num, "status": "ok", "hash": result}
 
 
 @activity.defn(name="process_signal")

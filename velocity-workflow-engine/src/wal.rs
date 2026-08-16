@@ -268,6 +268,8 @@ pub struct WalManager {
     writer: Arc<Mutex<WalWriter>>,
     path: PathBuf,
     max_file_size: u64,
+    /// Number of rotated WAL files to retain (default: 3).
+    retain_count: usize,
     /// Background fsync thread control
     bg_running: Arc<AtomicBool>,
     bg_handle: Option<thread::JoinHandle<()>>,
@@ -276,7 +278,19 @@ pub struct WalManager {
 impl WalManager {
     /// Create a new WalManager with default background fsync interval (1ms).
     pub fn new(path: impl AsRef<Path>, max_file_size: u64) -> io::Result<Self> {
-        Self::with_sync_interval(path, max_file_size, Duration::from_millis(1))
+        Self::with_retention(path, max_file_size, 3)
+    }
+
+    /// Create a new WalManager with custom retention count.
+    ///
+    /// `retain_count` is the number of rotated WAL files to keep (default 3).
+    /// Older rotated files are automatically deleted.
+    pub fn with_retention(
+        path: impl AsRef<Path>,
+        max_file_size: u64,
+        retain_count: usize,
+    ) -> io::Result<Self> {
+        Self::with_sync_interval_and_retention(path, max_file_size, Duration::from_millis(1), retain_count)
     }
 
     /// Create a new WalManager with a custom background fsync interval.
@@ -289,6 +303,16 @@ impl WalManager {
         path: impl AsRef<Path>,
         max_file_size: u64,
         sync_interval: Duration,
+    ) -> io::Result<Self> {
+        Self::with_sync_interval_and_retention(path, max_file_size, sync_interval, 3)
+    }
+
+    /// Create a new WalManager with custom fsync interval and retention.
+    pub fn with_sync_interval_and_retention(
+        path: impl AsRef<Path>,
+        max_file_size: u64,
+        sync_interval: Duration,
+        retain_count: usize,
     ) -> io::Result<Self> {
         let writer = WalWriter::open(path.as_ref())?;
         let writer = Arc::new(Mutex::new(writer));
@@ -317,6 +341,7 @@ impl WalManager {
             writer,
             path: path.as_ref().to_path_buf(),
             max_file_size,
+            retain_count,
             bg_running,
             bg_handle: Some(bg_handle),
         })
@@ -349,17 +374,62 @@ impl WalManager {
         self.writer.lock().unwrap().sync()
     }
 
-    /// Rotate the WAL file: rename current to .old, open fresh file.
+    /// Rotate the WAL file with numbered retention.
+    ///
+    /// Current WAL → `.wal.1`, `.wal.1` → `.wal.2`, etc.
+    /// Files beyond `retain_count` are deleted.
     fn rotate(&self) -> io::Result<()> {
-        let old_path = self.path.with_extension("wal.old");
-        if old_path.exists() {
-            fs::remove_file(&old_path)?;
+        // Sync before rotation to ensure durability
+        {
+            let mut writer = self.writer.lock().unwrap();
+            let _ = writer.sync();
         }
-        fs::rename(&self.path, &old_path)?;
 
+        // Delete the oldest retained file if it exists
+        let oldest = self.rotated_path(self.retain_count);
+        if oldest.exists() {
+            fs::remove_file(&oldest)?;
+        }
+
+        // Shift existing rotated files: .N-1 → .N, .N-2 → .N-1, ...
+        for i in (1..self.retain_count).rev() {
+            let src = self.rotated_path(i);
+            let dst = self.rotated_path(i + 1);
+            if src.exists() {
+                fs::rename(&src, &dst)?;
+            }
+        }
+
+        // Move current WAL to .1
+        let first = self.rotated_path(1);
+        fs::rename(&self.path, &first)?;
+
+        // Open a fresh WAL file
         let mut writer = self.writer.lock().unwrap();
         *writer = WalWriter::open(&self.path)?;
         Ok(())
+    }
+
+    /// Check if rotation is needed and perform it if so.
+    ///
+    /// Called periodically (e.g., after each fsync) to auto-rotate
+    /// the WAL when it exceeds `max_file_size`.
+    pub fn check_rotate(&self) -> io::Result<()> {
+        let writer = self.writer.lock().unwrap();
+        let size = writer.writer.get_ref().metadata()?.len();
+        drop(writer);
+
+        if size > self.max_file_size {
+            self.rotate()?;
+        }
+        Ok(())
+    }
+
+    /// Get the path for rotated WAL file number `n` (1-based).
+    fn rotated_path(&self, n: usize) -> PathBuf {
+        let mut p = self.path.as_os_str().to_os_string();
+        p.push(format!(".{}", n));
+        PathBuf::from(p)
     }
 
     /// Replay all records from the current WAL file.
@@ -367,14 +437,17 @@ impl WalManager {
         read_wal_records(&self.path)
     }
 
-    /// Replay records from the old (rotated) WAL file if it exists.
+    /// Replay records from all rotated WAL files (oldest first).
     pub fn replay_old(&self) -> io::Result<Vec<WalRecord>> {
-        let old_path = self.path.with_extension("wal.old");
-        if old_path.exists() {
-            read_wal_records(&old_path)
-        } else {
-            Ok(Vec::new())
+        let mut records = Vec::new();
+        // Read from oldest to newest: .N, .N-1, ..., .1
+        for i in (1..=self.retain_count).rev() {
+            let path = self.rotated_path(i);
+            if path.exists() {
+                records.extend(read_wal_records(&path)?);
+            }
         }
+        Ok(records)
     }
 
     /// Full replay: old WAL + current WAL (in order).

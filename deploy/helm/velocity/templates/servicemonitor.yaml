@@ -17,10 +17,16 @@ spec:
     matchNames:
       - {{ .Release.Namespace }}
   endpoints:
-    - port: http
+    - port: health
       path: {{ .Values.serviceMonitor.metricsPath | default "/metrics" }}
       interval: {{ .Values.serviceMonitor.interval | default "30s" }}
       scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout | default "10s" }}
+      {{- if or .Values.metrics.existingSecret .Values.metrics.token }}
+      authorization:
+        credentials:
+          name: {{ .Values.metrics.existingSecret | default (include "velocity.fullname" .) }}
+          key: token
+      {{- end }}
       {{- if .Values.serviceMonitor.honorLabels }}
       honorLabels: true
       {{- end }}

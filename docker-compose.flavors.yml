@@ -40,6 +40,7 @@ services:
     container_name: velocity-workflow-server
     ports:
       - "7234:7234/udp"
+      - "18080:8080"
     environment:
       - RUST_LOG=info
     depends_on:
@@ -50,6 +51,8 @@ services:
       - "0.0.0.0"
       - "--vctp-port"
       - "7234"
+      - "--http-bench-port"
+      - "8080"
       - "--wal-path"
       - "/data/velocity.wal"
       - "--postgres"

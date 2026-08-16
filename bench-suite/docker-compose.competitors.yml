@@ -73,20 +73,43 @@ services:
       - comp-net
 
   # ── Temporal ──────────────────────────────────────────────────────────────
+  temporal-postgres:
+    image: postgres:16-alpine
+    container_name: bench-temporal-postgres
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal_bench
+      POSTGRES_DB: temporal
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - comp-net
+
   temporal-server:
     image: temporalio/auto-setup:latest
     container_name: bench-temporal-server
     ports:
       - "7233:7233"
     environment:
-      DB: sqlite
-      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/dynamicconfig/development.yaml
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal_bench
+      - POSTGRES_SEEDS=temporal-postgres
+      - FRONTEND_BIND_ADDRESS=0.0.0.0:7233
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "tctl --address localhost:7233 cluster health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "nc -z $$(hostname -i) 7233 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 15s
     networks:
       - comp-net
 

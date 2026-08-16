@@ -1,0 +1,33 @@
+{
+  "benchmark": "production-workflow-engines",
+  "version": "1.0",
+  "date": "2026-08-15T16:32:10Z",
+  "profile": "full",
+  "engines": ["velocity-classic"],
+  "mode": "production",
+  "durability": "synchronous",
+  "notes": "Per-step fsync durability — matches DBOS/Restate/Temporal",
+  "results": {
+    "velocity-classic": {
+      "engine": "Velocity-Classic",
+      "avg_ops_per_sec": 56.5,
+      "avg_p99_us": 1170082,
+      "error_rate": 0.0,
+      "workloads_completed": 11,
+      "workloads_total": 11,
+      "workloads": {
+        "simple_workflow": { "ops_per_sec": 30.2, "p50_us": 247928, "p99_us": 434367, "p999_us": 480299, "errors": 0, "total": 500 },
+        "signal_storm": { "ops_per_sec": 3.8, "p50_us": 932190, "p99_us": 6865217, "p999_us": 6865217, "errors": 0, "total": 100 },
+        "query_burst": { "ops_per_sec": 14.4, "p50_us": 216545, "p99_us": 2929664, "p999_us": 2929664, "errors": 0, "total": 100 },
+        "high_step": { "ops_per_sec": 35.4, "p50_us": 124976, "p99_us": 156241, "p999_us": 171579, "errors": 0, "total": 200 },
+        "concurrent_100": { "ops_per_sec": 123.0, "p50_us": 673435, "p99_us": 945352, "p999_us": 976308, "errors": 0, "total": 500 },
+        "mixed_operations": { "ops_per_sec": 107.3, "p50_us": 80141, "p99_us": 152766, "p999_us": 156519, "errors": 0, "total": 300 },
+        "search_attributes": { "ops_per_sec": 33.8, "p50_us": 138904, "p99_us": 171063, "p999_us": 185060, "errors": 0, "total": 200 },
+        "throughput_ceiling": { "ops_per_sec": 119.7, "p50_us": 315878, "p99_us": 549503, "p999_us": 633950, "errors": 0, "total": 5000 },
+        "tail_latency": { "ops_per_sec": 88.3, "p50_us": 170670, "p99_us": 295009, "p999_us": 388112, "errors": 0, "total": 2000 },
+        "cold_start": { "ops_per_sec": 8.8, "p50_us": 109835, "p99_us": 124581, "p999_us": 124581, "errors": 0, "total": 10 },
+        "payload_1kb": { "ops_per_sec": 57.1, "p50_us": 140356, "p99_us": 247144, "p999_us": 311761, "errors": 0, "total": 500 }
+      }
+    }
+  }
+}

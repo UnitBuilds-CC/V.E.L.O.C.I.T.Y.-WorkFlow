@@ -411,6 +411,11 @@ pub trait DatabaseAdapter: Send + Sync {
     /// synchronisation points.
     fn save_steps_batch(&self, workflow_key: u64, steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()>;
 
+    /// Load all step journal entries for a workflow (for crash recovery).
+    /// Returns a vector of (step_number, result_data) tuples, ordered by step_number.
+    /// This enables recovery from PostgreSQL when WAL is empty/corrupt.
+    fn load_steps(&self, workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>>;
+
     /// Check if the adapter is connected and operational.
     fn is_connected(&self) -> bool;
 
@@ -779,6 +784,10 @@ impl DatabaseAdapter for PostgresAdapter {
     fn save_steps_batch(&self, _workflow_key: u64, _steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()> {
         Ok(()) // Stub
     }
+
+    fn load_steps(&self, _workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>> {
+        Ok(Vec::new()) // Stub — only LivePostgresAdapter implements real journal loading
+    }
 }
 
 // ─── In-Memory Adapter (for testing) ─────────────────────────────────────────
@@ -1101,6 +1110,10 @@ impl DatabaseAdapter for InMemoryAdapter {
     fn save_steps_batch(&self, _workflow_key: u64, _steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()> {
         Ok(()) // Stub
     }
+
+    fn load_steps(&self, _workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>> {
+        Ok(Vec::new()) // In-memory: steps are recovered via load_workflow
+    }
 }
 
 // ─── MySQL Adapter ───────────────────────────────────────────────────────────
@@ -1268,6 +1281,9 @@ impl DatabaseAdapter for MysqlAdapter {
     }
     fn save_steps_batch(&self, _workflow_key: u64, _steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()> {
         Ok(()) // Stub
+    }
+    fn load_steps(&self, _workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>> {
+        Ok(Vec::new()) // Stub
     }
 }
 
@@ -1455,6 +1471,9 @@ impl DatabaseAdapter for CassandraAdapter {
     }
     fn save_steps_batch(&self, _workflow_key: u64, _steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()> {
         Ok(()) // Stub
+    }
+    fn load_steps(&self, _workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>> {
+        Ok(Vec::new()) // Stub
     }
 }
 
@@ -1790,6 +1809,10 @@ impl DatabaseAdapter for SqliteAdapter {
 
     fn save_steps_batch(&self, _workflow_key: u64, _steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()> {
         Ok(()) // Stub
+    }
+
+    fn load_steps(&self, _workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>> {
+        Ok(Vec::new()) // Stub
     }
 }
 

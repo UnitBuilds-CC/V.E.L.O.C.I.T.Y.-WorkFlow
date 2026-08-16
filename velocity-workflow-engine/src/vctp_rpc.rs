@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::engine::{WorkflowEngine, WorkflowStatus};
@@ -277,8 +278,8 @@ pub struct VctpRpcStats {
 pub struct VctpRpcServer {
     transport: Arc<VctpTransport>,
     engine: Arc<WorkflowEngine>,
-    /// Maps string workflow_id → engine workflow_key.
-    workflow_map: Arc<std::sync::Mutex<HashMap<String, u64>>>,
+    /// Maps string workflow_id → engine workflow_key (lock-free concurrent map).
+    workflow_map: Arc<DashMap<String, u64>>,
     /// Counter for generating numeric workflow IDs.
     workflow_counter: AtomicU64,
     /// Counter for generating namespace IDs.
@@ -298,7 +299,7 @@ impl VctpRpcServer {
         Self {
             transport,
             engine,
-            workflow_map: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            workflow_map: Arc::new(DashMap::new()),
             workflow_counter: AtomicU64::new(1),
             namespace_counter: AtomicU64::new(1),
             running: AtomicBool::new(true),
@@ -479,15 +480,14 @@ impl VctpRpcServer {
         );
 
         // Store mapping
-        {
-            let mut map = self.workflow_map.lock().unwrap();
-            map.insert(wf_id.clone(), workflow_key);
-        }
+        self.workflow_map.insert(wf_id.clone(), workflow_key);
 
-        // Batch per-step durable execution: complete all steps in memory,
-        // then write them to the step journal in a single multi-row INSERT.
-        // Same crash-recovery durability, ~10x fewer DB round-trips.
-        let _ = self.engine.persist_steps_batch(workflow_key, "default");
+        // Sequential per-step durable execution: each step is WAL-fsynced + PG-persisted
+        // before the next step begins.  Crash at any point → resume from last persisted step.
+        let total = self.engine.get_total_steps(workflow_key);
+        for step in 0..total {
+            let _ = self.engine.persist_step(workflow_key, step, "default");
+        }
         self.engine.complete_workflow(workflow_key, Some(vec![]));
 
         // Final persist with completed status.
@@ -500,9 +500,8 @@ impl VctpRpcServer {
     }
 
     fn handle_signal_workflow(&self, seq: u64, req: VctpRpcRequest) -> VctpRpcResponse {
-        let map = self.workflow_map.lock().unwrap();
-        let key = match map.get(&req.workflow_id) {
-            Some(&k) => k,
+        let key = match self.workflow_map.get(&req.workflow_id) {
+            Some(k) => *k,
             None => return VctpRpcResponse::err(seq, 404, "workflow not found"),
         };
         let signal_name = req.signal_name.as_deref().unwrap_or("unknown");
@@ -513,9 +512,8 @@ impl VctpRpcServer {
     }
 
     fn handle_query_workflow(&self, seq: u64, req: VctpRpcRequest) -> VctpRpcResponse {
-        let map = self.workflow_map.lock().unwrap();
-        let key = match map.get(&req.workflow_id) {
-            Some(&k) => k,
+        let key = match self.workflow_map.get(&req.workflow_id) {
+            Some(k) => *k,
             None => return VctpRpcResponse::err(seq, 404, "workflow not found"),
         };
         let status = self.engine.get_status(key);
@@ -523,9 +521,8 @@ impl VctpRpcServer {
     }
 
     fn handle_cancel_workflow(&self, seq: u64, req: VctpRpcRequest) -> VctpRpcResponse {
-        let map = self.workflow_map.lock().unwrap();
-        let key = match map.get(&req.workflow_id) {
-            Some(&k) => k,
+        let key = match self.workflow_map.get(&req.workflow_id) {
+            Some(k) => *k,
             None => return VctpRpcResponse::err(seq, 404, "workflow not found"),
         };
         self.engine.cancel_workflow(key);
@@ -533,9 +530,8 @@ impl VctpRpcServer {
     }
 
     fn handle_terminate_workflow(&self, seq: u64, req: VctpRpcRequest) -> VctpRpcResponse {
-        let map = self.workflow_map.lock().unwrap();
-        let key = match map.get(&req.workflow_id) {
-            Some(&k) => k,
+        let key = match self.workflow_map.get(&req.workflow_id) {
+            Some(k) => *k,
             None => return VctpRpcResponse::err(seq, 404, "workflow not found"),
         };
         self.engine.terminate_workflow(key);
@@ -543,9 +539,8 @@ impl VctpRpcServer {
     }
 
     fn handle_describe_workflow(&self, seq: u64, req: VctpRpcRequest) -> VctpRpcResponse {
-        let map = self.workflow_map.lock().unwrap();
-        let key = match map.get(&req.workflow_id) {
-            Some(&k) => k,
+        let key = match self.workflow_map.get(&req.workflow_id) {
+            Some(k) => *k,
             None => return VctpRpcResponse::err(seq, 404, "workflow not found"),
         };
         let status = self.engine.get_status(key);
@@ -555,9 +550,8 @@ impl VctpRpcServer {
     }
 
     fn handle_complete_workflow(&self, seq: u64, req: VctpRpcRequest) -> VctpRpcResponse {
-        let map = self.workflow_map.lock().unwrap();
-        let key = match map.get(&req.workflow_id) {
-            Some(&k) => k,
+        let key = match self.workflow_map.get(&req.workflow_id) {
+            Some(k) => *k,
             None => return VctpRpcResponse::err(seq, 404, "workflow not found"),
         };
         self.engine.complete_workflow(key, req.payload);
@@ -580,14 +574,12 @@ impl VctpRpcServer {
     }
 
     fn handle_count_workflows(&self, seq: u64, _req: VctpRpcRequest) -> VctpRpcResponse {
-        let map = self.workflow_map.lock().unwrap();
-        VctpRpcResponse::ok(seq).with_count(map.len() as u64)
+        VctpRpcResponse::ok(seq).with_count(self.workflow_map.len() as u64)
     }
 
     fn handle_batch_signal(&self, seq: u64, req: VctpRpcRequest) -> VctpRpcResponse {
-        let map = self.workflow_map.lock().unwrap();
-        let key = match map.get(&req.workflow_id) {
-            Some(&k) => k,
+        let key = match self.workflow_map.get(&req.workflow_id) {
+            Some(k) => *k,
             None => return VctpRpcResponse::err(seq, 404, "workflow not found"),
         };
         let signal_name = req.signal_name.as_deref().unwrap_or("unknown");

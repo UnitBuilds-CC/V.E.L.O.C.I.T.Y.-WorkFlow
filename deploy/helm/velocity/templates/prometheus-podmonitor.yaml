@@ -17,10 +17,16 @@ spec:
     matchNames:
       - {{ .Release.Namespace }}
   podMetricsEndpoints:
-    - port: http
+    - port: health
       path: {{ .Values.monitoring.prometheus.podMonitor.metricsPath | default "/metrics" }}
       interval: {{ .Values.monitoring.prometheus.podMonitor.interval | default "30s" }}
       scrapeTimeout: {{ .Values.monitoring.prometheus.podMonitor.scrapeTimeout | default "10s" }}
+      {{- if or .Values.metrics.existingSecret .Values.metrics.token }}
+      authorization:
+        credentials:
+          name: {{ .Values.metrics.existingSecret | default (include "velocity.fullname" .) }}
+          key: token
+      {{- end }}
       {{- if .Values.monitoring.prometheus.podMonitor.honorLabels }}
       honorLabels: true
       {{- end }}

@@ -9,18 +9,23 @@
 //! Wire format: same 16-byte NMCP header + JSON payload.
 //! Frame types use 70-79 range (embedded-specific).
 
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+
+use dashmap::DashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
 
+// Re-export shared NMCP protocol types from the protocol crate.
+pub use velocity_nmcp_protocol::{
+    NmcpFrame, NmcpRequestBody, NmcpRouterStats, NmcpDispatch,
+    NMCP_MAGIC, NMCP_HEADER_SIZE,
+};
+
 // ─── NMCP Frame Types (shared with classic) ─────────────────────────────────
-pub const NMCP_MAGIC: u32 = 0x5043_4D4E;
-pub const NMCP_HEADER_SIZE: usize = 16;
 
 /// Embedded Server NMCP frame types (70-79 range).
 pub struct EmbeddedFrameTypes;
@@ -40,107 +45,15 @@ impl EmbeddedFrameTypes {
     pub const ENGINE_STATS: u32 = 81;
 }
 
-// ─── NMCP Frame ──────────────────────────────────────────────────────────────
+// ─── NmcpDispatch Implementation ─────────────────────────────────────────────
 
-/// A parsed NMCP frame (header + payload).
-#[derive(Debug, Clone)]
-pub struct NmcpFrame {
-    pub frame_type: u32,
-    pub sequence_id: u32,
-    pub payload: Vec<u8>,
-}
-
-impl NmcpFrame {
-    /// Create a new NMCP frame.
-    pub fn new(frame_type: u32, sequence_id: u32, payload: Vec<u8>) -> Self {
-        Self {
-            frame_type,
-            sequence_id,
-            payload,
-        }
+impl NmcpDispatch for NmcpFrameRouter {
+    fn dispatch(&self, frame: &NmcpFrame) -> NmcpFrame {
+        NmcpFrameRouter::dispatch(self, frame)
     }
-
-    /// Serialize to bytes (header + payload).
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(NMCP_HEADER_SIZE + self.payload.len());
-        buf.extend_from_slice(&NMCP_MAGIC.to_le_bytes());
-        buf.extend_from_slice(&self.frame_type.to_le_bytes());
-        buf.extend_from_slice(&(self.payload.len() as u32).to_le_bytes());
-        buf.extend_from_slice(&self.sequence_id.to_le_bytes());
-        buf.extend_from_slice(&self.payload);
-        buf
-    }
-
-    /// Parse from bytes. Returns None if invalid.
-    pub fn from_bytes(data: &[u8]) -> Option<Self> {
-        if data.len() < NMCP_HEADER_SIZE {
-            return None;
-        }
-        let magic = u32::from_le_bytes(data[0..4].try_into().ok()?);
-        if magic != NMCP_MAGIC {
-            return None;
-        }
-        let frame_type = u32::from_le_bytes(data[4..8].try_into().ok()?);
-        let payload_len = u32::from_le_bytes(data[8..12].try_into().ok()?) as usize;
-        let sequence_id = u32::from_le_bytes(data[12..16].try_into().ok()?);
-
-        if data.len() < NMCP_HEADER_SIZE + payload_len {
-            return None;
-        }
-        let payload = data[NMCP_HEADER_SIZE..NMCP_HEADER_SIZE + payload_len].to_vec();
-        Some(Self {
-            frame_type,
-            sequence_id,
-            payload,
-        })
-    }
-
-    /// Create a JSON response frame.
-    pub fn json_response(sequence_id: u32, body: JsonValue) -> Self {
-        let payload = serde_json::to_vec(&body).unwrap_or_default();
-        Self::new(0, sequence_id, payload)
-    }
-
-    /// Create an error response frame.
-    pub fn error_response(sequence_id: u32, status: u16, message: &str) -> Self {
-        let body = serde_json::json!({
-            "success": false,
-            "error": message,
-            "status": status,
-        });
-        Self::json_response(sequence_id, body)
-    }
-}
-
-// ─── JSON Request Body ───────────────────────────────────────────────────────
-
-/// Parsed JSON request body from NMCP payload.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct NmcpRequestBody {
-    #[serde(default)]
-    pub workflow_id: Option<String>,
-    #[serde(default)]
-    pub workflow_type: Option<String>,
-    #[serde(default)]
-    pub signal_name: Option<String>,
-    #[serde(default)]
-    pub query_type: Option<String>,
-    #[serde(default)]
-    pub input: Option<JsonValue>,
-    #[serde(default)]
-    pub reason: Option<String>,
 }
 
 // ─── Frame Router ────────────────────────────────────────────────────────────
-
-/// Statistics for the NMCP frame router.
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct NmcpRouterStats {
-    pub frames_received: u64,
-    pub frames_dispatched: u64,
-    pub errors: u64,
-    pub unknown_types: u64,
-}
 
 /// NMCP Frame Router for the Embedded Server.
 ///
@@ -148,7 +61,7 @@ pub struct NmcpRouterStats {
 /// the embedded (library-style) API pattern.
 pub struct NmcpFrameRouter {
     engine: Arc<WorkflowEngine>,
-    workflow_map: Arc<Mutex<HashMap<String, u64>>>,
+    workflow_map: Arc<DashMap<String, u64>>,
     workflow_counter: Arc<AtomicU64>,
     stats: Mutex<NmcpRouterStats>,
 }
@@ -157,7 +70,7 @@ impl NmcpFrameRouter {
     /// Create a new frame router.
     pub fn new(
         engine: Arc<WorkflowEngine>,
-        workflow_map: Arc<Mutex<HashMap<String, u64>>>,
+        workflow_map: Arc<DashMap<String, u64>>,
         workflow_counter: Arc<AtomicU64>,
     ) -> Self {
         Self {
@@ -210,8 +123,7 @@ impl NmcpFrameRouter {
 
     /// Look up the engine workflow_key for a string workflow_id.
     fn lookup_key(&self, workflow_id: &str) -> Result<u64, NmcpFrame> {
-        let map = self.workflow_map.lock().unwrap();
-        map.get(workflow_id).copied().ok_or_else(|| {
+        self.workflow_map.get(workflow_id).map(|r| *r).ok_or_else(|| {
             NmcpFrame::error_response(0, 404, &format!("workflow not found: {}", workflow_id))
         })
     }
@@ -245,14 +157,16 @@ impl NmcpFrameRouter {
         );
 
         {
-            let mut map = self.workflow_map.lock().unwrap();
-            map.insert(wf_id.clone(), workflow_key);
+            self.workflow_map.insert(wf_id.clone(), workflow_key);
         }
 
-        // Embedded mode: execute all steps inline (durable execution)
-        // Batch per-step durable execution: complete all steps in memory,
-        // then write them to the step journal in a single multi-row INSERT.
-        let _ = self.engine.persist_steps_batch(workflow_key, "default");
+        // Embedded mode: sequential per-step durable execution.
+        // Each step is WAL-fsynced + PG-persisted before the next step begins.
+        // Crash at any point → resume from last persisted step.
+        let total = self.engine.get_total_steps(workflow_key);
+        for step in 0..total {
+            let _ = self.engine.persist_step(workflow_key, step, "default");
+        }
         self.engine.complete_workflow(workflow_key, Some(vec![]));
 
         // Final persist with completed status.
@@ -390,13 +304,14 @@ impl NmcpFrameRouter {
     }
 
     fn handle_list(&self, frame: &NmcpFrame) -> NmcpFrame {
-        let map = self.workflow_map.lock().unwrap();
-        let workflows: Vec<JsonValue> = map
+        let workflows: Vec<JsonValue> = self.workflow_map
             .iter()
-            .map(|(id, key)| {
-                let status = self.engine.get_status(*key);
-                let total = self.engine.get_total_steps(*key);
-                let current = self.engine.get_current_step(*key);
+            .map(|entry| {
+                let id = entry.key().clone();
+                let key = *entry.value();
+                let status = self.engine.get_status(key);
+                let total = self.engine.get_total_steps(key);
+                let current = self.engine.get_current_step(key);
                 serde_json::json!({
                     "workflowId": id,
                     "status": status_to_str(status),
@@ -456,15 +371,15 @@ impl NmcpFrameRouter {
 
     fn handle_stats(&self, frame: &NmcpFrame) -> NmcpFrame {
         let router_stats = self.stats();
-        let map = self.workflow_map.lock().unwrap();
-        let total_workflows = map.len();
+        let total_workflows = self.workflow_map.len();
 
         // Count by status
         let mut running = 0;
         let mut completed = 0;
         let mut failed = 0;
-        for (_, key) in map.iter() {
-            match self.engine.get_status(*key) {
+        for entry in self.workflow_map.iter() {
+            let key = *entry.value();
+            match self.engine.get_status(key) {
                 WorkflowStatus::Running => running += 1,
                 WorkflowStatus::Completed => completed += 1,
                 WorkflowStatus::Failed => failed += 1,
@@ -511,7 +426,7 @@ mod tests {
 
     fn make_router() -> NmcpFrameRouter {
         let engine = Arc::new(WorkflowEngine::new());
-        let workflow_map = Arc::new(Mutex::new(HashMap::new()));
+        let workflow_map = Arc::new(DashMap::new());
         let workflow_counter = Arc::new(AtomicU64::new(1));
         NmcpFrameRouter::new(engine, workflow_map, workflow_counter)
     }

@@ -21,8 +21,8 @@ impl RestateClient {
             .build()
             .map_err(|e| format!("HTTP client error: {}", e))?;
 
-        // Health check — Restate exposes discovery at /discover and handlers via /invoke
-        let url = format!("{}/BenchmarkService/handler_invocation", base_url);
+        // Health check — invoke the 'invoke' handler on the 'bench' keyed object
+        let url = format!("{}/bench/bench_health/invoke", base_url);
         let resp = client
             .post(&url)
             .body(r#""health""#)
@@ -52,50 +52,62 @@ impl RestateClient {
     ) -> Result<f64, String> {
         let start = Instant::now();
 
+        // The Restate bench service is a keyed object named "bench".
+        // URL pattern: /bench/{key}/{handler}
+        // Each workload maps to the appropriate handler.
+        let key = format!("wf_{}", workload_name);
+
         match kind {
             WorkloadKind::SimpleWorkflow
-            | WorkloadKind::HighStep
-            | WorkloadKind::ConcurrentWorkflows
             | WorkloadKind::ThroughputCeiling
             | WorkloadKind::TailLatencySustained
-            | WorkloadKind::ColdStart
             | WorkloadKind::ChildWorkflows
             | WorkloadKind::SagaPattern => {
-                self.invoke_handler("handler_invocation", workload_name).await?;
+                self.invoke_keyed_handler(&key, "simple").await?;
+            }
+
+            WorkloadKind::HighStep => {
+                self.invoke_keyed_handler(&key, "multiStep").await?;
+            }
+
+            WorkloadKind::ConcurrentWorkflows => {
+                self.invoke_keyed_handler(&key, "invoke").await?;
             }
 
             WorkloadKind::SignalStorm => {
-                // Restate equivalent: multiple handler invocations
-                for _ in 0..10 {
-                    self.invoke_handler("handler_invocation", "signal_equiv").await?;
-                }
+                self.invoke_keyed_handler(&key, "signalStorm").await?;
             }
 
             WorkloadKind::QueryBurst => {
+                // Multiple stateful reads/writes on the same key
                 for _ in 0..10 {
-                    self.invoke_handler("handler_invocation", "query_equiv").await?;
+                    self.invoke_keyed_handler(&key, "invoke").await?;
                 }
             }
 
             WorkloadKind::MixedOperations => {
-                self.invoke_handler("mixed_operations", workload_name).await?;
+                self.invoke_keyed_handler(&key, "durablePromise").await?;
             }
 
             WorkloadKind::SearchAttributes => {
-                self.invoke_handler("handler_invocation", "with_attrs").await?;
+                self.invoke_keyed_handler(&key, "echo").await?;
+            }
+
+            WorkloadKind::ColdStart => {
+                self.invoke_keyed_handler(&key, "coldStart").await?;
             }
 
             WorkloadKind::PayloadRoundtrip => {
-                self.invoke_handler("payload_roundtrip", "1kb").await?;
+                self.invoke_keyed_handler(&key, "payload").await?;
             }
         }
 
         Ok(start.elapsed().as_micros() as f64)
     }
 
-    async fn invoke_handler(&self, handler: &str, input: &str) -> Result<(), String> {
-        let url = format!("{}/BenchmarkService/{}", self.base_url, handler);
-        let body = serde_json::json!({"input": input});
+    async fn invoke_keyed_handler(&self, key: &str, handler: &str) -> Result<(), String> {
+        let url = format!("{}/bench/{}/{}", self.base_url, key, handler);
+        let body = serde_json::json!({"input": key});
 
         let resp = self
             .client
@@ -108,7 +120,7 @@ impl RestateClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(format!("Restate {} failed: {} — {}", handler, status, body));
+            return Err(format!("Restate bench/{}/{} failed: {} — {}", key, handler, status, body));
         }
         Ok(())
     }

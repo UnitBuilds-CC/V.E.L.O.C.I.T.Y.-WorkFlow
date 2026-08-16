@@ -12,9 +12,14 @@ path = "src/main.rs"
 [dependencies]
 velocity-workflow-engine = { path = "../velocity-workflow-engine", features = ["postgres"] }
 velocity-embedded = { path = "../velocity-embedded" }
+velocity-server-bootstrap = { path = "../velocity-server-bootstrap" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+dashmap = "6"
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.6"

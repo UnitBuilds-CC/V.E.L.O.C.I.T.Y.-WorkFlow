@@ -12,6 +12,7 @@ Architecture:
 
 import time
 import json
+import hashlib
 import resource
 import os
 import sys
@@ -46,10 +47,19 @@ DBOS(config=config, fastapi=app)
 # checkpointed steps.  State is persisted to PostgreSQL.
 
 
+def _compute_work(iterations: int = 2000) -> str:
+    """SHA-256 hash chain — same CPU work across all engines."""
+    h = hashlib.sha256(b"velocity-bench-seed").digest()
+    for _ in range(iterations):
+        h = hashlib.sha256(h).digest()
+    return h.hex()
+
+
 @DBOS.step()
 def simple_step() -> dict:
-    """A single durable step — checkpointed to Postgres."""
-    return {"status": "ok", "ts": time.time()}
+    """A single durable step — does real SHA-256 compute work, checkpointed to Postgres."""
+    result = _compute_work(2000)
+    return {"status": "ok", "hash": result}
 
 
 @DBOS.workflow()

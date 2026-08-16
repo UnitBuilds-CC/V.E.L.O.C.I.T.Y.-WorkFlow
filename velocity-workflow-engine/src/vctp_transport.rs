@@ -94,8 +94,8 @@ pub struct VctpTransport {
     congestion: RwLock<AimdController>,
     stats: RwLock<VctpTransportStats>,
     running: AtomicBool,
-    /// Receive buffer for batching.
-    recv_buf: RwLock<Vec<u8>>,
+    /// Receive buffer for batching (Mutex — always exclusive access for recv).
+    recv_buf: std::sync::Mutex<Vec<u8>>,
 }
 
 impl VctpTransport {
@@ -131,7 +131,7 @@ impl VctpTransport {
             congestion: RwLock::new(AimdController::new()),
             stats: RwLock::new(VctpTransportStats::default()),
             running: AtomicBool::new(true),
-            recv_buf: RwLock::new(recv_buf),
+            recv_buf: std::sync::Mutex::new(recv_buf),
         })
     }
 
@@ -246,7 +246,7 @@ impl VctpTransport {
     /// Returns a list of received packets.
     pub fn recv_packets(&self) -> Vec<(VctpPacket, SocketAddr)> {
         let mut received = Vec::new();
-        let mut buf = self.recv_buf.write().unwrap();
+        let mut buf = self.recv_buf.lock().unwrap();
 
         loop {
             match self.socket.recv_from(&mut buf) {

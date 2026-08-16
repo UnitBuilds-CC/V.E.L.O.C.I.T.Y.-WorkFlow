@@ -1,0 +1,16 @@
+[package]
+name = "velocity-server-bootstrap"
+version = "0.1.0"
+edition = "2021"
+authors = ["Velocity Team"]
+description = "Shared server bootstrap logic — WAL engine init, PG adapter, NMCP transport setup"
+
+[dependencies]
+velocity-workflow-engine = { path = "../velocity-workflow-engine", features = ["postgres"] }
+velocity-nmcp-protocol = { path = "../velocity-nmcp-protocol" }
+dashmap = "6"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util"] }
+tracing = "0.1"
+serde_json = "1"
+tokio-rustls = "0.26"
+rustls-pemfile = "2"

@@ -47,54 +47,51 @@ impl DbosClient {
     ) -> Result<f64, String> {
         let start = Instant::now();
 
-        match kind {
+        // Map each workload kind to the correct DBOS service endpoint.
+        // The DBOS service exposes specific endpoints per workload type.
+        let endpoint = match kind {
             WorkloadKind::SimpleWorkflow
-            | WorkloadKind::HighStep
-            | WorkloadKind::ConcurrentWorkflows
             | WorkloadKind::ThroughputCeiling
             | WorkloadKind::TailLatencySustained
-            | WorkloadKind::ColdStart
             | WorkloadKind::ChildWorkflows
-            | WorkloadKind::SagaPattern => {
-                self.invoke_handler(workload_name).await?;
-            }
+            | WorkloadKind::SagaPattern => "/bench/simple_workflow",
 
-            WorkloadKind::SignalStorm => {
-                // DBOS doesn't have signals — use invoke as equivalent
-                for _ in 0..10 {
-                    self.invoke_handler("signal_equiv").await?;
-                }
-            }
+            WorkloadKind::HighStep => "/bench/multi_step",
 
-            WorkloadKind::QueryBurst => {
-                for _ in 0..10 {
-                    self.invoke_handler("query_equiv").await?;
-                }
-            }
+            WorkloadKind::ConcurrentWorkflows => "/bench/concurrent",
 
-            WorkloadKind::MixedOperations => {
-                self.invoke_handler("mixed").await?;
-            }
+            WorkloadKind::SignalStorm => "/bench/signal_storm",
 
-            WorkloadKind::SearchAttributes => {
-                self.invoke_handler("with_attrs").await?;
-            }
+            WorkloadKind::QueryBurst => "/bench/sql_visibility",
 
+            WorkloadKind::MixedOperations => "/bench/stateful",
+
+            WorkloadKind::SearchAttributes => "/bench/sql_visibility",
+
+            WorkloadKind::ColdStart => "/bench/cold_start",
+
+            WorkloadKind::PayloadRoundtrip => "/bench/payload",
+        };
+
+        match kind {
             WorkloadKind::PayloadRoundtrip => {
                 self.payload_roundtrip(1024).await?;
+            }
+            _ => {
+                self.invoke_endpoint(endpoint).await?;
             }
         }
 
         Ok(start.elapsed().as_micros() as f64)
     }
 
-    async fn invoke_handler(&self, handler_name: &str) -> Result<(), String> {
-        let url = format!("{}/bench/invoke", self.base_url);
+    async fn invoke_endpoint(&self, endpoint: &str) -> Result<(), String> {
+        let url = format!("{}{}", self.base_url, endpoint);
         let resp = self
             .client
             .post(&url)
-            .body(format!(r#"{{"handler":"{}"}}"#, handler_name))
             .header("Content-Type", "application/json")
+            .body("{}")
             .send()
             .await
             .map_err(|e| format!("DBOS invoke HTTP error: {}", e))?;
@@ -102,7 +99,7 @@ impl DbosClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(format!("DBOS invoke {} failed: {} — {}", handler_name, status, body));
+            return Err(format!("DBOS {} failed: {} — {}", endpoint, status, body));
         }
         Ok(())
     }

@@ -22,7 +22,7 @@ services:
     image: velocity-bench/classic:latest
     container_name: bench-velocity-classic
     ports:
-      - "8083:8083"
+      - "18083:8083"
     deploy:
       resources:
         limits:

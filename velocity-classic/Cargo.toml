@@ -8,11 +8,13 @@ description = "Velocity Classic — Temporal-compatible durable workflow engine 
 [dependencies]
 velocity-workflow-engine = { path = "../velocity-workflow-engine" }
 velocity-workflow-core = { path = "../velocity-workflow-core" }
+velocity-nmcp-protocol = { path = "../velocity-nmcp-protocol" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+dashmap = "6"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

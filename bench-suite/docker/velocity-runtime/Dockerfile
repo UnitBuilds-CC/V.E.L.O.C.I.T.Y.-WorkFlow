@@ -1,57 +1,43 @@
-# Velocity Runtime — Rust gRPC + HTTP server with WAL
+# Velocity Production Benchmark Server — Rust HTTP server with WAL
 #
-# Builds velocity-workflow-server: gRPC on 7234, HTTP on 8080, WAL persistence.
-# This is the Restate-compatible deployment flavor.
+# Builds velocity-bench-server: HTTP API on port 7234, WAL persistence.
+# Uses the REAL WorkflowEngine — not a mock or in-memory DevEngine.
+#
+# Architecture:
+#   [benchmark client] ──HTTP──► [velocity-bench-server] ──► [WorkflowEngine + WAL]
 #
 # Build context: repository root (velocity-workflow/)
 
 FROM rust:1.88-slim-bookworm AS builder
 
 RUN apt-get update && \
-    apt-get install -y protobuf-compiler libmnl-dev libnetfilter-log-dev && \
+    apt-get install -y protobuf-compiler && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /build
 
-# ── Proto files (needed by build.rs) ─────────────────────────────────────────
-COPY proto/velocity /proto/velocity
-COPY velocity-bench/proto/ /bench-proto/
+# Minimal workspace manifest for the bench server
+RUN echo '[workspace]\nmembers = ["velocity-workflow-core", "velocity-workflow-engine", "bench-suite/velocity-bench-server"]\nresolver = "2"\n\n[profile.release]\nopt-level = 2\nlto = false\ncodegen-units = 16\n' > Cargo.toml
 
-# ── Engine + core source (Rust dependencies) ─────────────────────────────────
-COPY velocity-workflow-engine/ /engine/
-COPY velocity-workflow-core/   /velocity-workflow-core/
+COPY velocity-workflow-core/ ./velocity-workflow-core/
+COPY velocity-workflow-engine/ ./velocity-workflow-engine/
+COPY bench-suite/velocity-bench-server/ ./bench-suite/velocity-bench-server/
+COPY migrations/ ./migrations/
 
-# ── Migrations (included via include_str!) ───────────────────────────────────
-COPY migrations/ /migrations/
-
-# ── Server source ────────────────────────────────────────────────────────────
-COPY velocity-workflow-server/Cargo.toml velocity-workflow-server/Cargo.toml
-COPY velocity-workflow-server/build.rs   velocity-workflow-server/build.rs
-COPY velocity-workflow-server/src/       velocity-workflow-server/src/
-
-# Fix proto / dependency paths for the container layout
-RUN sed -i 's|../velocity-bench/proto/|/bench-proto/|g' velocity-workflow-server/build.rs && \
-    sed -i 's|path = "../velocity-workflow-engine"|path = "/engine"|g' velocity-workflow-server/Cargo.toml && \
-    sed -i 's|path = "../velocity-workflow-core"|path = "/velocity-workflow-core"|g' /engine/Cargo.toml
-
-# ── Build ────────────────────────────────────────────────────────────────────
-WORKDIR /app/velocity-workflow-server
-RUN cargo build --release
+RUN cargo build --release -p velocity-bench-server
 
 # ── Runtime image ────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
 RUN apt-get update && \
-    apt-get install -y netcat-openbsd ca-certificates && \
+    apt-get install -y curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/velocity-workflow-server/target/release/velocity-server /usr/local/bin/velocity-server
+COPY --from=builder /build/target/release/velocity-bench-server /usr/local/bin/
 
 EXPOSE 7234
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-    CMD nc -z localhost 7234 || exit 1
+    CMD curl -f http://localhost:7234/health || exit 1
 
-CMD ["velocity-server", \
-     "--ip", "0.0.0.0", \
-     "--grpc-port", "7234"]
+CMD ["velocity-bench-server", "--bind", "0.0.0.0:7234"]

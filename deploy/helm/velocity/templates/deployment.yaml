@@ -59,6 +59,9 @@ spec:
             - name: grpc
               containerPort: {{ .Values.service.grpcPort }}
               protocol: TCP
+            - name: health
+              containerPort: {{ .Values.service.healthPort }}
+              protocol: TCP
           env:
             - name: ASPNETCORE_ENVIRONMENT
               valueFrom:
@@ -74,6 +77,20 @@ spec:
                 secretKeyRef:
                   name: {{ include "velocity.postgresSecretName" . }}
                   key: connection-string
+            - name: VELOCITY_LOG_FORMAT
+              value: {{ .Values.logging.format | default "json" | quote }}
+            - name: RUST_LOG
+              value: {{ .Values.logging.level | default "info" | quote }}
+            {{- if .Values.metrics.existingSecret }}
+            - name: VELOCITY_METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.metrics.existingSecret }}
+                  key: token
+            {{- else if .Values.metrics.token }}
+            - name: VELOCITY_METRICS_TOKEN
+              value: {{ .Values.metrics.token | quote }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

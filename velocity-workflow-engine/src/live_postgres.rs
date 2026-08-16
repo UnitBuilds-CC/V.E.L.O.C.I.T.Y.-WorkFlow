@@ -30,6 +30,9 @@ mod inner {
     type BoxFuture = Box<dyn FnOnce(Arc<TokioMutex<Client>>) -> std::pin::Pin<Box<dyn std::future::Future<Output = DatabaseResult<()>> + Send>> + Send>;
     type SaveFuture = Box<dyn FnOnce(Arc<TokioMutex<Client>>) -> std::pin::Pin<Box<dyn std::future::Future<Output = DatabaseResult<u64>> + Send>> + Send>;
 
+    /// Maximum number of steps to buffer during PG outage.
+    const STEP_BUFFER_CAPACITY: usize = 10_000;
+
     enum PgTask {
         Save {
             task: BoxFuture,
@@ -38,6 +41,14 @@ mod inner {
         SaveWithId {
             task: SaveFuture,
             reply: std::sync::mpsc::Sender<DatabaseResult<u64>>,
+        },
+        /// Buffered step write during PG outage — acknowledged immediately,
+        /// replayed to PG on reconnect. WAL is the source of truth.
+        BufferedStep {
+            workflow_key: i64,
+            step_number: i32,
+            result_data: Option<Vec<u8>>,
+            reply: std::sync::mpsc::Sender<DatabaseResult<()>>,
         },
         Shutdown,
     }
@@ -161,21 +172,62 @@ mod inner {
                         connected_clone.store(true, Ordering::SeqCst);
                         let _ = ready_tx.send(Ok(()));
 
-                        // Process tasks from the channel.
+                        // Process tasks from the channel with reconnection support.
                         // Wrap client in Arc<Mutex> so we can share it across task boundaries.
-                        let client = Arc::new(tokio::sync::Mutex::new(client));
+                        let mut client = Arc::new(tokio::sync::Mutex::new(client));
 
-                        while let Ok(task) = task_rx.recv() {
+                        loop {
+                            let task = match task_rx.recv() {
+                                Ok(t) => t,
+                                Err(_) => break, // channel closed
+                            };
+
                             match task {
                                 PgTask::Save { task, reply } => {
                                     let result = task(client.clone()).await;
+                                    if result.is_err() {
+                                        connected_clone.store(false, Ordering::SeqCst);
+                                    }
                                     let _ = reply.send(result);
                                 }
                                 PgTask::SaveWithId { task, reply } => {
                                     let result = task(client.clone()).await;
+                                    if result.is_err() {
+                                        connected_clone.store(false, Ordering::SeqCst);
+                                    }
                                     let _ = reply.send(result);
                                 }
+                                PgTask::BufferedStep { workflow_key, step_number, result_data, reply } => {
+                                    let result = {
+                                        let c = client.lock().await;
+                                        c.execute(
+                                            crate::db_adapter::sql::APPEND_STEP,
+                                            &[&workflow_key, &step_number, &result_data],
+                                        ).await
+                                    };
+                                    match result {
+                                        Ok(_) => { let _ = reply.send(Ok(())); }
+                                        Err(e) => {
+                                            connected_clone.store(false, Ordering::SeqCst);
+                                            let _ = reply.send(Err(DatabaseError::QueryError(e.to_string())));
+                                        }
+                                    }
+                                }
                                 PgTask::Shutdown => break,
+                            }
+
+                            // If connection died, enter reconnect + buffer mode
+                            if !connected_clone.load(Ordering::SeqCst) {
+                                let (new_client, should_continue) = Self::reconnect_and_drain(
+                                    &conn_str,
+                                    connected_clone.clone(),
+                                    &task_rx,
+                                    client,
+                                ).await;
+                                client = new_client;
+                                if !should_continue {
+                                    break; // Shutdown received during reconnect
+                                }
                             }
                         }
                     });
@@ -229,6 +281,104 @@ mod inner {
             reply_rx
                 .recv()
                 .map_err(|_| DatabaseError::NotConnected)?
+        }
+
+        /// Reconnect to PostgreSQL with exponential backoff, buffering step writes
+        /// during the outage. Returns `(new_client, should_continue)`.
+        /// `should_continue` is false if a Shutdown was received during reconnect.
+        ///
+        /// Backoff: 1ms → 2ms → 4ms → ... → 10s (capped).
+        /// Step buffer capacity: 10,000 entries.
+        async fn reconnect_and_drain(
+            conn_str: &str,
+            connected: Arc<AtomicBool>,
+            task_rx: &std::sync::mpsc::Receiver<PgTask>,
+            _old_client: Arc<TokioMutex<Client>>,
+        ) -> (Arc<TokioMutex<Client>>, bool) {
+            let mut backoff_ms: u64 = 1;
+            let max_backoff_ms: u64 = 10_000;
+            let mut step_buffer: Vec<(i64, i32, Option<Vec<u8>>)> = Vec::new();
+
+            eprintln!("[velocity-pg] connection lost — entering reconnection mode");
+
+            loop {
+                // Buffer incoming tasks during reconnection
+                while let Ok(task) = task_rx.try_recv() {
+                    match task {
+                        PgTask::BufferedStep { workflow_key, step_number, result_data, reply } => {
+                            if step_buffer.len() < STEP_BUFFER_CAPACITY {
+                                step_buffer.push((workflow_key, step_number, result_data));
+                            }
+                            let _ = reply.send(Ok(())); // acknowledged (buffered)
+                        }
+                        PgTask::Save { reply, .. } => {
+                            let _ = reply.send(Err(DatabaseError::NotConnected));
+                        }
+                        PgTask::SaveWithId { reply, .. } => {
+                            let _ = reply.send(Err(DatabaseError::NotConnected));
+                        }
+                        PgTask::Shutdown => {
+                            // Signal clean exit to outer loop
+                            return (_old_client, false);
+                        }
+                    }
+                }
+
+                // Attempt reconnection
+                tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+
+                match tokio_postgres::connect(conn_str, tokio_postgres::NoTls).await {
+                    Ok((new_client, connection)) => {
+                        // Monitor the new connection
+                        let connected_flag = connected.clone();
+                        tokio::spawn(async move {
+                            if let Err(_e) = connection.await {
+                                connected_flag.store(false, Ordering::SeqCst);
+                            }
+                        });
+
+                        let new_client = Arc::new(TokioMutex::new(new_client));
+
+                        // Drain buffered steps
+                        if !step_buffer.is_empty() {
+                            let count = step_buffer.len();
+                            eprintln!(
+                                "[velocity-pg] reconnected — draining {} buffered steps",
+                                count
+                            );
+
+                            let c = new_client.lock().await;
+                            for (wk, sn, rd) in &step_buffer {
+                                if let Err(e) = c.execute(
+                                    crate::db_adapter::sql::APPEND_STEP,
+                                    &[wk, sn, rd],
+                                ).await {
+                                    eprintln!(
+                                        "[velocity-pg] failed to replay buffered step: {}",
+                                        e
+                                    );
+                                }
+                            }
+
+                            eprintln!(
+                                "[velocity-pg] drained {} buffered steps",
+                                count
+                            );
+                        }
+
+                        connected.store(true, Ordering::SeqCst);
+                        eprintln!("[velocity-pg] reconnection successful");
+                        return (new_client, true);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[velocity-pg] reconnection failed (backoff {}ms): {}",
+                            backoff_ms, e
+                        );
+                        backoff_ms = (backoff_ms * 2).min(max_backoff_ms);
+                    }
+                }
+            }
         }
     }
 
@@ -614,6 +764,23 @@ mod inner {
             let sn = step_number as i32;
             let rd = result_data.map(|d| d.to_vec());
 
+            // If disconnected, use BufferedStep path — acknowledged immediately,
+            // replayed to PG on reconnect. WAL is the source of truth.
+            if !self.connected.load(Ordering::SeqCst) {
+                let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+                self.tx
+                    .send(PgTask::BufferedStep {
+                        workflow_key: wk,
+                        step_number: sn,
+                        result_data: rd,
+                        reply: reply_tx,
+                    })
+                    .map_err(|_| DatabaseError::NotConnected)?;
+                return reply_rx
+                    .recv()
+                    .map_err(|_| DatabaseError::NotConnected)?;
+            }
+
             self.run_task(move |client_arc| {
                 Box::pin(async move {
                     let client = client_arc.lock_owned().await;
@@ -635,36 +802,107 @@ mod inner {
                 return Ok(());
             }
 
-            // Build a multi-row INSERT: VALUES ($1,$2,$3), ($4,$5,$6), ...
             let wk = workflow_key as i64;
-            let mut sql = String::from("INSERT INTO step_journal (workflow_key, step_number, result_data) VALUES ");
-            let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::with_capacity(steps.len() * 3);
-            for (i, (step_num, result)) in steps.iter().enumerate() {
-                if i > 0 {
-                    sql.push_str(", ");
+
+            // For large batches (>=16 steps), use pipeline mode: send multiple
+            // individual INSERT statements via batch_execute() in a single
+            // round-trip. This avoids the parameter-binding overhead of a
+            // massive multi-row INSERT and lets PG pipeline the writes.
+            // For small batches, use the parameterized multi-row INSERT.
+            if steps.len() >= 16 {
+                let mut sql = String::with_capacity(steps.len() * 128);
+                for (i, (step_num, result)) in steps.iter().enumerate() {
+                    if i > 0 { sql.push(';'); }
+                    let sn = *step_num as i32;
+                    match result {
+                        Some(data) => {
+                            let hex = hex_encode(data);
+                            sql.push_str(&format!(
+                                "INSERT INTO step_journal (workflow_key, step_number, result_data) VALUES ({}, {}, decode('{}', 'hex'))",
+                                wk, sn, hex
+                            ));
+                        }
+                        None => {
+                            sql.push_str(&format!(
+                                "INSERT INTO step_journal (workflow_key, step_number, result_data) VALUES ({}, {}, NULL)",
+                                wk, sn
+                            ));
+                        }
+                    }
                 }
-                let base = i * 3;
-                sql.push_str(&format!(
-                    "(${}, ${}, ${})",
-                    base + 1, base + 2, base + 3
-                ));
-                params.push(Box::new(wk));
-                params.push(Box::new(*step_num as i32));
-                params.push(Box::new(result.clone()));
+
+                self.run_task(move |client_arc| {
+                    Box::pin(async move {
+                        let client = client_arc.lock_owned().await;
+                        client.batch_execute(&sql)
+                            .await
+                            .map_err(|e| DatabaseError::QueryError(e.to_string()))?;
+                        Ok(())
+                    })
+                })
+            } else {
+                // Multi-row INSERT for small batches (parameterized, single query)
+                let mut sql = String::from("INSERT INTO step_journal (workflow_key, step_number, result_data) VALUES ");
+                let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::with_capacity(steps.len() * 3);
+                for (i, (step_num, result)) in steps.iter().enumerate() {
+                    if i > 0 {
+                        sql.push_str(", ");
+                    }
+                    let base = i * 3;
+                    sql.push_str(&format!(
+                        "(${}, ${}, ${})",
+                        base + 1, base + 2, base + 3
+                    ));
+                    params.push(Box::new(wk));
+                    params.push(Box::new(*step_num as i32));
+                    params.push(Box::new(result.clone()));
+                }
+
+                self.run_task(move |client_arc| {
+                    Box::pin(async move {
+                        let client = client_arc.lock_owned().await;
+                        let c = &*client;
+                        let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+                            params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+                        c.execute(&sql, &param_refs)
+                            .await
+                            .map_err(|e| DatabaseError::QueryError(e.to_string()))?;
+                        Ok(())
+                    })
+                })
             }
+        }
+
+        fn load_steps(&self, workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>> {
+            let wk = workflow_key as i64;
+            let result_arc = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let result_clone = result_arc.clone();
 
             self.run_task(move |client_arc| {
+                let result_arc = result_clone;
                 Box::pin(async move {
                     let client = client_arc.lock_owned().await;
                     let c = &*client;
-                    let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-                        params.iter().map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
-                    c.execute(&sql, &param_refs)
+                    let rows = c
+                        .query(crate::db_adapter::sql::SELECT_JOURNAL, &[&wk])
                         .await
                         .map_err(|e| DatabaseError::QueryError(e.to_string()))?;
+                    let mut steps: Vec<(u32, Option<Vec<u8>>)> = rows
+                        .iter()
+                        .map(|r| {
+                            let step_num = r.get::<_, i32>(2) as u32;
+                            let result_data = r.get::<_, Option<Vec<u8>>>(3);
+                            (step_num, result_data)
+                        })
+                        .collect();
+                    steps.sort_by_key(|&(step, _)| step);
+                    *result_arc.lock().unwrap() = steps;
                     Ok(())
                 })
-            })
+            })?;
+
+            let data = result_arc.lock().unwrap().clone();
+            Ok(data)
         }
     }
 

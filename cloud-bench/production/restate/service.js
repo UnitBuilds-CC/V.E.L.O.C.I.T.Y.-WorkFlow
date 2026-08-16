@@ -12,6 +12,16 @@
  */
 
 const restate = require("@restatedev/restate-sdk");
+const crypto = require("crypto");
+
+/// SHA-256 hash chain — same CPU work across all engines.
+function computeWork(iterations) {
+  let hash = crypto.createHash("sha256").update("velocity-bench-seed").digest();
+  for (let i = 0; i < iterations; i++) {
+    hash = crypto.createHash("sha256").update(hash).digest();
+  }
+  return hash.toString("hex");
+}
 
 // ─── Stateless Benchmark Service ─────────────────────────────────────────────
 // Mirrors velocity-bench workloads: simple_workflow, signal_storm, cold_start, etc.
@@ -25,8 +35,9 @@ const benchService = restate.object({
      */
     async simple(ctx) {
       for (let i = 0; i < 10; i++) {
-        const prev = (await ctx.get(`step_${i}`)) || 0;
-        ctx.set(`step_${i}`, prev + 1);
+        // Real CPU work: SHA-256 hash chain (2000 iterations).
+        const result = computeWork(2000);
+        ctx.set(`step_${i}`, result);
       }
       return { status: "completed", steps: 10 };
     },
@@ -245,6 +256,9 @@ const reactiveService = restate.object({
 });
 
 // ─── Serve ───────────────────────────────────────────────────────────────────
+// Configure Restate server URL for auto-registration
+process.env.RESTATE_URL = process.env.RESTATE_URL || 'http://bench-restate-server:8080';
+
 restate.serve({
   services: [benchService, keyedBenchService, concurrentService, contentionService, reactiveService],
   port: 9080,

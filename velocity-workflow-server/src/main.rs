@@ -16,6 +16,8 @@ use velocity_workflow_engine::LivePostgresAdapter;
 use velocity_workflow_engine::vctp_transport::{VctpTransport, VctpTransportConfig};
 use velocity_workflow_engine::VctpRpcServer;
 
+mod http_bench;
+
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
@@ -52,6 +54,11 @@ struct Cli {
     /// When set, workflow state is durably persisted to PostgreSQL in addition to WAL.
     #[arg(long, env = "DATABASE_URL")]
     postgres: Option<String>,
+
+    /// HTTP benchmark port (0 = disabled).  Provides a fair cross-engine
+    /// comparison endpoint at POST /bench/simple_workflow.
+    #[arg(long, default_value_t = 8080, env = "HTTP_BENCH_PORT")]
+    http_bench_port: u16,
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -111,6 +118,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(adapter) => {
                 tracing::info!("PostgreSQL persistence enabled: {}", pg_conn);
                 engine.enable_db_adapter(std::sync::Arc::new(adapter));
+                // After WAL recovery + PG adapter init, recover step journals from PG.
+                // This fills gaps where PG has steps that WAL didn't capture
+                // (e.g., persist_step_async() PG write completed but WAL fsync didn't).
+                match engine.recover_steps_from_pg() {
+                    Ok((workflows, steps)) => {
+                        if steps > 0 {
+                            tracing::info!(
+                                workflows_recovered = workflows,
+                                steps_recovered = steps,
+                                "PostgreSQL step journal recovery completed"
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "PG step journal recovery failed (continuing with WAL-only state)");
+                    }
+                }
             }
             Err(e) => {
                 tracing::warn!("Failed to connect to PostgreSQL (continuing without DB): {}", e);
@@ -119,6 +143,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let engine = Arc::new(engine);
+
+    // ── Optionally start HTTP benchmark server ──────────────────────────
+    if cli.http_bench_port > 0 {
+        http_bench::spawn_http_bench(engine.clone(), cli.http_bench_port);
+    }
 
     // ── Create VCTP transport (UDP socket) ────────────────────────────────
     let transport_config = VctpTransportConfig {

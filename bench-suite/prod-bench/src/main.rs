@@ -18,6 +18,7 @@ mod velocity_embedded_client;
 mod velocity_classic_client;
 mod dbos_client;
 mod restate_client;
+mod temporal_client;
 mod workloads;
 
 use velocity_client::VelocityClient;
@@ -25,6 +26,7 @@ use velocity_embedded_client::VelocityEmbeddedClient;
 use velocity_classic_client::VelocityClassicClient;
 use dbos_client::DbosClient;
 use restate_client::RestateClient;
+use temporal_client::TemporalClient;
 use workloads::WorkloadDef;
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -32,7 +34,7 @@ use workloads::WorkloadDef;
 #[derive(Parser)]
 #[command(name = "prod-bench", about = "Production benchmark: Velocity vs DBOS vs Restate")]
 struct Cli {
-    /// Comma-separated engines to benchmark: velocity,velocity-embedded,velocity-classic,dbos,restate,all
+    /// Comma-separated engines to benchmark: velocity,velocity-embedded,velocity-classic,dbos,restate,temporal,all
     #[arg(long, default_value = "all")]
     engines: String,
 
@@ -63,6 +65,10 @@ struct Cli {
     /// Restate HTTP address
     #[arg(long, env = "RESTATE_URL", default_value = "http://localhost:9070")]
     restate_url: String,
+
+    /// Temporal HTTP address (FastAPI service)
+    #[arg(long, env = "TEMPORAL_URL", default_value = "http://localhost:8083")]
+    temporal_url: String,
 
     /// Output format: json, markdown, csv
     #[arg(long, default_value = "markdown")]
@@ -132,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Vec<_>>();
 
     let engines: Vec<&str> = if cli.engines == "all" {
-        vec!["velocity", "velocity-embedded", "velocity-classic", "dbos", "restate"]
+        vec!["velocity", "velocity-embedded", "velocity-classic", "dbos", "restate", "temporal"]
     } else {
         cli.engines.split(',').map(|s| s.trim()).collect()
     };
@@ -303,6 +309,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("");
     }
 
+    // ─── Temporal ──────────────────────────────────────────────────────
+    if engines.contains(&"temporal") {
+        info!("━━━ Temporal (Real HTTP API + PostgreSQL) ━━━");
+        info!("Target: {}", cli.temporal_url);
+
+        match TemporalClient::new(&cli.temporal_url).await {
+            Ok(client) => {
+                let mut results = Vec::new();
+                for w in &workloads {
+                    info!("  Running {} ({} ops)...", w.name, w.config.workflow_count);
+                    let r = run_temporal_workload(&client, w).await;
+                    info!(
+                        "    -> {:.1} ops/sec, p99={:.0}µs, errors={:.1}%",
+                        r.ops_per_second, r.latency_p99_us, r.error_rate_pct
+                    );
+                    results.push(r);
+                }
+                all_results.push(EngineResult {
+                    engine: "Temporal".into(),
+                    engine_version: "1.0".into(),
+                    workloads: results,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                });
+            }
+            Err(e) => {
+                error!("Temporal connection failed: {}", e);
+                warn!("Skipping Temporal — is the Temporal server running at {}?", cli.temporal_url);
+            }
+        }
+        info!("");
+    }
+
     // ─── Output Results ────────────────────────────────────────────────
     if all_results.is_empty() {
         error!("No engines produced results. Check connectivity.");
@@ -337,12 +375,9 @@ async fn run_velocity_workload(client: &VelocityClient, w: &WorkloadDef) -> Work
 
     for batch_start in (0..count).step_by(concurrency) {
         let batch_end = (batch_start + concurrency as u64).min(count);
-        let wf_ids: Vec<String> = (batch_start..batch_end)
-            .map(|i| format!("{}-{}", w.name, i))
-            .collect();
         let mut futs = Vec::new();
-        for wf_id in &wf_ids {
-            futs.push(client.run_workflow(wf_id, &w.name, &w.kind));
+        for _ in batch_start..batch_end {
+            futs.push(client.run_workload(&w.name, &w.kind));
         }
         let results = futures::future::join_all(futs).await;
         for r in results {
@@ -561,6 +596,62 @@ async fn run_dbos_workload(client: &DbosClient, w: &WorkloadDef) -> WorkloadResu
 }
 
 async fn run_restate_workload(client: &RestateClient, w: &WorkloadDef) -> WorkloadResult {
+    let count = w.config.workflow_count;
+    let concurrency = w.config.concurrency.max(1) as usize;
+    let mut latencies: Vec<f64> = Vec::new();
+    let mut success = 0u64;
+    let mut fail = 0u64;
+    let bench_start = Instant::now();
+
+    for batch_start in (0..count).step_by(concurrency) {
+        let batch_end = (batch_start + concurrency as u64).min(count);
+        let mut futs = Vec::new();
+        for _ in batch_start..batch_end {
+            futs.push(client.run_workload(&w.name, &w.kind));
+        }
+        let results = futures::future::join_all(futs).await;
+        for r in results {
+            match r {
+                Ok(latency_us) => {
+                    success += 1;
+                    latencies.push(latency_us);
+                }
+                Err(_) => fail += 1,
+            }
+        }
+    }
+
+    let wall = bench_start.elapsed().as_secs_f64();
+    let ops_sec = success as f64 / wall;
+    latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = latencies.len();
+    let p50 = if n > 0 { latencies[n * 50 / 100] } else { 0.0 };
+    let p99 = if n > 0 { latencies[n * 99 / 100] } else { 0.0 };
+    let p999 = if n > 0 { latencies[(n * 999 / 1000).min(n - 1)] } else { 0.0 };
+    let mean = if n > 0 { latencies.iter().sum::<f64>() / n as f64 } else { 0.0 };
+    let err_rate = if (success + fail) > 0 {
+        fail as f64 / (success + fail) as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    WorkloadResult {
+        name: w.name.to_string(),
+        description: w.description.to_string(),
+        total_operations: count,
+        successful_operations: success,
+        failed_operations: fail,
+        ops_per_second: ops_sec,
+        latency_p50_us: p50,
+        latency_p99_us: p99,
+        latency_p999_us: p999,
+        latency_mean_us: mean,
+        peak_memory_mb: 0.0,
+        error_rate_pct: err_rate,
+    }
+}
+
+async fn run_temporal_workload(client: &TemporalClient, w: &WorkloadDef) -> WorkloadResult {
     let count = w.config.workflow_count;
     let concurrency = w.config.concurrency.max(1) as usize;
     let mut latencies: Vec<f64> = Vec::new();

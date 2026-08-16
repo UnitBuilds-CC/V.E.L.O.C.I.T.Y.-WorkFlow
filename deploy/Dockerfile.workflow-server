@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 
 COPY --from=builder /app/velocity-workflow-server/target/release/velocity-server /usr/local/bin/velocity-server
 
-EXPOSE 7234/udp
+EXPOSE 7234/udp 8080
 
 ENTRYPOINT ["velocity-server"]
 CMD ["--ip", "0.0.0.0", "--vctp-port", "7234"]
