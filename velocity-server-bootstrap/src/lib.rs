@@ -30,28 +30,36 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send> AsyncReadWrite for T {}
 ///
 /// Returns `None` if either path is empty (TLS disabled).
 /// Used for both the HTTP health endpoint and WebSocket NMCP endpoint.
-pub fn load_tls_config(cert_path: &str, key_path: &str) -> Option<tokio_rustls::TlsAcceptor> {
+pub fn load_tls_config(cert_path: &str, key_path: &str) -> Result<tokio_rustls::TlsAcceptor, String> {
     if cert_path.is_empty() || key_path.is_empty() {
-        return None;
+        return Err("TLS cert and key paths must not be empty".into());
     }
 
-    let cert_file = std::fs::File::open(cert_path).ok()?;
-    let key_file = std::fs::File::open(key_path).ok()?;
+    let cert_file = std::fs::File::open(cert_path)
+        .map_err(|e| format!("Failed to open TLS cert file '{}': {}", cert_path, e))?;
+    let key_file = std::fs::File::open(key_path)
+        .map_err(|e| format!("Failed to open TLS key file '{}': {}", key_path, e))?;
 
     let mut cert_reader = std::io::BufReader::new(cert_file);
     let certs: Vec<_> = rustls_pemfile::certs(&mut cert_reader)
         .filter_map(|c| c.ok())
         .collect();
 
+    if certs.is_empty() {
+        return Err(format!("No valid certificates found in '{}'", cert_path));
+    }
+
     let mut key_reader = std::io::BufReader::new(key_file);
-    let key = rustls_pemfile::private_key(&mut key_reader).ok()??;
+    let key = rustls_pemfile::private_key(&mut key_reader)
+        .map_err(|e| format!("Failed to parse TLS private key: {}", e))?
+        .ok_or_else(|| format!("No private key found in '{}'", key_path))?;
 
     let config = tokio_rustls::rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key)
-        .ok()?;
+        .map_err(|e| format!("Failed to build TLS config: {}", e))?;
 
-    Some(tokio_rustls::TlsAcceptor::from(Arc::new(config)))
+    Ok(tokio_rustls::TlsAcceptor::from(Arc::new(config)))
 }
 
 /// Result of engine bootstrap.
@@ -448,8 +456,15 @@ pub async fn run_http_health(
                 .and_then(|l| l.splitn(2, ':').nth(1))
                 .map(|v| v.trim().to_string());
 
-            let (status, content_type, body) = if first_line.starts_with("GET /health") || first_line.starts_with("GET /ready") {
-                // Health/readiness — no auth required (needed for K8s probes)
+            let (status, content_type, body) = if first_line.starts_with("GET /ready") {
+                // Readiness probe — distinct response for K8s readiness
+                let body = serde_json::json!({
+                    "status": "ready",
+                    "engine": flavor_name,
+                });
+                ("200 OK", "application/json", body.to_string())
+            } else if first_line.starts_with("GET /health") {
+                // Liveness probe — no auth required
                 let body = serde_json::json!({
                     "status": "ok",
                     "engine": flavor_name,

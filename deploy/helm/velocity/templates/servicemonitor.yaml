@@ -24,7 +24,11 @@ spec:
       {{- if or .Values.metrics.existingSecret .Values.metrics.token }}
       authorization:
         credentials:
-          name: {{ .Values.metrics.existingSecret | default (include "velocity.fullname" .) }}
+          {{- if .Values.metrics.existingSecret }}
+          name: {{ .Values.metrics.existingSecret }}
+          {{- else }}
+          name: {{ include "velocity.fullname" . }}-metrics-token
+          {{- end }}
           key: token
       {{- end }}
       {{- if .Values.serviceMonitor.honorLabels }}

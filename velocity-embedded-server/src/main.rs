@@ -124,7 +124,7 @@ async fn main() {
     println!("  ╚╝  ╝╚╝ ╩ ╩ ╩ ╩ ╚═╝ ╚═╝ ╝╚╝ ╚═╝");
     println!("  Embedded Server v{}", env!("CARGO_PKG_VERSION"));
     println!("  Shmem: {}", cli.shmem_path);
-    println!("  WS:    ws://{}", cli.ws_bind);
+    println!("  WS:    {}://{}", if cli.tls_cert.is_some() { "wss" } else { "ws" }, cli.ws_bind);
     println!("  Mode:  NMCP (shmem + WebSocket)");
     println!("  WAL:   {}", cli.wal_path);
     println!();
@@ -137,7 +137,11 @@ async fn main() {
 
     // ── Load TLS config (optional) ──────────────────────────────────────
     let tls_acceptor = match (cli.tls_cert.as_deref(), cli.tls_key.as_deref()) {
-        (Some(cert), Some(key)) => load_tls_config(cert, key),
+        (Some(cert), Some(key)) => Some(load_tls_config(cert, key)
+            .unwrap_or_else(|e| {
+                tracing::error!("TLS configuration error: {}", e);
+                std::process::exit(1);
+            })),
         (Some(_), None) | (None, Some(_)) => {
             tracing::warn!("TLS requires both --tls-cert and --tls-key; TLS disabled");
             None

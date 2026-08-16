@@ -14,14 +14,17 @@ Both share the same operational interface: health endpoints, metrics, TLS, and g
 
 | Endpoint | Port | Auth | Purpose |
 |----------|------|------|---------|
-| `GET /health` | 8093/8094 | None | Liveness probe — returns `{"status":"ok"}` |
-| `GET /ready` | 8093/8094 | None | Readiness probe — returns `{"status":"ok"}` |
+| `GET /health` | 8093/8094 | None | Liveness probe — returns `{"status":"ok","engine":"...","transport":"nmcp"}` |
+| `GET /ready` | 8093/8094 | None | Readiness probe — returns `{"status":"ready","engine":"..."}` |
 | `GET /metrics` | 8093/8094 | Bearer token (optional) | Prometheus metrics |
 
 ### Checking Health
 ```bash
 curl http://localhost:8093/health
 # {"status":"ok","engine":"velocity-classic","transport":"nmcp"}
+
+curl http://localhost:8093/ready
+# {"status":"ready","engine":"velocity-classic"}
 ```
 
 ### Prometheus Metrics
