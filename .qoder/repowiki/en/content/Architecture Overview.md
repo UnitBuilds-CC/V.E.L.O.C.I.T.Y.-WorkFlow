@@ -627,9 +627,9 @@ Each SDK includes a `VctpTransport` class that implements the full VCTP client p
 
 | SDK | VCTP Path | Lines |
 |-----|-----------|-------|
-| TypeScript | `velocity-sdk-typescript/src/vctp-transport.ts` | 407 |
-| Python | `velocity-sdk-python/velocity_workflow/vctp.py` | 377 |
-| Go | `velocity-sdk-go/vctp/client.go` | 508 |
+| TypeScript | `velocity-sdk-typescript/src/vctp-transport.ts` | 358 |
+| Python | `velocity-sdk-python/velocity_workflow/vctp.py` | 316 |
+| Go | `velocity-sdk-go/vctp/client.go` | 451 |
 
 VCTP SDK API surface: `connect()`, `disconnect()`, `startWorkflow()`, `signalWorkflow()`, `queryWorkflow()`, `cancelWorkflow()`, `terminateWorkflow()`, `describeWorkflow()`.
 

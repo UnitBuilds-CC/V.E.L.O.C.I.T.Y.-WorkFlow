@@ -267,9 +267,9 @@ Documents the protocol bridge gateways and crypto offload proxy.
 Documents the VCTP developer ecosystem.
 
 **Key topics:**
-- TypeScript SDK (407 lines)
-- Python SDK (377 lines)
-- Go SDK (508 lines)
+- TypeScript SDK (358 lines)
+- Python SDK (316 lines)
+- Go SDK (451 lines)
 - vctp-cli Python CLI tool
 - Wireshark Lua dissector
 - OpenAPI 3.0 spec generator

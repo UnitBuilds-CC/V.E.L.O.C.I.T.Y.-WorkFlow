@@ -8,7 +8,7 @@ A complete developer ecosystem for VCTP: native SDKs in TypeScript, Python, and 
 
 ### TypeScript SDK
 
-**Path:** `velocity-sdk-typescript/src/vctp-transport.ts` (407 lines)
+**Path:** `velocity-sdk-typescript/src/vctp-transport.ts` (358 lines)
 
 ```typescript
 class VctpTransport {
@@ -29,7 +29,7 @@ class VctpTransport {
 
 ### Python SDK
 
-**Path:** `velocity-sdk-python/velocity_workflow/vctp.py` (377 lines)
+**Path:** `velocity-sdk-python/velocity_workflow/vctp.py` (316 lines)
 
 ```python
 class VctpTransport:
@@ -49,7 +49,7 @@ class VctpTransport:
 
 ### Go SDK
 
-**Path:** `velocity-sdk-go/vctp/client.go` (508 lines)
+**Path:** `velocity-sdk-go/vctp/client.go` (451 lines)
 
 ```go
 type Client struct { ... }

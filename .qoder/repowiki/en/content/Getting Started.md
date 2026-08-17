@@ -180,9 +180,9 @@ Protocol bridge gateways for connecting standard clients to VCTP:
 
 ### SDKs
 Multi-language SDKs for building workflows — all include VCTP transport support:
-- TypeScript SDK with full type safety + VCTP UDP transport (407 lines)
-- Python SDK with async support + VCTP transport (377 lines)
-- Go SDK for high-performance services + VCTP client (508 lines)
+- TypeScript SDK with full type safety + VCTP UDP transport (358 lines)
+- Python SDK with async support + VCTP transport (316 lines)
+- Go SDK for high-performance services + VCTP client (451 lines)
 - Java SDK for JVM ecosystems
 
 ## Architecture Overview

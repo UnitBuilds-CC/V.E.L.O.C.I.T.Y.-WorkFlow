@@ -173,17 +173,17 @@ sdks:
   - language: "TypeScript"
     path: "velocity-sdk-typescript"
     status: "production"
-    vctp: "velocity-sdk-typescript/src/vctp-transport.ts (407 lines)"
+    vctp: "velocity-sdk-typescript/src/vctp-transport.ts (358 lines)"
     
   - language: "Python"
     path: "velocity-sdk-python"
     status: "production"
-    vctp: "velocity-sdk-python/velocity_workflow/vctp.py (377 lines)"
+    vctp: "velocity-sdk-python/velocity_workflow/vctp.py (316 lines)"
     
   - language: "Go"
     path: "velocity-sdk-go"
     status: "production"
-    vctp: "velocity-sdk-go/vctp/client.go (508 lines)"
+    vctp: "velocity-sdk-go/vctp/client.go (451 lines)"
     
   - language: "Java"
     path: "velocity-sdk-java"
