@@ -8,6 +8,9 @@
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
 - [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
 - [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
+- [velocity-workflow-engine/src/vctp_rpc.rs](file://velocity-workflow-engine/src/vctp_rpc.rs)
+- [tools/vctp-sidecar/src/main.rs](file://tools/vctp-sidecar/src/main.rs)
+- [deploy/helm/velocity/values.yaml](file://deploy/helm/velocity/values.yaml)
 </cite>
 
 ## Table of Contents
@@ -34,20 +37,20 @@ The project offers three distinct flavors:
 ```
 Velocity-workflow/
 ├── src/                          # Core Rust library
-├── velocity-workflow-core/       # Core workflow abstractions & FFI
-├── velocity-workflow-engine/     # Engine (WAL, PG adapter, advisory locking)
+├── velocity-workflow-core/       # Core workflow abstractions & FFI (Slab Engine, Bitmask256)
+├── velocity-workflow-engine/     # Engine (WAL, PG adapter, advisory locking, VCTP transport + RPC)
 ├── velocity-workflow-server/     # gRPC server with WAL (original flavor)
 ├── velocity-workflow-daemon/     # Background daemon
 ├── velocity-nmcp-protocol/       # NMCP binary protocol (shmem + WebSocket)
 ├── velocity-server-bootstrap/    # Shared server init, auth, rate-limit, audit, tracing
 ├── velocity-classic/             # Classic engine library (NMCP router)
-├── velocity-classic-server/      # Classic server binary (NMCP, replaces TypeScript)
+├── velocity-classic-server/      # Classic server binary (NMCP + VCTP gateways)
 ├── velocity-classic-ts/          # TypeScript SDK (legacy client)
 ├── velocity-embedded/            # Embedded engine library (NMCP + PG)
 ├── velocity-embedded-server/     # Embedded server binary (NMCP + PostgreSQL)
-├── velocity-sdk-typescript/      # TypeScript SDK
-├── velocity-sdk-python/          # Python SDK
-├── velocity-sdk-go/              # Go SDK
+├── velocity-sdk-typescript/      # TypeScript SDK (+ VCTP transport)
+├── velocity-sdk-python/          # Python SDK (+ VCTP transport)
+├── velocity-sdk-go/              # Go SDK (+ VCTP client)
 ├── velocity-sdk-java/            # Java SDK
 ├── velocity-runtime-typescript/  # TypeScript runtime
 ├── velocity-runtime-python/      # Python runtime
@@ -55,14 +58,19 @@ Velocity-workflow/
 ├── velocity-dev-server/          # Development server
 ├── velocity-test-framework/      # Integration test framework
 ├── velocity-migration-toolkit/   # Migration toolkit
+├── tools/                        # VCTP developer tools
+│   ├── vctp-sidecar/             # Sidecar proxy (ECDH + XOR cipher)
+│   ├── vctp-cli/                 # Python CLI for VCTP operations
+│   ├── vctp-wireshark/           # Wireshark Lua dissector
+│   └── vctp-openapi/             # OpenAPI 3.0 spec generator
 ├── bench-suite/                  # Comprehensive benchmark suite
 │   ├── prod-bench/               # Production benchmark tool
 │   └── velocity-bench-server/    # gRPC benchmark service
 ├── benchmarks/                   # C# lifecycle benchmarks (.NET)
 ├── cloud-bench/                  # Cloud benchmark scripts
-├── deploy/                       # Deployment configurations
+├── deploy/                       # Deployment configurations (incl. Helm charts)
 ├── migrations/                   # Database migrations
-├── proto/                        # Protocol buffer definitions
+├── proto/                        # Protocol buffer + VCTP protocol definitions
 ├── sdk/                          # SDK implementations
 ├── tests/                        # Integration tests
 ├── docs/                         # Documentation (incl. ops-runbooks.md)
@@ -84,10 +92,17 @@ graph TB
     end
     
     subgraph "SDKs"
-        K[velocity-sdk-typescript]
-        L[velocity-sdk-python]
-        M[velocity-sdk-go]
+        K[velocity-sdk-typescript<br/>+ VCTP]
+        L[velocity-sdk-python<br/>+ VCTP]
+        M[velocity-sdk-go<br/>+ VCTP]
         N[velocity-sdk-java]
+    end
+    
+    subgraph "VCTP Tools"
+        V1[vctp-sidecar]
+        V2[vctp-cli]
+        V3[vctp-wireshark]
+        V4[vctp-openapi]
     end
     
     subgraph "Benchmarks"
@@ -137,11 +152,37 @@ Rust server with NMCP transport. Replaced the original TypeScript engine. Suppor
 - WAL + optional PostgreSQL persistence
 - WebSocket API on port 8083
 
+### VCTP RPC Server
+
+High-performance UDP-based RPC server for VCTP (Velocity Transfer Protocol) workflow operations.
+
+**Key files:**
+- `velocity-workflow-engine/src/vctp_transport.rs` — UDP wire format (28-byte header + CRC32)
+- `velocity-workflow-engine/src/vctp_rpc.rs` — Full request pipeline (circuit breaker, auth, drain, heartbeat)
+- UDP port 9090 (default)
+- 9,052 ops/s full-stack dispatch throughput
+
+### VCTP Gateways
+
+Protocol bridge gateways for connecting standard clients to VCTP:
+- `velocity-classic-server/src/ws_vctp_gateway.rs` — WebSocket-to-VCTP gateway (592 lines)
+- `velocity-classic-server/src/http_vctp_ingress.rs` — HTTP-to-VCTP with Swagger UI at `/docs` (666 lines)
+- `tools/vctp-sidecar/src/main.rs` — Sidecar proxy with ECDH + XOR cipher (474 lines)
+
+### VCTP Developer Tools
+
+| Tool | Path | Description |
+|------|------|-------------|
+| vctp-cli | `tools/vctp-cli/` | Python CLI for VCTP operations (health, start, signal, query, cancel) |
+| Wireshark dissector | `tools/vctp-wireshark/` | Lua-based packet inspection |
+| OpenAPI generator | `tools/vctp-openapi/` | Generates OpenAPI 3.0.3 spec from VCTP protocol |
+| Protocol schema | `proto/vctp_service.json` | Machine-readable VCTP protocol definition |
+
 ### SDKs
-Multi-language SDKs for building workflows:
-- TypeScript SDK with full type safety
-- Python SDK with async support
-- Go SDK for high-performance services
+Multi-language SDKs for building workflows — all include VCTP transport support:
+- TypeScript SDK with full type safety + VCTP UDP transport (407 lines)
+- Python SDK with async support + VCTP transport (377 lines)
+- Go SDK for high-performance services + VCTP client (508 lines)
 - Java SDK for JVM ecosystems
 
 ## Architecture Overview
@@ -149,16 +190,23 @@ Multi-language SDKs for building workflows:
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        C1[TypeScript SDK]
-        C2[Python SDK]
-        C3[Go SDK]
+        C1[TypeScript SDK<br/>+ VCTP]
+        C2[Python SDK<br/>+ VCTP]
+        C3[Go SDK<br/>+ VCTP]
         C4[Java SDK]
     end
     
+    subgraph "Gateway Layer"
+        GW1[WS-to-VCTP]
+        GW2[HTTP-to-VCTP]
+        GW3[VCTP Sidecar]
+    end
+
     subgraph "Server Layer"
         S1[Velocity Server<br/>gRPC + WAL]
         S2[Velocity Embedded<br/>NMCP + PostgreSQL]
         S3[Velocity Classic<br/>NMCP + WAL/PG]
+        S4[VCTP RPC Server<br/>UDP :9090]
     end
     
     subgraph "Storage Layer"
@@ -167,11 +215,17 @@ graph TB
         ST3[In-Memory]
     end
     
+    C1 --> GW1
+    C2 --> GW2
+    C3 --> GW1
+    GW1 -->|VCTP UDP| S4
+    GW2 -->|VCTP UDP| S4
+    GW3 -->|VCTP UDP| S4
+    
     C1 --> S1
     C1 --> S2
     C1 --> S3
     C2 --> S1
-    C2 --> S2
     C3 --> S1
     C4 --> S1
     
@@ -226,6 +280,7 @@ This starts all three flavors:
 - Velocity Server: `localhost:17234`
 - Velocity Embedded: `localhost:18082`
 - Velocity Classic: `localhost:18083`
+- VCTP UDP (when enabled): `localhost:9090`
 
 ### Running Individual Flavors
 
@@ -275,6 +330,32 @@ cargo build --release
 ./target/release/prod-bench --engines velocity-classic --velocity-classic-url http://localhost:18083
 ```
 
+### VCTP Benchmarks
+
+VCTP-specific performance benchmarks are built into the engine test suite:
+
+```bash
+# Run VCTP benchmarks (included in engine tests)
+cargo test -p velocity-workflow-engine --release -- vctp_bench
+
+# Key metrics:
+# - Full-stack dispatch: ≥700 ops/s (UDP + WAL + DB)
+# - Per-step latency: ≤20µs
+```
+
+### VCTP CLI Tool
+
+```bash
+# Health check
+python tools/vctp-cli/vctp_cli.py health --server 127.0.0.1:9090
+
+# Start a workflow
+python tools/vctp-cli/vctp_cli.py start-workflow --server 127.0.0.1:9090 --type my-workflow --steps 5
+
+# Query workflow state
+python tools/vctp-cli/vctp_cli.py query --server 127.0.0.1:9090 --workflow-id wf-123
+```
+
 ### Benchmark Results Summary
 
 | Engine | Throughput | p50 Latency | Memory | Persistence |
@@ -291,8 +372,9 @@ cargo build --release
 ### Common Issues
 
 **Port already in use**
-- Check if ports 17234, 18082, 18083 are available
+- Check if ports 17234, 18082, 18083, 9090 (VCTP UDP) are available
 - Use `netstat -ano | findstr :17234` on Windows
+- For VCTP: `netstat -ano | findstr :9090` (look for UDP)
 
 **Docker container exits immediately**
 - Check logs: `docker logs pb-velocity`
@@ -321,3 +403,6 @@ cargo build --release
 - [docker-compose.yml](file://docker-compose.yml)
 - [Cargo.toml](file://Cargo.toml)
 - [bench-suite/prod-bench/README.md](file://bench-suite/prod-bench/README.md)
+- [velocity-workflow-engine/src/vctp_rpc.rs](file://velocity-workflow-engine/src/vctp_rpc.rs)
+- [tools/vctp-sidecar/src/main.rs](file://tools/vctp-sidecar/src/main.rs)
+- [deploy/helm/velocity/values.yaml](file://deploy/helm/velocity/values.yaml)

@@ -5,7 +5,13 @@
 - [Cargo.toml](file://Cargo.toml)
 - [velocity-workflow-engine/src/lib.rs](file://velocity-workflow-engine/src/lib.rs)
 - [velocity-workflow-engine/src/engine.rs](file://velocity-workflow-engine/src/engine.rs)
-- [velocity-workflow-engine/src/pg_advisory_lock.rs](file://velocity-workflow-engine/src/pg_advisory_lock.rs)
+- [velocity-workflow-engine/src/vctp_transport.rs](file://velocity-workflow-engine/src/vctp_transport.rs)
+- [velocity-workflow-engine/src/vctp_rpc.rs](file://velocity-workflow-engine/src/vctp_rpc.rs)
+- [velocity-workflow-core/src/slab.rs](file://velocity-workflow-core/src/slab.rs)
+- [velocity-workflow-core/src/bitmask.rs](file://velocity-workflow-core/src/bitmask.rs)
+- [velocity-classic-server/src/ws_vctp_gateway.rs](file://velocity-classic-server/src/ws_vctp_gateway.rs)
+- [velocity-classic-server/src/http_vctp_ingress.rs](file://velocity-classic-server/src/http_vctp_ingress.rs)
+- [tools/vctp-sidecar/src/main.rs](file://tools/vctp-sidecar/src/main.rs)
 - [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
 - [velocity-server-bootstrap/src/auth.rs](file://velocity-server-bootstrap/src/auth.rs)
 - [velocity-server-bootstrap/src/tracing_setup.rs](file://velocity-server-bootstrap/src/tracing_setup.rs)
@@ -14,6 +20,8 @@
 - [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
 - [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)
+- [proto/vctp_service.json](file://proto/vctp_service.json)
+- [deploy/helm/velocity/values.yaml](file://deploy/helm/velocity/values.yaml)
 </cite>
 
 ## Table of Contents
@@ -21,33 +29,43 @@
 2. [Workspace Crates](#workspace-crates)
 3. [Engine Flavors](#engine-flavors)
 4. [NMCP Protocol Transport](#nmcp-protocol-transport)
-5. [Persistence Layers](#persistence-layers)
-6. [Security Layer](#security-layer)
-7. [Distributed Tracing](#distributed-tracing)
-8. [Multi-Instance Coordination](#multi-instance-coordination)
-9. [Protocol Buffers and gRPC](#protocol-buffers-and-grpc)
-10. [SDK Architecture](#sdk-architecture)
-11. [Benchmark Architecture](#benchmark-architecture)
-12. [Deployment Architecture](#deployment-architecture)
-13. [Data Flow](#data-flow)
+5. [VCTP Protocol Transport](#vctp-protocol-transport)
+6. [VCTP Gateways and Sidecar Proxy](#vctp-gateways-and-sidecar-proxy)
+7. [Slab Engine — Merkle Root State Proof](#slab-engine--merkle-root-state-proof)
+8. [Persistence Layers](#persistence-layers)
+9. [Security Layer](#security-layer)
+10. [Distributed Tracing](#distributed-tracing)
+11. [Multi-Instance Coordination](#multi-instance-coordination)
+12. [Protocol Buffers and gRPC](#protocol-buffers-and-grpc)
+13. [SDK Architecture](#sdk-architecture)
+14. [Benchmark Architecture](#benchmark-architecture)
+15. [Deployment Architecture](#deployment-architecture)
+16. [Data Flow](#data-flow)
 
 ## System Architecture
 
-V.E.L.O.C.I.T.Y. is a multi-flavor workflow engine ecosystem designed for high performance, durability, and flexibility. The system is organized into four layers with 15 workspace crates:
+V.E.L.O.C.I.T.Y. is a multi-flavor workflow engine ecosystem designed for high performance, durability, and flexibility. The system is organized into four layers with 15 workspace crates plus VCTP tools and sidecar:
 
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        C1[TypeScript SDK]
-        C2[Python SDK]
-        C3[Go SDK]
+        C1[TypeScript SDK<br/>+ VCTP SDK]
+        C2[Python SDK<br/>+ VCTP SDK]
+        C3[Go SDK<br/>+ VCTP SDK]
         C4[Java SDK]
     end
     
+    subgraph "Gateway Layer"
+        GW1[WebSocket-to-VCTP<br/>Gateway]
+        GW2[HTTP-to-VCTP<br/>Ingress + Swagger UI]
+        GW3[VCTP Sidecar<br/>ECDH + XOR cipher]
+    end
+
     subgraph "Server Layer"
         S1[Velocity Server<br/>gRPC + WAL]
         S2[Velocity Embedded<br/>NMCP + PostgreSQL]
         S3[Velocity Classic<br/>NMCP + WAL/PG]
+        S4[VCTP RPC Server<br/>UDP :9090]
     end
 
     subgraph "Bootstrap Layer"
@@ -55,7 +73,7 @@ graph TB
     end
     
     subgraph "Core Engine"
-        E1[velocity-workflow-core]
+        E1[velocity-workflow-core<br/>Slab Engine + Bitmask256]
         E2[velocity-workflow-engine<br/>WAL, PG adapter, advisory locking, DurabilityConfig]
         E3[velocity-nmcp-protocol<br/>shmem + WebSocket]
     end
@@ -66,17 +84,25 @@ graph TB
         P3[PG Advisory Locks<br/>multi-instance]
     end
     
+    C1 --> GW1
+    C1 --> GW2
+    C2 --> GW1
+    C3 --> GW1
     C1 --> S1
     C1 --> S2
     C1 --> S3
     C2 --> S1
-    C2 --> S2
     C3 --> S1
     C4 --> S1
+    
+    GW1 -->|VCTP UDP| S4
+    GW2 -->|VCTP UDP| S4
+    GW3 -->|VCTP UDP| S4
     
     S1 --> E1
     S2 --> E1
     S3 --> E1
+    S4 --> E2
     S1 --> B1
     S2 --> B1
     S3 --> B1
@@ -90,13 +116,13 @@ graph TB
 
 **Key Design Principles:**
 - **Multi-flavor deployment** — Same core engine, different transport and persistence layers
-- **NMCP transport** — Shared memory IPC (50-100x faster than HTTP) + WebSocket for remote
+- **Dual transport** — NMCP (shmem + WebSocket) for production, VCTP (UDP) for high-performance RPC
 - **Zero-allocation hot paths** — Fixed-size buffers in critical paths
-- **Deterministic execution** — Workflow state is fully reproducible
-- **Protocol-first design** — gRPC/protobuf for bench-suite, NMCP for production
+- **Deterministic execution** — Workflow state is fully reproducible with cryptographic proof (Slab Merkle root)
+- **Protocol-first design** — gRPC/protobuf for bench-suite, NMCP for production, VCTP for UDP RPC
 - **Shared bootstrap** — Auth, rate limiting, audit, tracing extracted to one crate
-- **SDK diversity** — Native SDKs for TypeScript, Python, Go, Java
-- **Production hardened** — Chaos tests, mTLS, OpenTelemetry, PG advisory locking
+- **SDK diversity** — Native SDKs for TypeScript, Python, Go, Java — all with VCTP transport support
+- **Production hardened** — Chaos tests, mTLS, OpenTelemetry, PG advisory locking, circuit breaker, graceful drain
 
 ## Workspace Crates
 
@@ -104,14 +130,14 @@ The workspace contains 15 crates organized by role:
 
 | Crate | Role |
 |-------|------|
-| `velocity-workflow-core` | Core abstractions and FFI slab engine |
-| `velocity-workflow-engine` | Engine implementation (WAL, PG adapter, advisory locking, DurabilityConfig) |
+| `velocity-workflow-core` | Core abstractions, FFI slab engine, Bitmask256 |
+| `velocity-workflow-engine` | Engine implementation (WAL, PG adapter, advisory locking, DurabilityConfig, VCTP transport + RPC) |
 | `velocity-workflow-daemon` | Background daemon process |
 | `velocity-nmcp-protocol` | NMCP binary protocol (frame, shmem, WebSocket) |
 | `velocity-server-bootstrap` | Shared server init, auth, rate-limit, audit, tracing, mTLS |
 | `velocity-workflow-server` | gRPC server with WAL (original flavor) |
 | `velocity-classic` | Classic engine library (NMCP router) |
-| `velocity-classic-server` | Classic server binary (NMCP shmem + WebSocket) |
+| `velocity-classic-server` | Classic server binary (NMCP shmem + WebSocket, VCTP gateways) |
 | `velocity-embedded` | Embedded engine library (NMCP router + PostgreSQL) |
 | `velocity-embedded-server` | Embedded server binary (NMCP + PostgreSQL) |
 | `velocity-bench` | HTTP benchmark tool |
@@ -119,6 +145,15 @@ The workspace contains 15 crates organized by role:
 | `velocity-test-framework` | Integration test framework |
 | `prod-bench` | Production benchmark suite (bench-suite/) |
 | `velocity-bench-server` | gRPC benchmark service (bench-suite/) |
+
+### VCTP Tools (separate workspace)
+
+| Tool | Path | Role |
+|------|------|------|
+| `vctp-sidecar` | `tools/vctp-sidecar/` | TLS/crypto offload sidecar proxy (ECDH + XOR cipher) |
+| `vctp-cli` | `tools/vctp-cli/` | Python CLI for VCTP server operations |
+| `vctp-wireshark` | `tools/vctp-wireshark/` | Wireshark Lua dissector for packet inspection |
+| `vctp-openapi` | `tools/vctp-openapi/` | OpenAPI 3.0.3 spec generator |
 
 ## Engine Flavors
 
@@ -227,6 +262,150 @@ graph TB
 - **TLS support** — Both shmem and WebSocket endpoints support mTLS via rustls
 - **NmcpDispatch trait** — Each flavor implements frame dispatch via its NmcpFrameRouter
 
+## VCTP Protocol Transport
+
+VCTP (Velocity Transfer Protocol) is a zero-copy UDP-based RPC protocol for high-performance workflow operations. It complements NMCP with a connectionless transport optimized for low-latency, high-throughput scenarios.
+
+```mermaid
+graph TB
+    subgraph "VCTP Transport"
+        A[Client SDK] -->|UDP :9090| B[VCTP RPC Server]
+        B --> C[Request Pipeline]
+        C --> D[Drain Check]
+        D --> E[Circuit Breaker]
+        E --> F[Rate Limit]
+        F --> G[Auth]
+        G --> H[Idempotency]
+        H --> I[Dispatch]
+        I --> J[Workflow Engine]
+    end
+```
+
+### Wire Format
+
+```
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             Magic (0x50544356)                                |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             Sequence Number                                   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             Workflow ID                                       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             Slab Offset (frag index / total)                  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             Payload Length                                    |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             Payload (JSON)                                    |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             CRC32 Checksum                                    |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+```
+
+- **Header size:** 28 bytes (fixed)
+- **Max payload:** 65,479 bytes (fits in single UDP datagram)
+- **Checksum:** CRC32 for integrity verification
+- **Default port:** 9090
+
+### Request Pipeline
+
+Every VCTP request passes through a full processing pipeline:
+
+1. **Drain check** — Reject with 503 if server is draining
+2. **Circuit breaker** — Closed/Open/HalfOpen states, trips on max_inflight
+3. **Rate limit** — Token bucket per client
+4. **Authentication** — JWT bearer or API key
+5. **Idempotency** — Deduplicate by sequence number
+6. **Inflight tracking** — Track concurrent requests per client
+7. **Dispatch** — Route to method handler (start_workflow, signal, query, etc.)
+
+### Key Features
+
+- **Circuit breaker** — Three states (Closed/Open/HalfOpen), cooldown timer
+- **Heartbeat** — 30s interval, per-client tracking, 90s eviction timeout
+- **Graceful drain** — `begin_drain()` → 503 for new requests → K8s preStop hook sleeps drainTimeoutSeconds
+- **Reorder buffer** — BTreeMap-based in-order delivery for sequenced packets
+- **AIMD congestion control** — Additive increase, multiplicative decrease
+- **Packet fragmentation** — Large payloads split across multiple UDP datagrams
+- **Prometheus metrics** — Standard text format export
+- **OpenTelemetry tracing** — Spans for every pipeline stage
+
+### Performance
+
+| Benchmark | Result |
+|-----------|--------|
+| Full-stack dispatch | 9,052 ops/s (UDP + WAL + DB) |
+| Full-stack start_workflow | 7,375 ops/s |
+| WAL durability write | 7,962 wf/s |
+| WAL crash recovery | 43,113 wf/s |
+
+## VCTP Gateways and Sidecar Proxy
+
+Protocol bridge gateways allow clients using standard protocols (WebSocket, HTTP) to connect to the VCTP RPC server:
+
+```mermaid
+graph LR
+    A[Browser Clients] -->|WebSocket| B[WS-to-VCTP<br/>Gateway]
+    C[REST Clients] -->|HTTP| D[HTTP-to-VCTP<br/>Ingress + /docs]
+    E[External Clients] -->|TCP+TLS| F[VCTP Sidecar<br/>Proxy]
+    B -->|VCTP UDP| G[VCTP RPC Server]
+    D -->|VCTP UDP| G
+    F -->|VCTP UDP| G
+```
+
+### WebSocket-to-VCTP Gateway
+
+**Path:** `velocity-classic-server/src/ws_vctp_gateway.rs` (592 lines)
+
+Bridges browser-based WebSocket clients to the VCTP UDP backend. Handles WebSocket frame parsing, VCTP packet encapsulation, and bidirectional forwarding.
+
+### HTTP-to-VCTP Ingress
+
+**Path:** `velocity-classic-server/src/http_vctp_ingress.rs` (666 lines)
+
+REST API gateway with auto-generated Swagger UI at `/docs`. Translates HTTP requests to VCTP UDP calls and returns JSON responses.
+
+### VCTP Sidecar Proxy
+
+**Path:** `tools/vctp-sidecar/src/main.rs` (474 lines)
+
+Crypto offload proxy for external connections. Uses ECDH key exchange for session establishment and XOR cipher for payload encryption. Runs as a separate binary with its own Cargo workspace.
+
+## Slab Engine — Merkle Root State Proof
+
+The slab engine provides cryptographic state verification for workflow execution. Each workflow has a `SlabHeader` with a SHA-256 Merkle root that proves the integrity of the workflow's step completion state.
+
+```mermaid
+graph TB
+    subgraph "SlabHeader (128 bytes, repr(C))"
+        A[magic: u32<br/>VLCT]
+        B[schema_version: u32]
+        C[workflow_id: u64]
+        D[run_id: u64]
+        E[current_step: u32]
+        F[total_steps: u32]
+        G[merkle_root: SHA-256]
+        H[step_bitmask: Bitmask256<br/>256-bit O(1) tracking]
+        I[reserved: 32 bytes]
+    end
+    
+    A --> G
+    B --> G
+    C --> G
+    D --> G
+    E --> G
+    F --> G
+    H --> G
+```
+
+**Key characteristics:**
+- **`#[repr(C)]`** binary layout for FFI compatibility and memory-mapped persistence
+- **Bitmask256** — `[u64; 4]` = 256 bits, `set_step()` is single bitwise OR (O(1)), `is_step_set()` is single bitwise AND (O(1))
+- **Merkle root** — SHA-256 hash of magic + schema + workflow_id + run_id + current_step + total_steps + all bitmask bits
+- **Recomputed on every step completion** — Provides cryptographic chain of custody
+- **Verification** — `verify_merkle_root()` recomputes and compares; any tampering is detectable
+
 ## Security Layer
 
 All servers share a common security layer via `velocity-server-bootstrap`:
@@ -245,7 +424,7 @@ graph LR
 - **Rate Limiting** — Token bucket per client IP via DashMap (lock-free)
 - **Audit Logging** — Structured logs for all API calls
 - **mTLS** — TLS certificate + key loading via rustls
-- **Security Headers** — Added to HTTP health endpoint responses
+- **Security Headers** — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store` on every HTTP response
 - **Trivy Scanning** — Container security scanning in CI
 
 ## Distributed Tracing
@@ -329,6 +508,7 @@ sequenceDiagram
   - `strict()` — fsync every step (sync_steps=0, maximum safety, financial transactions)
   - `batched(N, ms)` — fsync every N steps or every ms (balanced, order processing)
   - `async_only(ms)` — background fsync only (max throughput, event processing)
+  - `with_direct_execution()` — skip task queue enqueue (caller drives loop, eliminates 2 Mutex + condvar per step)
 - Fast writes (sequential I/O)
 - No external dependencies
 
@@ -438,6 +618,20 @@ npx protoc --ts_out . --proto_path . bench/v1/bench.proto
 ```
 
 ## SDK Architecture
+
+All SDKs now support both the legacy HTTP/gRPC transport and the new VCTP UDP transport.
+
+### VCTP SDKs (UDP Transport)
+
+Each SDK includes a `VctpTransport` class that implements the full VCTP client protocol:
+
+| SDK | VCTP Path | Lines |
+|-----|-----------|-------|
+| TypeScript | `velocity-sdk-typescript/src/vctp-transport.ts` | 407 |
+| Python | `velocity-sdk-python/velocity_workflow/vctp.py` | 377 |
+| Go | `velocity-sdk-go/vctp/client.go` | 508 |
+
+VCTP SDK API surface: `connect()`, `disconnect()`, `startWorkflow()`, `signalWorkflow()`, `queryWorkflow()`, `cancelWorkflow()`, `terminateWorkflow()`, `describeWorkflow()`.
 
 ### TypeScript SDK
 
@@ -555,6 +749,13 @@ graph TB
 - `tail_latency` — Long-running latency test
 - `cold_start` — Cold start measurement
 - `payload_1kb` — 1KB payload roundtrip
+- `invoke` — Lightweight throughput measurement (minimal WAL work)
+- `durable_promise` — Durable promise set/get (Restate-compatible camelCase route)
+- `keyed_stateful` — Keyed stateful workflow (Restate Virtual Object pattern)
+- `keyed_invoke` — Keyed lightweight invocation (Restate Virtual Object pattern)
+
+**C# Lifecycle Benchmarks:**
+The `benchmarks/Velocity.Workflow.Benchmarks/` directory contains a .NET benchmark suite (`WorkflowLifecycleBenchmark.cs`) that complements the Rust prod-bench. It measures workflow lifecycle operations using the .NET runtime.
 
 ## Deployment Architecture
 
@@ -596,6 +797,7 @@ graph TB
             A[velocity-server<br/>Deployment]
             B[velocity-service<br/>Service]
             C[velocity-hpa<br/>HPA]
+            VUDP[velocity-vctp<br/>UDP Service :9090]
         end
         
         subgraph "Namespace: velocity-data"
@@ -611,6 +813,7 @@ graph TB
     end
     
     A --> B
+    A --> VUDP
     A --> D
     D --> E
     D --> F
@@ -618,6 +821,12 @@ graph TB
     G --> D
     H --> G
 ```
+
+**VCTP K8s Features:**
+- **UDP port 9090** exposed via Service for VCTP traffic
+- **Health probes** — HTTP liveness/readiness + VCTP exec probe via vctp-cli
+- **Graceful drain** — preStop hook sleeps `drainTimeoutSeconds` while in-flight requests complete
+- **Helm chart** — `deploy/helm/velocity/` with configurable circuit breaker, heartbeat, security
 
 ## Data Flow
 
@@ -722,7 +931,12 @@ graph LR
 - [Cargo.toml](file://Cargo.toml)
 - [velocity-workflow-engine/src/lib.rs](file://velocity-workflow-engine/src/lib.rs)
 - [velocity-workflow-engine/src/engine.rs](file://velocity-workflow-engine/src/engine.rs)
-- [velocity-workflow-engine/src/pg_advisory_lock.rs](file://velocity-workflow-engine/src/pg_advisory_lock.rs)
+- [velocity-workflow-engine/src/vctp_transport.rs](file://velocity-workflow-engine/src/vctp_transport.rs)
+- [velocity-workflow-engine/src/vctp_rpc.rs](file://velocity-workflow-engine/src/vctp_rpc.rs)
+- [velocity-workflow-core/src/slab.rs](file://velocity-workflow-core/src/slab.rs)
+- [velocity-classic-server/src/ws_vctp_gateway.rs](file://velocity-classic-server/src/ws_vctp_gateway.rs)
+- [velocity-classic-server/src/http_vctp_ingress.rs](file://velocity-classic-server/src/http_vctp_ingress.rs)
+- [tools/vctp-sidecar/src/main.rs](file://tools/vctp-sidecar/src/main.rs)
 - [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
 - [velocity-server-bootstrap/src/auth.rs](file://velocity-server-bootstrap/src/auth.rs)
 - [velocity-server-bootstrap/src/tracing_setup.rs](file://velocity-server-bootstrap/src/tracing_setup.rs)
@@ -731,3 +945,5 @@ graph LR
 - [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
 - [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)
+- [proto/vctp_service.json](file://proto/vctp_service.json)
+- [deploy/helm/velocity/values.yaml](file://deploy/helm/velocity/values.yaml)

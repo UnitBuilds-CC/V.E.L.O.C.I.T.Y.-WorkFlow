@@ -51,6 +51,7 @@ This guide helps you choose the right flavor for your use case and understand th
 | **Temporal Compatible** | No | No | Yes (API patterns) |
 | **Auth/Rate Limit** | Yes (bootstrap) | Yes (bootstrap) | Yes (bootstrap) |
 | **Configurable Durability** | Yes (DurabilityConfig) | No (ACID fixed) | Yes (DurabilityConfig) |
+| **Direct Execution Mode** | Yes (skip task queue) | No (ACID fixed) | Yes (skip task queue) |
 | **Distributed Tracing** | Yes (OpenTelemetry) | Yes (OpenTelemetry) | Yes (OpenTelemetry) |
 | **mTLS** | Yes | Yes | Yes |
 | **External Dependencies** | None | PostgreSQL | None (default) |
@@ -215,6 +216,8 @@ Server and Classic flavors support user-configurable fsync batching:
 | `strict()` | fsync every step | None | Baseline |
 | `batched(N, ms)` | fsync every N steps or every ms | ≤N steps | Higher |
 | `async_only(ms)` | background fsync only | ≤ms of work | Maximum |
+
+**Direct Execution Mode:** All WAL-based flavors support `direct_execution = true`, which skips task queue enqueue on step completion. This eliminates 2 Mutex locks + condvar signal per step for callers that drive the step loop themselves (embedded/engine-local workloads). Not applicable to Embedded (uses ACID transactions, not task queue).
 
 ### Recovery Mechanisms
 

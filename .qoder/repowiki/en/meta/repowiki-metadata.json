@@ -1,6 +1,6 @@
 # Velocity Workflow Repowiki Metadata
 # Generated: 2026-08-17
-# Last updated: After commit becee41 (comprehensive .qoder update — DurabilityConfig, NMCP, security, 6 new knowledge cards)
+# Last updated: After VCTP Production Hardening — all 22 requirements across 6 phases complete
 
 project:
   name: "V.E.L.O.C.I.T.Y. WorkFlow"
@@ -63,6 +63,21 @@ workspace:
       path: "bench-suite/velocity-bench-server"
       role: "gRPC benchmark service server"
 
+  # VCTP tools and sidecar (separate workspace)
+  tools:
+    - name: "vctp-sidecar"
+      path: "tools/vctp-sidecar"
+      role: "VCTP sidecar proxy — TLS/crypto offload with ECDH session + XOR cipher"
+    - name: "vctp-cli"
+      path: "tools/vctp-cli"
+      role: "Python CLI for VCTP server operations (health, start, signal, query, cancel)"
+    - name: "vctp-wireshark"
+      path: "tools/vctp-wireshark"
+      role: "Wireshark Lua dissector for VCTP packet inspection"
+    - name: "vctp-openapi"
+      path: "tools/vctp-openapi"
+      role: "OpenAPI 3.0.3 spec generator from VCTP protocol definitions"
+
 flavors:
   - name: "Velocity Server"
     type: "single-binary"
@@ -103,7 +118,7 @@ security:
   audit: "Structured audit logging for all API calls"
   tls: "mTLS support via rustls (cert + key PEM files)"
   scanning: "Trivy container security scanning in CI"
-  headers: "Security headers on HTTP health endpoints"
+  headers: "Security headers on every HTTP response: X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Cache-Control: no-store"
 
 tracing:
   framework: "OpenTelemetry"
@@ -130,7 +145,7 @@ coordination:
 
 durability:
   configurable: true
-  struct: "DurabilityConfig { sync_steps: u32, flush_interval_ms: u64 }"
+  struct: "DurabilityConfig { sync_steps: u32, flush_interval_ms: u64, direct_execution: bool }"
   modes:
     - name: "strict()"
       sync_steps: 0
@@ -141,24 +156,34 @@ durability:
     - name: "async_only(ms)"
       sync_steps: "u32::MAX"
       description: "background fsync only — max throughput, event processing"
-  default: "strict()"
+  direct_execution:
+    enabled: "with_direct_execution() builder method"
+    behavior: "Skip task queue enqueue on step completion"
+    use_case: "Embedded/engine-local workloads where caller drives the loop"
+    anti_pattern: "Distributed worker-pool patterns where external workers poll task queue"
+    performance: "Eliminates 2 Mutex locks + condvar signal per step"
+  default: "strict() with direct_execution = false"
   method: "complete_step_durable() replaces complete_step_sync()"
   bench_cli_flags:
     - "--sync-steps (0=strict, N=batched)"
     - "--flush-interval-ms (time-based fsync floor)"
+    - "--direct-execution (skip task queue enqueue)"
 
 sdks:
   - language: "TypeScript"
     path: "velocity-sdk-typescript"
     status: "production"
+    vctp: "velocity-sdk-typescript/src/vctp-transport.ts (407 lines)"
     
   - language: "Python"
     path: "velocity-sdk-python"
     status: "production"
+    vctp: "velocity-sdk-python/velocity_workflow/vctp.py (377 lines)"
     
   - language: "Go"
     path: "velocity-sdk-go"
     status: "production"
+    vctp: "velocity-sdk-go/vctp/client.go (508 lines)"
     
   - language: "Java"
     path: "velocity-sdk-java"
@@ -176,6 +201,41 @@ competitors:
   - name: "Restate"
     throughput: "41.14 ops/s"
     memory: "200.36 MiB"
+
+vctp:
+  protocol: "VCTP (Velocity Transfer Protocol) — zero-copy UDP-based RPC"
+  wire_format:
+    header_size: 28
+    magic: "0x50544356"
+    checksum: "CRC32"
+    max_payload: 65479
+    default_port: 9090
+  features:
+    - "Circuit breaker (Closed/Open/HalfOpen)"
+    - "Per-client rate limiting (token bucket)"
+    - "JWT + API key authentication"
+    - "Idempotency checking"
+    - "Heartbeat (30s interval, 90s eviction)"
+    - "Graceful drain (preStop hook + 503)"
+    - "Reorder buffer (BTreeMap in-order delivery)"
+    - "AIMD congestion control"
+    - "Packet fragmentation/reassembly"
+    - "Prometheus metrics export"
+    - "OpenTelemetry tracing spans"
+  gateways:
+    - "WebSocket-to-VCTP gateway (592 lines)"
+    - "HTTP-to-VCTP ingress with Swagger UI at /docs (666 lines)"
+    - "VCTP sidecar proxy with ECDH + XOR cipher (474 lines)"
+  benchmarks:
+    full_stack_dispatch: "9,052 ops/s (UDP + WAL + DB)"
+    full_stack_start_workflow: "7,375 ops/s (UDP + WAL + DB)"
+    wal_durability_write: "7,962 wf/s"
+    wal_crash_recovery: "43,113 wf/s"
+  tests:
+    engine_tests: 2103
+    vctp_tests: 38
+    sidecar_tests: 6
+    total: 2109
 
 documentation:
   content:
@@ -197,6 +257,12 @@ documentation:
     - "Distributed Tracing OpenTelemetry.md"
     - "PostgreSQL Advisory Locking.md"
     - "Per-Step Journal Persistence.md"
+    - "VCTP Protocol Transport.md"
+    - "VCTP RPC Server.md"
+    - "VCTP Gateways and Sidecar Proxy.md"
+    - "VCTP SDKs and Developer Tools.md"
+    - "Slab Engine Merkle Root State Proof.md"
+    - "VCTP Kubernetes Deployment.md"
 
   ops_runbooks:
     - "docs/ops-runbooks.md"
@@ -207,6 +273,8 @@ build:
     workspace: true
     crates: 15
     allocator: "jemalloc (non-MSVC targets)"
+    feature_flags:
+      otel: "velocity-server-bootstrap --features otel (OpenTelemetry OTLP export)"
       
   typescript:
     node_version: "22+"
@@ -270,3 +338,7 @@ benchmarking:
     - "tail_latency"
     - "cold_start"
     - "payload_1kb"
+    - "invoke"
+    - "durable_promise"
+    - "keyed_stateful"
+    - "keyed_invoke"

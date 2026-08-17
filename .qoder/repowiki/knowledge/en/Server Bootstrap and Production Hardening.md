@@ -67,9 +67,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - Significantly faster for allocation-heavy workloads
 
 **Key files:**
-- `velocity-server-bootstrap/src/lib.rs` — Core bootstrap logic (860 lines)
-- `velocity-server-bootstrap/src/auth.rs` — Authentication (671 lines)
-- `velocity-server-bootstrap/src/tracing_setup.rs` — Tracing (514 lines)
+- `velocity-server-bootstrap/src/lib.rs` — Core bootstrap logic (773 lines)
+- `velocity-server-bootstrap/src/auth.rs` — Authentication (597 lines)
+- `velocity-server-bootstrap/src/tracing_setup.rs` — Tracing (459 lines)
 
 **Rules for developers:**
 1. All new server features should be added to bootstrap crate, not individual servers

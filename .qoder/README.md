@@ -29,7 +29,13 @@ This directory contains AI-optimized documentation and specifications for the V.
 │           ├── API Authentication and Security.md
 │           ├── Distributed Tracing OpenTelemetry.md
 │           ├── PostgreSQL Advisory Locking.md
-│           └── Per-Step Journal Persistence.md
+│           ├── Per-Step Journal Persistence.md
+│           ├── VCTP Protocol Transport.md
+│           ├── VCTP RPC Server.md
+│           ├── VCTP Gateways and Sidecar Proxy.md
+│           ├── VCTP SDKs and Developer Tools.md
+│           ├── Slab Engine Merkle Root State Proof.md
+│           └── VCTP Kubernetes Deployment.md
 └── specs/                           # Feature specifications
     ├── classic_server_nmcp_upgrade.md
     ├── embedded_server_nmcp_upgrade.md
@@ -40,6 +46,7 @@ This directory contains AI-optimized documentation and specifications for the V.
 
 ### Additional Directories (not shown in tree above)
 - `benchmarks/Velocity.Workflow.Benchmarks/` — C# lifecycle benchmark suite (complements Rust prod-bench)
+- `docs/ops-runbooks.md` — Operations runbooks for common incident scenarios
 
 ## Documentation Pages
 
@@ -48,10 +55,11 @@ Introduction to Velocity, project structure, installation, running engines, and 
 
 **Contents:**
 - Project overview and three flavors (Server, Embedded, Classic)
-- Directory structure and core components (15 workspace crates)
+- Directory structure and core components (15 workspace crates + VCTP tools)
+- VCTP RPC server, gateways, and developer tools
 - Installation and setup instructions
-- Running individual flavors (NMCP shmem + WebSocket transport)
-- Benchmark commands and results summary
+- Running individual flavors (NMCP shmem + WebSocket transport, VCTP UDP :9090)
+- Benchmark commands, VCTP benchmarks, and results summary
 - Troubleshooting guide
 
 ### Development Guide.md
@@ -59,12 +67,13 @@ Comprehensive guide for developers contributing to Velocity.
 
 **Contents:**
 - Development environment setup (Rust, Node.js, Docker)
-- Project architecture and module organization (15 crates)
+- Project architecture and module organization (15 crates + VCTP tools)
 - Building and testing procedures
+- VCTP development workflow (building, testing, CLI, Wireshark, OpenAPI)
 - Code style and conventions (Rust, TypeScript)
 - Adding new features and SDK methods
 - Protocol buffer development
-- SDK development (TypeScript, Python, Go, Java)
+- SDK development (TypeScript, Python, Go, Java — all with VCTP transport)
 - Benchmark development
 - Docker development workflow
 - Performance profiling techniques
@@ -75,17 +84,20 @@ Comprehensive guide for developers contributing to Velocity.
 Deep dive into Velocity's system architecture and design decisions.
 
 **Contents:**
-- System architecture diagram (15 workspace crates)
+- System architecture diagram (15 workspace crates + VCTP tools + gateway layer)
 - Engine flavors comparison (Server, Embedded, Classic — all Rust)
 - NMCP protocol transport (shmem IPC + WebSocket)
+- VCTP protocol transport (UDP, 28-byte header, CRC32, circuit breaker, heartbeat, drain)
+- VCTP gateways and sidecar proxy (WebSocket, HTTP, ECDH+XOR)
+- Slab engine with Merkle root state proof (SHA-256, Bitmask256)
 - Persistence layers (WAL, PostgreSQL, Per-Step Journal)
 - Security layer (auth, rate limiting, audit logging, mTLS)
 - Distributed tracing (OpenTelemetry/OTLP)
 - PG advisory locking for multi-instance coordination
 - Protocol buffers and gRPC (legacy, still used by bench-suite)
-- SDK architecture (TypeScript, Python, Go, Java)
+- SDK architecture (TypeScript, Python, Go, Java — all with VCTP transport)
 - Benchmark architecture
-- Deployment architecture (Docker, Kubernetes)
+- Deployment architecture (Docker, Kubernetes with VCTP UDP port)
 - Data flow diagrams
 
 ### Flavor Comparison Guide.md
@@ -219,6 +231,68 @@ Documents per-step durability with batch INSERT.
 - Batch INSERT for per-step durability
 - Crash recovery from journal
 - Integration with PostgreSQL adapter
+
+### VCTP Protocol Transport.md
+Documents the VCTP (Velocity Transfer Protocol) zero-copy UDP-based RPC protocol.
+
+**Key topics:**
+- Binary wire format (28-byte header + payload + CRC32)
+- UDP socket transport with non-blocking I/O
+- Retransmission tracking and AIMD congestion control
+- Reorder buffer (BTreeMap in-order delivery)
+- Packet fragmentation and reassembly
+- Performance benchmarks (9,052 ops/s full-stack)
+
+### VCTP RPC Server.md
+Documents the VCTP RPC server request processing pipeline.
+
+**Key topics:**
+- Full pipeline: drain → circuit breaker → rate limit → auth → idempotency → dispatch
+- Circuit breaker (Closed/Open/HalfOpen states)
+- Heartbeat mechanism (30s interval, 90s eviction)
+- Graceful drain with K8s preStop hook
+- Tokio async worker pool
+- Prometheus metrics export
+
+### VCTP Gateways and Sidecar Proxy.md
+Documents the protocol bridge gateways and crypto offload proxy.
+
+**Key topics:**
+- WebSocket-to-VCTP gateway for browser clients
+- HTTP-to-VCTP ingress with Swagger UI at /docs
+- Sidecar proxy with ECDH session + XOR cipher
+- Session management with TTL
+
+### VCTP SDKs and Developer Tools.md
+Documents the VCTP developer ecosystem.
+
+**Key topics:**
+- TypeScript SDK (407 lines)
+- Python SDK (377 lines)
+- Go SDK (508 lines)
+- vctp-cli Python CLI tool
+- Wireshark Lua dissector
+- OpenAPI 3.0 spec generator
+- Protocol definition schema (JSON Schema)
+
+### Slab Engine Merkle Root State Proof.md
+Documents the cryptographic state verification system.
+
+**Key topics:**
+- repr(C) SlabHeader (128 bytes) with SHA-256 Merkle root
+- Bitmask256 O(1) step completion tracking
+- Merkle root recomputed on every step completion
+- Verification detects any state tampering
+- Database persistence via WorkflowRecord::from_context()
+
+### VCTP Kubernetes Deployment.md
+Documents K8s deployment with Helm charts.
+
+**Key topics:**
+- VCTP UDP port (9090) exposure
+- Health probes (HTTP + VCTP exec)
+- Graceful drain with preStop hook
+- Helm values for circuit breaker, heartbeat, security
 
 ## Specifications
 

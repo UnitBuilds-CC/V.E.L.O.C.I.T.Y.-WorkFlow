@@ -380,6 +380,18 @@ const client = new VelocityClient({
 
 ---
 
+## Completed Foundation Work
+
+The following prerequisites have been implemented and are available on `main`:
+
+- [x] **PostgreSQL advisory locking** (`velocity-workflow-engine/src/pg_advisory_lock.rs`, 918 lines) — Leader election, workflow locking, and migration locking with exponential backoff. Provides the coordination primitives needed for shard registry (Phase 2).
+- [x] **Multi-instance coordination** — Documented in Architecture Overview and Flavor Comparison Guide.
+- [x] **Chaos/failure injection tests** — CI pipeline validates behavior under failure conditions (Phase 6 foundation).
+- [x] **Distributed tracing (OpenTelemetry)** — Required for observability in multi-shard deployments (Phase 6 foundation).
+- [x] **Configurable durability (DurabilityConfig)** — Per-shard WAL persistence with sync/batch/async modes.
+
+---
+
 ## Success Criteria
 
 - [ ] 4-shard cluster achieves 3.2x+ throughput (80% efficiency)

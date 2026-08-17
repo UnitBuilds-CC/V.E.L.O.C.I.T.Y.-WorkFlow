@@ -8,20 +8,25 @@
 - [velocity-nmcp-protocol/Cargo.toml](file://velocity-nmcp-protocol/Cargo.toml)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
+- [velocity-workflow-engine/src/vctp_transport.rs](file://velocity-workflow-engine/src/vctp_transport.rs)
+- [velocity-workflow-engine/src/vctp_rpc.rs](file://velocity-workflow-engine/src/vctp_rpc.rs)
+- [tools/vctp-sidecar/src/main.rs](file://tools/vctp-sidecar/src/main.rs)
+- [proto/vctp_service.json](file://proto/vctp_service.json)
 </cite>
 
 ## Table of Contents
 1. [Development Environment Setup](#development-environment-setup)
 2. [Project Architecture](#project-architecture)
 3. [Building and Testing](#building-and-testing)
-4. [Code Style and Conventions](#code-style-and-conventions)
-5. [Adding New Features](#adding-new-features)
-6. [Protocol Buffers](#protocol-buffers)
-7. [SDK Development](#sdk-development)
-8. [Benchmark Development](#benchmark-development)
-9. [Docker Development](#docker-development)
-10. [Performance Profiling](#performance-profiling)
-11. [Security and Production Hardening](#security-and-production-hardening)
+4. [VCTP Development](#vctp-development)
+5. [Code Style and Conventions](#code-style-and-conventions)
+6. [Adding New Features](#adding-new-features)
+7. [Protocol Buffers](#protocol-buffers)
+8. [SDK Development](#sdk-development)
+9. [Benchmark Development](#benchmark-development)
+10. [Docker Development](#docker-development)
+11. [Performance Profiling](#performance-profiling)
+12. [Security and Production Hardening](#security-and-production-hardening)
 
 ## Development Environment Setup
 
@@ -88,8 +93,8 @@ docker run -d --name velocity-dev-pg \
 graph TB
     subgraph "Core Library"
         A[src/lib.rs]
-        B[velocity-workflow-core]
-        C[velocity-workflow-engine]
+        B[velocity-workflow-core<br/>Slab + Bitmask256]
+        C[velocity-workflow-engine<br/>WAL, PG, VCTP transport + RPC]
     end
     
     subgraph "Protocol"
@@ -102,7 +107,7 @@ graph TB
     
     subgraph "Servers"
         F[velocity-workflow-server<br/>gRPC + WAL]
-        G[velocity-classic-server<br/>NMCP + WAL/PG]
+        G[velocity-classic-server<br/>NMCP + VCTP gateways]
         H[velocity-embedded-server<br/>NMCP + PostgreSQL]
     end
     
@@ -111,7 +116,7 @@ graph TB
         J[velocity-runtime-python]
     end
     
-    subgraph "SDKs"
+    subgraph "SDKs (+ VCTP)"
         K[velocity-sdk-typescript]
         L[velocity-sdk-python]
         M[velocity-sdk-go]
@@ -128,6 +133,13 @@ graph TB
         R[velocity-dev-server]
         S[velocity-test-framework]
         T[velocity-migration-toolkit]
+    end
+
+    subgraph "VCTP Tools"
+        V1[vctp-sidecar<br/>ECDH + XOR]
+        V2[vctp-cli<br/>Python CLI]
+        V3[vctp-wireshark<br/>Dissector]
+        V4[vctp-openapi<br/>Spec gen]
     end
     
     A --> B
@@ -147,6 +159,7 @@ graph TB
     J --> G
     K --> G
     L --> G
+    V1 -->|VCTP UDP| C
 ```
 
 ### Key Modules
@@ -183,6 +196,29 @@ graph TB
 - PostgreSQL integration with per-step journal
 - Connection pooling via deadpool-postgres
 - Automatic schema migrations
+
+**VCTP Transport (`velocity-workflow-engine/src/vctp_transport.rs`):**
+- UDP wire format (28-byte header + payload + CRC32)
+- Non-blocking socket with retransmission tracking
+- AIMD congestion control
+- Packet fragmentation and reassembly
+
+**VCTP RPC Server (`velocity-workflow-engine/src/vctp_rpc.rs`):**
+- Full request pipeline: drain → circuit breaker → rate limit → auth → idempotency → dispatch
+- Tokio async worker pool (`run_async`)
+- Heartbeat mechanism (30s interval, 90s eviction)
+- Prometheus metrics export
+- OpenTelemetry tracing spans
+
+**VCTP Gateways (`velocity-classic-server/`):**
+- WebSocket-to-VCTP gateway (`ws_vctp_gateway.rs`, 592 lines)
+- HTTP-to-VCTP ingress with Swagger UI at `/docs` (`http_vctp_ingress.rs`, 666 lines)
+
+**VCTP Tools (`tools/`):**
+- Sidecar proxy with ECDH + XOR cipher (`vctp-sidecar/`, 474 lines, separate workspace)
+- Python CLI tool (`vctp-cli/`, 267 lines)
+- Wireshark Lua dissector (`vctp-wireshark/`, 221 lines)
+- OpenAPI 3.0 spec generator (`vctp-openapi/`, 407 lines)
 
 ## Building and Testing
 
@@ -240,6 +276,89 @@ cargo test --test integration_tests
 **Run specific test:**
 ```bash
 cargo test --test integration_tests simple_workflow
+```
+
+## VCTP Development
+
+### Building VCTP Components
+
+The VCTP transport and RPC server are part of the main workspace:
+```bash
+# Build everything (includes VCTP)
+cargo build --release
+
+# Build just the engine (contains VCTP transport + RPC)
+cargo build -p velocity-workflow-engine --release
+```
+
+The VCTP sidecar has its own Cargo workspace:
+```bash
+# Build sidecar (separate workspace)
+cd tools/vctp-sidecar
+cargo build --release
+```
+
+### Testing VCTP
+
+```bash
+# Run all engine tests (includes 38 VCTP tests)
+cargo test -p velocity-workflow-engine
+
+# Run only VCTP-specific tests
+cargo test -p velocity-workflow-engine -- vctp
+
+# Run VCTP benchmarks (throughput + latency)
+cargo test -p velocity-workflow-engine --release -- vctp_bench
+
+# Run sidecar tests (separate workspace)
+cd tools/vctp-sidecar
+cargo test
+
+# Total: 2,103 engine tests + 6 sidecar tests = 2,109 passing
+```
+
+### VCTP Test Categories
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Security integration | 12 | Auth, rate limiting, circuit breaker tests |
+| Performance benchmarks | 2 | Throughput ≥700 ops/s, latency ≤20µs |
+| Cross-gateway E2E | 4 | WebSocket/HTTP/sidecar → VCTP roundtrip |
+| Drain tests | 2 | Graceful drain + 503 rejection |
+| Core VCTP | 18 | Wire format, CRC32, reorder buffer, heartbeat |
+
+### Running VCTP CLI Tool
+
+```bash
+# Health check
+python tools/vctp-cli/vctp_cli.py health --server 127.0.0.1:9090
+
+# Start a workflow
+python tools/vctp-cli/vctp_cli.py start-workflow --server 127.0.0.1:9090 --type test-wf --steps 5
+
+# Signal, query, cancel
+python tools/vctp-cli/vctp_cli.py signal --server 127.0.0.1:9090 --workflow-id wf-123 --name my-signal
+python tools/vctp-cli/vctp_cli.py query --server 127.0.0.1:9090 --workflow-id wf-123
+python tools/vctp-cli/vctp_cli.py cancel --server 127.0.0.1:9090 --workflow-id wf-123
+```
+
+### VCTP Protocol Schema
+
+The protocol is defined in `proto/vctp_service.json` (machine-readable JSON Schema). To regenerate the OpenAPI spec:
+
+```bash
+python tools/vctp-openapi/gen_openapi.py --output openapi.yaml
+```
+
+### Wireshark Dissector
+
+Install the VCTP dissector for packet inspection:
+```bash
+# Copy to Wireshark plugins
+cp tools/vctp-wireshark/vctp.lua ~/.local/lib/wireshark/plugins/
+# Windows: %APPDATA%\Wireshark\plugins\vctp.lua
+
+# Filter: vctp.magic, vctp.sequence, vctp.method
 ```
 
 ## Code Style and Conventions
@@ -525,9 +644,35 @@ velocity-bench-server --sync-steps 10 --flush-interval-ms 5
 
 # Async mode (background fsync every 100ms, maximum throughput)
 velocity-bench-server --sync-steps 4294967295 --flush-interval-ms 100
+
+# Direct execution mode (skip task queue enqueue, caller drives steps)
+velocity-bench-server --sync-steps 10 --flush-interval-ms 5 --direct-execution
 ```
 
+**Direct Execution Mode:** When `--direct-execution` is enabled, step completion skips the task queue enqueue. This eliminates 2 Mutex locks + condvar signal per step for callers that drive the step loop themselves. Use for embedded/engine-local workloads where the caller owns the loop. Do NOT use for distributed worker-pool patterns where external workers poll the task queue.
+
 Use `complete_step_durable()` in bench workloads to respect these settings.
+
+### Bench Server HTTP Routes
+
+The bench server (`bench-suite/velocity-bench-server`) exposes both standard and keyed benchmark routes:
+
+**Standard routes:**
+- `/bench/simple_workflow`, `/bench/multi_step`, `/bench/signal_storm`, etc.
+- `/bench/invoke` — Lightweight throughput measurement (minimal WAL work)
+- `/bench/durablePromise` — camelCase alias for Restate-compatible durable_promise workload
+
+**Keyed routes (Restate Virtual Object compatible):**
+- `/keyed_bench/:key/stateful` — Keyed stateful workflow (read + write steps)
+- `/keyed_bench/:key/invoke` — Keyed lightweight invocation
+
+### C# Lifecycle Benchmarks
+
+The `benchmarks/Velocity.Workflow.Benchmarks/` directory contains a .NET benchmark suite that complements the Rust prod-bench. Run with:
+```bash
+cd benchmarks/Velocity.Workflow.Benchmarks
+dotnet run -c Release
+```
 
 ## Docker Development
 
@@ -658,12 +803,15 @@ VELOCITY_RATE_LIMIT_BURST=100 VELOCITY_RATE_LIMIT_RATE=10.0 cargo run --bin velo
 ```
 
 ### Distributed Tracing
-OpenTelemetry tracing with optional OTLP export:
+OpenTelemetry tracing with optional OTLP export. The `otel` feature flag must be enabled at compile time for OTLP export:
 ```bash
+# Build with OpenTelemetry feature
+cargo build --release -p velocity-server-bootstrap --features otel
+
 # With OTLP export (Jaeger/Tempo/Grafana)
 VELOCITY_OTLP_ENDPOINT=http://localhost:4317 cargo run --bin velocity-classic-server
 
-# Local JSON logs only
+# Local JSON logs only (works without otel feature)
 cargo run --bin velocity-classic-server -- --log-format json
 ```
 
@@ -726,3 +874,7 @@ RUST_LOG=trace cargo run --bin velocity-server
 - [velocity-server-bootstrap/Cargo.toml](file://velocity-server-bootstrap/Cargo.toml)
 - [velocity-nmcp-protocol/Cargo.toml](file://velocity-nmcp-protocol/Cargo.toml)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)
+- [velocity-workflow-engine/src/vctp_transport.rs](file://velocity-workflow-engine/src/vctp_transport.rs)
+- [velocity-workflow-engine/src/vctp_rpc.rs](file://velocity-workflow-engine/src/vctp_rpc.rs)
+- [tools/vctp-sidecar/src/main.rs](file://tools/vctp-sidecar/src/main.rs)
+- [proto/vctp_service.json](file://proto/vctp_service.json)

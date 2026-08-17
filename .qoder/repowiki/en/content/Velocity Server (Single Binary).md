@@ -32,7 +32,7 @@ Velocity Server is the **single-binary, gRPC-based** flavor of Velocity designed
 - **Memory:** ~98 MiB
 - **Throughput:** 43.6 ops/s (simple workflow)
 - **Latency:** p50=180ms, p99=332ms
-- **Security:** API auth, rate limiting, audit logging, mTLS (via velocity-server-bootstrap)
+- **Security:** API auth, rate limiting, audit logging, mTLS, security headers (via velocity-server-bootstrap)
 - **Tracing:** OpenTelemetry with optional OTLP export
 
 **When to Use:**
@@ -198,14 +198,24 @@ pub struct DurabilityConfig {
     pub sync_steps: u32,
     /// Time-based floor: fsync at least this often even if step count not reached.
     pub flush_interval_ms: u64,
+    /// Skip task queue enqueue on step completion. The caller drives steps directly
+    /// instead of relying on external workers polling the task queue.
+    pub direct_execution: bool,
 }
 ```
 
-| Mode | sync_steps | flush_interval_ms | Use Case |
-|------|-----------|-------------------|----------|
-| `strict()` | 0 | 0 | Financial transactions (lose nothing) |
-| `batched(N, ms)` | N | ms | Order processing (lose ≤N steps) |
-| `async_only(ms)` | u32::MAX | ms | Event processing (max throughput) |
+| Mode | sync_steps | flush_interval_ms | direct_execution | Use Case |
+|------|-----------|-------------------|------------------|----------|
+| `strict()` | 0 | 0 | false | Financial transactions (lose nothing) |
+| `batched(N, ms)` | N | ms | false | Order processing (lose ≤N steps) |
+| `async_only(ms)` | u32::MAX | ms | false | Event processing (max throughput) |
+| `with_direct_execution()` | N | ms | true | Embedded/engine-local (caller drives loop) |
+
+**Direct Execution Mode:**
+When `direct_execution = true`, step completion skips the task queue enqueue. This eliminates 2 Mutex locks + condvar signal per step for callers that drive the step loop themselves (tight `for` loop calling `complete_step_durable` sequentially).
+
+**When to use**: embedded/engine-local workloads where the caller owns the loop.
+**When NOT to use**: distributed worker-pool patterns where external workers poll the task queue.
 
 **Bench server CLI flags:**
 ```bash
@@ -217,6 +227,9 @@ velocity-bench-server --sync-steps 10 --flush-interval-ms 5
 
 # Async mode (background fsync every 100ms)
 velocity-bench-server --sync-steps 4294967295 --flush-interval-ms 100
+
+# Direct execution mode (skip task queue, caller drives steps)
+velocity-bench-server --sync-steps 10 --flush-interval-ms 5 --direct-execution
 ```
 
 ### WAL File Format

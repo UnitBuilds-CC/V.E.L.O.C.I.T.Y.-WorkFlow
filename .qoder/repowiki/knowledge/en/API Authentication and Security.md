@@ -63,7 +63,11 @@ pub struct RateLimiter {
 
 **Additional Security:**
 - **mTLS**: TLS certificate + key loading via rustls for both WebSocket and HTTP endpoints
-- **Security headers**: Added to HTTP health endpoint responses
+- **Security headers**: Applied to every HTTP response via `SECURITY_HEADERS` constant in `lib.rs`:
+  - `X-Content-Type-Options: nosniff` — prevents MIME-type sniffing
+  - `X-Frame-Options: DENY` — prevents clickjacking
+  - `Cache-Control: no-store` — prevents caching of API responses
+  - `Strict-Transport-Security` — forces HTTPS for 1 year (when TLS is active, per doc comment)
 - **Trivy scanning**: Container security scanning in CI pipeline
 - **Health probes exempt**: `/health`, `/ready`, `/live` never require authentication
 
@@ -87,8 +91,8 @@ VELOCITY_TLS_KEY=/path/to/key.pem
 ```
 
 **Key files:**
-- `velocity-server-bootstrap/src/auth.rs` — Authentication (671 lines)
-- `velocity-server-bootstrap/src/rate_limit.rs` — Rate limiting (290 lines)
+- `velocity-server-bootstrap/src/auth.rs` — Authentication (597 lines)
+- `velocity-server-bootstrap/src/rate_limit.rs` — Rate limiting (257 lines)
 - `velocity-server-bootstrap/src/audit.rs` — Audit logging
 
 **Rules for developers:**

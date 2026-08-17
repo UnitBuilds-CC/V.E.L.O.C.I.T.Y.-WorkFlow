@@ -13,7 +13,7 @@ cards:
       - velocity-workflow-server/src/main.rs
       - velocity-workflow-engine/src/lib.rs
       - velocity-workflow-engine/src/engine.rs
-    summary: "WAL-based durability for Velocity Server with append-only log, group-commit optimization, DurabilityConfig (engine.rs), and crash recovery"
+    summary: "WAL-based durability with append-only log, group-commit optimization, DurabilityConfig (sync_steps, flush_interval_ms, direct_execution), and crash recovery"
     
   - name: "PostgreSQL Persistence with Connection Pooling"
     kind: persistence_system
@@ -72,7 +72,7 @@ cards:
       - velocity-server-bootstrap/src/tracing_setup.rs
       - velocity-server-bootstrap/tests/chaos_tests.rs
       - velocity-server-bootstrap/tests/production_hardening.rs
-    summary: "Shared server bootstrap logic: engine init, NMCP setup, shutdown loop, plus chaos tests and production validation"
+    summary: "Shared server bootstrap logic: engine init, NMCP setup, shutdown loop, security headers, OpenTelemetry tracing, plus chaos tests and production validation"
 
   - name: "API Authentication and Security"
     kind: security
@@ -85,7 +85,7 @@ cards:
       - velocity-server-bootstrap/src/auth.rs
       - velocity-server-bootstrap/src/rate_limit.rs
       - velocity-server-bootstrap/src/audit.rs
-    summary: "API key + JWT auth with key rotation, token bucket rate limiting, structured audit logging, mTLS, and Trivy scanning"
+    summary: "API key + JWT auth with key rotation, token bucket rate limiting, structured audit logging, mTLS, security headers (nosniff, DENY, no-store), and Trivy scanning"
 
   - name: "Distributed Tracing OpenTelemetry"
     kind: observability
@@ -116,6 +116,88 @@ cards:
       - velocity-embedded/src/main.rs
       - velocity-workflow-engine/src/lib.rs
     summary: "Append-only per-step journal with batch INSERT for true durable execution and crash recovery"
+
+  - name: "VCTP Protocol Transport"
+    kind: transport_protocol
+    category: networking
+    scope:
+      - "velocity-workflow-core/src/vctp.rs"
+      - "velocity-workflow-engine/src/vctp_transport.rs"
+      - "velocity-workflow-engine/src/vctp_rpc.rs"
+      - "proto/vctp_service.json"
+    source_files:
+      - velocity-workflow-core/src/vctp.rs
+      - velocity-workflow-engine/src/vctp_transport.rs
+      - velocity-workflow-engine/src/vctp_rpc.rs
+      - proto/vctp_service.json
+    summary: "Zero-copy UDP-based RPC protocol with 28-byte binary header, CRC32 integrity, retransmission, AIMD congestion control, and reorder buffer"
+
+  - name: "VCTP RPC Server"
+    kind: security
+    category: networking
+    scope:
+      - "velocity-workflow-engine/src/vctp_rpc.rs"
+    source_files:
+      - velocity-workflow-engine/src/vctp_rpc.rs
+    summary: "Full request pipeline: circuit breaker (Closed/Open/HalfOpen), rate limiting, JWT/API key auth, idempotency, heartbeat (30s), graceful drain, Prometheus metrics export"
+
+  - name: "VCTP Gateways and Sidecar Proxy"
+    kind: infrastructure
+    category: networking
+    scope:
+      - "velocity-classic-server/src/ws_vctp_gateway.rs"
+      - "velocity-classic-server/src/http_vctp_ingress.rs"
+      - "tools/vctp-sidecar/**"
+    source_files:
+      - velocity-classic-server/src/ws_vctp_gateway.rs
+      - velocity-classic-server/src/http_vctp_ingress.rs
+      - tools/vctp-sidecar/src/main.rs
+    summary: "WebSocket-to-VCTP gateway, HTTP-to-VCTP ingress with Swagger UI at /docs, and sidecar proxy with ECDH session + XOR cipher for encrypted external connections"
+
+  - name: "VCTP SDKs and Developer Tools"
+    kind: api_pattern
+    category: developer_experience
+    scope:
+      - "velocity-sdk-typescript/src/vctp-transport.ts"
+      - "velocity-sdk-python/velocity_workflow/vctp.py"
+      - "velocity-sdk-go/vctp/client.go"
+      - "tools/vctp-cli/**"
+      - "tools/vctp-wireshark/**"
+      - "tools/vctp-openapi/**"
+      - "proto/vctp_service.json"
+    source_files:
+      - velocity-sdk-typescript/src/vctp-transport.ts
+      - velocity-sdk-python/velocity_workflow/vctp.py
+      - velocity-sdk-go/vctp/client.go
+      - tools/vctp-cli/vctp_cli.py
+      - tools/vctp-wireshark/vctp.lua
+      - tools/vctp-openapi/gen_openapi.py
+      - proto/vctp_service.json
+    summary: "Native VCTP client SDKs (TypeScript, Python, Go), CLI tool, Wireshark dissector, OpenAPI 3.0 spec generator, and machine-readable protocol schema"
+
+  - name: "Slab Engine Merkle Root State Proof"
+    kind: persistence_system
+    category: distributed_systems
+    scope:
+      - "velocity-workflow-core/src/slab.rs"
+      - "velocity-workflow-core/src/bitmask.rs"
+      - "velocity-workflow-engine/src/engine.rs"
+    source_files:
+      - velocity-workflow-core/src/slab.rs
+      - velocity-workflow-core/src/bitmask.rs
+      - velocity-workflow-core/src/ffi.rs
+      - velocity-workflow-engine/src/engine.rs
+    summary: "repr(C) SlabHeader with SHA-256 Merkle root state proof and Bitmask256 O(1) step completion tracking, recomputed on every step for cryptographic chain of custody"
+
+  - name: "VCTP Kubernetes Deployment"
+    kind: infrastructure
+    category: operations
+    scope:
+      - "deploy/helm/**"
+    source_files:
+      - deploy/helm/velocity/values.yaml
+      - deploy/helm/velocity/templates/deployment.yaml
+    summary: "Helm chart with VCTP UDP port (9090), health probes, preStop graceful drain hook, circuit breaker config, heartbeat config, and security settings"
 
 # Conventions for knowledge cards:
 # - kind: Type of pattern (persistence_system, api_pattern, transport_protocol, security, observability, coordination, infrastructure, etc.)

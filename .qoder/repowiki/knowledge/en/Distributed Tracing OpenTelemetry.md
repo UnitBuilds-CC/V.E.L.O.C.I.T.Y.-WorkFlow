@@ -62,7 +62,7 @@ let _guard = init_tracing(&config);
 ```
 
 **Key files:**
-- `velocity-server-bootstrap/src/tracing_setup.rs` — Tracing initialization (514 lines)
+- `velocity-server-bootstrap/src/tracing_setup.rs` — Tracing initialization (459 lines)
 
 **Rules for developers:**
 1. Always use `init_tracing()` in server bootstrap, not manual tracing setup

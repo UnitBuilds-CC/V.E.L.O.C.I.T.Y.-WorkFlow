@@ -36,7 +36,7 @@ Velocity Embedded is the **NMCP-based, PostgreSQL-backed** flavor of Velocity de
 - **Memory:** ~1.25 MiB (server) + ~68 MiB (PostgreSQL)
 - **Throughput:** 61.25 ops/s (simple workflow) — **highest of all flavors**
 - **Latency:** p50=14.65ms, p99=20.57ms — **lowest of all flavors**
-- **Security:** API auth, rate limiting, audit logging, mTLS (via velocity-server-bootstrap)
+- **Security:** API auth, rate limiting, audit logging, mTLS, security headers (via velocity-server-bootstrap)
 - **Tracing:** OpenTelemetry with optional OTLP export
 - **Multi-instance:** PG advisory locks for leader election and workflow locking
 

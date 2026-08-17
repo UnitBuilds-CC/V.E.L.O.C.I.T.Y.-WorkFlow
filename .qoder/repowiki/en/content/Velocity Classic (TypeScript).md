@@ -36,7 +36,7 @@ Velocity Classic is the **Rust-native** flavor of Velocity with NMCP transport, 
 - **Memory:** ~9.23 MiB
 - **Throughput:** 61.54 ops/s (simple workflow) — **tied for highest**
 - **Latency:** p50=14.51ms, p99=18.1ms — **lowest latency**
-- **Security:** API auth, rate limiting, audit logging, mTLS (via velocity-server-bootstrap)
+- **Security:** API auth, rate limiting, audit logging, mTLS, security headers (via velocity-server-bootstrap)
 - **Tracing:** OpenTelemetry with optional OTLP export
 - **Allocator:** jemalloc (tikv-jemallocator)
 

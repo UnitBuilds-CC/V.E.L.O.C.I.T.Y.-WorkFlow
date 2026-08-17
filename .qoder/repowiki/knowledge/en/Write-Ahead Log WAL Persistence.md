@@ -74,6 +74,7 @@ pub struct WalConfig {
 pub struct DurabilityConfig {
     pub sync_steps: u32,            // 0 = every step (strict), N = batch every N steps
     pub flush_interval_ms: u64,     // Time-based fsync floor (prevents unbounded data loss)
+    pub direct_execution: bool,     // Skip task queue enqueue (caller drives loop)
 }
 ```
 
@@ -81,8 +82,12 @@ pub struct DurabilityConfig {
 - `DurabilityConfig::strict()` — fsync after every step (sync_steps=0). Maximum safety, lose nothing on crash.
 - `DurabilityConfig::batched(N, ms)` — fsync every N steps or every ms, whichever first. Balanced.
 - `DurabilityConfig::async_only(ms)` — background fsync thread only (sync_steps=u32::MAX). Maximum throughput.
-- Default is `strict()`. Bench server uses `--sync-steps` and `--flush-interval-ms` CLI flags.
+- `.with_direct_execution()` — builder method to enable direct execution mode (skips task queue enqueue).
+- Default is `strict()` with `direct_execution = false`. Bench server uses `--sync-steps`, `--flush-interval-ms`, and `--direct-execution` CLI flags.
 - `complete_step_durable()` method replaces `complete_step_sync()` when configurable durability is active.
+
+**Direct Execution Mode:**
+When `direct_execution = true`, step completion skips the task queue enqueue. This eliminates 2 Mutex locks + condvar signal per step for callers that drive the step loop themselves (tight `for` loop calling `complete_step_durable` sequentially). Use for embedded/engine-local workloads where the caller owns the loop. Do NOT use for distributed worker-pool patterns where external workers poll the task queue.
 
 **Key files:**
 - `velocity-workflow-server/src/main.rs` — WAL integration
