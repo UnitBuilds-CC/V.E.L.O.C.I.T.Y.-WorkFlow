@@ -59,6 +59,52 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+// ─── Configurable Durability ────────────────────────────────────────────────
+
+/// Controls the trade-off between throughput and crash-safety for step persistence.
+///
+/// - `sync_steps = 0`: fsync after EVERY step (maximum safety, lowest throughput).
+///   This is the existing `complete_step_sync` behavior.
+/// - `sync_steps = N` (N >= 1): fsync every N steps (higher throughput, lose at most
+///   N steps on crash). The background fsync thread also flushes every
+///   `flush_interval_ms` as a time-based floor.
+///
+/// The user picks their point on the safety-throughput curve:
+/// - Financial transactions: `sync_steps = 0` (lose nothing)
+/// - Order processing:      `sync_steps = 10` (lose ≤10 steps)
+/// - Event processing:      `sync_steps = 100` (lose ≤5ms of work)
+#[derive(Debug, Clone)]
+pub struct DurabilityConfig {
+    /// Number of steps between fsync calls. 0 = every step (strict).
+    pub sync_steps: u32,
+    /// Time-based floor: fsync at least this often even if step count not reached.
+    /// Prevents unbounded data loss when steps arrive slowly.
+    pub flush_interval_ms: u64,
+}
+
+impl DurabilityConfig {
+    /// Maximum safety: fsync after every step.
+    pub fn strict() -> Self {
+        Self { sync_steps: 0, flush_interval_ms: 0 }
+    }
+
+    /// Balanced: fsync every N steps or every `flush_interval_ms`, whichever first.
+    pub fn batched(sync_steps: u32, flush_interval_ms: u64) -> Self {
+        Self { sync_steps, flush_interval_ms }
+    }
+
+    /// Maximum throughput: rely entirely on background fsync thread.
+    pub fn async_only(flush_interval_ms: u64) -> Self {
+        Self { sync_steps: u32::MAX, flush_interval_ms }
+    }
+}
+
+impl Default for DurabilityConfig {
+    fn default() -> Self {
+        Self::strict()
+    }
+}
+
 // ─── Activity Timeouts & Retry ─────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -393,6 +439,12 @@ pub struct WorkflowEngine {
     change_version_registry: Arc<crate::workflow_change_versioning::ChangeVersionRegistry>,
     /// Latest step persist latency in microseconds (for Prometheus metrics).
     step_persist_latency_us: AtomicU64,
+    /// Configurable durability: controls fsync batching for step persistence.
+    durability_config: DurabilityConfig,
+    /// Steps since last fsync (for batched durability mode).
+    steps_since_sync: std::sync::atomic::AtomicU32,
+    /// Instant of last fsync (for time-based flush floor).
+    last_sync_instant: RwLock<Instant>,
 }
 
 impl WorkflowEngine {
@@ -457,6 +509,9 @@ impl WorkflowEngine {
                 crate::workflow_change_versioning::ChangeVersionRegistry::new(),
             ),
             step_persist_latency_us: AtomicU64::new(0),
+            durability_config: DurabilityConfig::default(),
+            steps_since_sync: std::sync::atomic::AtomicU32::new(0),
+            last_sync_instant: RwLock::new(Instant::now()),
         }
     }
 
@@ -523,6 +578,9 @@ impl WorkflowEngine {
                 crate::workflow_change_versioning::ChangeVersionRegistry::new(),
             ),
             step_persist_latency_us: AtomicU64::new(0),
+            durability_config: DurabilityConfig::default(),
+            steps_since_sync: std::sync::atomic::AtomicU32::new(0),
+            last_sync_instant: RwLock::new(Instant::now()),
         })
     }
 
@@ -530,6 +588,19 @@ impl WorkflowEngine {
     pub fn enable_wal(&mut self, wal_path: &str, max_file_size: u64) -> std::io::Result<()> {
         self.wal = Some(Arc::new(WalManager::new(wal_path, max_file_size)?));
         Ok(())
+    }
+
+    /// Set the durability configuration for step persistence.
+    ///
+    /// Controls the fsync batching behavior:
+    /// - `sync_steps = 0`: fsync every step (strict, lowest throughput)
+    /// - `sync_steps = N`: fsync every N steps (batched, higher throughput)
+    /// - `flush_interval_ms`: time-based floor for fsync (prevents unbounded loss)
+    pub fn with_durability_config(mut self, config: DurabilityConfig) -> Self {
+        self.durability_config = config;
+        self.last_sync_instant = RwLock::new(Instant::now());
+        self.steps_since_sync.store(0, Ordering::Relaxed);
+        self
     }
 
     /// Initialize the timer engine to record TimerFired events in history when timers expire.
@@ -1499,6 +1570,83 @@ impl WorkflowEngine {
             .write()
             .unwrap()
             .on_slab_write(workflow_key, &merkle_root, merkle_root);
+
+        // Schedule next workflow task
+        self.task_queue.enqueue(
+            task_queue_hash,
+            TaskItem {
+                task_id: 0,
+                kind: TaskKind::WorkflowTask,
+                workflow_key,
+                task_queue_hash,
+                step_index: step + 1,
+                activity_name_id: 0,
+                attempt: 1,
+                priority: 0,
+                deadline_ms: 0,
+            },
+        );
+    }
+
+    /// Complete a step with configurable durability — fsync batching controlled by
+    /// `DurabilityConfig`. This is the recommended method for production use.
+    ///
+    /// - `sync_steps = 0`: behaves identically to `complete_step_sync` (fsync per step)
+    /// - `sync_steps = N`: WAL append every step, fsync every N steps OR every
+    ///   `flush_interval_ms`, whichever comes first.
+    ///
+    /// Crash safety: lose at most `sync_steps` steps (or `flush_interval_ms` of work).
+    /// Throughput: approaches `complete_step` (no-fsync) as `sync_steps` increases.
+    pub fn complete_step_durable(&self, workflow_key: u64, step: u32, result: Vec<u8>) {
+        let sync_steps = self.durability_config.sync_steps;
+
+        // Strict mode: identical to complete_step_sync
+        if sync_steps == 0 {
+            self.complete_step_sync(workflow_key, step, result);
+            return;
+        }
+
+        // Batched mode: WAL append every step, fsync at batch boundary or time floor
+        if let Some(wal) = &self.wal {
+            let mut data = Vec::with_capacity(4 + result.len());
+            data.extend_from_slice(&step.to_le_bytes());
+            data.extend_from_slice(&result);
+            let _ = wal.append(WalEventType::StepCompleted, workflow_key, data);
+        }
+
+        // Update context + extract values under ONE DashMap shard lock
+        let (task_queue_hash, merkle_root) = {
+            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+                ctx.complete_step(step, result);
+                (ctx.task_queue_hash, ctx.slab.merkle_root)
+            } else {
+                return;
+            }
+        };
+
+        // HAL: Compute ECC parity
+        self.hal
+            .write()
+            .unwrap()
+            .on_slab_write(workflow_key, &merkle_root, merkle_root);
+
+        // Increment step counter and check if we should fsync
+        let count = self.steps_since_sync.fetch_add(1, Ordering::Relaxed) + 1;
+        let step_threshold = count >= sync_steps;
+
+        // Time-based floor: fsync if flush_interval_ms has elapsed
+        let time_threshold = {
+            let last = self.last_sync_instant.read().unwrap();
+            last.elapsed() >= Duration::from_millis(self.durability_config.flush_interval_ms)
+        };
+
+        if step_threshold || time_threshold {
+            if let Some(wal) = &self.wal {
+                let _ = wal.sync();
+            }
+            self.steps_since_sync.store(0, Ordering::Relaxed);
+            *self.last_sync_instant.write().unwrap() = Instant::now();
+        }
 
         // Schedule next workflow task
         self.task_queue.enqueue(
@@ -3209,5 +3357,60 @@ mod tests {
 
         engine.terminate_workflow(k2);
         assert_eq!(engine.change_version_registry().tracked_workflow_count(), 0);
+    }
+
+    #[test]
+    fn test_complete_step_durable_strict_mode() {
+        // sync_steps = 0 should behave identically to complete_step_sync
+        let engine = WorkflowEngine::new().with_durability_config(DurabilityConfig::strict());
+        let key = engine.start_workflow(1, 1, 0, 42, 5, None);
+
+        for step in 0..5 {
+            engine.complete_step_durable(key, step, format!("step_{}", step).into_bytes());
+        }
+
+        assert_eq!(engine.get_status(key), WorkflowStatus::Running);
+        for step in 0..5 {
+            assert!(engine.is_step_completed(key, step));
+        }
+        engine.shutdown();
+    }
+
+    #[test]
+    fn test_complete_step_durable_batched_mode() {
+        // sync_steps = 3 should batch fsyncs every 3 steps
+        let engine = WorkflowEngine::new()
+            .with_durability_config(DurabilityConfig::batched(3, 5));
+        let key = engine.start_workflow(2, 1, 0, 42, 10, None);
+
+        // Complete 10 steps — should only fsync at step 3, 6, 9
+        for step in 0..10 {
+            engine.complete_step_durable(key, step, format!("step_{}", step).into_bytes());
+        }
+
+        // All steps should be completed in-memory regardless of fsync batching
+        for step in 0..10 {
+            assert!(engine.is_step_completed(key, step));
+        }
+        engine.shutdown();
+    }
+
+    #[test]
+    fn test_complete_step_durable_async_mode() {
+        // async_only should never fsync on the hot path (background thread handles it)
+        let engine = WorkflowEngine::new()
+            .with_durability_config(DurabilityConfig::async_only(100));
+        let key = engine.start_workflow(3, 1, 0, 42, 100, None);
+
+        // Complete 100 steps — no synchronous fsyncs at all
+        for step in 0..100 {
+            engine.complete_step_durable(key, step, vec![]);
+        }
+
+        // All steps completed in-memory
+        for step in 0..100 {
+            assert!(engine.is_step_completed(key, step));
+        }
+        engine.shutdown();
     }
 }

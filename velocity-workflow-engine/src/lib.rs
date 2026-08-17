@@ -264,8 +264,9 @@ pub use dynamic_config::{
     Constraints, DynamicConfig, GradualChange, MemoryConfigClient, Precedence, StaticConfigClient,
 };
 pub use engine::{
-    PendingActivityInfo, PendingActivityState, PendingChildInfo, PendingSignalInfo,
-    WorkflowContext, WorkflowEngine, WorkflowExecutionDescription, WorkflowStatus,
+    DurabilityConfig, PendingActivityInfo, PendingActivityState, PendingChildInfo,
+    PendingSignalInfo, WorkflowContext, WorkflowEngine, WorkflowExecutionDescription,
+    WorkflowStatus,
 };
 pub use errors::{ErrorCategory, ErrorCode, FfiErrorCode, VelocityError, VelocityResult};
 pub use event_history::{HistoryEvent, HistoryEventType, HistoryStore};

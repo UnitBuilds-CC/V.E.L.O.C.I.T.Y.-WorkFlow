@@ -26,7 +26,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as TokioMutex;
 
-use velocity_workflow_engine::engine::WorkflowEngine;
+use velocity_workflow_engine::engine::{DurabilityConfig, WorkflowEngine};
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,16 @@ struct Cli {
     /// Log level filter.
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    /// Steps between fsync calls. 0 = every step (strict), 1+ = batched.
+    /// Controls the performance:reliability trade-off.
+    #[arg(long, default_value_t = 0)]
+    sync_steps: u32,
+
+    /// Time-based fsync floor (ms). Fsync at least this often even if
+    /// sync_steps not reached. Prevents unbounded data loss.
+    #[arg(long, default_value_t = 5)]
+    flush_interval_ms: u64,
 }
 
 // ─── Shared State ────────────────────────────────────────────────────────────
@@ -105,12 +115,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    // Create engine with WAL persistence
+    // Create engine with WAL persistence and configurable durability
+    let durability = DurabilityConfig::batched(cli.sync_steps, cli.flush_interval_ms);
+    tracing::info!(
+        sync_steps = cli.sync_steps,
+        flush_interval_ms = cli.flush_interval_ms,
+        "Durability config: sync_steps=0 means strict (fsync per step), N means batched"
+    );
+
     let engine = if cli.wal_path.is_empty() {
-        WorkflowEngine::new()
+        WorkflowEngine::new().with_durability_config(durability)
     } else {
         let e = WorkflowEngine::with_wal(&cli.wal_path, cli.wal_max_size)
-            .expect("Failed to initialize WAL");
+            .expect("Failed to initialize WAL")
+            .with_durability_config(durability);
         match e.recover_from_wal() {
             Ok((records, workflows)) => {
                 if records > 0 {
@@ -150,6 +168,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/bench/concurrent", post(handle_concurrent))
         .route("/bench/activity_scheduling", post(handle_activity_scheduling))
         .route("/bench/long_running", post(handle_long_running))
+        // Lightweight handler for basic throughput measurement (no heavy WAL work)
+        .route("/bench/invoke", post(handle_invoke))
+        // camelCase alias for Restate-compatible durable_promise workload
+        .route("/bench/durablePromise", post(handle_durable_promise))
+        // Keyed service routes (Restate Virtual Object compatible)
+        .route("/keyed_bench/:key/stateful", post(handle_keyed_stateful))
+        .route("/keyed_bench/:key/invoke", post(handle_keyed_invoke))
         // /api/* routes — Temporal-compatible API (Velocity Classic)
         .route("/api/health", get(handle_api_health))
         .route("/api/workflows", post(handle_api_start_workflow))
@@ -196,7 +221,7 @@ async fn handle_simple_workflow(State(state): State<AppState>) -> Json<BenchResp
     // Execute 10 durable steps — each writes to WAL and fsyncs
     for step in 0..10 {
         let result = format!("step_{}_done", step).into_bytes();
-        state.engine.complete_step_sync(key, step, result);
+        state.engine.complete_step_durable(key, step, result);
     }
 
     // Complete workflow — writes completion to WAL
@@ -232,7 +257,7 @@ async fn handle_multi_step(
 
     for step in 0..num_steps {
         let result = step.to_le_bytes().to_vec();
-        state.engine.complete_step_sync(key, step, result);
+        state.engine.complete_step_durable(key, step, result);
     }
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
@@ -274,7 +299,7 @@ async fn handle_signal_storm(
 
     // Complete all steps
     for step in 0..num_signals {
-        state.engine.complete_step_sync(key, step, vec![]);
+        state.engine.complete_step_durable(key, step, vec![]);
     }
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
@@ -303,7 +328,7 @@ async fn handle_cold_start(State(state): State<AppState>) -> Json<BenchResponse>
     );
     state.engine.sync_wal();
 
-    state.engine.complete_step_sync(key, 0, b"cold_start_done".to_vec());
+    state.engine.complete_step_durable(key, 0, b"cold_start_done".to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
 
@@ -331,9 +356,9 @@ async fn handle_stateful(State(state): State<AppState>) -> Json<BenchResponse> {
     state.engine.sync_wal();
 
     // Step 0: "read" state
-    state.engine.complete_step_sync(key, 0, b"read_result".to_vec());
+    state.engine.complete_step_durable(key, 0, b"read_result".to_vec());
     // Step 1: "write" state
-    state.engine.complete_step_sync(key, 1, b"write_result".to_vec());
+    state.engine.complete_step_durable(key, 1, b"write_result".to_vec());
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
@@ -364,7 +389,7 @@ async fn handle_echo(
     );
     state.engine.sync_wal();
 
-    state.engine.complete_step_sync(key, 0, b"echo_done".to_vec());
+    state.engine.complete_step_durable(key, 0, b"echo_done".to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
 
@@ -395,7 +420,7 @@ async fn handle_payload(
     );
     state.engine.sync_wal();
 
-    state.engine.complete_step_sync(key, 0, size.to_le_bytes().to_vec());
+    state.engine.complete_step_durable(key, 0, size.to_le_bytes().to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
 
@@ -423,9 +448,9 @@ async fn handle_durable_promise(State(state): State<AppState>) -> Json<BenchResp
     state.engine.sync_wal();
 
     // Step 0: "set" promise value
-    state.engine.complete_step_sync(key, 0, b"promise_set".to_vec());
+    state.engine.complete_step_durable(key, 0, b"promise_set".to_vec());
     // Step 1: "get" promise value
-    state.engine.complete_step_sync(key, 1, b"promise_get".to_vec());
+    state.engine.complete_step_durable(key, 1, b"promise_get".to_vec());
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
@@ -453,7 +478,7 @@ async fn handle_concurrent(State(state): State<AppState>) -> Json<BenchResponse>
     );
     state.engine.sync_wal();
 
-    state.engine.complete_step_sync(key, 0, b"concurrent_done".to_vec());
+    state.engine.complete_step_durable(key, 0, b"concurrent_done".to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
 
@@ -482,7 +507,7 @@ async fn handle_activity_scheduling(State(state): State<AppState>) -> Json<Bench
 
     for step in 0..5 {
         let result = format!("activity_{}", step).into_bytes();
-        state.engine.complete_step_sync(key, step, result);
+        state.engine.complete_step_durable(key, step, result);
     }
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
@@ -513,7 +538,7 @@ async fn handle_long_running(State(state): State<AppState>) -> Json<BenchRespons
 
     for step in 0..50 {
         let result = format!("long_step_{}", step).into_bytes();
-        state.engine.complete_step_sync(key, step, result);
+        state.engine.complete_step_durable(key, step, result);
     }
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
@@ -525,6 +550,98 @@ async fn handle_long_running(State(state): State<AppState>) -> Json<BenchRespons
         signals_received: None,
         steps_completed: None,
     })
+}
+
+/// Lightweight invoke: minimal persistence overhead (1 step).
+/// Used by handler_invocation, concurrent_handlers, sustained_load, cold_start workloads.
+async fn handle_invoke(State(state): State<AppState>) -> Json<BenchResponse> {
+    let wf_id = state.workflow_counter.fetch_add(1, Ordering::Relaxed);
+    let workflow_type_id = 12u64;
+
+    let key = state.engine.start_workflow(
+        wf_id,
+        workflow_type_id,
+        state.namespace_id,
+        state.task_queue_hash,
+        1,
+        None,
+    );
+    state.engine.sync_wal();
+
+    state.engine.complete_step_durable(key, 0, b"invoke_done".to_vec());
+    state.engine.complete_workflow(key, Some(b"completed".to_vec()));
+    state.engine.sync_wal();
+
+    Json(BenchResponse {
+        status: "ok".into(),
+        steps: Some(1),
+        signals_received: None,
+        steps_completed: None,
+    })
+}
+
+/// Keyed stateful: per-key read → write with durable steps.
+/// Route: POST /keyed_bench/:key/stateful
+async fn handle_keyed_stateful(
+    State(state): State<AppState>,
+    Path(key_str): Path<String>,
+) -> Json<serde_json::Value> {
+    let wf_id = state.workflow_counter.fetch_add(1, Ordering::Relaxed);
+    let workflow_type_id = 13u64;
+
+    let key = state.engine.start_workflow(
+        wf_id,
+        workflow_type_id,
+        state.namespace_id,
+        state.task_queue_hash,
+        2,
+        None,
+    );
+    state.engine.sync_wal();
+
+    // Step 0: read state
+    state.engine.complete_step_durable(key, 0, b"read_result".to_vec());
+    // Step 1: write state
+    state.engine.complete_step_durable(key, 1, b"write_result".to_vec());
+
+    state.engine.complete_workflow(key, Some(b"completed".to_vec()));
+    state.engine.sync_wal();
+
+    Json(serde_json::json!({
+        "status": "ok",
+        "key": key_str,
+        "count": wf_id
+    }))
+}
+
+/// Keyed invoke: per-key lightweight handler.
+/// Route: POST /keyed_bench/:key/invoke
+async fn handle_keyed_invoke(
+    State(state): State<AppState>,
+    Path(key_str): Path<String>,
+) -> Json<serde_json::Value> {
+    let wf_id = state.workflow_counter.fetch_add(1, Ordering::Relaxed);
+    let workflow_type_id = 14u64;
+
+    let key = state.engine.start_workflow(
+        wf_id,
+        workflow_type_id,
+        state.namespace_id,
+        state.task_queue_hash,
+        1,
+        None,
+    );
+    state.engine.sync_wal();
+
+    state.engine.complete_step_durable(key, 0, b"keyed_invoke_done".to_vec());
+    state.engine.complete_workflow(key, Some(b"completed".to_vec()));
+    state.engine.sync_wal();
+
+    Json(serde_json::json!({
+        "status": "ok",
+        "key": key_str,
+        "invoke_count": wf_id
+    }))
 }
 
 /// Health check endpoint.
@@ -641,8 +758,8 @@ async fn handle_api_query_workflow(
     }
 }
 
-/// Execute a workflow by type with synchronous per-step durability.
-/// Each step uses complete_step_sync() which fsyncs the WAL before returning.
+/// Execute a workflow by type with configurable per-step durability.
+/// Each step uses complete_step_durable() — fsync behavior controlled by --sync-steps.
 async fn execute_api_workflow(state: &AppState, workflow_id: &str, workflow_type: &str) {
     let wf_id_num = state.workflow_counter.fetch_add(1, Ordering::Relaxed);
     let workflow_type_id = workflow_type.len() as u64; // unique-ish
@@ -675,7 +792,7 @@ async fn execute_api_workflow(state: &AppState, workflow_id: &str, workflow_type
     // Execute each step with synchronous fsync
     for step in 0..num_steps {
         let result = format!("step_{}_done", step).into_bytes();
-        state.engine.complete_step_sync(key, step, result);
+        state.engine.complete_step_durable(key, step, result);
     }
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
