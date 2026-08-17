@@ -19,7 +19,10 @@ use std::sync::Arc;
 use clap::Parser;
 
 use velocity_embedded::NmcpFrameRouter;
-use velocity_server_bootstrap::{bootstrap_engine, bootstrap_nmcp, run_server_loop, run_http_health, load_tls_config, create_workflow_state, ServerMetrics};
+use velocity_server_bootstrap::{bootstrap_engine, bootstrap_nmcp, run_server_loop, run_http_health_with_config, load_tls_config, create_workflow_state, ServerMetrics, HttpEndpointConfig};
+use velocity_server_bootstrap::auth::AuthConfig;
+use velocity_server_bootstrap::rate_limit::RateLimiter;
+use velocity_server_bootstrap::audit::AuditLogger;
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
@@ -71,6 +74,30 @@ struct Cli {
     /// TLS private key PEM file (required with --tls-cert).
     #[arg(long, env = "VELOCITY_TLS_KEY")]
     tls_key: Option<String>,
+
+    /// API key for authenticating requests (can be specified multiple times).
+    #[arg(long, env = "VELOCITY_API_KEYS", value_delimiter = ',')]
+    api_keys: Vec<String>,
+
+    /// JWT secret for HS256 token validation (empty = JWT disabled).
+    #[arg(long, default_value = "", env = "VELOCITY_JWT_SECRET")]
+    jwt_secret: String,
+
+    /// Rate limit: max burst (tokens per client). 0 = disabled.
+    #[arg(long, default_value_t = 0, env = "VELOCITY_RATE_LIMIT_BURST")]
+    rate_limit_burst: u64,
+
+    /// Rate limit: refill rate (tokens per second per client).
+    #[arg(long, default_value_t = 0.0, env = "VELOCITY_RATE_LIMIT_REFILL")]
+    rate_limit_refill: f64,
+
+    /// Enable structured audit logging.
+    #[arg(long, env = "VELOCITY_AUDIT_ENABLED")]
+    audit_enabled: bool,
+
+    /// mTLS CA certificate PEM file (enables client certificate verification).
+    #[arg(long, env = "VELOCITY_MTLS_CA_CERT")]
+    mtls_ca_cert: Option<String>,
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -197,10 +224,43 @@ async fn main() {
 
     // Spawn HTTP health endpoint
     if !cli.health_bind.is_empty() {
+        // Build auth config
+        let auth_config = if !cli.api_keys.is_empty() || !cli.jwt_secret.is_empty() {
+            Some(AuthConfig {
+                api_keys: cli.api_keys.clone(),
+                jwt_secret: cli.jwt_secret.clone(),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
+
+        // Build rate limiter
+        let rate_limiter = if cli.rate_limit_refill > 0.0 {
+            Some(Arc::new(RateLimiter::new(cli.rate_limit_burst, cli.rate_limit_refill)))
+        } else {
+            None
+        };
+
+        // Build audit logger
+        let audit_logger = if cli.audit_enabled {
+            Some(Arc::new(AuditLogger::new(true)))
+        } else {
+            None
+        };
+
+        let endpoint_config = HttpEndpointConfig {
+            metrics_token: cli.metrics_token.clone(),
+            auth_config,
+            rate_limiter,
+            audit_logger,
+            tls_acceptor: tls_acceptor.clone(),
+        };
+
         let health_addr = cli.health_bind.clone();
         let metrics = metrics.clone();
         tokio::spawn(async move {
-            if let Err(e) = run_http_health(health_addr, "velocity-embedded", metrics, cli.metrics_token.clone(), tls_acceptor).await {
+            if let Err(e) = run_http_health_with_config(health_addr, "velocity-embedded", metrics, endpoint_config).await {
                 tracing::error!("Health endpoint error: {}", e);
             }
         });

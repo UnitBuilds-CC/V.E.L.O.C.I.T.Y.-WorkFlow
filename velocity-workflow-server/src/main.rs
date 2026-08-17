@@ -15,7 +15,10 @@ use velocity_workflow_engine::db_adapter::DatabaseConfig;
 use velocity_workflow_engine::LivePostgresAdapter;
 use velocity_workflow_engine::vctp_transport::{VctpTransport, VctpTransportConfig};
 use velocity_workflow_engine::VctpRpcServer;
-use velocity_server_bootstrap::ServerMetrics;
+use velocity_server_bootstrap::{ServerMetrics, HttpEndpointConfig};
+use velocity_server_bootstrap::auth::AuthConfig;
+use velocity_server_bootstrap::rate_limit::RateLimiter;
+use velocity_server_bootstrap::audit::AuditLogger;
 
 mod http_bench;
 
@@ -72,6 +75,38 @@ struct Cli {
     /// Bearer token for /metrics endpoint (empty = no auth).
     #[arg(long, default_value = "", env = "VELOCITY_METRICS_TOKEN")]
     metrics_token: String,
+
+    /// API key for authenticating requests (can be specified multiple times).
+    #[arg(long, env = "VELOCITY_API_KEYS", value_delimiter = ',')]
+    api_keys: Vec<String>,
+
+    /// JWT secret for HS256 token validation (empty = JWT disabled).
+    #[arg(long, default_value = "", env = "VELOCITY_JWT_SECRET")]
+    jwt_secret: String,
+
+    /// JWT issuer claim to validate.
+    #[arg(long, default_value = "", env = "VELOCITY_JWT_ISSUER")]
+    jwt_issuer: String,
+
+    /// JWT audience claim to validate.
+    #[arg(long, default_value = "", env = "VELOCITY_JWT_AUDIENCE")]
+    jwt_audience: String,
+
+    /// Rate limit: max burst (tokens per client).
+    #[arg(long, default_value_t = 100, env = "VELOCITY_RATE_LIMIT_BURST")]
+    rate_limit_burst: u64,
+
+    /// Rate limit: refill rate (tokens per second per client). 0 = disabled.
+    #[arg(long, default_value_t = 0.0, env = "VELOCITY_RATE_LIMIT_REFILL")]
+    rate_limit_refill: f64,
+
+    /// Enable structured audit logging.
+    #[arg(long, env = "VELOCITY_AUDIT_ENABLED")]
+    audit_enabled: bool,
+
+    /// mTLS CA certificate PEM file (enables client certificate verification).
+    #[arg(long, env = "VELOCITY_MTLS_CA_CERT")]
+    mtls_ca_cert: Option<String>,
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -114,6 +149,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !cli.metrics_token.is_empty() {
         println!("  Metrics: Bearer token auth enabled");
+    }
+    if !cli.api_keys.is_empty() {
+        println!("  Auth:    {} API key(s) configured", cli.api_keys.len());
+    }
+    if !cli.jwt_secret.is_empty() {
+        println!("  JWT:     HS256 validation enabled");
+    }
+    if cli.rate_limit_refill > 0.0 {
+        println!("  Rate:    burst={}, refill={}/s", cli.rate_limit_burst, cli.rate_limit_refill);
+    }
+    if cli.audit_enabled {
+        println!("  Audit:   Structured audit logging enabled");
+    }
+    if cli.mtls_ca_cert.is_some() {
+        println!("  mTLS:    Client certificate verification enabled");
     }
     println!();
 
@@ -220,15 +270,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Some(cli.metrics_token.clone())
     };
+
+    // Build auth config from API keys and JWT settings
+    let auth_config = if !cli.api_keys.is_empty() || !cli.jwt_secret.is_empty() {
+        Some(AuthConfig {
+            api_keys: cli.api_keys.clone(),
+            jwt_secret: cli.jwt_secret.clone(),
+            jwt_issuer: cli.jwt_issuer.clone(),
+            jwt_audience: cli.jwt_audience.clone(),
+            ..Default::default()
+        })
+    } else {
+        None
+    };
+
+    // Build rate limiter (0 refill = disabled)
+    let rate_limiter = if cli.rate_limit_refill > 0.0 {
+        Some(Arc::new(RateLimiter::new(cli.rate_limit_burst, cli.rate_limit_refill)))
+    } else {
+        None
+    };
+
+    // Build audit logger
+    let audit_logger = if cli.audit_enabled {
+        Some(Arc::new(AuditLogger::new(true)))
+    } else {
+        None
+    };
+
+    let endpoint_config = HttpEndpointConfig {
+        metrics_token,
+        auth_config,
+        rate_limiter,
+        audit_logger,
+        tls_acceptor: None, // VCTP server uses UDP transport
+    };
+
     let health_addr = cli.health_bind.clone();
     let metrics_for_health = metrics.clone();
     tokio::spawn(async move {
-        if let Err(e) = velocity_server_bootstrap::run_http_health(
+        if let Err(e) = velocity_server_bootstrap::run_http_health_with_config(
             health_addr,
             "velocity-workflow-server",
             metrics_for_health,
-            metrics_token,
-            None, // No TLS for VCTP server (UDP-based)
+            endpoint_config,
         ).await {
             tracing::error!("Health endpoint error: {}", e);
         }
