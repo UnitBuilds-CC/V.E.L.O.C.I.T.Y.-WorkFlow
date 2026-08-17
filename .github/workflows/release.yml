@@ -403,6 +403,35 @@ jobs:
       - name: Create Release with binaries
         uses: softprops/action-gh-release@v2
         with:
+          name: "Initial Release V${{ needs.version.outputs.version }}"
+          body: |
+            V.E.L.O.C.I.T.Y. WorkFlow — Versatile Engine for Low-latency Orchestration, Coordination, and Intelligent Transaction Yield
+
+            A high-performance durable execution engine ecosystem designed as a drop-in alternative to Temporal, Restate, and DBOS.
+
+            ## Three Deployment Flavors
+            - **Velocity Server** — gRPC + WAL persistence (43.6 ops/s)
+            - **Velocity Embedded** — NMCP + PostgreSQL per-step journal (61.25 ops/s)
+            - **Velocity Classic** — NMCP + WAL/PG, Temporal-compatible API (61.54 ops/s)
+
+            ## Key Features
+            - Configurable durability (strict/batched/async) with direct execution mode
+            - VCTP: Zero-copy UDP RPC with HMAC-SHA256, replay protection, XOR cipher (9,052 ops/s)
+            - NMCP: Shared memory IPC (50-100x faster than HTTP) + WebSocket
+            - Slab Engine with SHA-256 Merkle root state proof
+            - Security: JWT key rotation, security headers, mTLS, Trivy scanning
+            - Observability: OpenTelemetry/OTLP, 17 Prometheus alerts
+            - Multi-instance: PostgreSQL advisory locks
+
+            ## Published Packages
+            - Docker: `ghcr.io/unitbuilds-cc/velocity-workflow:${{ needs.version.outputs.version }}`
+            - npm: `@velocity-workflow/sdk@${{ needs.version.outputs.version }}`
+            - PyPI: `velocity-workflow==${{ needs.version.outputs.version }}`
+            - Maven: `io.velocity:velocity-sdk-java:${{ needs.version.outputs.version }}`
+            - Go: `github.com/velocity-workflow/sdk-go@v${{ needs.version.outputs.version }}`
+
+            ## Native Binaries
+            3 server variants × 5 platforms (Linux amd64/arm64, macOS amd64/arm64, Windows amd64)
           generate_release_notes: true
           draft: false
           prerelease: false
