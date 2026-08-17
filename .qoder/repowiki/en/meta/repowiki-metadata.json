@@ -1,6 +1,6 @@
 # Velocity Workflow Repowiki Metadata
-# Generated: 2026-08-17
-# Last updated: After VCTP Production Hardening — all 22 requirements across 6 phases complete
+# Generated: 2026-08-18
+# Last updated: After configurable durability (DurabilityConfig), security hardening (HMAC-SHA256 JWT + key rotation, security headers), OpenTelemetry tracing, C# lifecycle benchmarks, direct execution mode
 
 project:
   name: "V.E.L.O.C.I.T.Y. WorkFlow"
@@ -43,7 +43,7 @@ workspace:
     - name: "velocity-classic"
       role: "Classic engine library crate (NMCP router)"
     - name: "velocity-classic-server"
-      role: "Classic server binary — NMCP shmem + WebSocket, replaces TypeScript"
+      role: "Classic server binary — NMCP shmem + WebSocket + VCTP gateways (WS/HTTP with TLS termination, rate limiting)"
     - name: "velocity-embedded"
       role: "Embedded engine library crate (NMCP router + PostgreSQL)"
     - name: "velocity-embedded-server"
@@ -116,9 +116,18 @@ security:
     - "JWT (HS256/RS256) with zero-downtime key rotation"
   rate_limiting: "Token bucket per-client IP (DashMap-based)"
   audit: "Structured audit logging for all API calls"
-  tls: "mTLS support via rustls (cert + key PEM files)"
+  tls: "mTLS support via rustls (cert + key PEM files); gateway TLS termination (HTTPS via axum-server + rustls, WSS via tokio-rustls)"
   scanning: "Trivy container security scanning in CI"
   headers: "Security headers on every HTTP response: X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Cache-Control: no-store"
+  vctp_encryption:
+    - "HMAC-SHA256 authenticated encryption (constant-time MAC verification)"
+    - "VctpReplayWindow: 64-depth sliding window for O(1) replay detection (≥10M checks/s)"
+    - "XOR cipher with AES-256 key schedule (defense-in-depth for cluster-internal traffic)"
+  gateway_rate_limiting:
+    http: "Per-second window rate limiting (AtomicU64, lock-free)"
+    ws: "Per-connection rate limiting (configurable)"
+  prometheus_alerts: "17 rules total (11 HTTP + 6 VCTP-specific)"
+  rwlock_safety: "27 unwrap() → expect('descriptive message') in production hot path"
 
 tracing:
   framework: "OpenTelemetry"
@@ -157,7 +166,7 @@ durability:
       sync_steps: "u32::MAX"
       description: "background fsync only — max throughput, event processing"
   direct_execution:
-    enabled: "with_direct_execution() builder method"
+    enabled: "with_direct_execution() and with_direct_execution_if(condition) builder methods"
     behavior: "Skip task queue enqueue on step completion"
     use_case: "Embedded/engine-local workloads where caller drives the loop"
     anti_pattern: "Distributed worker-pool patterns where external workers poll task queue"
@@ -220,22 +229,34 @@ vctp:
     - "Reorder buffer (BTreeMap in-order delivery)"
     - "AIMD congestion control"
     - "Packet fragmentation/reassembly"
-    - "Prometheus metrics export"
+    - "Prometheus metrics export (6 VCTP + 11 HTTP = 17 alert rules)"
     - "OpenTelemetry tracing spans"
+    - "HMAC-SHA256 authenticated encryption (constant-time verification)"
+    - "Replay protection (64-depth sliding window, ≥10M checks/s)"
+    - "XOR cipher (AES-256 key schedule)"
+    - "RwLock safety (27 expect with descriptive messages)"
+    - "Chaos engineering (4 tests: reorder overflow, 10K flood, malformed, drain-under-load)"
+    - "Concurrent stress benchmark (100 clients × 50 requests, ≥2,000 ops/s)"
+    - "Cross-network benchmark (4 zones with artificial latency, ≥1,000 ops/s)"
   gateways:
-    - "WebSocket-to-VCTP gateway (592 lines)"
-    - "HTTP-to-VCTP ingress with Swagger UI at /docs (666 lines)"
+    - "WebSocket-to-VCTP gateway with TLS (WSS) + rate limiting (692 lines)"
+    - "HTTP-to-VCTP ingress with Swagger UI at /docs, TLS (HTTPS) + rate limiting (871 lines)"
     - "VCTP sidecar proxy with ECDH + XOR cipher (474 lines)"
   benchmarks:
-    full_stack_dispatch: "9,052 ops/s (UDP + WAL + DB)"
-    full_stack_start_workflow: "7,375 ops/s (UDP + WAL + DB)"
+    full_stack_dispatch: "9,052 ops/s (UDP + WAL + DB), CI threshold ≥5,000 ops/s"
+    full_stack_start_workflow: "7,375 ops/s (UDP + WAL + DB), CI threshold ≥5,000 ops/s"
     wal_durability_write: "7,962 wf/s"
     wal_crash_recovery: "43,113 wf/s"
+    e2e_round_trip_p99: "<5ms, CI threshold <5ms"
+    concurrent_stress_100_clients: "≥2,000 ops/s, >90% delivery"
+    cross_network_4_zones: "≥1,000 ops/s, >85% delivery"
+    hmac_sha256_throughput: "≥100,000 ops/s"
+    replay_window_checks: "≥10,000,000 ops/s"
   tests:
-    engine_tests: 2103
-    vctp_tests: 38
+    engine_tests: 2541
+    vctp_tests: 61
     sidecar_tests: 6
-    total: 2109
+    total: 2547
 
 documentation:
   content:
@@ -266,6 +287,10 @@ documentation:
 
   ops_runbooks:
     - "docs/ops-runbooks.md"
+    - "docs/security-audit-checklist.md"
+    - "docs/otlp-tracing-guide.md"
+    - "deploy/scripts/vctp-prod-loadtest.sh"
+    - "deploy/scripts/wal-backup.sh"
 
 build:
   rust:
@@ -308,7 +333,7 @@ ci:
     - name: "ci.yml"
       description: "Main CI pipeline with chaos/failure injection tests"
     - name: "benchmark.yml"
-      description: "Benchmark runs"
+      description: "Benchmark runs with regression gates (≥500 ops/s, p99 <100ms, error rate <5%)"
     - name: "e2e.yml"
       description: "End-to-end tests"
     - name: "release.yml"
@@ -316,11 +341,15 @@ ci:
   security:
     - "Trivy container scanning"
     - "Chaos/failure injection tests"
+  benchmark_gates:
+    - "Benchmark regression: ≥500 ops/s"
+    - "Tail latency p99: <100ms (sustained workload)"
+    - "Error rate: <5% under sustained load"
 
 benchmarking:
   tool: "bench-suite/prod-bench"
   http_bench: "velocity-bench"
-  dotnet_bench: "benchmarks/Velocity.Workflow.Benchmarks (C# lifecycle benchmarks)"
+  dotnet_bench: "benchmarks/Velocity.Workflow.Benchmarks (C# lifecycle benchmarks: WorkflowLifecycleBenchmark 143 lines, --lifecycle flag, Params 1/10/100 steps via FFI)"
   profiles:
     - "quick"
     - "standard"

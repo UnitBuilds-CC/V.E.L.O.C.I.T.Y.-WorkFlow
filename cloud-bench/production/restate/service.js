@@ -256,8 +256,8 @@ const reactiveService = restate.object({
 });
 
 // ─── Serve ───────────────────────────────────────────────────────────────────
-// Configure Restate server URL for auto-registration
-process.env.RESTATE_URL = process.env.RESTATE_URL || 'http://bench-restate-server:8080';
+// The entrypoint.sh script handles registration with the Restate server
+// after this service starts listening on port 9080.
 
 restate.serve({
   services: [benchService, keyedBenchService, concurrentService, contentionService, reactiveService],

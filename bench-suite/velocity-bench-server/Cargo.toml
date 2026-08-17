@@ -1,6 +1,7 @@
 [package]
 name = "velocity-bench-server"
-version = "0.1.0"
+version = "1.0.0"
+publish = false
 edition = "2021"
 authors = ["UnitBuilds <ian@unitbuilds.com>"]
 description = "Velocity production benchmark HTTP server — real WorkflowEngine + WAL persistence"

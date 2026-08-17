@@ -330,15 +330,24 @@ Every VCTP request passes through a full processing pipeline:
 - **Packet fragmentation** — Large payloads split across multiple UDP datagrams
 - **Prometheus metrics** — Standard text format export
 - **OpenTelemetry tracing** — Spans for every pipeline stage
+- **HMAC-SHA256 authentication** — Packet integrity verification with constant-time MAC comparison
+- **Replay protection** — 64-depth sliding window (`VctpReplayWindow`) rejects duplicate/old packets
+- **XOR cipher** — AES-256 key schedule encryption (defense-in-depth for cluster-internal traffic)
+- **RwLock safety** — All 27 hot-path lock accesses use `expect("descriptive message")` instead of `unwrap()`
 
 ### Performance
 
-| Benchmark | Result |
-|-----------|--------|
-| Full-stack dispatch | 9,052 ops/s (UDP + WAL + DB) |
-| Full-stack start_workflow | 7,375 ops/s |
-| WAL durability write | 7,962 wf/s |
-| WAL crash recovery | 43,113 wf/s |
+| Benchmark | Result | CI Threshold |
+|-----------|--------|-------------|
+| Full-stack dispatch | 9,052 ops/s (UDP + WAL + DB) | ≥5,000 ops/s |
+| Full-stack start_workflow | 7,375 ops/s | ≥5,000 ops/s |
+| WAL durability write | 7,962 wf/s | — |
+| WAL crash recovery | 43,113 wf/s | — |
+| E2E round-trip p99 | <5ms | <5ms |
+| Concurrent stress (100 clients) | ≥2,000 ops/s | ≥2,000 ops/s, >90% delivery |
+| Cross-network (4 zones) | ≥1,000 ops/s | ≥1,000 ops/s, >85% delivery |
+| HMAC-SHA256 throughput | ≥100,000 ops/s | ≥100K ops/s |
+| Replay window checks | ≥10M ops/s | ≥10M ops/s |
 
 ## VCTP Gateways and Sidecar Proxy
 
@@ -356,15 +365,15 @@ graph LR
 
 ### WebSocket-to-VCTP Gateway
 
-**Path:** `velocity-classic-server/src/ws_vctp_gateway.rs` (592 lines)
+**Path:** `velocity-classic-server/src/ws_vctp_gateway.rs` (692 lines)
 
-Bridges browser-based WebSocket clients to the VCTP UDP backend. Handles WebSocket frame parsing, VCTP packet encapsulation, and bidirectional forwarding.
+Bridges browser-based WebSocket clients to the VCTP UDP backend. Handles WebSocket frame parsing, VCTP packet encapsulation, and bidirectional forwarding. Supports TLS termination (WSS) via tokio-rustls and per-connection rate limiting.
 
 ### HTTP-to-VCTP Ingress
 
-**Path:** `velocity-classic-server/src/http_vctp_ingress.rs` (666 lines)
+**Path:** `velocity-classic-server/src/http_vctp_ingress.rs` (871 lines)
 
-REST API gateway with auto-generated Swagger UI at `/docs`. Translates HTTP requests to VCTP UDP calls and returns JSON responses.
+REST API gateway with auto-generated Swagger UI at `/docs`. Translates HTTP requests to VCTP UDP calls and returns JSON responses. Supports TLS termination (HTTPS) via axum-server + rustls and per-second window rate limiting. Includes 5 live integration tests.
 
 ### VCTP Sidecar Proxy
 
@@ -421,11 +430,15 @@ graph LR
 
 **Components:**
 - **Authentication** — API key (X-API-Key) and JWT (HS256/RS256) with zero-downtime key rotation
-- **Rate Limiting** — Token bucket per client IP via DashMap (lock-free)
+- **Rate Limiting** — Token bucket per client IP via DashMap (lock-free); gateway-level rate limiting (HTTP per-second window, WS per-connection)
 - **Audit Logging** — Structured logs for all API calls
-- **mTLS** — TLS certificate + key loading via rustls
+- **TLS Termination** — HTTPS (axum-server + rustls) and WSS (tokio-rustls) at gateway level; mTLS for server-to-server
+- **VCTP Authenticated Encryption** — HMAC-SHA256 packet authentication with constant-time verification
+- **VCTP Replay Protection** — 64-depth sliding window rejects duplicate/replayed packets
+- **VCTP XOR Cipher** — AES-256 key schedule encryption for defense-in-depth
 - **Security Headers** — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store` on every HTTP response
 - **Trivy Scanning** — Container security scanning in CI
+- **Prometheus Alerts** — 17 rules (11 HTTP + 6 VCTP) for production monitoring
 
 ## Distributed Tracing
 
@@ -755,7 +768,7 @@ graph TB
 - `keyed_invoke` — Keyed lightweight invocation (Restate Virtual Object pattern)
 
 **C# Lifecycle Benchmarks:**
-The `benchmarks/Velocity.Workflow.Benchmarks/` directory contains a .NET benchmark suite (`WorkflowLifecycleBenchmark.cs`) that complements the Rust prod-bench. It measures workflow lifecycle operations using the .NET runtime.
+The `benchmarks/Velocity.Workflow.Benchmarks/` directory contains a .NET benchmark suite (`WorkflowLifecycleBenchmark.cs`, 143 lines) that complements the Rust prod-bench. It exercises the actual Velocity workflow engine via C# FFI (WorkflowRuntime), measuring end-to-end lifecycle throughput: Start → CompleteStep(0..N) → Signal → Query → Complete. BenchmarkDotNet drives `[Params(1, 10, 100)]` steps-per-workflow with `[MemoryDiagnoser]` for allocation tracking. Run with `dotnet run -c Release -- --lifecycle`.
 
 ## Deployment Architecture
 

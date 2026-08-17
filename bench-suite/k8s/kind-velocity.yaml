@@ -1,0 +1,100 @@
+---
+# Velocity Runtime — K8s deployment for kind benchmark
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-runtime
+  namespace: benchmark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity-runtime
+  template:
+    metadata:
+      labels:
+        app: velocity-runtime
+    spec:
+      containers:
+        - name: velocity-runtime
+          image: velocity-bench/runtime:latest
+          imagePullPolicy: Never  # Loaded into kind
+          ports:
+            - containerPort: 7234
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 7234
+            initialDelaySeconds: 3
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velocity-runtime
+  namespace: benchmark
+spec:
+  selector:
+    app: velocity-runtime
+  ports:
+    - port: 7234
+      targetPort: 7234
+      nodePort: 30100
+  type: NodePort
+---
+# Velocity Classic — K8s deployment for kind benchmark
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: velocity-classic
+  namespace: benchmark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: velocity-classic
+  template:
+    metadata:
+      labels:
+        app: velocity-classic
+    spec:
+      containers:
+        - name: velocity-classic
+          image: velocity-bench/classic:latest
+          imagePullPolicy: Never  # Loaded into kind
+          ports:
+            - containerPort: 8083
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8083
+            initialDelaySeconds: 3
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: velocity-classic
+  namespace: benchmark
+spec:
+  selector:
+    app: velocity-classic
+  ports:
+    - port: 8083
+      targetPort: 8083
+      nodePort: 30101
+  type: NodePort

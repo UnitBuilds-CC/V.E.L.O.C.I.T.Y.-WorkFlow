@@ -186,7 +186,7 @@ impl HttpAdapter {
     /// Invoke a handler via HTTP POST.
     ///
     /// For Velocity Runtime: POST /{service}/{handler}
-    /// For Restate: POST /{service}/{handler}
+    /// For Restate: POST /{service}/default/{handler} (Virtual Objects require a key)
     ///
     /// Restate requires valid JSON bodies, so when the engine is Restate we wrap
     /// the raw payload bytes into `{"data":"<hex>"}` to satisfy its JSON parser.
@@ -196,7 +196,16 @@ impl HttpAdapter {
         handler: &str,
         payload: &[u8],
     ) -> HttpOperationResult {
-        let url = format!("{}/{}/{}", self.base_url, service, handler);
+        // Restate Virtual Objects require a key in the URL path.
+        // We use "default" as a synthetic key for non-keyed workloads.
+        let url = match self.engine_kind {
+            HttpEngineKind::Restate => {
+                format!("{}/{}/default/{}", self.base_url, service, handler)
+            }
+            HttpEngineKind::VelocityRuntime => {
+                format!("{}/{}/{}", self.base_url, service, handler)
+            }
+        };
         let body = self.maybe_wrap_json(payload);
         let start = Instant::now();
 

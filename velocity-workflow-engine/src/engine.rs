@@ -134,6 +134,17 @@ impl Default for DurabilityConfig {
     }
 }
 
+/// Per-phase timing breakdown for profiled step completion.
+#[derive(Debug, Default, Clone)]
+pub struct StepTimingBreakdown {
+    pub wal_append_us: f64,
+    pub dashmap_slab_us: f64,
+    pub hal_ecc_us: f64,
+    pub fsync_check_us: f64,
+    pub task_queue_us: f64,
+    pub total_us: f64,
+}
+
 // ─── Activity Timeouts & Retry ─────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -1739,6 +1750,92 @@ impl WorkflowEngine {
                 },
             );
         }
+    }
+
+    /// Profiled step completion — times each sub-operation to identify bottlenecks.
+    /// Returns a breakdown of microseconds spent in each phase.
+    #[cfg(test)]
+    pub fn complete_step_durable_profiled(
+        &self,
+        workflow_key: u64,
+        step: u32,
+        result: Vec<u8>,
+    ) -> StepTimingBreakdown {
+        use std::time::Instant;
+        let sync_steps = self.durability_config.sync_steps;
+        let direct = self.durability_config.direct_execution;
+        let mut breakdown = StepTimingBreakdown::default();
+        let total_start = Instant::now();
+
+        // Phase 1: WAL append
+        let t0 = Instant::now();
+        if let Some(wal) = &self.wal {
+            let mut data = Vec::with_capacity(4 + result.len());
+            data.extend_from_slice(&step.to_le_bytes());
+            data.extend_from_slice(&result);
+            let _ = wal.append(WalEventType::StepCompleted, workflow_key, data);
+        }
+        breakdown.wal_append_us = t0.elapsed().as_nanos() as f64 / 1000.0;
+
+        // Phase 2: DashMap shard lock + slab mutation + Merkle recalc
+        let t1 = Instant::now();
+        let (task_queue_hash, merkle_root) = {
+            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+                ctx.complete_step(step, vec![]);
+                (ctx.task_queue_hash, ctx.slab.merkle_root)
+            } else {
+                return breakdown;
+            }
+        };
+        breakdown.dashmap_slab_us = t1.elapsed().as_nanos() as f64 / 1000.0;
+
+        // Phase 3: HAL ECC parity
+        let t2 = Instant::now();
+        self.hal
+            .write()
+            .unwrap()
+            .on_slab_write(workflow_key, &merkle_root, merkle_root);
+        breakdown.hal_ecc_us = t2.elapsed().as_nanos() as f64 / 1000.0;
+
+        // Phase 4: Fsync threshold check + conditional fsync
+        let t3 = Instant::now();
+        let count = self.steps_since_sync.fetch_add(1, Ordering::Relaxed) + 1;
+        let step_threshold = count >= sync_steps;
+        let time_threshold = {
+            let last = self.last_sync_instant.read().unwrap();
+            last.elapsed() >= Duration::from_millis(self.durability_config.flush_interval_ms)
+        };
+        if step_threshold || time_threshold {
+            if let Some(wal) = &self.wal {
+                let _ = wal.sync();
+            }
+            self.steps_since_sync.store(0, Ordering::Relaxed);
+            *self.last_sync_instant.write().unwrap() = Instant::now();
+        }
+        breakdown.fsync_check_us = t3.elapsed().as_nanos() as f64 / 1000.0;
+
+        // Phase 5: Task queue enqueue
+        let t4 = Instant::now();
+        if !direct {
+            self.task_queue.enqueue(
+                task_queue_hash,
+                TaskItem {
+                    task_id: 0,
+                    kind: TaskKind::WorkflowTask,
+                    workflow_key,
+                    task_queue_hash,
+                    step_index: step + 1,
+                    activity_name_id: 0,
+                    attempt: 1,
+                    priority: 0,
+                    deadline_ms: 0,
+                },
+            );
+        }
+        breakdown.task_queue_us = t4.elapsed().as_nanos() as f64 / 1000.0;
+
+        breakdown.total_us = total_start.elapsed().as_nanos() as f64 / 1000.0;
+        breakdown
     }
 
     /// Schedule an activity for execution with timeout tracking.
@@ -3543,5 +3640,73 @@ mod tests {
         );
 
         engine.shutdown();
+    }
+
+    #[test]
+    fn test_step_timing_breakdown() {
+        // Profile each sub-operation to identify the real bottleneck
+        // Run 3 configurations: batched(5), batched(100), direct+batched(5)
+        let configs = vec![
+            ("batched(5)", DurabilityConfig::batched(5, 5)),
+            ("batched(100)", DurabilityConfig::batched(100, 100)),
+            ("batched(5)+direct", DurabilityConfig::batched(5, 5).with_direct_execution()),
+        ];
+
+        for (label, config) in configs {
+            let wal_path = format!("bench-profile-{}.wal", label.replace('+', "-"));
+            let engine = WorkflowEngine::with_wal(&wal_path, 64 * 1024 * 1024)
+                .unwrap()
+                .with_durability_config(config);
+            let key = engine.start_workflow(99, 1, 0, 42, 500, None);
+            engine.sync_wal();
+
+            // Warmup
+            for step in 0..10 {
+                engine.complete_step_durable(key, step, vec![]);
+            }
+
+            let num_profiled = 200;
+            let mut totals = StepTimingBreakdown::default();
+            let mut max_total = 0.0f64;
+            let mut min_total = f64::MAX;
+
+            for step in 10..(10 + num_profiled) {
+                let b = engine.complete_step_durable_profiled(key, step, vec![]);
+                totals.wal_append_us += b.wal_append_us;
+                totals.dashmap_slab_us += b.dashmap_slab_us;
+                totals.hal_ecc_us += b.hal_ecc_us;
+                totals.fsync_check_us += b.fsync_check_us;
+                totals.task_queue_us += b.task_queue_us;
+                totals.total_us += b.total_us;
+                if b.total_us > max_total { max_total = b.total_us; }
+                if b.total_us < min_total { min_total = b.total_us; }
+            }
+
+            let n = num_profiled as f64;
+            eprintln!("\n╔══════════════════════════════════════════════════════════════════╗");
+            eprintln!("║  STEP TIMING BREAKDOWN — {} {} steps                         ║", label, num_profiled);
+            eprintln!("╠══════════════════════════════════════════════════════════════════╣");
+            eprintln!("║ Phase                    │  Avg (µs) │   Total (µs) │    %     ║");
+            eprintln!("╠═══════════════════════════╪═══════════╪══════════════╪══════════╣");
+            eprintln!("║ WAL append               │ {:>9.2} │ {:>10.0} │ {:>6.1}%   ║",
+                totals.wal_append_us / n, totals.wal_append_us, totals.wal_append_us / totals.total_us * 100.0);
+            eprintln!("║ DashMap+slab+Merkle      │ {:>9.2} │ {:>10.0} │ {:>6.1}%   ║",
+                totals.dashmap_slab_us / n, totals.dashmap_slab_us, totals.dashmap_slab_us / totals.total_us * 100.0);
+            eprintln!("║ HAL ECC parity           │ {:>9.2} │ {:>10.0} │ {:>6.1}%   ║",
+                totals.hal_ecc_us / n, totals.hal_ecc_us, totals.hal_ecc_us / totals.total_us * 100.0);
+            eprintln!("║ Fsync check+sync         │ {:>9.2} │ {:>10.0} │ {:>6.1}%   ║",
+                totals.fsync_check_us / n, totals.fsync_check_us, totals.fsync_check_us / totals.total_us * 100.0);
+            eprintln!("║ Task queue enqueue       │ {:>9.2} │ {:>10.0} │ {:>6.1}%   ║",
+                totals.task_queue_us / n, totals.task_queue_us, totals.task_queue_us / totals.total_us * 100.0);
+            eprintln!("╠═══════════════════════════╪═══════════╪══════════════╪══════════╣");
+            eprintln!("║ TOTAL per step           │ {:>9.2} │ {:>10.0} │  100.0%   ║",
+                totals.total_us / n, totals.total_us);
+            eprintln!("║ Min / Max step           │ {:>9.2} / {:<9.2}│            │         ║",
+                min_total, max_total);
+            eprintln!("╚═══════════════════════════╧═══════════╧══════════════╧══════════╝");
+
+            engine.shutdown();
+            let _ = std::fs::remove_file(&wal_path);
+        }
     }
 }

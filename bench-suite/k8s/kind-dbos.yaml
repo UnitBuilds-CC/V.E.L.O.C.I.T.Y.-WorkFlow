@@ -1,0 +1,110 @@
+---
+# PostgreSQL for DBOS
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbos-postgres
+  namespace: benchmark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dbos-postgres
+  template:
+    metadata:
+      labels:
+        app: dbos-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: dbos
+            - name: POSTGRES_PASSWORD
+              value: dbos_bench
+            - name: POSTGRES_DB
+              value: dbos_bench
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "dbos", "-d", "dbos_bench"]
+            initialDelaySeconds: 5
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dbos-postgres
+  namespace: benchmark
+spec:
+  selector:
+    app: dbos-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP
+---
+# DBOS Service — Python FastAPI with PostgreSQL durability
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbos-service
+  namespace: benchmark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dbos-service
+  template:
+    metadata:
+      labels:
+        app: dbos-service
+    spec:
+      containers:
+        - name: dbos-service
+          image: velocity-bench/dbos:latest
+          imagePullPolicy: Never
+          env:
+            - name: DBOS_DATABASE_URL
+              value: postgresql://dbos:dbos_bench@dbos-postgres:5432/dbos_bench
+            - name: DBOS_HTTP_PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dbos-service
+  namespace: benchmark
+spec:
+  selector:
+    app: dbos-service
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30102
+  type: NodePort

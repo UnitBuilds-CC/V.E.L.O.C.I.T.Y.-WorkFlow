@@ -221,10 +221,11 @@ async fn run_http_workload(
         HttpWorkloadKind::StatefulHandler => {
             // Keyed handler invocations with state
             let payload = vec![b'x'; workload.payload_size];
+            let keyed_svc = if workload.keyed_service.is_empty() { &workload.service } else { &workload.keyed_service };
             for i in 0..workload.operation_count {
                 let key = format!("bench-key-{}", i % 10);
                 let result = adapter
-                    .invoke_keyed_handler(&workload.service, &key, &workload.handler, &payload)
+                    .invoke_keyed_handler(keyed_svc, &key, &workload.handler, &payload)
                     .await;
                 if result.success {
                     success_count += 1;
@@ -240,30 +241,57 @@ async fn run_http_workload(
             // Concurrent handler invocations
             let payload = vec![b'x'; workload.payload_size];
             let mut handles = Vec::new();
-            let base = adapter.base_url().to_string();
 
             for _ in 0..workload.concurrency {
                 let p = payload.clone();
                 let svc = workload.service.clone();
                 let hdl = workload.handler.clone();
-                let base_url = base.clone();
-                // Clone adapter state for concurrent use
-                handles.push(tokio::spawn(async move {
-                    // We'll use a simple HTTP request per task
-                    let client = reqwest::Client::new();
-                    let url = format!("{}/{}/{}", base_url, svc, hdl);
-                    let s = Instant::now();
-                    match client.post(&url).body(p).send().await {
-                        Ok(resp) => {
-                            let status = resp.status().as_u16();
-                            let bytes = resp.content_length().unwrap_or(0);
-                            (
-                                s.elapsed().as_micros() as u64,
-                                status >= 200 && status < 300,
-                                bytes,
-                            )
+                // Use the adapter for correct URL format and JSON wrapping
+                handles.push(tokio::spawn({
+                    let base_url = adapter.base_url().to_string();
+                    let kind = adapter.kind();
+                    async move {
+                        let client = reqwest::Client::builder()
+                            .timeout(Duration::from_secs(30))
+                            .build()
+                            .unwrap();
+                        let url = match kind {
+                            HttpEngineKind::Restate => {
+                                format!("{}/{}/default/{}", base_url, svc, hdl)
+                            }
+                            HttpEngineKind::VelocityRuntime => {
+                                format!("{}/{}/{}", base_url, svc, hdl)
+                            }
+                        };
+                        let body = if serde_json::from_slice::<serde_json::Value>(&p).is_ok() {
+                            p
+                        } else {
+                            match kind {
+                                HttpEngineKind::Restate => {
+                                    let text = String::from_utf8_lossy(&p);
+                                    serde_json::to_vec(&serde_json::json!({ "data": text }))
+                                        .unwrap_or(p)
+                                }
+                                HttpEngineKind::VelocityRuntime => p,
+                            }
+                        };
+                        let s = Instant::now();
+                        match client.post(&url)
+                            .header("content-type", "application/json")
+                            .body(body)
+                            .send().await
+                        {
+                            Ok(resp) => {
+                                let status = resp.status().as_u16();
+                                let bytes = resp.content_length().unwrap_or(0);
+                                (
+                                    s.elapsed().as_micros() as u64,
+                                    status >= 200 && status < 300,
+                                    bytes,
+                                )
+                            }
+                            Err(_) => (s.elapsed().as_micros() as u64, false, 0),
                         }
-                        Err(_) => (s.elapsed().as_micros() as u64, false, 0),
                     }
                 }));
             }
@@ -301,7 +329,6 @@ async fn run_http_workload(
             let duration = Duration::from_secs(workload.duration_secs);
             let payload = vec![b'x'; workload.payload_size];
             let mut iteration: u64 = 0;
-            let base = adapter.base_url().to_string();
 
             tracing::info!(
                 "  Running sustained load for {}s at concurrency {}...",
@@ -315,12 +342,39 @@ async fn run_http_workload(
                     let p = payload.clone();
                     let svc = workload.service.clone();
                     let hdl = workload.handler.clone();
-                    let base_url = base.clone();
+                    let base_url = adapter.base_url().to_string();
+                    let kind = adapter.kind();
                     handles.push(tokio::spawn(async move {
-                        let client = reqwest::Client::new();
-                        let url = format!("{}/{}/{}", base_url, svc, hdl);
+                        let client = reqwest::Client::builder()
+                            .timeout(Duration::from_secs(30))
+                            .build()
+                            .unwrap();
+                        let url = match kind {
+                            HttpEngineKind::Restate => {
+                                format!("{}/{}/default/{}", base_url, svc, hdl)
+                            }
+                            HttpEngineKind::VelocityRuntime => {
+                                format!("{}/{}/{}", base_url, svc, hdl)
+                            }
+                        };
+                        let body = if serde_json::from_slice::<serde_json::Value>(&p).is_ok() {
+                            p
+                        } else {
+                            match kind {
+                                HttpEngineKind::Restate => {
+                                    let text = String::from_utf8_lossy(&p);
+                                    serde_json::to_vec(&serde_json::json!({ "data": text }))
+                                        .unwrap_or(p)
+                                }
+                                HttpEngineKind::VelocityRuntime => p,
+                            }
+                        };
                         let s = Instant::now();
-                        match client.post(&url).body(p).send().await {
+                        match client.post(&url)
+                            .header("content-type", "application/json")
+                            .body(body)
+                            .send().await
+                        {
                             Ok(resp) => {
                                 let status = resp.status().as_u16();
                                 let bytes = resp.content_length().unwrap_or(0);
@@ -366,10 +420,11 @@ async fn run_http_workload(
                         .invoke_handler(&workload.service, &workload.handler, &payload)
                         .await
                 } else if pct < 90 {
-                    // 20% stateful
+                    // 20% stateful (keyed)
+                    let keyed_svc = if workload.keyed_service.is_empty() { &workload.service } else { &workload.keyed_service };
                     let key = format!("mixed-{}", i % 5);
                     adapter
-                        .invoke_keyed_handler(&workload.service, &key, &workload.handler, &payload)
+                        .invoke_keyed_handler(keyed_svc, &key, &workload.handler, &payload)
                         .await
                 } else {
                     // 10% echo

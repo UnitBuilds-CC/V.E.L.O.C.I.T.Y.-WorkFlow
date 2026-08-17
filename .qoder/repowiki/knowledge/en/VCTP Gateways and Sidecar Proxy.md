@@ -34,19 +34,36 @@ The gateway translates this to a VCTP RPC request, sends it over UDP, and return
 
 ```rust
 pub struct WsVctpGatewayConfig {
-    pub bind_addr: String,          // WebSocket listen address
-    pub max_connections: usize,      // Max concurrent WebSocket connections
-    pub idle_timeout_secs: u64,     // Connection idle timeout
-    pub vctp_target: String,        // VCTP server address (UDP)
+    pub bind_addr: String,                  // WebSocket listen address
+    pub max_connections: usize,              // Max concurrent WebSocket connections
+    pub idle_timeout_secs: u64,             // Connection idle timeout
+    pub vctp_target: String,                // VCTP server address (UDP)
+    pub rate_limit_per_connection: u64,     // Max messages/sec per connection (0 = unlimited)
+    pub tls: Option<WsTlsConfig>,           // Optional TLS for WSS
 }
 ```
+
+### TLS Support (WSS)
+
+The gateway supports TLS termination for secure WebSocket connections:
+
+```rust
+pub struct WsTlsConfig {
+    pub cert_path: String,  // PEM certificate file
+    pub key_path: String,   // PEM private key file
+}
+```
+
+When `tls` is configured, the gateway uses `tokio-rustls::TlsAcceptor` to wrap incoming TCP connections in TLS before the WebSocket handshake. The `run()` method uses dual-path accept: TLS connections go through `acceptor.accept(stream)` → `accept_async(tls_stream)`, while non-TLS connections use `accept_async(stream)` directly.
 
 ### Key Features
 
 - Connection management with idle timeout
 - JSON ↔ VCTP binary translation
 - Error propagation (VCTP errors → WebSocket JSON errors)
-- Statistics tracking (connections, messages, errors)
+- Statistics tracking (connections, messages, errors, rate_limited)
+- Per-connection rate limiting (configurable messages/sec)
+- TLS termination for WSS (tokio-rustls)
 
 ## HTTP-to-VCTP Ingress
 
@@ -94,6 +111,48 @@ pub fn router(ingress: Arc<Self>) -> Router {
         .route("/docs/openapi.json", get(handle_openapi_spec))
 }
 ```
+
+### TLS Support (HTTPS)
+
+The HTTP ingress supports TLS termination via `axum-server` with rustls:
+
+```rust
+pub struct TlsConfig {
+    pub cert_path: String,  // PEM certificate file
+    pub key_path: String,   // PEM private key file
+}
+```
+
+- `serve()` — Plain HTTP using `axum::serve` with `TcpListener`
+- `serve_tls()` — HTTPS using `axum_server::bind_rustls` with `RustlsConfig::from_pem_file`
+
+### Rate Limiting
+
+Per-second window rate limiter at the gateway level:
+
+```rust
+// Fields on HttpVctpIngress:
+rate_limit_rps: u64,           // Max requests per second (0 = unlimited)
+rate_window_start: AtomicU64,  // Current second window
+rate_window_count: AtomicU64,  // Requests in current window
+rate_limited_counter: AtomicU64, // Total rejected by rate limiter
+```
+
+- `with_rate_limit(addr, rps)` — Constructor with rate limit
+- `check_rate_limit()` — Returns true if allowed, false if rejected
+- Lock-free implementation using `AtomicU64` with `Ordering::Relaxed`
+
+### Integration Tests
+
+5 live Axum server integration tests:
+
+| Test | Description |
+|------|-------------|
+| `test_integration_health_endpoint` | GET /api/v1/health → 200, JSON with status+timestamp |
+| `test_integration_metrics_endpoint` | GET /api/v1/metrics → 200, JSON with requests+errors |
+| `test_integration_openapi_spec` | GET /docs/openapi.json → 200, OpenAPI 3.0.0 |
+| `test_integration_start_workflow_timeout` | POST /api/v1/workflows → 5xx (no VCTP server) |
+| `test_integration_rate_limiter` | Rate-limited ingress still serves health endpoint |
 
 ## VCTP Sidecar Proxy
 
@@ -154,10 +213,32 @@ struct SidecarConfig {
 }
 ```
 
+## Test Coverage
+
+### WebSocket Gateway (12 unit tests)
+
+| Test | Coverage |
+|------|----------|
+| `test_ws_request_serialization` | WsRequest JSON round-trip |
+| `test_ws_request_default_namespace` | Namespace defaults to "default" |
+| `test_ws_response_serialization` | WsResponse with None fields skipped |
+| `test_ws_response_error` | Error response format |
+| `test_build_vctp_packet_structure` | Magic, sequence, method, payload layout |
+| `test_parse_vctp_response_too_small` | <32 bytes returns 502 |
+| `test_parse_vctp_response_truncated` | payload_len > actual returns 502 |
+| `test_parse_vctp_response_valid` | Full valid packet parsing |
+| `test_crc32_known_value` | CRC32("") = 0, CRC32("123456789") = 0xCBF43926 |
+| `test_config_defaults` | bind_addr, max_connections, timeouts |
+| `test_stats_default` | All counters start at 0 |
+
+### HTTP Ingress (20 tests: 15 unit + 5 integration)
+
+Unit tests cover packet building, CRC32, response parsing, request deserialization, and config defaults. Integration tests spin up a live Axum server and test HTTP endpoints end-to-end.
+
 ## Source Files
 
 | File | Lines | Role |
 |------|-------|------|
-| `velocity-classic-server/src/ws_vctp_gateway.rs` | 478 | WebSocket-to-VCTP gateway |
-| `velocity-classic-server/src/http_vctp_ingress.rs` | 583 | HTTP REST ingress + Swagger UI |
-| `tools/vctp-sidecar/src/main.rs` | 559 | TLS offload sidecar proxy |
+| `velocity-classic-server/src/ws_vctp_gateway.rs` | 692 | WebSocket-to-VCTP gateway with TLS (WSS) and rate limiting |
+| `velocity-classic-server/src/http_vctp_ingress.rs` | 871 | HTTP REST ingress with TLS (HTTPS), rate limiting, Swagger UI |
+| `tools/vctp-sidecar/src/main.rs` | 474 | TLS offload sidecar proxy with ECDH + XOR cipher |

@@ -122,4 +122,63 @@ vctp_request_duration_seconds_count 990
 
 | File | Role |
 |------|------|
-| `velocity-workflow-engine/src/vctp_rpc.rs` | VctpRpcServer, pipeline, dispatch, heartbeat, drain, metrics |
+| `velocity-workflow-engine/src/vctp_rpc.rs` | VctpRpcServer, pipeline, dispatch, heartbeat, drain, metrics, chaos tests, stress benchmarks |
+
+## Safety Improvements
+
+All 27 `RwLock` accesses in the production hot path use `expect("descriptive message")` instead of `unwrap()`, ensuring clear diagnostic information if a lock is poisoned:
+
+```rust
+// Before: self.stats.read().unwrap().clone()
+// After:
+self.stats.read().expect("VCTP stats RwLock poisoned").clone()
+```
+
+Covered locks: `stats`, `circuit_state`, `draining`, `client_info`, `reorder_buf`, `inflight_count`, `idempotency_cache`.
+
+## Chaos Engineering
+
+Four chaos tests validate server resilience under extreme conditions:
+
+| Test | Description | Assertion |
+|------|-------------|----------|
+| Reorder buffer overflow | 1,000 packets in reverse order | Buffer holds ≤ max_depth, no crash |
+| 10K packet flood | 10,000 rapid health checks | All processed, server operational |
+| Malformed packets | Empty, garbage, partial JSON, 1MB payload | Errors counted, server stays up |
+| Drain under load | 100 normal + drain + 50 post-drain | Post-drain rejected (circuit_broken ≥ 50) |
+
+## Stress Benchmarks
+
+### Concurrent-Client Stress (100 clients)
+
+100 threads each send 50 VCTP START_WORKFLOW requests simultaneously:
+
+| Metric | Threshold |
+|--------|----------|
+| Total requests | 5,000 (100 × 50) |
+| Delivery rate | >90% |
+| Throughput | ≥2,000 ops/s |
+| WAL persistence | Verified after benchmark |
+
+### E2E Round-Trip Latency
+
+Full round-trip benchmark with raw UDP client sockets:
+
+| Metric | Threshold |
+|--------|----------|
+| Iterations | 200 |
+| p99 latency | <5ms (5,000µs) |
+| WAL persistence | Verified after benchmark |
+
+## Prometheus Alert Rules
+
+Six VCTP-specific alerts in `deploy/helm/velocity/templates/prometheus-rules.yaml`:
+
+| Alert | Severity | Condition | Duration |
+|-------|----------|-----------|----------|
+| VctpHighErrorRate | critical | >5% error rate | 5m |
+| VctpCircuitBreakerOpen | critical | circuit state = Open | 2m |
+| VctpLowThroughput | warning | <1 req/s | 10m |
+| VctpHighLatency | warning | avg duration >50ms | 5m |
+| VctpDrainActive | warning | drain active | 10m |
+| VctpAuthRejectionsSpike | warning | >10 auth rejections/s | 5m |

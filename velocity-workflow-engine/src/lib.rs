@@ -399,7 +399,9 @@ pub use validation::{
 };
 pub use vctp_rpc::{
     VctpMethods, VctpRpcRequest, VctpRpcResponse, VctpRpcServer, VctpRpcStats,
+    VctpSecurityConfig, VctpCircuitState, VctpCircuitConfig,
     encode_fragment_meta, decode_fragment_meta, fragment_payload, reassemble_fragments,
+    method_to_str, export_prometheus_metrics,
     MAX_VCTP_PAYLOAD,
 };
 pub use vctp_transport::{VctpPeer, VctpTransport, VctpTransportConfig, VctpTransportStats};

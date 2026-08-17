@@ -22,6 +22,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/velocity-workflow-server
+  CARGO_TERM_COLOR: always
 
 concurrency:
   group: release-${{ github.ref }}
@@ -48,6 +49,102 @@ jobs:
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "is_release=false" >> $GITHUB_OUTPUT
           fi
+
+  # ── Cross-Compile Native Binaries ────────────────────────────────────────
+  build-binaries:
+    name: Build Binaries (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            bin_suffix: ""
+            asset_name: velocity-server-linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            bin_suffix: ""
+            asset_name: velocity-server-linux-arm64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            bin_suffix: ""
+            asset_name: velocity-server-darwin-amd64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            bin_suffix: ""
+            asset_name: velocity-server-darwin-arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            bin_suffix: ".exe"
+            asset_name: velocity-server-windows-amd64
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compile dependencies (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Install protobuf compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build velocity-server
+        run: cargo build --release --target ${{ matrix.target }} -p velocity-workflow-server
+
+      - name: Build velocity-classic-server
+        run: cargo build --release --target ${{ matrix.target }} -p velocity-classic-server
+
+      - name: Build velocity-embedded-server
+        run: cargo build --release --target ${{ matrix.target }} -p velocity-embedded-server
+
+      - name: Prepare release artifacts
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          BIN_DIR="target/${{ matrix.target }}/release"
+
+          # Package each server binary with LICENSE and README
+          for bin in velocity-server velocity-classic-server velocity-embedded-server; do
+            ARTIFACT="${bin}-${{ matrix.target }}"
+            mkdir -p "$ARTIFACT"
+            cp "$BIN_DIR/${bin}${{ matrix.bin_suffix }}" "$ARTIFACT/"
+            cp LICENSE "$ARTIFACT/" 2>/dev/null || true
+            cp README.md "$ARTIFACT/" 2>/dev/null || true
+            if [ "${{ matrix.os }}" = "windows-latest" ]; then
+              7z a "release-artifacts/${ARTIFACT}.zip" "$ARTIFACT/"
+            else
+              tar czf "release-artifacts/${ARTIFACT}.tar.gz" "$ARTIFACT/"
+            fi
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: release-artifacts/
+          retention-days: 30
 
   # ── Build & Push Docker Image ─────────────────────────────────────────────
   build:
@@ -93,6 +190,103 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             BUILD_VERSION=${{ needs.version.outputs.version }}
+
+  # ── Publish TypeScript SDK to npm ─────────────────────────────────────────
+  publish-npm:
+    name: Publish TypeScript SDK to npm
+    runs-on: ubuntu-latest
+    needs: [version, build-binaries]
+    if: needs.version.outputs.is_release == 'true'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org/"
+          scope: "@velocity-workflow"
+
+      - name: Build TypeScript SDK
+        working-directory: velocity-sdk-typescript
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publish to npm
+        working-directory: velocity-sdk-typescript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+  # ── Publish Python SDK to PyPI ────────────────────────────────────────────
+  publish-pypi:
+    name: Publish Python SDK to PyPI
+    runs-on: ubuntu-latest
+    needs: [version, build-binaries]
+    if: needs.version.outputs.is_release == 'true'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build package
+        working-directory: velocity-sdk-python
+        run: python -m build
+
+      - name: Publish to PyPI
+        working-directory: velocity-sdk-python
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: twine upload dist/*
+
+  # ── Publish Java SDK to Maven Central ─────────────────────────────────────
+  publish-maven:
+    name: Publish Java SDK to Maven Central
+    runs-on: ubuntu-latest
+    needs: [version, build-binaries]
+    if: needs.version.outputs.is_release == 'true'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "11"
+          distribution: "temurin"
+          server-id: ossrh
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Publish to Maven Central
+        working-directory: velocity-sdk-java
+        env:
+          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: mvn -B deploy -P release
+
+  # ── Tag Go Module ─────────────────────────────────────────────────────────
+  tag-go:
+    name: Tag Go SDK module
+    runs-on: ubuntu-latest
+    needs: version
+    if: needs.version.outputs.is_release == 'true'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tag Go SDK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          git tag "velocity-sdk-go/v${VERSION}"
+          git push origin "velocity-sdk-go/v${VERSION}" || true
 
   # ── Deploy to Staging ─────────────────────────────────────────────────────
   deploy-staging:
@@ -183,20 +377,51 @@ jobs:
           echo "Smoke test failed"
           exit 1
 
-  # ── Create GitHub Release ─────────────────────────────────────────────────
+  # ── Create GitHub Release with Binaries ───────────────────────────────────
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [version, deploy-production]
+    needs: [version, deploy-production, build-binaries, publish-npm, publish-pypi, publish-maven, tag-go]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v5
 
-      - name: Create Release
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          path: release-artifacts/
+          merge-multiple: true
+
+      - name: List release artifacts
+        run: |
+          echo "Release artifacts:"
+          find release-artifacts/ -type f | sort
+
+      - name: Create Release with binaries
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           draft: false
           prerelease: false
+          files: |
+            release-artifacts/**/*.tar.gz
+            release-artifacts/**/*.zip
+
+      - name: Release summary
+        run: |
+          echo "## v${{ needs.version.outputs.version }} Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Published Packages" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker**: \`ghcr.io/${{ github.repository }}/velocity-workflow-server:${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **npm**: \`@velocity-workflow/sdk@${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyPI**: \`velocity-workflow==${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Maven**: \`io.velocity:velocity-sdk-java:${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Go**: \`github.com/velocity-workflow/sdk-go@v${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Helm**: \`velocity/velocity v${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Native Binaries" >> $GITHUB_STEP_SUMMARY
+          echo "- linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, windows-amd64" >> $GITHUB_STEP_SUMMARY
+          echo "- 3 server variants: velocity-server, velocity-classic-server, velocity-embedded-server" >> $GITHUB_STEP_SUMMARY

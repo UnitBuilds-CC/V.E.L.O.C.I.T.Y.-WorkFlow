@@ -1,6 +1,11 @@
 # VELOCITY-WorkFlow Deployment Guide
 
-> Complete guide for deploying the VELOCITY-WorkFlow platform — from local development to multi-region production clusters.
+> Complete guide for deploying the VELOCITY-WorkFlow platform — from local development to multi-region production clusters. Related operational documentation:
+> - [Operations Runbooks](ops-runbooks.md) — Incident response procedures (15 runbooks)
+> - [Security Audit Checklist](security-audit-checklist.md) — 65-point pre-go-live security review
+> - [OTLP Tracing Guide](otlp-tracing-guide.md) — Distributed tracing configuration
+> - [WAL Backup Script](../deploy/scripts/wal-backup.sh) — Encrypted WAL backup with S3 support
+> - [Production Load Test](../deploy/scripts/vctp-prod-loadtest.sh) — Kubernetes-native VCTP load test
 
 ---
 
@@ -411,6 +416,57 @@ The engine uses a **Write-Ahead Log (WAL)** for crash recovery. On startup, the 
 2. Record format: `[event_type: u8][workflow_key: u64][data_len: u32][data: bytes][crc32: u32]`
 3. Each record is CRC-verified during replay — corrupted records halt recovery
 4. After successful replay, the WAL is truncated
+
+### VCTP WAL Backup (Kubernetes)
+
+The Helm backup CronJob backs up both WAL files and PostgreSQL in a single job:
+
+```bash
+# Enable WAL + PG backup in Helm values
+backup:
+  enabled: true
+  schedule: "0 */6 * * *"    # every 6 hours
+  retention: 30
+  storage:
+    enabled: true
+    size: 50Gi
+
+helm upgrade velocity ./deploy/helm/velocity -n velocity-system
+```
+
+For bare-metal or standalone deployments, use the comprehensive backup script:
+
+```bash
+# Encrypted WAL backup with integrity verification
+./deploy/scripts/wal-backup.sh \
+  --encrypt --gpg-key VELOCITY-PROD-KEY \
+  --verify --include-slabs --retention 30
+
+# With S3 disaster recovery
+VELOCITY_S3_BUCKET=velocity-dr ./deploy/scripts/wal-backup.sh --encrypt --gpg-key VELOCITY-PROD-KEY --verify
+```
+
+### Velero Backup (Kubernetes Disaster Recovery)
+
+For full cluster disaster recovery, use Velero to back up the entire Velocity namespace:
+
+```bash
+# Install Velero CLI
+velero install \
+  --provider aws \
+  --bucket velocity-velero \
+  --secret-file ./credentials-velero \
+  --backup-location-config region=us-east-1
+
+# Schedule daily namespace backup
+velero schedule create velocity-daily \
+  --namespace velocity-system \
+  --schedule "0 2 * * *" \
+  --ttl 720h   # 30 days
+
+# Restore from backup
+velero restore create --from-backup velocity-daily-20260817020000
+```
 
 ### Recovery Procedure
 

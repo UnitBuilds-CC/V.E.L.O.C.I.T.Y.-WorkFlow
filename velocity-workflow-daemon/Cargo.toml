@@ -1,6 +1,6 @@
 [package]
 name = "velocity-workflow-daemon"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["UnitBuilds <ian@unitbuilds.com>"]
 description = "VELOCITY-WorkFlow CLI — professional workflow management tool"

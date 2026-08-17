@@ -134,6 +134,46 @@ jobs:
             --profile "${{ inputs.profile }}" \
             --output bench_results.md
 
+      - name: Run tail-latency sustained workload
+        run: |
+          echo "════════════════════════════════════════════════════════"
+          echo "  Tail Latency Sustained Workload                       "
+          echo "════════════════════════════════════════════════════════"
+          # Run a sustained load test to detect memory leaks and tail latency degradation.
+          # 2000 workflows at concurrency 20, measuring p99/p999 stability.
+          ./target/release/velocity-bench \
+            --workloads all \
+            --engine velocity \
+            --format json \
+            --profile "${{ inputs.profile }}" \
+            --output bench_tail_results.json
+
+          # Check tail latency — p99 should be under 100ms for sustained load
+          python3 -c "
+          import json, sys
+          with open('bench_tail_results.json') as f:
+              data = json.load(f)
+          vel = next((e for e in data if 'velocity' in e.get('engine','')), None)
+          if not vel:
+              print('WARNING: No Velocity results found for tail latency check')
+              sys.exit(0)
+          tail = next((w for w in vel.get('workloads',[]) if 'tail' in w['name']), None)
+          if not tail:
+              print('WARNING: No tail_latency workload found')
+              sys.exit(0)
+          p99 = tail.get('latency_p99_us', 0)
+          p999 = tail.get('latency_p999_us', 0)
+          err = tail.get('error_rate_pct', 0)
+          print(f'Tail latency: p99={p99:.0f}us p999={p999:.0f}us error_rate={err:.2f}%')
+          if p99 > 100000:
+              print(f'FAIL: p99 latency {p99:.0f}us > 100ms threshold')
+              sys.exit(1)
+          if err > 5.0:
+              print(f'FAIL: error rate {err:.2f}% > 5% threshold')
+              sys.exit(1)
+          print('PASS: Tail latency within acceptable bounds')
+          "
+
       - name: Upload results (Markdown)
         if: always()
         uses: actions/upload-artifact@v6
@@ -185,3 +225,49 @@ jobs:
           echo ""
           echo "Results uploaded as artifacts. Download from:"
           echo "  https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Benchmark regression gate
+        run: |
+          echo "════════════════════════════════════════════════════════"
+          echo "  Benchmark Regression Gate                             "
+          echo "════════════════════════════════════════════════════════"
+          if [ ! -f bench_results.json ]; then
+            echo "ERROR: bench_results.json not found"
+            exit 1
+          fi
+
+          # Check that Velocity ops/s is above minimum thresholds.
+          # These thresholds are set conservatively to catch major regressions
+          # while tolerating CI runner variance.
+          VELOCITY_OPS=$(python3 -c "
+          import json, sys
+          with open('bench_results.json') as f:
+              data = json.load(f)
+          vel = next((e for e in data if e.get('engine','').startswith('velocity')), None)
+          if not vel:
+              print('0')
+              sys.exit(0)
+          workloads = vel.get('workloads', [])
+          if not workloads:
+              print('0')
+              sys.exit(0)
+          # Use the simple_workflow workload as the primary gate
+          simple = next((w for w in workloads if w['name'] == 'simple_workflow'), None)
+          if simple:
+              print(int(simple['ops_per_second']))
+          else:
+              print(int(workloads[0]['ops_per_second']))
+          ")
+
+          echo "Velocity ops/s: $VELOCITY_OPS"
+
+          # Minimum threshold: 500 ops/s for simple_workflow on CI runner
+          # This is ~10% of expected performance, catching only major regressions
+          MIN_OPS=500
+          if [ "$VELOCITY_OPS" -lt "$MIN_OPS" ]; then
+            echo "FAIL: Velocity throughput $VELOCITY_OPS ops/s < minimum $MIN_OPS ops/s"
+            echo "This indicates a performance regression. Check the benchmark artifacts for details."
+            exit 1
+          fi
+
+          echo "PASS: Velocity throughput $VELOCITY_OPS ops/s >= minimum $MIN_OPS ops/s"

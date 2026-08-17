@@ -1,0 +1,167 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VCTP Service Definition",
+  "description": "Machine-readable protocol definition for VCTP (Velocity Transfer Protocol)",
+  "version": "1.0.0",
+  "transport": {
+    "protocol": "UDP",
+    "header_size_bytes": 28,
+    "magic": "0x50544356",
+    "max_payload_bytes": 65479,
+    "checksum": "CRC32",
+    "default_port": 9090
+  },
+  "header_fields": [
+    { "name": "magic", "type": "uint32", "offset": 0, "description": "VCTP magic bytes (0x50544356)" },
+    { "name": "sequence_number", "type": "uint64", "offset": 4, "description": "Monotonic packet sequence ID" },
+    { "name": "workflow_id", "type": "uint64", "offset": 12, "description": "Workflow ID or method identifier" },
+    { "name": "slab_offset", "type": "uint32", "offset": 20, "description": "Slab offset or fragment metadata" },
+    { "name": "payload_length", "type": "uint32", "offset": 24, "description": "Payload length in bytes" }
+  ],
+  "auth": {
+    "methods": ["jwt_bearer", "api_key"],
+    "jwt_algorithm": "HS256",
+    "jwt_claims": ["sub", "iss", "aud", "exp", "iat", "ns"],
+    "header_field": "auth_token",
+    "api_key_field": "api_key"
+  },
+  "security": {
+    "rate_limiting": {
+      "type": "token_bucket",
+      "per_client": true,
+      "default_rps": 0,
+      "default_burst": 0
+    },
+    "idempotency": {
+      "field": "idempotency_key",
+      "duplicate_status": 409
+    },
+    "circuit_breaker": {
+      "states": ["Closed", "Open", "HalfOpen"],
+      "overload_status": 503,
+      "default_max_inflight": 10000,
+      "default_cooldown_ms": 5000
+    }
+  },
+  "methods": {
+    "StartWorkflow": {
+      "id": 100,
+      "category": "lifecycle",
+      "auth_required": true,
+      "request": {
+        "namespace": { "type": "string", "default": "default" },
+        "workflow_id": { "type": "string" },
+        "workflow_type": { "type": "string" },
+        "total_steps": { "type": "uint32", "default": 10 }
+      },
+      "response": {
+        "workflow_id": { "type": "string" },
+        "run_id": { "type": "string" },
+        "run_status": { "type": "string" }
+      }
+    },
+    "SignalWorkflow": {
+      "id": 101,
+      "category": "lifecycle",
+      "auth_required": true,
+      "request": {
+        "namespace": { "type": "string", "default": "default" },
+        "workflow_id": { "type": "string", "required": true },
+        "signal_name": { "type": "string", "required": true },
+        "payload": { "type": "bytes" }
+      },
+      "response": {}
+    },
+    "QueryWorkflow": {
+      "id": 102,
+      "category": "lifecycle",
+      "auth_required": true,
+      "request": {
+        "namespace": { "type": "string", "default": "default" },
+        "workflow_id": { "type": "string", "required": true },
+        "query_type": { "type": "string" }
+      },
+      "response": {
+        "run_status": { "type": "string" }
+      }
+    },
+    "CancelWorkflow": {
+      "id": 103,
+      "category": "lifecycle",
+      "auth_required": true,
+      "request": {
+        "namespace": { "type": "string", "default": "default" },
+        "workflow_id": { "type": "string", "required": true }
+      },
+      "response": {}
+    },
+    "TerminateWorkflow": {
+      "id": 104,
+      "category": "lifecycle",
+      "auth_required": true,
+      "request": {
+        "namespace": { "type": "string", "default": "default" },
+        "workflow_id": { "type": "string", "required": true }
+      },
+      "response": {}
+    },
+    "DescribeWorkflow": {
+      "id": 105,
+      "category": "lifecycle",
+      "auth_required": true,
+      "request": {
+        "namespace": { "type": "string", "default": "default" },
+        "workflow_id": { "type": "string", "required": true }
+      },
+      "response": {
+        "workflow_id": { "type": "string" },
+        "run_id": { "type": "string" },
+        "run_status": { "type": "string" }
+      }
+    },
+    "ListWorkflows": {
+      "id": 106,
+      "category": "lifecycle",
+      "auth_required": true,
+      "request": {
+        "namespace": { "type": "string", "default": "default" },
+        "max_count": { "type": "int64", "default": 100 }
+      },
+      "response": {
+        "count": { "type": "uint64" }
+      }
+    },
+    "HealthCheck": {
+      "id": 500,
+      "category": "system",
+      "auth_required": false,
+      "request": {},
+      "response": {
+        "run_status": { "type": "string" }
+      }
+    },
+    "CountWorkflows": {
+      "id": 502,
+      "category": "system",
+      "auth_required": true,
+      "request": {
+        "namespace": { "type": "string", "default": "default" }
+      },
+      "response": {
+        "count": { "type": "uint64" }
+      }
+    }
+  },
+  "status_codes": {
+    "0": "OK",
+    "400": "BadRequest",
+    "401": "Unauthorized",
+    "404": "NotFound",
+    "409": "Conflict (duplicate idempotency key)",
+    "429": "TooManyRequests (rate limited)",
+    "500": "InternalServerError",
+    "502": "BadGateway",
+    "503": "ServiceUnavailable (circuit breaker open)",
+    "504": "GatewayTimeout"
+  }
+}

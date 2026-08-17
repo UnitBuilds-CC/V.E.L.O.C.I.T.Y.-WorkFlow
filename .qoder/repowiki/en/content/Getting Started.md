@@ -73,7 +73,7 @@ Velocity-workflow/
 ├── proto/                        # Protocol buffer + VCTP protocol definitions
 ├── sdk/                          # SDK implementations
 ├── tests/                        # Integration tests
-├── docs/                         # Documentation (incl. ops-runbooks.md)
+├── docs/                         # Documentation (ops-runbooks, security-audit, otlp-tracing)
 └── V.A.L.I.D/                    # Validation framework
 ```
 
@@ -157,16 +157,18 @@ Rust server with NMCP transport. Replaced the original TypeScript engine. Suppor
 High-performance UDP-based RPC server for VCTP (Velocity Transfer Protocol) workflow operations.
 
 **Key files:**
-- `velocity-workflow-engine/src/vctp_transport.rs` — UDP wire format (28-byte header + CRC32)
-- `velocity-workflow-engine/src/vctp_rpc.rs` — Full request pipeline (circuit breaker, auth, drain, heartbeat)
+- `velocity-workflow-core/src/vctp.rs` — HMAC-SHA256 authenticated encryption, replay protection, XOR cipher (623 lines)
+- `velocity-workflow-engine/src/vctp_transport.rs` — UDP wire format (28-byte header + CRC32, 481 lines)
+- `velocity-workflow-engine/src/vctp_rpc.rs` — Full request pipeline (circuit breaker, auth, drain, heartbeat, chaos tests, stress benchmarks, 2,767 lines)
 - UDP port 9090 (default)
 - 9,052 ops/s full-stack dispatch throughput
+- 2,541 engine tests + 61 VCTP-specific tests
 
 ### VCTP Gateways
 
 Protocol bridge gateways for connecting standard clients to VCTP:
-- `velocity-classic-server/src/ws_vctp_gateway.rs` — WebSocket-to-VCTP gateway (592 lines)
-- `velocity-classic-server/src/http_vctp_ingress.rs` — HTTP-to-VCTP with Swagger UI at `/docs` (666 lines)
+- `velocity-classic-server/src/ws_vctp_gateway.rs` — WebSocket-to-VCTP gateway with TLS (WSS) and rate limiting (692 lines)
+- `velocity-classic-server/src/http_vctp_ingress.rs` — HTTP-to-VCTP with Swagger UI at `/docs`, TLS (HTTPS) and rate limiting (871 lines)
 - `tools/vctp-sidecar/src/main.rs` — Sidecar proxy with ECDH + XOR cipher (474 lines)
 
 ### VCTP Developer Tools
@@ -281,6 +283,8 @@ This starts all three flavors:
 - Velocity Embedded: `localhost:18082`
 - Velocity Classic: `localhost:18083`
 - VCTP UDP (when enabled): `localhost:9090`
+- HTTPS ingress (when TLS enabled): `localhost:8443`
+- WSS gateway (when TLS enabled): `localhost:8444`
 
 ### Running Individual Flavors
 
@@ -339,8 +343,13 @@ VCTP-specific performance benchmarks are built into the engine test suite:
 cargo test -p velocity-workflow-engine --release -- vctp_bench
 
 # Key metrics:
-# - Full-stack dispatch: ≥700 ops/s (UDP + WAL + DB)
-# - Per-step latency: ≤20µs
+# - Full-stack dispatch: 9,052 ops/s (UDP + WAL + DB), CI threshold ≥5,000 ops/s
+# - Full-stack start_workflow: 7,375 ops/s, CI threshold ≥5,000 ops/s
+# - Concurrent stress (100 clients): ≥2,000 ops/s, >90% delivery
+# - Cross-network (4 zones): ≥1,000 ops/s, >85% delivery
+# - HMAC-SHA256 throughput: ≥100,000 ops/s
+# - Replay window checks: ≥10,000,000 ops/s
+# - E2E round-trip p99: <5ms
 ```
 
 ### VCTP CLI Tool
@@ -372,7 +381,7 @@ python tools/vctp-cli/vctp_cli.py query --server 127.0.0.1:9090 --workflow-id wf
 ### Common Issues
 
 **Port already in use**
-- Check if ports 17234, 18082, 18083, 9090 (VCTP UDP) are available
+- Check if ports 17234, 18082, 18083, 9090 (VCTP UDP), 8443 (HTTPS), 8444 (WSS) are available
 - Use `netstat -ano | findstr :17234` on Windows
 - For VCTP: `netstat -ano | findstr :9090` (look for UDP)
 

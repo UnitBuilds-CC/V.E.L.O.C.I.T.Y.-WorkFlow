@@ -1,6 +1,6 @@
 {
   "name": "@velocity-workflow/sdk",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "TypeScript gRPC client for the VELOCITY-WorkFlow server",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

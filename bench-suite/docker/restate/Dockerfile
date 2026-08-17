@@ -19,10 +19,12 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY cloud-bench/production/restate/service.js .
+COPY bench-suite/docker/restate/entrypoint.sh .
+RUN chmod +x entrypoint.sh
 
 RUN npm init -y > /dev/null 2>&1 && \
     npm install @restatedev/restate-sdk
 
 EXPOSE 9080
 
-CMD ["node", "service.js"]
+CMD ["./entrypoint.sh"]

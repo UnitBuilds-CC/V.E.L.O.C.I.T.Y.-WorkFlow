@@ -68,4 +68,67 @@ spec:
           annotations:
             summary: "Low request throughput"
             description: "Request rate has dropped below {{ "{{ $value }}" }} req/s."
+
+        # ── VCTP (UDP) Alerts ────────────────────────────────────────────────
+        - alert: VctpHighErrorRate
+          expr: |
+            sum(rate(vctp_errors_total{job="{{ include "velocity.fullname" . }}"}[5m]))
+            /
+            sum(rate(vctp_requests_total{job="{{ include "velocity.fullname" . }}"}[5m])) > 0.05
+          for: "5m"
+          labels:
+            severity: critical
+          annotations:
+            summary: "High VCTP error rate detected"
+            description: "More than 5% of VCTP requests are failing."
+
+        - alert: VctpCircuitBreakerOpen
+          expr: vctp_circuit_state{job="{{ include "velocity.fullname" . }}"} == 1
+          for: "2m"
+          labels:
+            severity: critical
+          annotations:
+            summary: "VCTP circuit breaker is OPEN"
+            description: "The VCTP RPC server circuit breaker has tripped. Requests are being rejected."
+
+        - alert: VctpLowThroughput
+          expr: |
+            sum(rate(vctp_requests_total{job="{{ include "velocity.fullname" . }}"}[5m])) < 1
+          for: "10m"
+          labels:
+            severity: warning
+          annotations:
+            summary: "Low VCTP throughput"
+            description: "VCTP request rate has dropped below 1 req/s."
+
+        - alert: VctpHighLatency
+          expr: |
+            rate(vctp_request_duration_seconds_sum{job="{{ include "velocity.fullname" . }}"}[5m])
+            /
+            rate(vctp_request_duration_seconds_count{job="{{ include "velocity.fullname" . }}"}[5m]) > 0.05
+          for: "5m"
+          labels:
+            severity: warning
+          annotations:
+            summary: "High VCTP request latency"
+            description: "Average VCTP request duration exceeds 50ms."
+
+        - alert: VctpDrainActive
+          expr: vctp_drain_active{job="{{ include "velocity.fullname" . }}"} == 1
+          for: "10m"
+          labels:
+            severity: warning
+          annotations:
+            summary: "VCTP drain has been active for 10+ minutes"
+            description: "The VCTP server has been draining for an extended period. Check pod termination."
+
+        - alert: VctpAuthRejectionsSpike
+          expr: |
+            sum(rate(vctp_auth_rejected_total{job="{{ include "velocity.fullname" . }}"}[5m])) > 10
+          for: "5m"
+          labels:
+            severity: warning
+          annotations:
+            summary: "Spike in VCTP auth rejections"
+            description: "More than 10 VCTP requests/s are being rejected for authentication failures."
 {{- end }}

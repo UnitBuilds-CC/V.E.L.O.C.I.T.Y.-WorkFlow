@@ -50,6 +50,15 @@ vctp:
   heartbeat:
     intervalSeconds: 30
     evictionTimeoutSeconds: 90
+
+  # TLS configuration for gateway endpoints (HTTPS/WSS)
+  tls:
+    enabled: false
+    secretName: velocity-tls        # K8s Secret containing tls.crt and tls.key
+    httpsPort: 8443                  # HTTPS ingress port
+    wssPort: 8444                    # WSS gateway port
+    certFile: tls.crt                # Certificate file in secret
+    keyFile: tls.key                 # Key file in secret
 ```
 
 ## Deployment Template
@@ -142,6 +151,23 @@ spec:
 | `vctp.security.authRequired` | `true` | Require JWT or API key |
 | `vctp.circuitBreaker.maxInflight` | `10000` | Adjust based on load testing |
 | `vctp.heartbeat.intervalSeconds` | `30` | Connection health monitoring |
+| `vctp.tls.enabled` | `true` (external) | TLS for HTTPS/WSS gateways |
+| `vctp.tls.secretName` | `velocity-tls` | cert-manager or manual secret |
+
+## Prometheus Alert Rules
+
+VCTP-specific alerts in `deploy/helm/velocity/templates/prometheus-rules.yaml`:
+
+| Alert | Severity | Condition | Duration |
+|-------|----------|-----------|----------|
+| VctpHighErrorRate | critical | >5% VCTP error rate | 5m |
+| VctpCircuitBreakerOpen | critical | Circuit state = Open | 2m |
+| VctpLowThroughput | warning | <1 VCTP request/s | 10m |
+| VctpHighLatency | warning | Avg duration >50ms | 5m |
+| VctpDrainActive | warning | Drain active | 10m |
+| VctpAuthRejectionsSpike | warning | >10 auth rejections/s | 5m |
+
+These complement the 11 existing HTTP-level alerts for a total of 17 Prometheus alert rules.
 
 ## Source Files
 

@@ -46,7 +46,11 @@ This directory contains AI-optimized documentation and specifications for the V.
 
 ### Additional Directories (not shown in tree above)
 - `benchmarks/Velocity.Workflow.Benchmarks/` — C# lifecycle benchmark suite (complements Rust prod-bench)
-- `docs/ops-runbooks.md` — Operations runbooks for common incident scenarios
+- `docs/ops-runbooks.md` — Operations runbooks for common incident scenarios (15 runbooks incl. VCTP circuit breaker, replay, HMAC, TLS)
+- `docs/security-audit-checklist.md` — 65-point security audit checklist covering all 39 hardening items
+- `docs/otlp-tracing-guide.md` — OTLP/Jaeger/Tempo distributed tracing configuration guide
+- `deploy/scripts/vctp-prod-loadtest.sh` — Kubernetes-native VCTP production load test (100 clients, CI thresholds)
+- `deploy/scripts/wal-backup.sh` — WAL backup script with encryption, checksums, S3 upload, and retention
 
 ## Documentation Pages
 
@@ -56,10 +60,10 @@ Introduction to Velocity, project structure, installation, running engines, and 
 **Contents:**
 - Project overview and three flavors (Server, Embedded, Classic)
 - Directory structure and core components (15 workspace crates + VCTP tools)
-- VCTP RPC server, gateways, and developer tools
+- VCTP RPC server (HMAC-SHA256 auth encryption, replay protection), gateways (TLS/HTTPS/WSS), and developer tools
 - Installation and setup instructions
-- Running individual flavors (NMCP shmem + WebSocket transport, VCTP UDP :9090)
-- Benchmark commands, VCTP benchmarks, and results summary
+- Running individual flavors (NMCP shmem + WebSocket transport, VCTP UDP :9090, HTTPS :8443, WSS :8444)
+- Benchmark commands, VCTP benchmarks (9 benchmarks with CI thresholds), and results summary
 - Troubleshooting guide
 
 ### Development Guide.md
@@ -68,8 +72,10 @@ Comprehensive guide for developers contributing to Velocity.
 **Contents:**
 - Development environment setup (Rust, Node.js, Docker)
 - Project architecture and module organization (15 crates + VCTP tools)
-- Building and testing procedures
-- VCTP development workflow (building, testing, CLI, Wireshark, OpenAPI)
+- Building and testing procedures (2,547 total tests: 2,541 engine + 6 sidecar)
+- VCTP development workflow (building, testing with 11 test categories, CLI, Wireshark, OpenAPI)
+- TLS configuration for gateways (HTTPS/WSS setup)
+- VCTP authenticated encryption (HMAC-SHA256, replay protection)
 - Code style and conventions (Rust, TypeScript)
 - Adding new features and SDK methods
 - Protocol buffer development
@@ -77,8 +83,8 @@ Comprehensive guide for developers contributing to Velocity.
 - Benchmark development
 - Docker development workflow
 - Performance profiling techniques
-- CI/CD with GitHub Actions (including chaos tests, Trivy scanning)
-- Production hardening and security features
+- CI/CD with GitHub Actions (chaos tests, Trivy scanning, benchmark regression gates)
+- Production hardening and security features (TLS, HMAC, replay, chaos engineering, Prometheus alerts)
 
 ### Architecture Overview.md
 Deep dive into Velocity's system architecture and design decisions.
@@ -87,17 +93,18 @@ Deep dive into Velocity's system architecture and design decisions.
 - System architecture diagram (15 workspace crates + VCTP tools + gateway layer)
 - Engine flavors comparison (Server, Embedded, Classic — all Rust)
 - NMCP protocol transport (shmem IPC + WebSocket)
-- VCTP protocol transport (UDP, 28-byte header, CRC32, circuit breaker, heartbeat, drain)
-- VCTP gateways and sidecar proxy (WebSocket, HTTP, ECDH+XOR)
+- VCTP protocol transport (UDP, 28-byte header, CRC32, circuit breaker, heartbeat, drain, HMAC-SHA256, replay protection, XOR cipher)
+- VCTP gateways and sidecar proxy (WebSocket with WSS + rate limiting, HTTP with HTTPS + rate limiting, ECDH+XOR)
+- VCTP performance table (9 benchmarks with CI thresholds)
 - Slab engine with Merkle root state proof (SHA-256, Bitmask256)
 - Persistence layers (WAL, PostgreSQL, Per-Step Journal)
-- Security layer (auth, rate limiting, audit logging, mTLS)
+- Security layer (auth, rate limiting, audit logging, TLS termination, VCTP authenticated encryption, replay protection, 17 Prometheus alerts)
 - Distributed tracing (OpenTelemetry/OTLP)
 - PG advisory locking for multi-instance coordination
 - Protocol buffers and gRPC (legacy, still used by bench-suite)
 - SDK architecture (TypeScript, Python, Go, Java — all with VCTP transport)
 - Benchmark architecture
-- Deployment architecture (Docker, Kubernetes with VCTP UDP port)
+- Deployment architecture (Docker, Kubernetes with VCTP UDP port, TLS config)
 - Data flow diagrams
 
 ### Flavor Comparison Guide.md
@@ -241,7 +248,11 @@ Documents the VCTP (Velocity Transfer Protocol) zero-copy UDP-based RPC protocol
 - Retransmission tracking and AIMD congestion control
 - Reorder buffer (BTreeMap in-order delivery)
 - Packet fragmentation and reassembly
-- Performance benchmarks (9,052 ops/s full-stack)
+- HMAC-SHA256 authenticated encryption with constant-time verification
+- VctpReplayWindow: 64-depth sliding window for O(1) replay detection
+- XOR cipher with AES-256 key schedule
+- Cross-network benchmark (4 zones with artificial latency)
+- Performance benchmarks (9,052 ops/s full-stack, 9 benchmark metrics with CI thresholds)
 
 ### VCTP RPC Server.md
 Documents the VCTP RPC server request processing pipeline.
@@ -252,16 +263,21 @@ Documents the VCTP RPC server request processing pipeline.
 - Heartbeat mechanism (30s interval, 90s eviction)
 - Graceful drain with K8s preStop hook
 - Tokio async worker pool
-- Prometheus metrics export
+- Prometheus metrics export with 6 VCTP-specific alert rules
+- RwLock safety improvements (27 unwrap → expect with descriptive messages)
+- Chaos engineering tests (4 tests: reorder overflow, 10K flood, malformed packets, drain-under-load)
+- Concurrent stress benchmark (100 clients × 50 requests, ≥2,000 ops/s)
+- Cross-network benchmark (4 zones, ≥1,000 ops/s)
 
 ### VCTP Gateways and Sidecar Proxy.md
 Documents the protocol bridge gateways and crypto offload proxy.
 
 **Key topics:**
-- WebSocket-to-VCTP gateway for browser clients
-- HTTP-to-VCTP ingress with Swagger UI at /docs
-- Sidecar proxy with ECDH session + XOR cipher
-- Session management with TTL
+- WebSocket-to-VCTP gateway for browser clients (WSS via tokio-rustls, per-connection rate limiting, 692 lines)
+- HTTP-to-VCTP ingress with Swagger UI at /docs (HTTPS via axum-server + rustls, per-second window rate limiting, 5 integration tests, 871 lines)
+- Sidecar proxy with ECDH session + XOR cipher (474 lines)
+- TLS configuration (cert/key paths, dual-path accept for WS)
+- Test coverage (12 WS tests + 20 HTTP tests = 32 gateway tests)
 
 ### VCTP SDKs and Developer Tools.md
 Documents the VCTP developer ecosystem.
@@ -293,6 +309,8 @@ Documents K8s deployment with Helm charts.
 - Health probes (HTTP + VCTP exec)
 - Graceful drain with preStop hook
 - Helm values for circuit breaker, heartbeat, security
+- TLS gateway termination config (secretName, HTTPS 8443, WSS 8444, cert-manager compatible)
+- Prometheus alert rules (6 VCTP-specific alerts + note about 17 total)
 
 ## Specifications
 
@@ -316,10 +334,12 @@ YAML-formatted metadata about the project:
 - Workspace crates (15 members)
 - Engine flavors with performance metrics
 - SDK status and paths
-- Security features and hardening
+- Security features and hardening (TLS, HMAC-SHA256, replay protection, XOR cipher, gateway rate limiting, RwLock safety)
+- VCTP protocol (18 features, gateways, 9 benchmarks, 2,547 total tests)
 - Competitor benchmarks
 - Build configuration (Rust, TypeScript)
-- Deployment information (Docker, Kubernetes)
+- Deployment information (Docker, Kubernetes with TLS config)
+- CI workflows with benchmark regression gates
 
 ## Usage
 

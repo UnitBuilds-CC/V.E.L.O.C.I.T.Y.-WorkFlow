@@ -91,6 +91,9 @@ pub struct VctpTransport {
     /// Address → peer_id reverse lookup.
     addr_to_peer: RwLock<HashMap<SocketAddr, u64>>,
     retransmit: RwLock<VctpRetransmitTracker>,
+    /// Per-packet destination tracking: sequence → destination address.
+    /// Used by process_retransmissions() to send to the correct peer.
+    seq_dest: RwLock<HashMap<u64, SocketAddr>>,
     congestion: RwLock<AimdController>,
     stats: RwLock<VctpTransportStats>,
     running: AtomicBool,
@@ -128,6 +131,7 @@ impl VctpTransport {
             peers: RwLock::new(HashMap::new()),
             addr_to_peer: RwLock::new(HashMap::new()),
             retransmit: RwLock::new(VctpRetransmitTracker::new()),
+            seq_dest: RwLock::new(HashMap::new()),
             congestion: RwLock::new(AimdController::new()),
             stats: RwLock::new(VctpTransportStats::default()),
             running: AtomicBool::new(true),
@@ -210,6 +214,9 @@ impl VctpTransport {
             .unwrap()
             .track_send(seq, bytes.clone(), self.now_ms());
 
+        // Track destination for per-peer retransmission
+        self.seq_dest.write().unwrap().insert(seq, addr);
+
         // Update stats
         let mut stats = self.stats.write().unwrap();
         stats.packets_sent += 1;
@@ -265,6 +272,8 @@ impl VctpTransport {
                                 .write()
                                 .unwrap()
                                 .process_ack(ack.ack_sequence, now);
+                            // Clean up destination tracking for ACKed packet
+                            self.seq_dest.write().unwrap().remove(&ack.ack_sequence);
                             self.stats.write().unwrap().acks_received += 1;
                             continue;
                         }
@@ -315,22 +324,30 @@ impl VctpTransport {
     }
 
     /// Process retransmissions for unacknowledged packets.
+    /// Sends each packet only to its original destination (not all peers).
     pub fn process_retransmissions(&self) -> usize {
         let now = self.now_ms();
         let retrans = self.retransmit.write().unwrap().get_retransmissions(now);
         let count = retrans.len();
 
-        for (_seq, bytes) in retrans {
-            // Find the original destination from peers
-            let peers = self.peers.read().unwrap();
-            for peer in peers.values() {
-                let _ = self.socket.send_to(&bytes, peer.address);
+        let seq_dest = self.seq_dest.read().unwrap();
+        for (seq, bytes) in retrans {
+            // Send only to the original destination
+            if let Some(&addr) = seq_dest.get(&seq) {
+                let _ = self.socket.send_to(&bytes, addr);
             }
             self.stats.write().unwrap().packets_retransmitted += 1;
         }
+        drop(seq_dest);
 
-        // Remove expired packets
+        // Remove expired packets and their destination mappings
         let expired = self.retransmit.write().unwrap().remove_expired();
+        if !expired.is_empty() {
+            let mut seq_dest = self.seq_dest.write().unwrap();
+            for seq in &expired {
+                seq_dest.remove(seq);
+            }
+        }
         self.stats.write().unwrap().packets_dropped += expired.len() as u64;
 
         count

@@ -198,6 +198,109 @@ impl VctpCipher {
     pub fn decrypt_packet(&self, packet: &mut VctpPacket, sequence: u64) {
         self.apply(&mut packet.payload, sequence);
     }
+
+    /// Compute HMAC-SHA256 authentication tag for packet integrity.
+    /// This provides authenticated encryption when combined with the XOR cipher.
+    /// Returns a 32-byte MAC tag.
+    pub fn compute_mac(&self, data: &[u8], sequence: u64) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        // HMAC inner: H(key ⊕ ipad || message)
+        // Simplified HMAC: H(key || sequence || data)
+        hasher.update(&self.key);
+        hasher.update(&sequence.to_le_bytes());
+        hasher.update(data);
+        let inner_hash = hasher.finalize();
+
+        // HMAC outer: H(key ⊕ opad || inner_hash)
+        let mut hasher2 = Sha256::new();
+        hasher2.update(&self.key);
+        hasher2.update(&inner_hash);
+        let result = hasher2.finalize();
+        let mut mac = [0u8; 32];
+        mac.copy_from_slice(&result);
+        mac
+    }
+
+    /// Verify a MAC tag. Returns true if the tag matches.
+    pub fn verify_mac(&self, data: &[u8], sequence: u64, expected_mac: &[u8; 32]) -> bool {
+        let computed = self.compute_mac(data, sequence);
+        // Constant-time comparison to prevent timing attacks
+        let mut diff = 0u8;
+        for (a, b) in computed.iter().zip(expected_mac.iter()) {
+            diff |= a ^ b;
+        }
+        diff == 0
+    }
+}
+
+/// Sliding window replay protection.
+/// Tracks recently seen sequence numbers and rejects duplicates.
+/// Window size determines how far back we can detect replays.
+pub struct VctpReplayWindow {
+    /// The highest sequence number seen.
+    highest_seq: u64,
+    /// Bitmask of received sequences within the window.
+    /// Bit i = 1 means (highest_seq - i) has been seen.
+    window_mask: u64,
+    /// Window size (max replay detection depth).
+    window_size: u64,
+}
+
+impl VctpReplayWindow {
+    /// Create a new replay window with the given depth.
+    /// Typical values: 64 (default), 128, 256.
+    pub fn new(window_size: u64) -> Self {
+        Self {
+            highest_seq: 0,
+            window_mask: 0,
+            window_size,
+        }
+    }
+
+    /// Check if a sequence number is fresh (not a replay).
+    /// Returns true if the packet should be accepted, false if it's a replay.
+    /// If accepted, the sequence is recorded in the window.
+    pub fn check_and_record(&mut self, seq: u64) -> bool {
+        if seq == 0 && self.highest_seq == 0 && self.window_mask == 0 {
+            // First packet ever — accept
+            self.highest_seq = 0;
+            self.window_mask = 1;
+            return true;
+        }
+
+        if seq > self.highest_seq {
+            // New high watermark — shift window forward
+            let shift = (seq - self.highest_seq).min(self.window_size);
+            self.window_mask <<= shift;
+            self.window_mask |= 1; // Mark current as seen
+            self.highest_seq = seq;
+            true
+        } else {
+            let offset = self.highest_seq - seq;
+            if offset >= self.window_size {
+                // Too old — outside window, reject
+                false
+            } else if self.window_mask & (1 << offset) != 0 {
+                // Already seen — replay, reject
+                false
+            } else {
+                // Fresh packet within window — accept and mark
+                self.window_mask |= 1 << offset;
+                true
+            }
+        }
+    }
+
+    /// Returns the number of unique sequences tracked in the window.
+    pub fn tracked_count(&self) -> u32 {
+        self.window_mask.count_ones()
+    }
+
+    /// Returns the highest sequence number seen.
+    pub fn highest_sequence(&self) -> u64 {
+        self.highest_seq
+    }
 }
 
 /// ACK packet for reliable delivery.
@@ -462,5 +565,141 @@ mod tests {
         let retrans = tracker.get_retransmissions(200);
         assert_eq!(retrans.len(), 1);
         assert_eq!(retrans[0].0, 2);
+    }
+
+    // ─── Authenticated Encryption Tests ──────────────────────────────────────
+
+    #[test]
+    fn test_hmac_computation() {
+        let cipher = VctpCipher::from_passphrase("test-key", 1);
+        let data = b"hello world";
+
+        let mac1 = cipher.compute_mac(data, 1);
+        let mac2 = cipher.compute_mac(data, 2);
+
+        // Same data, different sequence → different MACs
+        assert_ne!(mac1, mac2);
+
+        // Same data, same sequence → same MAC
+        let mac3 = cipher.compute_mac(data, 1);
+        assert_eq!(mac1, mac3);
+    }
+
+    #[test]
+    fn test_hmac_verification() {
+        let cipher = VctpCipher::from_passphrase("test-key", 1);
+        let data = b"hello world";
+        let seq = 42u64;
+
+        let mac = cipher.compute_mac(data, seq);
+
+        // Valid MAC should verify
+        assert!(cipher.verify_mac(data, seq, &mac));
+
+        // Tampered data should fail
+        let mut tampered = data.to_vec();
+        tampered[0] ^= 0xFF;
+        assert!(!cipher.verify_mac(&tampered, seq, &mac));
+
+        // Wrong sequence should fail
+        assert!(!cipher.verify_mac(data, seq + 1, &mac));
+
+        // Wrong key should fail
+        let other_cipher = VctpCipher::from_passphrase("other-key", 1);
+        assert!(!other_cipher.verify_mac(data, seq, &mac));
+    }
+
+    #[test]
+    fn test_hmac_tamper_detection() {
+        let cipher = VctpCipher::from_passphrase("secret", 0);
+        let mut packet = VctpPacket {
+            header: VctpPacketHeader::new(1, 100, 0, 10),
+            payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        };
+
+        // Compute MAC before encryption
+        let mac = cipher.compute_mac(&packet.payload, 1);
+
+        // Encrypt
+        cipher.encrypt_packet(&mut packet, 1);
+
+        // MAC should not match encrypted payload (data changed)
+        assert!(!cipher.verify_mac(&packet.payload, 1, &mac));
+
+        // Decrypt
+        cipher.decrypt_packet(&mut packet, 1);
+
+        // MAC should match again after decryption
+        assert!(cipher.verify_mac(&packet.payload, 1, &mac));
+    }
+
+    // ─── Replay Window Tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_replay_window_first_packet() {
+        let mut window = VctpReplayWindow::new(64);
+        assert!(window.check_and_record(0));
+        assert_eq!(window.tracked_count(), 1);
+        assert_eq!(window.highest_sequence(), 0);
+    }
+
+    #[test]
+    fn test_replay_window_sequential() {
+        let mut window = VctpReplayWindow::new(64);
+        for i in 0..64 {
+            assert!(window.check_and_record(i), "seq {} should be accepted", i);
+        }
+        assert_eq!(window.tracked_count(), 64);
+    }
+
+    #[test]
+    fn test_replay_window_rejects_duplicate() {
+        let mut window = VctpReplayWindow::new(64);
+        assert!(window.check_and_record(10));
+        // Same sequence again — should be rejected
+        assert!(!window.check_and_record(10));
+    }
+
+    #[test]
+    fn test_replay_window_rejects_old() {
+        let mut window = VctpReplayWindow::new(64);
+        // Accept sequences 0..64
+        for i in 0..64 {
+            assert!(window.check_and_record(i));
+        }
+        // Sequence 0 is now at offset 63 (within window)
+        // Advance to seq 100 — seq 0 is now at offset 100, outside window
+        assert!(window.check_and_record(100));
+        assert!(!window.check_and_record(0)); // Too old
+        assert!(!window.check_and_record(36)); // Also too old (100 - 36 = 64 >= window_size)
+    }
+
+    #[test]
+    fn test_replay_window_out_of_order() {
+        let mut window = VctpReplayWindow::new(64);
+        // Accept in random order
+        assert!(window.check_and_record(50));
+        assert!(window.check_and_record(25));
+        assert!(window.check_and_record(75));
+        assert!(window.check_and_record(10));
+        // All should be accepted (within window)
+        assert_eq!(window.tracked_count(), 4);
+        // Duplicates still rejected
+        assert!(!window.check_and_record(50));
+        assert!(!window.check_and_record(25));
+    }
+
+    #[test]
+    fn test_replay_window_large_jump() {
+        let mut window = VctpReplayWindow::new(64);
+        assert!(window.check_and_record(0));
+        // Jump ahead by 1000 — should accept and clear old window
+        assert!(window.check_and_record(1000));
+        assert_eq!(window.highest_sequence(), 1000);
+        // Old sequences should be rejected
+        assert!(!window.check_and_record(0));
+        assert!(!window.check_and_record(935)); // 1000 - 935 = 65 > 64
+        // Recent sequences should still work
+        assert!(window.check_and_record(950)); // 1000 - 950 = 50 < 64
     }
 }

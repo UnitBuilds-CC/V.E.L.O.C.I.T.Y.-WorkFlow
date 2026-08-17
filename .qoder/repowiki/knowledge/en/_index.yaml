@@ -1,6 +1,6 @@
 # Knowledge Cards Index
 # Each knowledge card documents a specific pattern, convention, or architecture decision
-# Last updated: 2026-08-17
+# Last updated: 2026-08-18
 
 cards:
   - name: "Write-Ahead Log WAL Persistence"
@@ -130,7 +130,7 @@ cards:
       - velocity-workflow-engine/src/vctp_transport.rs
       - velocity-workflow-engine/src/vctp_rpc.rs
       - proto/vctp_service.json
-    summary: "Zero-copy UDP-based RPC protocol with 28-byte binary header, CRC32 integrity, retransmission, AIMD congestion control, and reorder buffer"
+    summary: "Zero-copy UDP-based RPC protocol with 28-byte binary header, CRC32 integrity, retransmission, AIMD congestion control, reorder buffer, HMAC-SHA256 authenticated encryption, and 64-depth replay protection window"
 
   - name: "VCTP RPC Server"
     kind: security
@@ -139,7 +139,7 @@ cards:
       - "velocity-workflow-engine/src/vctp_rpc.rs"
     source_files:
       - velocity-workflow-engine/src/vctp_rpc.rs
-    summary: "Full request pipeline: circuit breaker (Closed/Open/HalfOpen), rate limiting, JWT/API key auth, idempotency, heartbeat (30s), graceful drain, Prometheus metrics export"
+    summary: "Full request pipeline: circuit breaker, rate limiting, JWT/API key auth, idempotency, heartbeat, graceful drain, Prometheus metrics, RwLock safety (27 expect), chaos engineering (4 tests), concurrent stress (100 clients), cross-network benchmarks"
 
   - name: "VCTP Gateways and Sidecar Proxy"
     kind: infrastructure
@@ -152,7 +152,7 @@ cards:
       - velocity-classic-server/src/ws_vctp_gateway.rs
       - velocity-classic-server/src/http_vctp_ingress.rs
       - tools/vctp-sidecar/src/main.rs
-    summary: "WebSocket-to-VCTP gateway, HTTP-to-VCTP ingress with Swagger UI at /docs, and sidecar proxy with ECDH session + XOR cipher for encrypted external connections"
+    summary: "WebSocket-to-VCTP gateway (WSS + rate limiting, 692 lines), HTTP-to-VCTP ingress with Swagger UI (HTTPS + rate limiting, 871 lines), and sidecar proxy with ECDH session + XOR cipher (474 lines)"
 
   - name: "VCTP SDKs and Developer Tools"
     kind: api_pattern
@@ -197,7 +197,7 @@ cards:
     source_files:
       - deploy/helm/velocity/values.yaml
       - deploy/helm/velocity/templates/deployment.yaml
-    summary: "Helm chart with VCTP UDP port (9090), health probes, preStop graceful drain hook, circuit breaker config, heartbeat config, and security settings"
+    summary: "Helm chart with VCTP UDP port (9090), health probes, preStop graceful drain hook, circuit breaker/heartbeat/security config, and TLS gateway termination (HTTPS 8443, WSS 8444)"
 
 # Conventions for knowledge cards:
 # - kind: Type of pattern (persistence_system, api_pattern, transport_protocol, security, observability, coordination, infrastructure, etc.)

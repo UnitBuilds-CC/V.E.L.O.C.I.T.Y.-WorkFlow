@@ -184,6 +184,99 @@ pg_restore --list backup.dump | head -20
 
 ---
 
+## WAL Backup & Recovery
+
+### WAL File Locations
+
+| Flavor | Default WAL Path | Notes |
+|--------|-----------------|-------|
+| Velocity Server | `/data/velocity.wal` | Primary persistence |
+| Velocity Classic | `/data/velocity-classic.wal` | WAL + optional PG sync |
+| Velocity Embedded | `/data/velocity-embedded.wal` | WAL + PG per-step journal |
+
+### Manual WAL Backup
+
+```bash
+# Copy WAL file (server should be stopped or WAL flushed first)
+kubectl -n velocity-system exec velocity-server -- \
+  cp /data/velocity.wal /tmp/velocity.wal.backup
+
+# Copy from pod to local machine
+kubectl -n velocity-system cp velocity-server-0:/data/velocity.wal ./wal-backup-$(date +%Y%m%d).wal
+```
+
+### WAL-Aware Backup Strategy
+
+1. **Flush WAL to PostgreSQL** before backup (ensures PG has latest state):
+   ```bash
+   # Trigger WAL sync via health endpoint
+   curl -X POST http://localhost:8095/admin/flush-wal
+   ```
+
+2. **Backup both WAL and PostgreSQL** atomically:
+   ```bash
+   # Step 1: Begin backup
+   kubectl -n velocity-system exec velocity-postgres -- \
+     psql -U velocity -c "SELECT pg_backup_start('velocity_backup');"
+
+   # Step 2: Copy WAL files
+   kubectl -n velocity-system exec velocity-server -- \
+     tar czf /tmp/wal-backup.tar.gz /data/*.wal
+
+   # Step 3: Dump PostgreSQL
+   kubectl -n velocity-system exec velocity-postgres -- \
+     pg_dump -U velocity -Fc velocity > pg-backup-$(date +%Y%m%d).dump
+
+   # Step 4: End backup
+   kubectl -n velocity-system exec velocity-postgres -- \
+     psql -U velocity -c "SELECT pg_backup_stop();"
+   ```
+
+3. **Restore from WAL + PostgreSQL backup:**
+   ```bash
+   # Step 1: Stop server
+   kubectl -n velocity-system scale deployment velocity-server --replicas=0
+
+   # Step 2: Restore PostgreSQL
+   kubectl -n velocity-system exec -i velocity-postgres -- \
+     pg_restore -U velocity -d velocity --clean --if-exists < pg-backup.dump
+
+   # Step 3: Restore WAL (server will replay uncommitted entries)
+   kubectl -n velocity-system cp wal-backup.wal velocity-server-0:/data/velocity.wal
+
+   # Step 4: Restart server (WAL replay recovers any gap between PG dump and WAL)
+   kubectl -n velocity-system scale deployment velocity-server --replicas=2
+   ```
+
+### WAL Monitoring
+
+| Metric | Normal | Warning | Critical |
+|--------|--------|---------|----------|
+| `velocity_wal_unsynced_bytes` | 0 | < 1MB | > 10MB |
+| `velocity_wal_size_bytes` | < 100MB | 100MB-1GB | > 1GB |
+| `velocity_wal_recovery_entries` | 0 | < 1000 | > 10000 |
+
+### WAL Corruption Recovery
+
+If WAL is corrupted and the server cannot start:
+
+```bash
+# 1. Move corrupted WAL aside
+kubectl -n velocity-system exec velocity-server -- \
+  mv /data/velocity.wal /data/velocity.wal.corrupted
+
+# 2. Server will start fresh (data from last PG sync is preserved)
+kubectl -n velocity-system rollout restart deployment/velocity-server
+
+# 3. Verify recovery
+curl http://localhost:8095/health
+
+# 4. Check for data gap (workflows between last PG sync and corruption are lost)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8095/metrics | grep velocity_workflows_total
+```
+
+---
+
 ## Monitoring Alerts & Thresholds
 
 ### Critical Alerts (Page Immediately)

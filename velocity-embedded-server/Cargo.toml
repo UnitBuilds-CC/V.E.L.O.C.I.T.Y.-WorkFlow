@@ -1,9 +1,15 @@
 [package]
 name = "velocity-embedded-server"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Velocity Team"]
-description = "Velocity Embedded Server — NMCP transport (shmem + WebSocket)"
+description = "Velocity Embedded Server — PostgreSQL-backed durable execution with VCTP transport"
+license = "Apache-2.0"
+repository = "https://github.com/velocity-workflow/velocity"
+homepage = "https://github.com/velocity-workflow/velocity"
+readme = "README.md"
+keywords = ["workflow", "orchestration", "durable-execution", "postgresql", "embedded"]
+categories = ["database", "asynchronous"]
 
 [[bin]]
 name = "velocity-embedded-server"

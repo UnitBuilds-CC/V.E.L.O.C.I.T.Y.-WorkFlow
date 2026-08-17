@@ -83,6 +83,7 @@ pub struct DurabilityConfig {
 - `DurabilityConfig::batched(N, ms)` — fsync every N steps or every ms, whichever first. Balanced.
 - `DurabilityConfig::async_only(ms)` — background fsync thread only (sync_steps=u32::MAX). Maximum throughput.
 - `.with_direct_execution()` — builder method to enable direct execution mode (skips task queue enqueue).
+- `.with_direct_execution_if(condition)` — conditional variant used by bench server CLI (`--direct-execution` flag).
 - Default is `strict()` with `direct_execution = false`. Bench server uses `--sync-steps`, `--flush-interval-ms`, and `--direct-execution` CLI flags.
 - `complete_step_durable()` method replaces `complete_step_sync()` when configurable durability is active.
 

@@ -54,8 +54,13 @@ This guide helps you choose the right flavor for your use case and understand th
 | **Direct Execution Mode** | Yes (skip task queue) | No (ACID fixed) | Yes (skip task queue) |
 | **Distributed Tracing** | Yes (OpenTelemetry) | Yes (OpenTelemetry) | Yes (OpenTelemetry) |
 | **mTLS** | Yes | Yes | Yes |
+| **VCTP Support** | Yes (shared engine) | Yes (shared engine) | Yes (gateways hosted here) |
+| **VCTP UDP Port** | 9090 (shared) | 9090 (shared) | 9090 (shared) |
+| **Gateway TLS** | Yes (HTTPS/WSS) | Yes (HTTPS/WSS) | Yes (HTTPS/WSS) |
 | **External Dependencies** | None | PostgreSQL | None (default) |
 | **Best For** | Simple deployments, bench-suite | Transactional workflows | Temporal migration, low-latency |
+
+> **Note:** All three flavors share the VCTP (Velocity Transfer Protocol) subsystem — the VCTP RPC server, transport layer, and gateways are common across all flavors. The VCTP RPC server runs on UDP port 9090 with 9,052 ops/s full-stack dispatch throughput, HMAC-SHA256 authenticated encryption, replay protection, and circuit breaker protection. The Classic server hosts the WebSocket-to-VCTP and HTTP-to-VCTP gateways with TLS termination (HTTPS on port 8443, WSS on port 8444).
 
 ## Performance Comparison
 

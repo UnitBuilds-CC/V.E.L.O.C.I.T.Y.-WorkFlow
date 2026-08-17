@@ -39,6 +39,8 @@ Velocity Classic is the **Rust-native** flavor of Velocity with NMCP transport, 
 - **Security:** API auth, rate limiting, audit logging, mTLS, security headers (via velocity-server-bootstrap)
 - **Tracing:** OpenTelemetry with optional OTLP export
 - **Allocator:** jemalloc (tikv-jemallocator)
+- **VCTP Gateways:** Hosts WS-to-VCTP (WSS, 692 lines), HTTP-to-VCTP (HTTPS, 871 lines) gateways with TLS termination and rate limiting
+- **VCTP RPC:** Shared VCTP RPC server (UDP :9090) with HMAC-SHA256 auth encryption, replay protection, 9,052 ops/s dispatch
 
 **When to Use:**
 - Migrating from Temporal workflows (API patterns)

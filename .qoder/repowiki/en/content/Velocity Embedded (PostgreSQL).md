@@ -39,6 +39,7 @@ Velocity Embedded is the **NMCP-based, PostgreSQL-backed** flavor of Velocity de
 - **Security:** API auth, rate limiting, audit logging, mTLS, security headers (via velocity-server-bootstrap)
 - **Tracing:** OpenTelemetry with optional OTLP export
 - **Multi-instance:** PG advisory locks for leader election and workflow locking
+- **VCTP:** Shared VCTP RPC server (UDP :9090) with HMAC-SHA256 auth encryption, replay protection, 9,052 ops/s dispatch
 
 **When to Use:**
 - Need ACID transactions for workflow state

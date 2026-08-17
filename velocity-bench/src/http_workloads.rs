@@ -64,6 +64,9 @@ pub struct HttpWorkloadDefinition {
     pub service: String,
     /// Handler name to invoke.
     pub handler: String,
+    /// Service name for keyed (stateful) operations. Falls back to `service` if empty.
+    /// Needed when the engine routes keyed handlers on a different service (e.g. Restate).
+    pub keyed_service: String,
 }
 
 impl HttpWorkloadDefinition {
@@ -80,6 +83,7 @@ impl HttpWorkloadDefinition {
                 payload_size: 64,
                 service: "bench".into(),
                 handler: "invoke".into(),
+                keyed_service: "bench".into(),
             },
             Self {
                 kind: HttpWorkloadKind::StatefulHandler,
@@ -89,8 +93,9 @@ impl HttpWorkloadDefinition {
                 concurrency: 1,
                 duration_secs: 0,
                 payload_size: 128,
-                service: "bench".into(),
+                service: "keyed_bench".into(),
                 handler: "stateful".into(),
+                keyed_service: "keyed_bench".into(),
             },
             Self {
                 kind: HttpWorkloadKind::ConcurrentHandlers,
@@ -102,6 +107,7 @@ impl HttpWorkloadDefinition {
                 payload_size: 64,
                 service: "bench".into(),
                 handler: "invoke".into(),
+                keyed_service: "bench".into(),
             },
             Self {
                 kind: HttpWorkloadKind::PayloadRoundtrip,
@@ -113,6 +119,7 @@ impl HttpWorkloadDefinition {
                 payload_size: 1024,
                 service: "bench".into(),
                 handler: "echo".into(),
+                keyed_service: "bench".into(),
             },
             Self {
                 kind: HttpWorkloadKind::SustainedLoad,
@@ -124,6 +131,7 @@ impl HttpWorkloadDefinition {
                 payload_size: 64,
                 service: "bench".into(),
                 handler: "invoke".into(),
+                keyed_service: "bench".into(),
             },
             Self {
                 kind: HttpWorkloadKind::MixedOperations,
@@ -135,6 +143,7 @@ impl HttpWorkloadDefinition {
                 payload_size: 128,
                 service: "bench".into(),
                 handler: "invoke".into(),
+                keyed_service: "keyed_bench".into(),
             },
             Self {
                 kind: HttpWorkloadKind::ColdStart,
@@ -146,6 +155,7 @@ impl HttpWorkloadDefinition {
                 payload_size: 64,
                 service: "bench".into(),
                 handler: "invoke".into(),
+                keyed_service: "bench".into(),
             },
             Self {
                 kind: HttpWorkloadKind::DurablePromise,
@@ -156,7 +166,8 @@ impl HttpWorkloadDefinition {
                 duration_secs: 0,
                 payload_size: 64,
                 service: "bench".into(),
-                handler: "promise".into(),
+                handler: "durablePromise".into(),
+                keyed_service: "bench".into(),
             },
         ]
     }

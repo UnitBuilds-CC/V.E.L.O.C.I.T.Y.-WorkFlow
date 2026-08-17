@@ -1,6 +1,7 @@
 [package]
 name = "velocity-bench"
-version = "0.1.0"
+version = "1.0.0"
+publish = false
 edition = "2021"
 authors = ["UnitBuilds <ian@unitbuilds.com>"]
 description = "Side-by-side benchmark harness: VELOCITY-WorkFlow vs Temporal"
@@ -16,6 +17,10 @@ path = "src/temporal_bridge.rs"
 [[bin]]
 name = "velocity-bench-http"
 path = "src/http_main.rs"
+
+[[bin]]
+name = "velocity-bench-universal"
+path = "src/universal_main.rs"
 
 [dependencies]
 # Both engines connect via identical gRPC paths (BenchmarkService proto).

@@ -6,12 +6,45 @@
 
     <groupId>io.velocity</groupId>
     <artifactId>velocity-sdk-java</artifactId>
-    <version>0.1.0</version>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <name>V.E.L.O.C.I.T.Y.-WorkFlow Java SDK</name>
     <description>Java SDK for V.E.L.O.C.I.T.Y.-WorkFlow - a hardware-native zero-allocation durable execution engine</description>
-    <url>https://github.com/velocity-workflow/sdk-java</url>
+    <url>https://github.com/velocity-workflow/velocity</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>Velocity Team</name>
+            <organization>Velocity Workflow</organization>
+            <organizationUrl>https://github.com/velocity-workflow</organizationUrl>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/velocity-workflow/velocity.git</connection>
+        <developerConnection>scm:git:ssh://github.com/velocity-workflow/velocity.git</developerConnection>
+        <url>https://github.com/velocity-workflow/velocity</url>
+        <tag>v1.0.0</tag>
+    </scm>
+
+    <distributionManagement>
+        <snapshotRepository>
+            <id>ossrh</id>
+            <url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
+        <repository>
+            <id>ossrh</id>
+            <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository>
+    </distributionManagement>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
@@ -64,6 +97,39 @@
                 <configuration>
                     <source>11</source>
                     <target>11</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals><goal>jar-no-fork</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals><goal>jar</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.plugins</groupId>
+                <artifactId>nexus-staging-maven-plugin</artifactId>
+                <version>1.6.13</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <serverId>ossrh</serverId>
+                    <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
+                    <autoReleaseAfterClose>true</autoReleaseAfterClose>
                 </configuration>
             </plugin>
         </plugins>

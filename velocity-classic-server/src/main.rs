@@ -6,6 +6,10 @@
 //! Architecture:
 //!   [Local Workers] ──NMCP Shmem──► [NmcpFrameRouter] ──► [WorkflowEngine + WAL]
 //!   [Remote Clients] ──NMCP WS────► [NmcpFrameRouter] ──► [WorkflowEngine + WAL]
+//!   [Browser Clients] ──WS/JSON──► [WsVctpGateway] ──UDP/VCTP──► [VctpRpcServer]
+
+mod ws_vctp_gateway;
+mod http_vctp_ingress;
 
 // jemalloc — significantly faster allocator for allocation-heavy workloads
 #[cfg(not(target_env = "msvc"))]

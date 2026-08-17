@@ -797,6 +797,8 @@ struct InMemoryState {
     workflows: HashMap<u64, WorkflowRecord>,
     events: HashMap<u64, Vec<WorkflowEventRecord>>,
     search_attrs: HashMap<u64, SearchAttributes>,
+    /// Step journal: workflow_key → [(step_number, result_data)].
+    steps: HashMap<u64, Vec<(u32, Option<Vec<u8>>)>>,
     next_event_id: i64,
     schema_initialized: bool,
     migration_version: u32,
@@ -820,6 +822,7 @@ impl InMemoryAdapter {
                 workflows: HashMap::new(),
                 events: HashMap::new(),
                 search_attrs: HashMap::new(),
+                steps: HashMap::new(),
                 next_event_id: 1,
                 schema_initialized: false,
                 migration_version: 0,
@@ -1103,16 +1106,32 @@ impl DatabaseAdapter for InMemoryAdapter {
         "InMemoryAdapter"
     }
 
-    fn save_step(&self, _workflow_key: u64, _step_number: u32, _result_data: Option<&[u8]>) -> DatabaseResult<()> {
-        Ok(()) // In-memory: steps are durable via save_workflow UPSERT
+    fn save_step(&self, workflow_key: u64, step_number: u32, result_data: Option<&[u8]>) -> DatabaseResult<()> {
+        if let Ok(mut state) = self.state.write() {
+            let steps = state.steps.entry(workflow_key).or_insert_with(Vec::new);
+            steps.push((step_number, result_data.map(|d| d.to_vec())));
+            Ok(())
+        } else {
+            Err(DatabaseError::NotConnected)
+        }
     }
 
-    fn save_steps_batch(&self, _workflow_key: u64, _steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()> {
-        Ok(()) // Stub
+    fn save_steps_batch(&self, workflow_key: u64, steps: &[(u32, Option<Vec<u8>>)]) -> DatabaseResult<()> {
+        if let Ok(mut state) = self.state.write() {
+            let entry = state.steps.entry(workflow_key).or_insert_with(Vec::new);
+            entry.extend(steps.iter().cloned());
+            Ok(())
+        } else {
+            Err(DatabaseError::NotConnected)
+        }
     }
 
-    fn load_steps(&self, _workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>> {
-        Ok(Vec::new()) // In-memory: steps are recovered via load_workflow
+    fn load_steps(&self, workflow_key: u64) -> DatabaseResult<Vec<(u32, Option<Vec<u8>>)>> {
+        if let Ok(state) = self.state.read() {
+            Ok(state.steps.get(&workflow_key).cloned().unwrap_or_default())
+        } else {
+            Err(DatabaseError::NotConnected)
+        }
     }
 }
 

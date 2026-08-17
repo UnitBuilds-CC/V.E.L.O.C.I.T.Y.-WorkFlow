@@ -35,12 +35,36 @@ spec:
                 - -ec
                 - |
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  SNAPSHOT_DIR="/backups/wal-snapshot-${TIMESTAMP}"
+                  mkdir -p "$SNAPSHOT_DIR"
+
+                  # ── WAL Backup ──────────────────────────────────────────
+                  # WAL is append-only, safe to copy while server is running.
+                  WAL_COUNT=0
+                  for wal in /data/velocity/wal/*.wal; do
+                    [ -f "$wal" ] && cp -a "$wal" "$SNAPSHOT_DIR/" && WAL_COUNT=$((WAL_COUNT + 1))
+                  done
+                  # Copy WAL metadata
+                  for meta in /data/velocity/wal/*.meta /data/velocity/wal/*.offset; do
+                    [ -f "$meta" ] && cp -a "$meta" "$SNAPSHOT_DIR/"
+                  done
+                  echo "WAL files backed up: ${WAL_COUNT}"
+
+                  # Compute integrity checksums
+                  (cd "$SNAPSHOT_DIR" && find . -type f ! -name CHECKSUMS -exec sha256sum {} \; > CHECKSUMS)
+                  echo "Checksums: $(wc -l < "$SNAPSHOT_DIR/CHECKSUMS") files"
+
+                  # ── PostgreSQL Dump ─────────────────────────────────────
                   pg_dump -h "${PGHOST}" -U "${PGUSER}" -d "${PGDATABASE}" \
                     --format=custom --compress=6 \
                     -f "/backups/velocity-${TIMESTAMP}.dump"
-                  echo "Backup completed: velocity-${TIMESTAMP}.dump"
-                  # Remove old backups beyond retention period.
-                  find /backups -name "velocity-*.dump" -mtime +{{ .Values.backup.retention | default 7 }} -delete
+                  echo "PostgreSQL dump completed: velocity-${TIMESTAMP}.dump"
+
+                  # ── Retention Cleanup ───────────────────────────────────
+                  RETENTION_DAYS={{ .Values.backup.retention | default 7 }}
+                  find /backups -maxdepth 1 -name "wal-snapshot-*" -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
+                  find /backups -maxdepth 1 -name "velocity-*.dump" -mtime +${RETENTION_DAYS} -delete
+                  echo "Backup completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
               env:
                 - name: PGHOST
                   value: {{ .Values.postgresql.host | default (printf "%s-postgresql" (include "velocity.fullname" .)) | quote }}
@@ -63,6 +87,12 @@ spec:
               volumeMounts:
                 - name: backup-data
                   mountPath: /backups
+                {{- if .Values.persistence.enabled }}
+                - name: wal-data
+                  mountPath: /data/velocity/wal
+                  subPath: wal
+                  readOnly: true
+                {{- end }}
               resources:
                 {{- toYaml .Values.backup.resources | nindent 16 }}
           volumes:
@@ -73,4 +103,9 @@ spec:
               {{- else }}
               emptyDir: {}
               {{- end }}
+            {{- if .Values.persistence.enabled }}
+            - name: wal-data
+              persistentVolumeClaim:
+                claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "velocity.fullname" .)) }}
+            {{- end }}
 {{- end }}

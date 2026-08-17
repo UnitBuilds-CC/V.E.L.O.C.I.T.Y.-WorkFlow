@@ -1,6 +1,7 @@
 [package]
 name = "prod-bench"
-version = "0.1.0"
+version = "1.0.0"
+publish = false
 edition = "2021"
 authors = ["UnitBuilds <ian@unitbuilds.com>"]
 description = "Production benchmark suite: Velocity vs Temporal vs DBOS vs Restate"

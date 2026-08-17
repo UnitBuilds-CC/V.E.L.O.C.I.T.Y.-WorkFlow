@@ -197,22 +197,32 @@ graph TB
 - Connection pooling via deadpool-postgres
 - Automatic schema migrations
 
-**VCTP Transport (`velocity-workflow-engine/src/vctp_transport.rs`):**
+**VCTP Transport (`velocity-workflow-core/src/vctp.rs`, 623 lines):**
+- HMAC-SHA256 authenticated encryption with constant-time MAC verification
+- VctpReplayWindow: 64-depth sliding window for O(1) replay detection
+- XOR cipher with AES-256 key schedule (defense-in-depth)
+
+**VCTP Transport (`velocity-workflow-engine/src/vctp_transport.rs`, 481 lines):**
 - UDP wire format (28-byte header + payload + CRC32)
 - Non-blocking socket with retransmission tracking
 - AIMD congestion control
 - Packet fragmentation and reassembly
 
-**VCTP RPC Server (`velocity-workflow-engine/src/vctp_rpc.rs`):**
+**VCTP RPC Server (`velocity-workflow-engine/src/vctp_rpc.rs`, 2,767 lines):**
 - Full request pipeline: drain → circuit breaker → rate limit → auth → idempotency → dispatch
 - Tokio async worker pool (`run_async`)
 - Heartbeat mechanism (30s interval, 90s eviction)
-- Prometheus metrics export
+- Prometheus metrics export with 6 VCTP-specific alert rules
 - OpenTelemetry tracing spans
+- 27 RwLock safety improvements (unwrap → expect with descriptive messages)
+- Chaos engineering tests (reorder overflow, 10K flood, malformed packets, drain-under-load)
+- Concurrent stress benchmark (100 clients × 50 requests, ≥2,000 ops/s)
+- Cross-network benchmark (4 zones with artificial latency, ≥1,000 ops/s)
+- HMAC-SHA256 benchmark (≥100K ops/s) and replay window benchmark (≥10M ops/s)
 
 **VCTP Gateways (`velocity-classic-server/`):**
-- WebSocket-to-VCTP gateway (`ws_vctp_gateway.rs`, 592 lines)
-- HTTP-to-VCTP ingress with Swagger UI at `/docs` (`http_vctp_ingress.rs`, 666 lines)
+- WebSocket-to-VCTP gateway (`ws_vctp_gateway.rs`, 692 lines) — TLS termination (WSS) via tokio-rustls, per-connection rate limiting
+- HTTP-to-VCTP ingress with Swagger UI at `/docs` (`http_vctp_ingress.rs`, 871 lines) — TLS termination (HTTPS) via axum-server + rustls, per-second window rate limiting, 5 integration tests
 
 **VCTP Tools (`tools/`):**
 - Sidecar proxy with ECDH + XOR cipher (`vctp-sidecar/`, 474 lines, separate workspace)
@@ -301,7 +311,7 @@ cargo build --release
 ### Testing VCTP
 
 ```bash
-# Run all engine tests (includes 38 VCTP tests)
+# Run all engine tests (includes 61 VCTP tests)
 cargo test -p velocity-workflow-engine
 
 # Run only VCTP-specific tests
@@ -314,18 +324,8 @@ cargo test -p velocity-workflow-engine --release -- vctp_bench
 cd tools/vctp-sidecar
 cargo test
 
-# Total: 2,103 engine tests + 6 sidecar tests = 2,109 passing
+# Total: 2,541 engine tests + 6 sidecar tests = 2,547 passing
 ```
-
-### VCTP Test Categories
-
-| Category | Count | Description |
-|----------|-------|-------------|
-| Security integration | 12 | Auth, rate limiting, circuit breaker tests |
-| Performance benchmarks | 2 | Throughput ≥700 ops/s, latency ≤20µs |
-| Cross-gateway E2E | 4 | WebSocket/HTTP/sidecar → VCTP roundtrip |
-| Drain tests | 2 | Graceful drain + 503 rejection |
-| Core VCTP | 18 | Wire format, CRC32, reorder buffer, heartbeat |
 
 ### Running VCTP CLI Tool
 
@@ -341,6 +341,23 @@ python tools/vctp-cli/vctp_cli.py signal --server 127.0.0.1:9090 --workflow-id w
 python tools/vctp-cli/vctp_cli.py query --server 127.0.0.1:9090 --workflow-id wf-123
 python tools/vctp-cli/vctp_cli.py cancel --server 127.0.0.1:9090 --workflow-id wf-123
 ```
+
+### VCTP Test Categories
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Core VCTP | 18 | Wire format, CRC32, reorder buffer, heartbeat |
+| Security integration | 12 | Auth, rate limiting, circuit breaker tests |
+| HMAC authenticated encryption | 4 | MAC computation, verification, tamper detection, constant-time |
+| Replay protection | 6 | Window first/sequential/duplicate/old/out-of-order/large-jump |
+| Chaos engineering | 4 | Reorder overflow, 10K flood, malformed packets, drain-under-load |
+| Concurrent stress | 2 | 100-thread stress (≥2,000 ops/s), delivery ratio >90% |
+| Cross-network | 2 | 4-zone simulation (≥1,000 ops/s), delivery ratio >85% |
+| Performance benchmarks | 6 | Throughput, latency, HMAC (≥100K), replay (≥10M), E2E latency |
+| Cross-gateway E2E | 4 | WebSocket/HTTP/sidecar → VCTP roundtrip |
+| Drain tests | 2 | Graceful drain + 503 rejection |
+| Gateway integration (HTTP) | 5 | Live HTTP ingress tests (start, signal, query, cancel, health) |
+| **Total VCTP** | **61** | Engine tests: 2,541 total + sidecar: 6 = **2,547 passing** |
 
 ### VCTP Protocol Schema
 
@@ -359,6 +376,55 @@ cp tools/vctp-wireshark/vctp.lua ~/.local/lib/wireshark/plugins/
 # Windows: %APPDATA%\Wireshark\plugins\vctp.lua
 
 # Filter: vctp.magic, vctp.sequence, vctp.method
+```
+
+### TLS Configuration for Gateways
+
+The HTTP and WebSocket gateways support TLS termination for secure external access:
+
+**HTTPS (HTTP-to-VCTP Ingress):**
+```bash
+# Generate self-signed cert for testing
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes
+
+# Run with TLS
+cargo run --bin velocity-classic-server -- --https-cert cert.pem --https-key key.pem --https-port 8443
+```
+
+**WSS (WebSocket-to-VCTP Gateway):**
+```bash
+# Run with TLS
+cargo run --bin velocity-classic-server -- --wss-cert cert.pem --wss-key key.pem --wss-port 8444
+```
+
+**Helm deployment with TLS:**
+```yaml
+vctp:
+  tls:
+    enabled: true
+    secretName: velocity-tls    # K8s Secret with tls.crt and tls.key
+    httpsPort: 8443
+    wssPort: 8444
+```
+
+### VCTP Authenticated Encryption
+
+VCTP packets can be authenticated with HMAC-SHA256 for integrity verification:
+
+```rust
+// Compute MAC over packet data
+let mac = encryption.compute_mac(&payload, sequence_number);
+// Verify MAC (constant-time comparison)
+let valid = encryption.verify_mac(&payload, sequence_number, &received_mac);
+```
+
+Replay protection uses a 64-depth sliding window (`VctpReplayWindow`):
+```rust
+let mut window = VctpReplayWindow::new(64);
+assert!(window.check_and_record(0));   // First packet: accepted
+assert!(window.check_and_record(1));   // Sequential: accepted
+assert!(!window.check_and_record(0));  // Duplicate: rejected
+assert!(!window.check_and_record(0));  // Old (outside window): rejected
 ```
 
 ## Code Style and Conventions
@@ -668,10 +734,16 @@ The bench server (`bench-suite/velocity-bench-server`) exposes both standard and
 
 ### C# Lifecycle Benchmarks
 
-The `benchmarks/Velocity.Workflow.Benchmarks/` directory contains a .NET benchmark suite that complements the Rust prod-bench. Run with:
+The `benchmarks/Velocity.Workflow.Benchmarks/` directory contains a .NET benchmark suite that complements the Rust prod-bench. It includes two benchmark modes:
+
+**Default (head-to-head):** `dotnet run -c Release` — runs `TemporalVsVelocityBenchmark` (synthetic memory-primitive comparison).
+
+**Lifecycle (engine via FFI):** `dotnet run -c Release -- --lifecycle` — runs `WorkflowLifecycleBenchmark` which exercises the actual Velocity workflow engine via C# FFI (`WorkflowRuntime`). Each iteration performs a full lifecycle: Start → CompleteStep(0..N) → Signal → Query → Complete. Uses BenchmarkDotNet with `[Params(1, 10, 100)]` steps-per-workflow and `[MemoryDiagnoser]` for allocation tracking.
+
 ```bash
 cd benchmarks/Velocity.Workflow.Benchmarks
-dotnet run -c Release
+dotnet run -c Release              # Synthetic head-to-head
+dotnet run -c Release -- --lifecycle  # Real engine lifecycle (FFI)
 ```
 
 ## Docker Development
@@ -775,7 +847,7 @@ LIMIT 10;
 The project uses GitHub Actions for CI:
 
 - `.github/workflows/ci.yml` — Main CI pipeline (includes chaos/failure injection tests)
-- `.github/workflows/benchmark.yml` — Benchmark runs
+- `.github/workflows/benchmark.yml` — Benchmark runs with regression gates
 - `.github/workflows/e2e.yml` — End-to-end tests
 - `.github/workflows/release.yml` — Release builds
 
@@ -783,6 +855,33 @@ The project uses GitHub Actions for CI:
 - Trivy container security scanning
 - Chaos/failure injection tests in CI pipeline
 - Production validation for all 3 flavors
+
+### CI Benchmark Gates
+
+The benchmark CI pipeline enforces performance regression thresholds:
+
+| Gate | Threshold | Description |
+|------|-----------|-------------|
+| Benchmark regression | ≥500 ops/s | Full-stack VCTP dispatch throughput |
+| Tail latency (p99) | <100ms | Sustained workload end-to-end latency |
+| Error rate | <5% | Error tolerance under sustained load |
+
+### Prometheus Alert Rules
+
+**VCTP-specific alerts (6 rules):**
+
+| Alert | Condition | Severity |
+|-------|-----------|----------|
+| VctpHighErrorRate | Error rate >5% for 2m | critical |
+| VctpHighLatency | p99 >100ms for 5m | warning |
+| VctpCircuitBreakerOpen | Circuit breaker open | critical |
+| VctpDrainStuck | Drain >60s with inflight >0 | warning |
+| VctpReplayDetected | Replay attempts >0 | warning |
+| VctpLowThroughput | <500 ops/s for 5m | warning |
+
+**HTTP alerts (11 rules):** Standard HTTP error rate, latency, and saturation alerts.
+
+**Total: 17 Prometheus alert rules** (11 HTTP + 6 VCTP)
 
 ## Security and Production Hardening
 
@@ -821,8 +920,38 @@ TLS certificate + key for secure WebSocket:
 cargo run --bin velocity-classic-server -- --tls-cert cert.pem --tls-key key.pem
 ```
 
+### TLS Gateway Termination (HTTPS/WSS)
+TLS termination at the gateway level for secure external access:
+```bash
+# HTTPS ingress (HTTP-to-VCTP with TLS)
+cargo run --bin velocity-classic-server -- --https-cert cert.pem --https-key key.pem --https-port 8443
+
+# WSS gateway (WebSocket-to-VCTP with TLS)
+cargo run --bin velocity-classic-server -- --wss-cert cert.pem --wss-key key.pem --wss-port 8444
+```
+
+Dependencies: axum-server 0.7 (tls-rustls), rustls 0.23, tokio-rustls 0.26
+
+### VCTP Authenticated Encryption
+Packet-level authenticated encryption with HMAC-SHA256 and replay protection:
+- HMAC-SHA256 with constant-time verification (prevents timing attacks)
+- 64-depth sliding window replay detection (≥10M checks/s)
+- XOR cipher with AES-256 key schedule for defense-in-depth
+
 ### Operations Runbooks
-See `docs/ops-runbooks.md` for common incident scenarios and resolution procedures.
+See `docs/ops-runbooks.md` for common incident scenarios and resolution procedures (15 runbooks covering WAL recovery, VCTP circuit breaker, replay attacks, HMAC failures, TLS issues, and throughput degradation).
+
+### Security Audit
+See `docs/security-audit-checklist.md` for a 65-point security audit checklist covering all 39 production hardening items across 10 categories (transport, encryption, access control, network, persistence, observability, monitoring, container, CI/CD, and operational readiness).
+
+### Distributed Tracing
+See `docs/otlp-tracing-guide.md` for OpenTelemetry/OTLP configuration with Jaeger, Tempo, and Grafana backends.
+
+### Production Load Testing
+Run `deploy/scripts/vctp-prod-loadtest.sh` to validate production readiness from within the Kubernetes cluster. The script launches 100 concurrent load generator pods, validates against CI thresholds (500 ops/s, <5% error rate), and collects Prometheus metrics.
+
+### WAL Backup
+Run `deploy/scripts/wal-backup.sh` for encrypted WAL backups with SHA-256 integrity checksums, S3 upload, and configurable retention. The Helm backup CronJob also backs up WAL files alongside PostgreSQL dumps.
 
 ### Running CI Locally
 

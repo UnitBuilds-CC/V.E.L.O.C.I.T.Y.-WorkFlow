@@ -62,6 +62,11 @@ spec:
             - name: health
               containerPort: {{ .Values.service.healthPort }}
               protocol: TCP
+            {{- if .Values.vctp.enabled }}
+            - name: vctp
+              containerPort: {{ .Values.vctp.port }}
+              protocol: UDP
+            {{- end }}
           env:
             - name: ASPNETCORE_ENVIRONMENT
               valueFrom:
@@ -102,9 +107,28 @@ spec:
           startupProbe:
             {{- toYaml (omit .Values.startupProbe "enabled") | nindent 12 }}
           {{- end }}
+          {{- if .Values.vctp.enabled }}
+          {{- if .Values.vctp.healthProbe.enabled }}
+            # VCTP-specific health probe using exec (vctp-cli)
+            {{- if .Values.vctp.healthProbe.exec }}
+            - exec:
+                {{- toYaml .Values.vctp.healthProbe.exec | nindent 16 }}
+            {{- end }}
+          {{- end }}
+          {{- end }}
           {{- with .Values.lifecycle }}
           lifecycle:
             {{- toYaml . | nindent 12 }}
+          {{- else }}
+          {{- if .Values.vctp.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - "sleep {{ .Values.vctp.drainTimeoutSeconds | default 30 }}"
+          {{- end }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

@@ -263,3 +263,145 @@ du -sh /var/log/velocity/
 | `velocity_rate_limit_rejected_total` | 0 | > 0 | > 100/min |
 | `velocity_audit_auth_failures_total` | 0 | > 0 | > 50/min |
 | `velocity_pg_connected` | 1 | — | 0 |
+| `vctp_requests_total` | > 0 | — | 0 for 2m |
+| `vctp_errors_total` | 0 | > 0 | > 5% of requests |
+| `vctp_circuit_breaker_state` | closed | half-open | open |
+| `vctp_replay_detected_total` | 0 | > 0 | > 10/min |
+| `vctp_hmac_verify_failures_total` | 0 | > 0 | > 5/min |
+
+---
+
+## 11. VCTP Circuit Breaker Tripped
+
+**Symptoms:** VCTP clients receive 503 "service overloaded". Prometheus alert `VctpCircuitBreakerOpen` fires.
+
+**Diagnosis:**
+```bash
+# Check circuit breaker state via metrics
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8095/metrics | grep vctp_circuit_breaker
+
+# Check inflight request count
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8095/metrics | grep vctp_inflight_requests
+
+# Check server logs for overload events
+grep "circuit.breaker\|overloaded" /var/log/velocity/*.log | tail -20
+```
+
+**Resolution:**
+1. **Immediate:** Check if a traffic spike caused the trip
+   - If transient: circuit breaker will auto-recover (HalfOpen after cooldown_ms, default 5s)
+   - If sustained: scale up server replicas or increase `max_inflight`
+2. **Tuning:** Adjust circuit breaker thresholds in Helm values:
+   ```yaml
+   vctp:
+     circuitBreaker:
+       maxInflight: 15000   # increase from default 10000
+       cooldownMs: 3000     # decrease for faster recovery
+   ```
+3. **Root cause:** Check if downstream PostgreSQL is slow (increases inflight duration)
+
+---
+
+## 12. VCTP Replay Attacks Detected
+
+**Symptoms:** Prometheus alert `VctpReplayDetected` fires. `vctp_replay_detected_total` metric increasing.
+
+**Diagnosis:**
+```bash
+# Check replay detection metrics
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8095/metrics | grep vctp_replay
+
+# Check server logs for replay events
+grep "replay" /var/log/velocity/*.log | tail -20
+
+# Identify source IP of replayed packets
+grep "replay.*from" /var/log/velocity/*.log | awk '{print $NF}' | sort | uniq -c | sort -rn
+```
+
+**Resolution:**
+1. **Single occurrence:** Likely a network retransmission — no action needed
+2. **Repeated from same IP:** Possible malicious replay — block the IP via NetworkPolicy
+3. **Widespread:** Check if a client has a bug (reusing sequence numbers)
+4. **Verify replay window:** Ensure `VctpReplayWindow` is configured with adequate depth (default 64)
+
+---
+
+## 13. VCTP HMAC Authentication Failures
+
+**Symptoms:** VCTP packets rejected with MAC verification failure. `vctp_hmac_verify_failures_total` increasing.
+
+**Diagnosis:**
+```bash
+# Check HMAC failure metrics
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8095/metrics | grep vctp_hmac
+
+# Check server logs for HMAC failures
+grep "hmac\|mac.*fail\|authentication.*fail" /var/log/velocity/*.log | tail -20
+```
+
+**Resolution:**
+1. **Key mismatch:** Client and server using different HMAC keys — verify key distribution
+2. **Clock skew:** If using time-based key rotation, check NTP synchronization
+3. **Key rotation:** If keys were recently rotated, some clients may still use old keys
+   - Wait for key propagation or force client restart
+4. **Tampering:** If HMAC failures spike suddenly, check for network-level packet manipulation
+
+---
+
+## 14. VCTP Gateway TLS Failure
+
+**Symptoms:** HTTPS/WSS clients cannot connect. TLS handshake errors in logs.
+
+**Diagnosis:**
+```bash
+# Check TLS certificate expiry
+kubectl -n velocity-system get secret velocity-tls -o jsonpath='{.data.tls\.crt}' | \
+  base64 -d | openssl x509 -noout -dates
+
+# Test HTTPS endpoint
+curl -vk https://localhost:8443/health
+
+# Test WSS endpoint
+wscat -c wss://localhost:8444 --no-check
+
+# Check gateway logs for TLS errors
+grep "tls\|ssl\|rustls\|handshake" /var/log/velocity/*.log | tail -20
+```
+
+**Resolution:**
+1. **Certificate expired:** Rotate via cert-manager or update the TLS secret manually
+2. **Certificate mismatch:** Ensure the certificate CN/SAN matches the accessed hostname
+3. **Protocol mismatch:** Client using TLS 1.2 but server requires TLS 1.3 — update client
+4. **Key mismatch:** Verify the TLS key matches the certificate:
+   ```bash
+   openssl x509 -noout -modulus -in tls.crt | openssl md5
+   openssl rsa -noout -modulus -in tls.key | openssl md5
+   ```
+
+---
+
+## 15. VCTP Throughput Degradation
+
+**Symptoms:** VCTP ops/s drops below CI threshold (500 ops/s). Prometheus alert `VctpLowThroughput` fires.
+
+**Diagnosis:**
+```bash
+# Check current throughput
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8095/metrics | grep vctp_requests_total
+
+# Calculate rate over last 5 minutes
+# rate(vctp_requests_total[5m]) — should be > 8.33/s (500/60)
+
+# Check system resources
+kubectl -n velocity-system top pods -l app.kubernetes.io/name=velocity
+
+# Check for contention
+grep "lock\|contention\|slow" /var/log/velocity/*.log | tail -20
+```
+
+**Resolution:**
+1. **Resource starvation:** Increase CPU/memory limits in Helm values
+2. **Network saturation:** Check UDP packet loss — `netstat -su | grep "packet receive errors"`
+3. **Database slowdown:** If using PostgreSQL persistence, check query performance
+4. **RwLock contention:** Check logs for `expect()` failures indicating lock poisoning
+5. **Scale out:** Add more server replicas — VCTP is stateless per-request

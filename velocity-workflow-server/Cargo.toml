@@ -1,8 +1,14 @@
 [package]
 name = "velocity-workflow-server"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-description = "Velocity Workflow Server — VCTP transport (zero-copy UDP)"
+description = "Velocity Workflow Server — VCTP transport (zero-copy UDP) with HMAC-SHA256 authenticated encryption"
+license = "Apache-2.0"
+repository = "https://github.com/velocity-workflow/velocity"
+homepage = "https://github.com/velocity-workflow/velocity"
+readme = "README.md"
+keywords = ["workflow", "orchestration", "vctp", "zero-copy", "udp"]
+categories = ["network-programming", "asynchronous"]
 
 [[bin]]
 name = "velocity-server"

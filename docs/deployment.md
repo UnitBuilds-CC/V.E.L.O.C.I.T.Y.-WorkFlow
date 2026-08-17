@@ -1,6 +1,11 @@
 # VELOCITY-WorkFlow Deployment Reference
 
-> Docker, Kubernetes, and configuration quick reference. For the complete deployment walkthrough including local development, scaling, and disaster recovery, see the [Deployment Guide](deployment_guide.md).
+> Docker, Kubernetes, and configuration quick reference. For the complete deployment walkthrough including local development, scaling, and disaster recovery, see the [Deployment Guide](deployment_guide.md). Related operational documentation:
+> - [Operations Runbooks](ops-runbooks.md) — Incident response procedures (15 runbooks)
+> - [Security Audit Checklist](security-audit-checklist.md) — 65-point pre-go-live security review
+> - [OTLP Tracing Guide](otlp-tracing-guide.md) — Distributed tracing configuration
+> - [WAL Backup Script](../deploy/scripts/wal-backup.sh) — Encrypted WAL backup with S3 support
+> - [Production Load Test](../deploy/scripts/vctp-prod-loadtest.sh) — Kubernetes-native VCTP load test
 
 ---
 
@@ -389,6 +394,32 @@ tar czf velocity-slabs-$(date +%Y%m%d).tar.gz /data/velocity/slabs/
 rsync -avz /data/velocity/wal/ /backup/wal/
 ```
 
+#### VCTP Encrypted WAL Backup (Recommended)
+
+For production, use the comprehensive WAL backup script with encryption and verification:
+
+```bash
+# Encrypted backup with integrity verification
+./deploy/scripts/wal-backup.sh \
+  --wal-dir /data/velocity/wal \
+  --backup-dir /backups/velocity/wal \
+  --encrypt --gpg-key VELOCITY-PROD-KEY \
+  --verify --retention 30
+
+# Include slab files for full state backup
+./deploy/scripts/wal-backup.sh --include-slabs --encrypt --gpg-key VELOCITY-PROD-KEY --verify
+
+# Upload to S3 for disaster recovery
+VELOCITY_S3_BUCKET=velocity-backups ./deploy/scripts/wal-backup.sh --encrypt --gpg-key VELOCITY-PROD-KEY --verify
+```
+
+The backup script (`deploy/scripts/wal-backup.sh`) provides:
+- **Crash-consistent snapshots** — WAL is append-only, safe to copy while server runs
+- **SHA-256 integrity checksums** — every backup includes a CHECKSUMS file
+- **AES-256-GPG encryption** — protects data at rest in backup storage
+- **S3 upload** — optional remote backup for disaster recovery
+- **Automated retention** — configurable cleanup of old backups
+
 #### PostgreSQL (if used)
 
 ```bash
@@ -396,6 +427,24 @@ pg_dump -U velocity velocity > velocity-db-$(date +%Y%m%d).sql
 ```
 
 ### Automated Backup Script
+
+The Helm backup CronJob (`deploy/helm/velocity/templates/backup-cronjob.yaml`) runs both WAL and PostgreSQL backups:
+
+```bash
+# Enable in Helm values
+backup:
+  enabled: true
+  schedule: "0 */6 * * *"    # every 6 hours
+  retention: 30               # retain 30 days
+  storage:
+    enabled: true
+    size: 50Gi
+
+# Deploy
+helm upgrade velocity ./deploy/helm/velocity --set backup.enabled=true -n velocity-system
+```
+
+For standalone or bare-metal deployments, use the cron-based script:
 
 ```bash
 #!/bin/bash
@@ -406,8 +455,9 @@ mkdir -p "$BACKUP_DIR"
 # Slab files
 rsync -avz /data/velocity/slabs/ "$BACKUP_DIR/slabs/"
 
-# WAL segments
+# WAL segments with checksums
 rsync -avz /data/velocity/wal/ "$BACKUP_DIR/wal/"
+(cd "$BACKUP_DIR/wal" && find . -type f -exec sha256sum {} \; > CHECKSUMS)
 
 # PostgreSQL
 pg_dump -U velocity velocity > "$BACKUP_DIR/database.sql"

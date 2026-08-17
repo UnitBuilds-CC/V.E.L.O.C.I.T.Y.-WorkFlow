@@ -581,6 +581,54 @@ lifecycle:
         - -c
         - sleep 10   # allow in-flight requests to drain
 
+# ── VCTP (Velocity Transfer Protocol) ───────────────────────────────────────
+# VCTP is the zero-copy UDP-based RPC protocol for high-performance workflow operations.
+vctp:
+  enabled: false
+  port: 9090
+  # Drain timeout: seconds to wait for in-flight requests before pod termination.
+  drainTimeoutSeconds: 30
+  # VCTP-specific health probe (uses vctp-cli or exec-based check).
+  healthProbe:
+    enabled: false
+    exec:
+      command:
+        - python3
+        - /opt/velocity/tools/vctp-cli/vctp_cli.py
+        - health
+        - --server
+        - "127.0.0.1:9090"
+  # Security configuration.
+  security:
+    authRequired: false
+    jwtSecret: ""
+    apiKeys: []
+    rateLimitRps: 0
+    rateLimitBurst: 0
+  # Circuit breaker configuration.
+  circuitBreaker:
+    maxInflight: 10000
+    cooldownMs: 5000
+    successThreshold: 3
+  # Heartbeat configuration.
+  heartbeat:
+    intervalSeconds: 30
+    staleTimeoutSeconds: 90
+  # TLS configuration for gateway endpoints (HTTPS/WSS).
+  # Certificates are typically provided by cert-manager or manually mounted.
+  tls:
+    enabled: false
+    # Secret name containing tls.crt and tls.key
+    secretName: velocity-tls
+    # HTTP ingress gateway TLS port
+    httpsPort: 8443
+    # WebSocket gateway TLS port
+    wssPort: 8444
+    # Certificate file path inside the secret
+    certFile: tls.crt
+    # Key file path inside the secret
+    keyFile: tls.key
+
 # ── Extra / Override ─────────────────────────────────────────────────────────
 # Inject additional environment variables into the velocity-server container.
 extraEnv: []
