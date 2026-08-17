@@ -15,10 +15,12 @@
 //! - [`auth`] — API key and JWT authentication
 //! - [`rate_limit`] — Token bucket rate limiter
 //! - [`audit`] — Structured audit logging
+//! - [`tracing_setup`] — Distributed tracing with optional OpenTelemetry/OTLP export
 
 pub mod auth;
 pub mod rate_limit;
 pub mod audit;
+pub mod tracing_setup;
 
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;

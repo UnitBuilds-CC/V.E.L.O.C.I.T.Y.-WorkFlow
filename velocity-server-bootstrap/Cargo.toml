@@ -17,6 +17,15 @@ rustls-pemfile = "2"
 sha2 = "0.10"        # API key hashing for constant-time comparison
 base64 = "0.22"   # JWT payload decoding
 chrono = "0.4"     # Audit log timestamps
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+opentelemetry = { version = "0.27", optional = true }
+tracing-opentelemetry = { version = "0.28", optional = true }
+opentelemetry-otlp = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.27", optional = true, features = ["rt-tokio"] }
+
+[features]
+default = []
+otel = ["dep:opentelemetry", "dep:tracing-opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk"]
 
 [dev-dependencies]
 rcgen = "0.13"
