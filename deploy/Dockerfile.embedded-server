@@ -1,5 +1,7 @@
 FROM rust:1.88-slim-bookworm AS builder
 
+RUN apt-get update && apt-get install -y build-essential pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy core (dependency of engine)
@@ -10,6 +12,12 @@ COPY velocity-workflow-engine/ /app/velocity-workflow-engine/
 
 # Copy migrations (needed by engine include_str!)
 COPY migrations/ /app/migrations/
+
+# Copy NMCP protocol (dependency of bootstrap)
+COPY velocity-nmcp-protocol/ /app/velocity-nmcp-protocol/
+
+# Copy server bootstrap (dependency of embedded-server)
+COPY velocity-server-bootstrap/ /app/velocity-server-bootstrap/
 
 # Copy embedded library (dependency of embedded-server)
 COPY velocity-embedded/ /app/velocity-embedded/
@@ -22,7 +30,11 @@ RUN sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflo
     sed -i 's|path = "../velocity-embedded"|path = "/app/velocity-embedded"|g' /app/velocity-embedded-server/Cargo.toml && \
     sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-workflow-engine/Cargo.toml && \
     sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-embedded/Cargo.toml && \
-    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-embedded/Cargo.toml
+    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-embedded/Cargo.toml && \
+    sed -i 's|path = "../velocity-nmcp-protocol"|path = "/app/velocity-nmcp-protocol"|g' /app/velocity-server-bootstrap/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-server-bootstrap/Cargo.toml && \
+    sed -i 's|path = "../velocity-server-bootstrap"|path = "/app/velocity-server-bootstrap"|g' /app/velocity-embedded-server/Cargo.toml && \
+    sed -i 's|path = "../velocity-nmcp-protocol"|path = "/app/velocity-nmcp-protocol"|g' /app/velocity-embedded/Cargo.toml
 
 WORKDIR /app/velocity-embedded-server
 RUN cargo build --release --bin velocity-embedded-server
@@ -30,13 +42,16 @@ RUN cargo build --release --bin velocity-embedded-server
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/velocity-embedded-server/target/release/velocity-embedded-server /usr/local/bin/velocity-embedded-server
 
-RUN mkdir -p /tmp/velocity
+RUN mkdir -p /tmp/velocity /var/lib/velocity
 
-EXPOSE 8084
+EXPOSE 8084 8094
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8094/health || exit 1
 
 ENTRYPOINT ["velocity-embedded-server"]
-CMD ["--ws-bind", "0.0.0.0:8084", "--shmem-path", "/tmp/velocity/embedded.nmcp"]
+CMD ["--ws-bind", "0.0.0.0:8084", "--shmem-path", "/tmp/velocity/embedded.nmcp", "--health-bind", "0.0.0.0:8094", "--wal-path", "/var/lib/velocity/embedded.wal"]

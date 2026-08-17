@@ -1,5 +1,7 @@
 FROM rust:1.88-slim-bookworm AS builder
 
+RUN apt-get update && apt-get install -y build-essential pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy core (dependency of engine)
@@ -14,9 +16,18 @@ COPY migrations/ /app/migrations/
 # Copy server source
 COPY velocity-workflow-server/ /app/velocity-workflow-server/
 
+# Copy server bootstrap (dependency of workflow-server)
+COPY velocity-server-bootstrap/ /app/velocity-server-bootstrap/
+
+# Copy NMCP protocol (dependency of bootstrap)
+COPY velocity-nmcp-protocol/ /app/velocity-nmcp-protocol/
+
 # Fix paths for container layout
 RUN sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-workflow-server/Cargo.toml && \
-    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-workflow-engine/Cargo.toml
+    sed -i 's|path = "../velocity-workflow-core"|path = "/app/velocity-workflow-core"|g' /app/velocity-workflow-engine/Cargo.toml && \
+    sed -i 's|path = "../velocity-server-bootstrap"|path = "/app/velocity-server-bootstrap"|g' /app/velocity-workflow-server/Cargo.toml && \
+    sed -i 's|path = "../velocity-nmcp-protocol"|path = "/app/velocity-nmcp-protocol"|g' /app/velocity-server-bootstrap/Cargo.toml && \
+    sed -i 's|path = "../velocity-workflow-engine"|path = "/app/velocity-workflow-engine"|g' /app/velocity-server-bootstrap/Cargo.toml
 
 WORKDIR /app/velocity-workflow-server
 RUN cargo build --release --bin velocity-server
@@ -24,11 +35,16 @@ RUN cargo build --release --bin velocity-server
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/velocity-workflow-server/target/release/velocity-server /usr/local/bin/velocity-server
 
-EXPOSE 7234/udp 8080
+RUN mkdir -p /var/lib/velocity
+
+EXPOSE 7234/udp 8095
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8095/health || exit 1
 
 ENTRYPOINT ["velocity-server"]
-CMD ["--ip", "0.0.0.0", "--vctp-port", "7234"]
+CMD ["--ip", "0.0.0.0", "--vctp-port", "7234", "--health-bind", "0.0.0.0:8095", "--wal-path", "/var/lib/velocity/vctp.wal"]

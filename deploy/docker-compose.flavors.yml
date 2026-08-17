@@ -1,0 +1,79 @@
+# Velocity — All 3 Flavors Docker Compose for Production Validation
+#
+# Usage:
+#   docker compose -f docker-compose.flavors.yml up --build
+#   docker compose -f docker-compose.flavors.yml ps
+#   docker compose -f docker-compose.flavors.yml down
+
+services:
+  vctp-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.workflow-server
+    container_name: velocity-vctp
+    ports:
+      - "17234:7234/udp"   # VCTP transport
+      - "18095:8095"        # Health/readiness/metrics
+    environment:
+      - VELOCITY_LOG_FORMAT=json
+      - VELOCITY_METRICS_TOKEN=velocity-prod-token
+    volumes:
+      - vctp-wal:/var/lib/velocity
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8095/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+  classic-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.classic-server
+    container_name: velocity-classic
+    ports:
+      - "8083:8083"        # WebSocket (NMCP)
+      - "8093:8093"        # Health/readiness/metrics
+    environment:
+      - VELOCITY_LOG_FORMAT=json
+      - VELOCITY_METRICS_TOKEN=velocity-prod-token
+    volumes:
+      - classic-data:/var/lib/velocity
+      - classic-shmem:/tmp/velocity
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8093/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+  embedded-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.embedded-server
+    container_name: velocity-embedded
+    ports:
+      - "8084:8084"        # WebSocket (NMCP)
+      - "8094:8094"        # Health/readiness/metrics
+    environment:
+      - VELOCITY_LOG_FORMAT=json
+      - VELOCITY_METRICS_TOKEN=velocity-prod-token
+    volumes:
+      - embedded-data:/var/lib/velocity
+      - embedded-shmem:/tmp/velocity
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8094/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+volumes:
+  vctp-wal:
+  classic-data:
+  classic-shmem:
+  embedded-data:
+  embedded-shmem:
