@@ -58,6 +58,11 @@ struct Cli {
     /// sync_steps not reached. Prevents unbounded data loss.
     #[arg(long, default_value_t = 5)]
     flush_interval_ms: u64,
+
+    /// Direct execution mode: skip task queue enqueue on step completion.
+    /// For callers that drive the step loop themselves (eliminates 2 Mutex + condvar per step).
+    #[arg(long, default_value_t = false)]
+    direct_execution: bool,
 }
 
 // ─── Shared State ────────────────────────────────────────────────────────────
@@ -116,10 +121,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     // Create engine with WAL persistence and configurable durability
-    let durability = DurabilityConfig::batched(cli.sync_steps, cli.flush_interval_ms);
+    let durability = DurabilityConfig::batched(cli.sync_steps, cli.flush_interval_ms)
+        .with_direct_execution_if(cli.direct_execution);
     tracing::info!(
         sync_steps = cli.sync_steps,
         flush_interval_ms = cli.flush_interval_ms,
+        direct_execution = cli.direct_execution,
         "Durability config: sync_steps=0 means strict (fsync per step), N means batched"
     );
 

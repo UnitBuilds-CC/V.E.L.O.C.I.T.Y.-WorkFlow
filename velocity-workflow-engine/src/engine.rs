@@ -73,6 +73,17 @@ fn now_ms() -> u64 {
 /// - Financial transactions: `sync_steps = 0` (lose nothing)
 /// - Order processing:      `sync_steps = 10` (lose ≤10 steps)
 /// - Event processing:      `sync_steps = 100` (lose ≤5ms of work)
+///
+/// ## Direct Execution Mode
+///
+/// When `direct_execution = true`, step completion skips the task queue enqueue.
+/// This is for callers that drive the step loop themselves (tight `for` loop calling
+/// `complete_step_durable` sequentially). Eliminates 2 Mutex locks + condvar signal
+/// per step — the same overhead Restate avoids by running handlers inline.
+///
+/// **When to use**: embedded/engine-local workloads where the caller owns the loop.
+/// **When NOT to use**: distributed worker-pool patterns where external workers poll
+/// the task queue for the next step.
 #[derive(Debug, Clone)]
 pub struct DurabilityConfig {
     /// Number of steps between fsync calls. 0 = every step (strict).
@@ -80,22 +91,40 @@ pub struct DurabilityConfig {
     /// Time-based floor: fsync at least this often even if step count not reached.
     /// Prevents unbounded data loss when steps arrive slowly.
     pub flush_interval_ms: u64,
+    /// Skip task queue enqueue on step completion. The caller drives steps directly
+    /// instead of relying on external workers polling the task queue.
+    pub direct_execution: bool,
 }
 
 impl DurabilityConfig {
     /// Maximum safety: fsync after every step.
     pub fn strict() -> Self {
-        Self { sync_steps: 0, flush_interval_ms: 0 }
+        Self { sync_steps: 0, flush_interval_ms: 0, direct_execution: false }
     }
 
     /// Balanced: fsync every N steps or every `flush_interval_ms`, whichever first.
     pub fn batched(sync_steps: u32, flush_interval_ms: u64) -> Self {
-        Self { sync_steps, flush_interval_ms }
+        Self { sync_steps, flush_interval_ms, direct_execution: false }
     }
 
     /// Maximum throughput: rely entirely on background fsync thread.
     pub fn async_only(flush_interval_ms: u64) -> Self {
-        Self { sync_steps: u32::MAX, flush_interval_ms }
+        Self { sync_steps: u32::MAX, flush_interval_ms, direct_execution: false }
+    }
+
+    /// Enable direct execution mode — caller drives the step loop, skip task queue.
+    /// Can be chained with any durability setting.
+    pub fn with_direct_execution(mut self) -> Self {
+        self.direct_execution = true;
+        self
+    }
+
+    /// Conditionally enable direct execution mode.
+    pub fn with_direct_execution_if(mut self, condition: bool) -> Self {
+        if condition {
+            self.direct_execution = true;
+        }
+        self
     }
 }
 
@@ -1595,18 +1624,63 @@ impl WorkflowEngine {
     /// - `sync_steps = N`: WAL append every step, fsync every N steps OR every
     ///   `flush_interval_ms`, whichever comes first.
     ///
+    /// When `direct_execution = true`, the task queue enqueue is skipped — the caller
+    /// drives the step loop directly. This eliminates 2 Mutex locks + condvar per step.
+    ///
     /// Crash safety: lose at most `sync_steps` steps (or `flush_interval_ms` of work).
     /// Throughput: approaches `complete_step` (no-fsync) as `sync_steps` increases.
     pub fn complete_step_durable(&self, workflow_key: u64, step: u32, result: Vec<u8>) {
         let sync_steps = self.durability_config.sync_steps;
+        let direct = self.durability_config.direct_execution;
 
-        // Strict mode: identical to complete_step_sync
+        // ── Strict mode (sync_steps=0): fsync every step ──
         if sync_steps == 0 {
-            self.complete_step_sync(workflow_key, step, result);
+            // WAL append + fsync
+            if let Some(wal) = &self.wal {
+                let mut data = Vec::with_capacity(4 + result.len());
+                data.extend_from_slice(&step.to_le_bytes());
+                data.extend_from_slice(&result);
+                let _ = wal.append(WalEventType::StepCompleted, workflow_key, data);
+                let _ = wal.sync();
+            }
+
+            // Update context + extract values under ONE DashMap shard lock
+            let (task_queue_hash, merkle_root) = {
+                if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+                    ctx.complete_step(step, result);
+                    (ctx.task_queue_hash, ctx.slab.merkle_root)
+                } else {
+                    return;
+                }
+            };
+
+            // HAL: Compute ECC parity
+            self.hal
+                .write()
+                .unwrap()
+                .on_slab_write(workflow_key, &merkle_root, merkle_root);
+
+            // Skip task queue in direct execution mode
+            if !direct {
+                self.task_queue.enqueue(
+                    task_queue_hash,
+                    TaskItem {
+                        task_id: 0,
+                        kind: TaskKind::WorkflowTask,
+                        workflow_key,
+                        task_queue_hash,
+                        step_index: step + 1,
+                        activity_name_id: 0,
+                        attempt: 1,
+                        priority: 0,
+                        deadline_ms: 0,
+                    },
+                );
+            }
             return;
         }
 
-        // Batched mode: WAL append every step, fsync at batch boundary or time floor
+        // ── Batched mode: WAL append every step, fsync at batch boundary ──
         if let Some(wal) = &self.wal {
             let mut data = Vec::with_capacity(4 + result.len());
             data.extend_from_slice(&step.to_le_bytes());
@@ -1648,21 +1722,23 @@ impl WorkflowEngine {
             *self.last_sync_instant.write().unwrap() = Instant::now();
         }
 
-        // Schedule next workflow task
-        self.task_queue.enqueue(
-            task_queue_hash,
-            TaskItem {
-                task_id: 0,
-                kind: TaskKind::WorkflowTask,
-                workflow_key,
+        // Skip task queue in direct execution mode
+        if !direct {
+            self.task_queue.enqueue(
                 task_queue_hash,
-                step_index: step + 1,
-                activity_name_id: 0,
-                attempt: 1,
-                priority: 0,
-                deadline_ms: 0,
-            },
-        );
+                TaskItem {
+                    task_id: 0,
+                    kind: TaskKind::WorkflowTask,
+                    workflow_key,
+                    task_queue_hash,
+                    step_index: step + 1,
+                    activity_name_id: 0,
+                    attempt: 1,
+                    priority: 0,
+                    deadline_ms: 0,
+                },
+            );
+        }
     }
 
     /// Schedule an activity for execution with timeout tracking.
@@ -3411,6 +3487,61 @@ mod tests {
         for step in 0..100 {
             assert!(engine.is_step_completed(key, step));
         }
+        engine.shutdown();
+    }
+
+    #[test]
+    fn test_complete_step_durable_direct_execution() {
+        // direct_execution should skip task queue enqueue
+        let config = DurabilityConfig::batched(5, 10).with_direct_execution();
+        let engine = WorkflowEngine::new().with_durability_config(config);
+        let key = engine.start_workflow(4, 1, 0, 42, 20, None);
+
+        // Record initial task queue depth
+        let initial_enqueued = engine.task_queue.global_enqueued();
+
+        // Complete 10 steps with direct execution
+        for step in 0..10 {
+            engine.complete_step_durable(key, step, format!("step_{}", step).into_bytes());
+        }
+
+        // All steps should be completed
+        for step in 0..10 {
+            assert!(engine.is_step_completed(key, step));
+        }
+
+        // Task queue should NOT have grown (direct execution skips enqueue)
+        let final_enqueued = engine.task_queue.global_enqueued();
+        assert_eq!(
+            initial_enqueued, final_enqueued,
+            "direct_execution should not enqueue tasks to the task queue"
+        );
+
+        engine.shutdown();
+    }
+
+    #[test]
+    fn test_complete_step_durable_without_direct_execution() {
+        // Without direct_execution, task queue should grow
+        let config = DurabilityConfig::batched(5, 10); // direct_execution = false
+        let engine = WorkflowEngine::new().with_durability_config(config);
+        let key = engine.start_workflow(5, 1, 0, 42, 20, None);
+
+        let initial_enqueued = engine.task_queue.global_enqueued();
+
+        // Complete 10 steps
+        for step in 0..10 {
+            engine.complete_step_durable(key, step, format!("step_{}", step).into_bytes());
+        }
+
+        // Task queue should have grown by 10 (one enqueue per step)
+        let final_enqueued = engine.task_queue.global_enqueued();
+        assert_eq!(
+            final_enqueued - initial_enqueued,
+            10,
+            "without direct_execution, each step should enqueue one task"
+        );
+
         engine.shutdown();
     }
 }
