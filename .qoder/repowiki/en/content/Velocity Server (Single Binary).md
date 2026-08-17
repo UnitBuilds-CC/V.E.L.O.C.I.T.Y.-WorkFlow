@@ -648,7 +648,7 @@ RUST_LOG=velocity_server=debug,velocity_engine=info velocity-server
 
 **Example Logs:**
 ```json
-{"timestamp":"2026-08-14T19:28:01.520Z","level":"INFO","message":"Velocity Server starting","version":"0.1.0","port":7234}
+{"timestamp":"2026-08-14T19:28:01.520Z","level":"INFO","message":"Velocity Server starting","version":"1.0.0","port":7234}
 {"timestamp":"2026-08-14T19:28:01.521Z","level":"INFO","message":"WAL initialized","path":"/data/velocity.wal","max_size":67108864}
 {"timestamp":"2026-08-14T19:28:01.522Z","level":"INFO","message":"Server listening","address":"0.0.0.0:7234"}
 {"timestamp":"2026-08-14T19:28:05.123Z","level":"DEBUG","message":"Workflow started","workflow_id":"wf-123","run_id":"run-456"}

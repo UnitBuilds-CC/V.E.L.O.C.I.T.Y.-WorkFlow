@@ -771,6 +771,10 @@ graph TB
 **C# Lifecycle Benchmarks:**
 The `benchmarks/Velocity.Workflow.Benchmarks/` directory contains a .NET benchmark suite (`WorkflowLifecycleBenchmark.cs`, 143 lines) that complements the Rust prod-bench. It exercises the actual Velocity workflow engine via C# FFI (WorkflowRuntime), measuring end-to-end lifecycle throughput: Start → CompleteStep(0..N) → Signal → Query → Complete. BenchmarkDotNet drives `[Params(1, 10, 100)]` steps-per-workflow with `[MemoryDiagnoser]` for allocation tracking. Run with `dotnet run -c Release -- --lifecycle`.
 
+### Universal HTTP Benchmark Harness
+
+The `velocity-bench` crate includes `universal_main.rs` (922 lines) — a universal HTTP benchmark that tests all 6 engines (Velocity Runtime, Velocity Classic, Velocity Embedded, Restate, DBOS, Temporal) side-by-side using the same workload definitions. Each engine is hit via its native HTTP bench endpoints for fair comparison.
+
 ## Deployment Architecture
 
 ### Docker Compose (Development)

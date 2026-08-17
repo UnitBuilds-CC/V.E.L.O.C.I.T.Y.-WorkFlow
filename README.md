@@ -3,6 +3,7 @@
 [![CI](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/ci.yml)
 [![Benchmark](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/benchmark.yml/badge.svg)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/benchmark.yml)
 [![E2E](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/e2e.yml/badge.svg)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/actions/workflows/e2e.yml)
+[![Release](https://img.shields.io/github/v/release/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow)](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
 **V.E.L.O.C.I.T.Y.-WorkFlow** is a durable execution engine and state machine runtime designed as a drop-in replacement for Temporal, Restate, and DBOS. The core engine is written in Rust with a zero-allocation slab allocator; C# Roslyn source generators provide compile-time workflow transpilation; and 7 language SDKs connect over gRPC or HTTP.
@@ -96,6 +97,51 @@ cargo run --release -p velocity-workflow-server -- --ip 0.0.0.0 --grpc-port 7234
 # Production features: WAL persistence, AES-256-GCM encryption,
 # slab allocator, Merkle root verification, Prometheus /metrics
 ```
+
+### Installation (v1.0.0)
+
+**Docker:**
+```bash
+docker pull ghcr.io/unitbuilds-cc/velocity-workflow:latest
+docker run -p 7234:7234 ghcr.io/unitbuilds-cc/velocity-workflow:latest
+```
+
+**Helm (Kubernetes):**
+```bash
+helm repo add velocity https://charts.velocity-workflow.io
+helm install velocity velocity/velocity --set replicas=3
+```
+
+**npm (TypeScript SDK):**
+```bash
+npm install @velocity-workflow/sdk
+```
+
+**PyPI (Python SDK):**
+```bash
+pip install velocity-workflow
+```
+
+**Maven (Java SDK):**
+```xml
+<dependency>
+  <groupId>io.velocity</groupId>
+  <artifactId>velocity-sdk-java</artifactId>
+  <version>1.0.0</version>
+</dependency>
+```
+
+**Go:**
+```bash
+go get github.com/velocity-workflow/sdk-go@v1.0.0
+```
+
+**Cargo (Rust):**
+```bash
+cargo install velocity-workflow-server
+```
+
+**Pre-built binaries:** Download from [GitHub Releases](https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/releases/tag/v1.0.0) for Linux, macOS, and Windows (amd64 + arm64).
 
 ### Using an SDK
 

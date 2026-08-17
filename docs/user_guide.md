@@ -181,7 +181,7 @@ The server is ready when you see:
 curl http://localhost:7233/health
 
 # Expected response:
-# {"status":"healthy","version":"0.1.0","uptime_secs":5,...}
+# {"status":"healthy","version":"1.0.0","uptime_secs":5,...}
 ```
 
 ### Start the Production Server

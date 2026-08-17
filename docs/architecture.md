@@ -490,7 +490,7 @@ The `/health` endpoint provides deep health checks suitable for Kubernetes liven
 ```json
 {
   "status": "healthy",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "uptime_secs": 3600,
   "workflow_count": 150,
   "running": 42,

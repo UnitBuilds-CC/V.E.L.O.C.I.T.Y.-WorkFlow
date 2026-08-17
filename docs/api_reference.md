@@ -1,6 +1,6 @@
 # VELOCITY-WorkFlow gRPC API Reference
 
-> **Version:** 0.1.0 | **Package:** `velocity.v1` | **Transport:** gRPC (HTTP/2)
+> **Version:** 1.0.0 | **Package:** `velocity.v1` | **Transport:** gRPC (HTTP/2)
 
 Complete reference for the `WorkflowService` gRPC API — the primary external surface for the VELOCITY-WorkFlow engine. All SDKs (Go, TypeScript, Python, Java, Ruby, PHP, Rust) connect to this service.
 

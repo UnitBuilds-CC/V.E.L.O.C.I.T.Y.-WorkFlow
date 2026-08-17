@@ -51,7 +51,7 @@ workspace:
 
     # Benchmarks and tools
     - name: "velocity-bench"
-      role: "HTTP benchmark tool with workload adapters"
+      role: "HTTP benchmark tool with workload adapters and universal 6-engine harness (universal_main.rs, 922 lines)"
     - name: "velocity-dev-server"
       role: "development server with hot reload"
     - name: "velocity-test-framework"
@@ -348,7 +348,7 @@ ci:
 
 benchmarking:
   tool: "bench-suite/prod-bench"
-  http_bench: "velocity-bench"
+  http_bench: "velocity-bench (universal_main.rs: 6-engine HTTP comparison, http_adapter.rs: velocity-specific)"
   dotnet_bench: "benchmarks/Velocity.Workflow.Benchmarks (C# lifecycle benchmarks: WorkflowLifecycleBenchmark 143 lines, --lifecycle flag, Params 1/10/100 steps via FFI)"
   profiles:
     - "quick"

@@ -45,11 +45,12 @@ vctp:
   circuitBreaker:
     maxInflight: 10000
     cooldownMs: 5000
+    successThreshold: 3
 
   # Heartbeat configuration
   heartbeat:
     intervalSeconds: 30
-    evictionTimeoutSeconds: 90
+    staleTimeoutSeconds: 90
 
   # TLS configuration for gateway endpoints (HTTPS/WSS)
   tls:

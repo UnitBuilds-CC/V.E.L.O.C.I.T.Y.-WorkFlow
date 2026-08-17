@@ -166,10 +166,10 @@ Machine-readable JSON Schema defining the complete VCTP protocol:
 
 | File | Lines | Role |
 |------|-------|------|
-| `velocity-sdk-typescript/src/vctp-transport.ts` | 407 | TypeScript VCTP client SDK |
-| `velocity-sdk-python/velocity_workflow/vctp.py` | 377 | Python VCTP client SDK |
-| `velocity-sdk-go/vctp/client.go` | 508 | Go VCTP client SDK |
-| `tools/vctp-cli/vctp_cli.py` | 305 | Python CLI tool |
-| `tools/vctp-wireshark/vctp.lua` | 254 | Wireshark protocol dissector |
-| `tools/vctp-openapi/gen_openapi.py` | 439 | OpenAPI 3.0 spec generator |
+| `velocity-sdk-typescript/src/vctp-transport.ts` | 358 | TypeScript VCTP client SDK |
+| `velocity-sdk-python/velocity_workflow/vctp.py` | 316 | Python VCTP client SDK |
+| `velocity-sdk-go/vctp/client.go` | 451 | Go VCTP client SDK |
+| `tools/vctp-cli/vctp_cli.py` | 267 | Python CLI tool |
+| `tools/vctp-wireshark/vctp.lua` | 221 | Wireshark protocol dissector |
+| `tools/vctp-openapi/gen_openapi.py` | 407 | OpenAPI 3.0 spec generator |
 | `proto/vctp_service.json` | 167 | Protocol definition schema |
