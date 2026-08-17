@@ -4,12 +4,15 @@
 **Referenced Files in This Document**
 - [Cargo.toml](file://Cargo.toml)
 - [velocity-workflow-engine/src/lib.rs](file://velocity-workflow-engine/src/lib.rs)
+- [velocity-workflow-engine/src/engine.rs](file://velocity-workflow-engine/src/engine.rs)
+- [velocity-workflow-engine/src/pg_advisory_lock.rs](file://velocity-workflow-engine/src/pg_advisory_lock.rs)
 - [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
+- [velocity-server-bootstrap/src/auth.rs](file://velocity-server-bootstrap/src/auth.rs)
+- [velocity-server-bootstrap/src/tracing_setup.rs](file://velocity-server-bootstrap/src/tracing_setup.rs)
 - [velocity-nmcp-protocol/src/lib.rs](file://velocity-nmcp-protocol/src/lib.rs)
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
 - [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
 - [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
-- [velocity-workflow-engine/src/pg_advisory_lock.rs](file://velocity-workflow-engine/src/pg_advisory_lock.rs)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)
 </cite>
 
@@ -30,7 +33,7 @@
 
 ## System Architecture
 
-V.E.L.O.C.I.T.Y. is a multi-flavor workflow engine ecosystem designed for high performance, durability, and flexibility. The system is organized into four layers with 17 workspace crates:
+V.E.L.O.C.I.T.Y. is a multi-flavor workflow engine ecosystem designed for high performance, durability, and flexibility. The system is organized into four layers with 15 workspace crates:
 
 ```mermaid
 graph TB
@@ -97,7 +100,7 @@ graph TB
 
 ## Workspace Crates
 
-The workspace contains 17 crates organized by role:
+The workspace contains 15 crates organized by role:
 
 | Crate | Role |
 |-------|------|
@@ -718,10 +721,13 @@ graph LR
 **Section sources**
 - [Cargo.toml](file://Cargo.toml)
 - [velocity-workflow-engine/src/lib.rs](file://velocity-workflow-engine/src/lib.rs)
+- [velocity-workflow-engine/src/engine.rs](file://velocity-workflow-engine/src/engine.rs)
+- [velocity-workflow-engine/src/pg_advisory_lock.rs](file://velocity-workflow-engine/src/pg_advisory_lock.rs)
 - [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
+- [velocity-server-bootstrap/src/auth.rs](file://velocity-server-bootstrap/src/auth.rs)
+- [velocity-server-bootstrap/src/tracing_setup.rs](file://velocity-server-bootstrap/src/tracing_setup.rs)
 - [velocity-nmcp-protocol/src/lib.rs](file://velocity-nmcp-protocol/src/lib.rs)
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
 - [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
 - [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
-- [velocity-workflow-engine/src/pg_advisory_lock.rs](file://velocity-workflow-engine/src/pg_advisory_lock.rs)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)

@@ -58,6 +58,7 @@ Velocity-workflow/
 ├── bench-suite/                  # Comprehensive benchmark suite
 │   ├── prod-bench/               # Production benchmark tool
 │   └── velocity-bench-server/    # gRPC benchmark service
+├── benchmarks/                   # C# lifecycle benchmarks (.NET)
 ├── cloud-bench/                  # Cloud benchmark scripts
 ├── deploy/                       # Deployment configurations
 ├── migrations/                   # Database migrations

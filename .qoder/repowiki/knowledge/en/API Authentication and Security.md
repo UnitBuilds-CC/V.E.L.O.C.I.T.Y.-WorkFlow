@@ -87,8 +87,8 @@ VELOCITY_TLS_KEY=/path/to/key.pem
 ```
 
 **Key files:**
-- `velocity-server-bootstrap/src/auth.rs` — Authentication (672 lines)
-- `velocity-server-bootstrap/src/rate_limit.rs` — Rate limiting (291 lines)
+- `velocity-server-bootstrap/src/auth.rs` — Authentication (671 lines)
+- `velocity-server-bootstrap/src/rate_limit.rs` — Rate limiting (290 lines)
 - `velocity-server-bootstrap/src/audit.rs` — Audit logging
 
 **Rules for developers:**

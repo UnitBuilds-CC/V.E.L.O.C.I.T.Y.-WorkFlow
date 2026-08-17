@@ -38,6 +38,9 @@ This directory contains AI-optimized documentation and specifications for the V.
     └── Distributed_Workflow_Sharding_and_Horizontal_Scaling.md
 ```
 
+### Additional Directories (not shown in tree above)
+- `benchmarks/Velocity.Workflow.Benchmarks/` — C# lifecycle benchmark suite (complements Rust prod-bench)
+
 ## Documentation Pages
 
 ### Getting Started.md
@@ -45,7 +48,7 @@ Introduction to Velocity, project structure, installation, running engines, and 
 
 **Contents:**
 - Project overview and three flavors (Server, Embedded, Classic)
-- Directory structure and core components (17 workspace crates)
+- Directory structure and core components (15 workspace crates)
 - Installation and setup instructions
 - Running individual flavors (NMCP shmem + WebSocket transport)
 - Benchmark commands and results summary
@@ -56,7 +59,7 @@ Comprehensive guide for developers contributing to Velocity.
 
 **Contents:**
 - Development environment setup (Rust, Node.js, Docker)
-- Project architecture and module organization (17 crates)
+- Project architecture and module organization (15 crates)
 - Building and testing procedures
 - Code style and conventions (Rust, TypeScript)
 - Adding new features and SDK methods
@@ -72,7 +75,7 @@ Comprehensive guide for developers contributing to Velocity.
 Deep dive into Velocity's system architecture and design decisions.
 
 **Contents:**
-- System architecture diagram (17 workspace crates)
+- System architecture diagram (15 workspace crates)
 - Engine flavors comparison (Server, Embedded, Classic — all Rust)
 - NMCP protocol transport (shmem IPC + WebSocket)
 - Persistence layers (WAL, PostgreSQL, Per-Step Journal)
@@ -236,7 +239,7 @@ Comprehensive audit report for all three Velocity flavors.
 ### repowiki-metadata.json
 YAML-formatted metadata about the project:
 - Project information (name, description, repository)
-- Workspace crates (17 members)
+- Workspace crates (15 members)
 - Engine flavors with performance metrics
 - SDK status and paths
 - Security features and hardening

@@ -1,6 +1,6 @@
 # Velocity Workflow Repowiki Metadata
 # Generated: 2026-08-17
-# Last updated: After commit 9ac91e2 (configurable durability with DurabilityConfig)
+# Last updated: After commit becee41 (comprehensive .qoder update — DurabilityConfig, NMCP, security, 6 new knowledge cards)
 
 project:
   name: "V.E.L.O.C.I.T.Y. WorkFlow"
@@ -19,13 +19,13 @@ workspace:
   profile_ci:
     inherits: "release"
     lto: false
-    codegen_unitsits: 16
+    codegen_units: 16
   crates:
     # Core engine
     - name: "velocity-workflow-core"
       role: "core abstractions and FFI slab engine"
     - name: "velocity-workflow-engine"
-      role: "workflow engine implementation with WAL, PG adapter, advisory locking, DurabilityConfig"
+      role: "workflow engine implementation with WAL, PG adapter, advisory locking, DurabilityConfig (engine.rs)"
     - name: "velocity-workflow-daemon"
       role: "background daemon process"
 
@@ -205,7 +205,7 @@ build:
   rust:
     toolchain: "stable"
     workspace: true
-    crates: 17
+    crates: 15
     allocator: "jemalloc (non-MSVC targets)"
       
   typescript:
@@ -252,6 +252,7 @@ ci:
 benchmarking:
   tool: "bench-suite/prod-bench"
   http_bench: "velocity-bench"
+  dotnet_bench: "benchmarks/Velocity.Workflow.Benchmarks (C# lifecycle benchmarks)"
   profiles:
     - "quick"
     - "standard"

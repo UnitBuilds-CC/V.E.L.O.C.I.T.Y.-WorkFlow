@@ -7,6 +7,7 @@ scope:
 source_files:
     - velocity-workflow-server/src/main.rs
     - velocity-workflow-engine/src/lib.rs
+    - velocity-workflow-engine/src/engine.rs
 ---
 
 The Velocity Server uses a Write-Ahead Log (WAL) for durable execution, ensuring workflow state survives crashes.
@@ -86,6 +87,7 @@ pub struct DurabilityConfig {
 **Key files:**
 - `velocity-workflow-server/src/main.rs` — WAL integration
 - `velocity-workflow-engine/src/lib.rs` — WAL writer and reader
+- `velocity-workflow-engine/src/engine.rs` — DurabilityConfig implementation (strict/batched/async modes)
 
 **Rules for developers:**
 1. Always write to WAL before processing the event

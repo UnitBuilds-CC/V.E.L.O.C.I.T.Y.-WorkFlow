@@ -12,7 +12,8 @@ cards:
     source_files:
       - velocity-workflow-server/src/main.rs
       - velocity-workflow-engine/src/lib.rs
-    summary: "WAL-based durability for Velocity Server with append-only log, group-commit optimization, and crash recovery"
+      - velocity-workflow-engine/src/engine.rs
+    summary: "WAL-based durability for Velocity Server with append-only log, group-commit optimization, DurabilityConfig (engine.rs), and crash recovery"
     
   - name: "PostgreSQL Persistence with Connection Pooling"
     kind: persistence_system

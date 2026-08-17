@@ -62,7 +62,7 @@ pub enum LockError {
 ```
 
 **Key files:**
-- `velocity-workflow-engine/src/pg_advisory_lock.rs` — Full implementation (1081 lines)
+- `velocity-workflow-engine/src/pg_advisory_lock.rs` — Full implementation (1080 lines)
 
 **Rules for developers:**
 1. Always use advisory locks for cross-instance coordination, not application-level locks
