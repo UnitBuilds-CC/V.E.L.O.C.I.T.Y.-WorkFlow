@@ -113,6 +113,7 @@ pub mod persistence_layer;
 pub mod persistence_serialization;
 pub mod persistence_sql;
 pub mod persistence_visibility;
+pub mod pg_advisory_lock;
 pub mod predictive_autoscaler;
 pub mod push_dispatcher;
 pub mod query_handler;
