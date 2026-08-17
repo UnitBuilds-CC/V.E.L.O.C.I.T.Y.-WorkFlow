@@ -45,7 +45,7 @@ This directory contains AI-optimized documentation and specifications for the V.
 ```
 
 ### Additional Directories (not shown in tree above)
-- `benchmarks/Velocity.Workflow.Benchmarks/` — C# lifecycle benchmark suite (complements Rust prod-bench)
+- `benchmarks/Velocity.Workflow.Benchmarks/` — C# lifecycle benchmark suite (WorkflowLifecycleBenchmark via FFI, --lifecycle flag, complements Rust prod-bench)
 - `docs/ops-runbooks.md` — Operations runbooks for common incident scenarios (15 runbooks incl. VCTP circuit breaker, replay, HMAC, TLS)
 - `docs/security-audit-checklist.md` — 65-point security audit checklist covering all 39 hardening items
 - `docs/otlp-tracing-guide.md` — OTLP/Jaeger/Tempo distributed tracing configuration guide
@@ -80,7 +80,7 @@ Comprehensive guide for developers contributing to Velocity.
 - Adding new features and SDK methods
 - Protocol buffer development
 - SDK development (TypeScript, Python, Go, Java — all with VCTP transport)
-- Benchmark development
+- Benchmark development (configurable durability, C# lifecycle benchmarks, bench server routes)
 - Docker development workflow
 - Performance profiling techniques
 - CI/CD with GitHub Actions (chaos tests, Trivy scanning, benchmark regression gates)
@@ -97,7 +97,7 @@ Deep dive into Velocity's system architecture and design decisions.
 - VCTP gateways and sidecar proxy (WebSocket with WSS + rate limiting, HTTP with HTTPS + rate limiting, ECDH+XOR)
 - VCTP performance table (9 benchmarks with CI thresholds)
 - Slab engine with Merkle root state proof (SHA-256, Bitmask256)
-- Persistence layers (WAL, PostgreSQL, Per-Step Journal)
+- Persistence layers (WAL with DurabilityConfig, PostgreSQL, Per-Step Journal)
 - Security layer (auth, rate limiting, audit logging, TLS termination, VCTP authenticated encryption, replay protection, 17 Prometheus alerts)
 - Distributed tracing (OpenTelemetry/OTLP)
 - PG advisory locking for multi-instance coordination
@@ -334,7 +334,8 @@ YAML-formatted metadata about the project:
 - Workspace crates (15 members)
 - Engine flavors with performance metrics
 - SDK status and paths
-- Security features and hardening (TLS, HMAC-SHA256, replay protection, XOR cipher, gateway rate limiting, RwLock safety)
+- Security features and hardening (TLS, HMAC-SHA256, JWT key rotation, replay protection, XOR cipher, gateway rate limiting, security headers, RwLock safety)
+- Configurable durability (DurabilityConfig: strict/batched/async, direct execution mode)
 - VCTP protocol (18 features, gateways, 9 benchmarks, 2,547 total tests)
 - Competitor benchmarks
 - Build configuration (Rust, TypeScript)

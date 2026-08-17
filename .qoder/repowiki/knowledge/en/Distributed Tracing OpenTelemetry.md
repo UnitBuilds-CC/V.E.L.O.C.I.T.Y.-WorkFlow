@@ -64,6 +64,13 @@ let _guard = init_tracing(&config);
 **Key files:**
 - `velocity-server-bootstrap/src/tracing_setup.rs` — Tracing initialization (459 lines)
 
+**Environment Variables:**
+- `VELOCITY_OTEL_ENDPOINT` — OTLP gRPC endpoint (e.g., `http://localhost:4317`)
+- `VELOCITY_LOG_FORMAT` — `json` or `compact`
+- `VELOCITY_LOG_LEVEL` — Log level filter (e.g., `info`, `debug`, `velocity=trace`)
+- `VELOCITY_SERVICE_NAME` — Service name for OTLP resource attributes
+- `VELOCITY_SAMPLE_RATE` — Trace sampling rate (0.0-1.0)
+
 **Rules for developers:**
 1. Always use `init_tracing()` in server bootstrap, not manual tracing setup
 2. Keep the returned guard alive for the server's lifetime

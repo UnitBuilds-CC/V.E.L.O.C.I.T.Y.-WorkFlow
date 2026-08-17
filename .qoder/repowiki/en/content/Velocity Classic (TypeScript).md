@@ -675,7 +675,7 @@ velocity-classic-server \
 VELOCITY_API_KEYS=key1,key2 velocity-classic-server
 
 # With distributed tracing
-VELOCITY_OTLP_ENDPOINT=http://localhost:4317 velocity-classic-server
+VELOCITY_OTEL_ENDPOINT=http://localhost:4317 velocity-classic-server
 
 # With TLS/mTLS
 velocity-classic-server --tls-cert cert.pem --tls-key key.pem
@@ -704,7 +704,7 @@ VELOCITY_RATE_LIMIT_BURST=100
 VELOCITY_RATE_LIMIT_RATE=10.0
 
 # Tracing
-VELOCITY_OTLP_ENDPOINT=http://localhost:4317
+VELOCITY_OTEL_ENDPOINT=http://localhost:4317
 ```
 
 ## Performance Characteristics

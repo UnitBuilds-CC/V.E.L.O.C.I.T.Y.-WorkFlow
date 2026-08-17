@@ -895,6 +895,18 @@ VELOCITY_API_KEYS=key1,key2 cargo run --bin velocity-classic-server
 VELOCITY_JWT_SECRET=my-secret cargo run --bin velocity-classic-server
 ```
 
+**JWT Key Rotation:** The `AuthConfig` supports zero-downtime key rotation via `jwt_secret_previous`. During rotation, tokens signed with EITHER the current or previous secret are accepted. Use `config.rotate_jwt_secret(new_secret)` to initiate rotation. After all clients have rotated (typically 24-48h), clear `jwt_secret_previous` to reject old tokens.
+
+**Proper HMAC-SHA256:** JWT validation uses the `hmac` crate for proper HMAC construction (RFC 2104) with constant-time verification to prevent timing attacks.
+
+### Security Headers
+Every HTTP response includes security headers via the `SECURITY_HEADERS` constant in `lib.rs`:
+- `X-Content-Type-Options: nosniff` — prevents MIME-type sniffing
+- `X-Frame-Options: DENY` — prevents clickjacking
+- `Cache-Control: no-store` — prevents caching of API responses
+
+These are applied to all responses including health endpoints and rate-limited 429 responses.
+
 ### Rate Limiting
 Token bucket rate limiter per client IP:
 ```bash
@@ -908,7 +920,7 @@ OpenTelemetry tracing with optional OTLP export. The `otel` feature flag must be
 cargo build --release -p velocity-server-bootstrap --features otel
 
 # With OTLP export (Jaeger/Tempo/Grafana)
-VELOCITY_OTLP_ENDPOINT=http://localhost:4317 cargo run --bin velocity-classic-server
+VELOCITY_OTEL_ENDPOINT=http://localhost:4317 cargo run --bin velocity-classic-server
 
 # Local JSON logs only (works without otel feature)
 cargo run --bin velocity-classic-server -- --log-format json

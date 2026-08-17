@@ -522,6 +522,7 @@ sequenceDiagram
   - `batched(N, ms)` — fsync every N steps or every ms (balanced, order processing)
   - `async_only(ms)` — background fsync only (max throughput, event processing)
   - `with_direct_execution()` — skip task queue enqueue (caller drives loop, eliminates 2 Mutex + condvar per step)
+  - `with_direct_execution_if(cond)` — conditional variant (used by bench server CLI)
 - Fast writes (sequential I/O)
 - No external dependencies
 
