@@ -1,12 +1,12 @@
-# Velocity Classic (TypeScript)
+# Velocity Classic (Rust Server)
 
 <cite>
 **Referenced Files in This Document**
-- [velocity-classic-ts/src/index.ts](file://velocity-classic-ts/src/index.ts)
-- [velocity-classic-ts/src/main.ts](file://velocity-classic-ts/src/main.ts)
-- [velocity-classic-ts/src/server.ts](file://velocity-classic-ts/src/server.ts)
-- [velocity-classic-ts/package.json](file://velocity-classic-ts/package.json)
-- [velocity-classic-ts/Dockerfile](file://velocity-classic-ts/Dockerfile)
+- [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
+- [velocity-classic-server/Cargo.toml](file://velocity-classic-server/Cargo.toml)
+- [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
+- [velocity-nmcp-protocol/src/lib.rs](file://velocity-nmcp-protocol/src/lib.rs)
+- [velocity-classic-server/Dockerfile](file://velocity-classic-server/Dockerfile)
 </cite>
 
 ## Table of Contents
@@ -27,28 +27,30 @@
 
 ## Overview
 
-Velocity Classic is the **TypeScript-native** flavor of Velocity designed for Temporal compatibility and ease of migration. It provides a familiar API for developers coming from Temporal with in-memory performance and TypeScript type safety.
+Velocity Classic is the **Rust-native** flavor of Velocity with NMCP transport, designed for Temporal compatibility patterns and low-latency execution. The original TypeScript engine was replaced with a Rust server (commit 2bae043) for better performance and unified toolchain.
 
 **Key Characteristics:**
-- **Protocol:** HTTP/REST
-- **Persistence:** In-Memory (configurable)
-- **Port:** 8083 (default), 18083 (Docker)
+- **Protocol:** NMCP (shmem + WebSocket)
+- **Persistence:** WAL + optional PostgreSQL
+- **Port:** 8083 (WebSocket default)
 - **Memory:** ~9.23 MiB
 - **Throughput:** 61.54 ops/s (simple workflow) — **tied for highest**
 - **Latency:** p50=14.51ms, p99=18.1ms — **lowest latency**
+- **Security:** API auth, rate limiting, audit logging, mTLS (via velocity-server-bootstrap)
+- **Tracing:** OpenTelemetry with optional OTLP export
+- **Allocator:** jemalloc (tikv-jemallocator)
 
 **When to Use:**
-- Migrating from Temporal workflows
-- TypeScript-native development
-- Need lowest latency
-- Want in-memory performance
-- Don't require durability (or can add external persistence)
+- Migrating from Temporal workflows (API patterns)
+- Need lowest latency with NMCP shmem IPC
+- Want WAL durability with optional PostgreSQL
+- Rust-native deployment without Node.js dependency
 
 **When NOT to Use:**
-- Need crash recovery (use Server or Embedded)
-- Require ACID transactions (use Embedded)
-- Need SQL queries (use Embedded)
-- Production without external persistence layer
+- Need ACID transactions (use Embedded)
+- Require SQL queries on workflow state (use Embedded)
+- Need multi-node clustering (not yet supported)
+- Need TypeScript-native development (use SDK instead)
 
 ## Architecture
 
@@ -56,18 +58,17 @@ Velocity Classic is the **TypeScript-native** flavor of Velocity designed for Te
 
 ```mermaid
 graph TB
-    subgraph "Velocity Classic"
-        A[HTTP Server<br/>Node.js http] --> B[VelocityServer]
-        B --> C[Worker]
-        C --> D[Workflow Registry]
-        C --> E[Activity Registry]
-        D --> F[Workflow Instances]
-        E --> G[Activity Executors]
-        C --> H[Task Queue]
+    subgraph "Velocity Classic Server"
+        A[Local Workers] -->|NMCP Shmem| B[NMCP Server]
+        C[Remote Clients] -->|NMCP WebSocket| B
+        B --> D[NmcpFrameRouter]
+        D --> E[Workflow Engine]
+        E --> F[WAL Writer]
+        F --> G[WAL Files]
+        E --> H[Optional PostgreSQL]
     end
     
-    I[HTTP Client] -->|REST| A
-    B --> J[Metrics Exporter]
+    B --> I[Metrics Exporter]
 ```
 
 ### Request Flow
@@ -439,7 +440,7 @@ worker.registerActivity(SendConfirmationActivity);
 
 ## HTTP API
 
-### Endpoints
+### Endpoints (via HTTP health endpoint)
 
 ```
 POST   /workflows              - Start workflow
@@ -453,8 +454,19 @@ POST   /workflows/:id/complete - Complete step
 GET    /workflows/:id/wait     - Wait for completion
 
 GET    /health                 - Health check
+GET    /ready                  - Readiness probe
+GET    /live                   - Liveness probe
 GET    /metrics                - Prometheus metrics
 ```
+
+### NMCP Transport
+
+Primary communication uses NMCP protocol:
+- **Local workers** connect via shared memory at `/tmp/velocity-classic.nmcp`
+- **Remote clients** connect via WebSocket at `ws://0.0.0.0:8083`
+- Both transports use the same binary frame format (16-byte header + JSON payload)
+- TLS/mTLS supported on WebSocket endpoint
+- 50-100x faster local IPC than HTTP
 
 ### Request/Response Examples
 
@@ -639,68 +651,58 @@ class OrderWorkflow extends Workflow {
 
 ## Configuration
 
-### Server Configuration
+### Server Configuration (CLI)
 
-```typescript
-// velocity-classic-config.ts
-export const config = {
-  server: {
-    host: '0.0.0.0',
-    port: 8083,
-    maxConnections: 1000,
-    keepAliveTimeout: 300000,  // 5 minutes
-  },
-  
-  worker: {
-    taskQueue: 'default',
-    maxConcurrentWorkflows: 100,
-    maxConcurrentActivities: 200,
-    workflowTimeout: 3600,
-    activityTimeout: 300,
-    logLevel: 'info',
-  },
-  
-  persistence: {
-    type: 'memory',  // 'memory' | 'redis' | 'postgres'
-    // For Redis:
-    // type: 'redis',
-    // redis: { host: 'localhost', port: 6379 },
-    // For PostgreSQL:
-    // type: 'postgres',
-    // postgres: { connectionString: 'postgres://...' },
-  },
-  
-  metrics: {
-    enabled: true,
-    exportInterval: 10000,  // 10 seconds
-    prometheusPort: 9090,
-  },
-};
+```bash
+# Basic usage
+velocity-classic-server
+
+# With PostgreSQL persistence
+velocity-classic-server --postgres "host=localhost port=5432 dbname=velocity user=vel password=vel"
+
+# Custom ports and paths
+velocity-classic-server \
+  --shmem-path /tmp/velocity-classic.nmcp \
+  --ws-bind 0.0.0.0:8083 \
+  --wal-path velocity-classic.wal \
+  --wal-max-size 67108864 \
+  --log-level info \
+  --log-format json
+
+# With authentication
+VELOCITY_API_KEYS=key1,key2 velocity-classic-server
+
+# With distributed tracing
+VELOCITY_OTLP_ENDPOINT=http://localhost:4317 velocity-classic-server
+
+# With TLS/mTLS
+velocity-classic-server --tls-cert cert.pem --tls-key key.pem
 ```
 
 ### Environment Variables
 
 ```bash
-# Server
-VELOCITY_HOST=0.0.0.0
-VELOCITY_PORT=8083
-VELOCITY_MAX_CONNECTIONS=1000
+# Database
+DATABASE_URL=postgres://velocity:velocity@localhost:5432/velocity
 
-# Worker
-VELOCITY_TASK_QUEUE=default
-VELOCITY_MAX_WORKFLOWS=100
-VELOCITY_MAX_ACTIVITIES=200
-VELOCITY_LOG_LEVEL=info
-
-# Persistence
-VELOCITY_PERSISTENCE_TYPE=memory
-# VELOCITY_REDIS_HOST=localhost
-# VELOCITY_REDIS_PORT=6379
-# VELOCITY_POSTGRES_URL=postgres://...
+# Logging
+VELOCITY_LOG_FORMAT=pretty  # pretty or json
 
 # Metrics
-VELOCITY_METRICS_ENABLED=true
-VELOCITY_PROMETHEUS_PORT=9090
+VELOCITY_METRICS_TOKEN=my-token  # Auth for /metrics endpoint
+
+# Authentication
+VELOCITY_API_KEYS=key1,key2,key3
+VELOCITY_JWT_SECRET=my-jwt-secret
+VELOCITY_JWT_ISSUER=velocity
+VELOCITY_JWT_AUDIENCE=workflow-clients
+
+# Rate limiting
+VELOCITY_RATE_LIMIT_BURST=100
+VELOCITY_RATE_LIMIT_RATE=10.0
+
+# Tracing
+VELOCITY_OTLP_ENDPOINT=http://localhost:4317
 ```
 
 ## Performance Characteristics
@@ -730,27 +732,21 @@ Total:              9.23 MiB
 ### Optimization Strategies
 
 **Increase Throughput:**
-```typescript
-const worker = await Worker.create({
-  maxConcurrentWorkflows: 200,
-  maxConcurrentActivities: 400,
-});
+```bash
+# Increase WAL batch size and sync interval
+velocity-classic-server --wal-batch-size 10 --wal-sync-interval 100
 ```
 
 **Reduce Latency:**
-```typescript
-const worker = await Worker.create({
-  maxConcurrentWorkflows: 50,   // Less contention
-  maxConcurrentActivities: 100,
-});
+```bash
+# Use shmem IPC for local workers (50-100x faster)
+velocity-classic-server --shmem-path /tmp/velocity-classic.nmcp
 ```
 
 **Reduce Memory:**
-```typescript
-const worker = await Worker.create({
-  maxConcurrentWorkflows: 20,
-  maxConcurrentActivities: 50,
-});
+```bash
+# Limit concurrent workflows
+VELOCITY_MAX_WORKFLOWS=50 velocity-classic-server
 ```
 
 ## Deployment
@@ -758,25 +754,26 @@ const worker = await Worker.create({
 ### Docker
 
 ```dockerfile
-FROM node:22-slim
+# velocity-classic-ts/Dockerfile
+FROM rust:1.88-slim-bookworm AS builder
+WORKDIR /build
 
-WORKDIR /app
+# Create minimal workspace with only needed crates
+RUN echo '[workspace]\nmembers = ["velocity-workflow-core", "velocity-workflow-engine", "velocity-classic", "velocity-classic-server"]\nresolver = "2"\n\n[profile.release]\nopt-level = 2\nlto = false\ncodegen-units = 16\n' > Cargo.toml
 
-# Copy package files
-COPY velocity-classic-ts/package*.json ./
-RUN npm ci --only=production
+COPY velocity-workflow-core ./velocity-workflow-core
+COPY velocity-workflow-engine ./velocity-workflow-engine
+COPY velocity-classic ./velocity-classic
+COPY velocity-classic-server ./velocity-classic-server
+COPY migrations ./migrations
 
-# Copy source
-COPY velocity-classic-ts/ ./
+RUN cargo build --release -p velocity-classic-server
 
-# Build
-RUN npm run build
-
-# Expose port
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/target/release/velocity-classic-server /usr/local/bin/
 EXPOSE 8083
-
-# Start server
-CMD ["node", "dist/main.js"]
+CMD ["velocity-classic-server", "--bind", "0.0.0.0:8083"]
 ```
 
 **Docker Compose:**
@@ -790,9 +787,8 @@ services:
     ports:
       - "18083:8083"
     environment:
-      - VELOCITY_TASK_QUEUE=default
-      - VELOCITY_MAX_WORKFLOWS=100
-      - VELOCITY_LOG_LEVEL=info
+      - RUST_LOG=info
+      - VELOCITY_LOG_FORMAT=json
     deploy:
       resources:
         limits:
@@ -808,7 +804,7 @@ kind: Deployment
 metadata:
   name: velocity-classic
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: velocity-classic
@@ -823,17 +819,17 @@ spec:
         ports:
         - containerPort: 8083
         env:
-        - name: VELOCITY_TASK_QUEUE
-          value: "default"
-        - name: VELOCITY_MAX_WORKFLOWS
-          value: "100"
+        - name: RUST_LOG
+          value: "info"
+        - name: VELOCITY_LOG_FORMAT
+          value: "json"
         resources:
           requests:
             cpu: "500m"
-            memory: "256Mi"
+            memory: "128Mi"
           limits:
             cpu: "1"
-            memory: "512Mi"
+            memory: "256Mi"
 ```
 
 ## Monitoring and Debugging
@@ -842,10 +838,12 @@ spec:
 
 **Prometheus Metrics:**
 ```
-# HTTP metrics
-velocity_http_requests_total{method="POST",path="/workflows"} 12345
-velocity_http_request_duration_seconds{method="POST",path="/workflows",quantile="0.5"} 0.014
-velocity_http_request_duration_seconds{method="POST",path="/workflows",quantile="0.99"} 0.018
+# NMCP metrics
+velocity_nmcp_frames_received_total{transport="shmem"} 12345
+velocity_nmcp_frames_received_total{transport="websocket"} 6789
+velocity_nmcp_frame_duration_seconds{transport="shmem",quantile="0.5"} 0.00001
+velocity_nmcp_frame_duration_seconds{transport="websocket",quantile="0.5"} 0.014
+velocity_nmcp_frame_duration_seconds{transport="websocket",quantile="0.99"} 0.018
 
 # Worker metrics
 velocity_worker_workflows_active 42
@@ -853,46 +851,50 @@ velocity_worker_activities_active 87
 velocity_worker_workflows_completed_total 9876
 velocity_worker_workflows_failed_total 23
 
-# Task queue metrics
-velocity_task_queue_length 5
-velocity_task_queue_wait_time_seconds{quantile="0.5"} 0.001
+# WAL metrics
+velocity_wal_entries_written_total 54321
+velocity_wal_bytes_written_total 123456789
 ```
 
 ### Logging
 
-```typescript
-// Set log level
-const worker = await Worker.create({
-  logLevel: 'debug',  // trace, debug, info, warn, error
-});
+```bash
+# Set log level
+RUST_LOG=debug velocity-classic-server
 
-// Custom logging
-worker.on('log', (event) => {
-  console.log(`[${event.level}] ${event.message}`, event.data);
-});
+# JSON log format
+VELOCITY_LOG_FORMAT=json velocity-classic-server
+
+# Component-specific logging
+RUST_LOG=velocity_classic_server=debug,velocity_engine=info velocity-classic-server
 ```
 
 ### Debugging
 
 **Enable Debug Mode:**
 ```bash
-NODE_ENV=development VELOCITY_LOG_LEVEL=debug node dist/main.js
+RUST_LOG=debug RUST_BACKTRACE=1 velocity-classic-server
+
+# Enable trace logging (very verbose)
+RUST_LOG=trace velocity-classic-server
 ```
 
-**Inspect Worker:**
+**Inspect WAL:**
 ```bash
-# Node.js inspector
-node --inspect dist/main.js
+# List WAL files
+ls -lh velocity-classic.wal*
 
-# Connect with Chrome DevTools
-chrome://inspect
+# Check WAL integrity
+velocity-wal-check velocity-classic.wal
 ```
 
-**Memory Profiling:**
+**Performance Profiling:**
 ```bash
-node --inspect --expose-gc dist/main.js
+# CPU profiling
+cargo flamegraph --bin velocity-classic-server
 
-# Take heap snapshot via DevTools
+# Memory profiling
+valgrind --tool=massif target/release/velocity-classic-server
 ```
 
 ## Use Cases
@@ -982,9 +984,9 @@ class UserRegistrationWorkflow extends Workflow {
 
 ### Step-by-Step Migration
 
-1. **Install Velocity Classic**
+1. **Install Velocity Classic SDK**
    ```bash
-   npm install velocity-classic-ts
+   npm install @velocity/classic-sdk
    ```
 
 2. **Convert Workflow Functions to Classes**
@@ -1060,7 +1062,7 @@ class UserRegistrationWorkflow extends Workflow {
 
 ### Migration Checklist
 
-- [ ] Install velocity-classic-ts
+- [ ] Install @velocity/classic-sdk
 - [ ] Convert workflow functions to classes
 - [ ] Convert activity functions to classes
 - [ ] Update worker setup code
@@ -1074,55 +1076,56 @@ class UserRegistrationWorkflow extends Workflow {
 
 ### Limitations
 
-1. **In-Memory by Default**
-   - No crash recovery (unless persistence configured)
-   - Data lost on restart
-   - Not suitable for production without persistence
+1. **WAL-Based Durability**
+   - Group-commit window (small data loss risk on crash)
+   - No ACID transactions (use Embedded for that)
 
 2. **Single Node**
    - No horizontal scaling (yet)
-   - Limited by single Node.js process
-   - No clustering support
+   - Limited by single machine resources
+   - Multi-instance possible with PG advisory locks
 
-3. **Node.js Constraints**
-   - Single-threaded (limited by event loop)
-   - Garbage collection pauses
-   - Memory limits (V8 heap)
-
-4. **No SQL Queries**
+3. **No SQL Queries**
    - Cannot query workflow state with SQL
    - Limited search/filtering
-   - No aggregations
+   - Use Embedded flavor for SQL queries
+
+4. **NMCP Protocol**
+   - Newer protocol, less tooling than HTTP/gRPC
+   - Shmem paths differ across OS (Linux vs macOS vs Windows)
 
 ### Trade-offs
 
 | Aspect | Velocity Classic | Velocity Embedded | Trade-off |
-|--------|------------------|-------------------|-----------|
-| Throughput | **61.54 ops/s** | 61.25 ops/s | In-memory vs PostgreSQL |
+|--------|------------------|-------------------|----------|
+| Throughput | **61.54 ops/s** | 61.25 ops/s | WAL vs PostgreSQL overhead |
 | Latency | **14.51ms p50** | 14.65ms p50 | No DB roundtrip |
-| Memory | 9.23 MiB | **1.25 MiB** | Node.js vs Rust |
-| Durability | None (default) | **ACID** | In-memory vs PostgreSQL |
+| Memory | 9.23 MiB | **1.25 MiB** | Rust runtime vs minimal |
+| Durability | WAL (group-commit) | **ACID (per-step)** | WAL vs PostgreSQL |
 | Queryability | None | **Full SQL** | No DB vs PostgreSQL |
-| Temporal Compat | **Yes** | No | API compatibility |
+| Temporal Compat | **Yes (patterns)** | No | API compatibility |
+| Transport | **NMCP shmem** | NMCP shmem | Both use NMCP |
 
 ## Conclusion
 
-Velocity Classic is the **best choice for Temporal migration** and TypeScript-native development. It offers the lowest latency and excellent throughput for in-memory workflows, making it ideal for development, testing, and production scenarios where crash recovery is not critical or where external persistence can be added.
+Velocity Classic is the **best choice for Temporal migration patterns** and low-latency workflows with NMCP transport. The Rust replacement (commit 2bae043) provides better performance, unified toolchain, and WAL durability with optional PostgreSQL.
 
 **Key Strengths:**
 - Lowest latency (14.51ms p50)
 - Highest throughput (61.54 ops/s, tied with Embedded)
-- Temporal API compatibility
-- TypeScript type safety
-- Easy migration path
+- NMCP shmem IPC (50-100x faster than HTTP)
+- Temporal API pattern compatibility
+- WAL durability with optional PostgreSQL
+- jemalloc allocator for performance
 
 **Key Weaknesses:**
-- No durability by default
-- No SQL queries
-- Node.js single-threaded limitations
+- No ACID transactions (use Embedded)
+- No SQL queries (use Embedded)
+- NMCP protocol is newer (less tooling)
 - Higher memory than Embedded
 
 **Section sources**
-- [velocity-classic-ts/src/index.ts](file://velocity-classic-ts/src/index.ts)
-- [velocity-classic-ts/src/main.ts](file://velocity-classic-ts/src/main.ts)
-- [velocity-classic-ts/src/server.ts](file://velocity-classic-ts/src/server.ts)
+- [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
+- [velocity-classic-server/Cargo.toml](file://velocity-classic-server/Cargo.toml)
+- [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
+- [velocity-nmcp-protocol/src/lib.rs](file://velocity-nmcp-protocol/src/lib.rs)

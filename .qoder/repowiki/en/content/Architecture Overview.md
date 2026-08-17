@@ -3,27 +3,34 @@
 <cite>
 **Referenced Files in This Document**
 - [Cargo.toml](file://Cargo.toml)
-- [src/lib.rs](file://src/lib.rs)
-- [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
-- [velocity-embedded/src/main.rs](file://velocity-embedded/src/main.rs)
-- [velocity-classic-ts/src/index.ts](file://velocity-classic-ts/src/index.ts)
 - [velocity-workflow-engine/src/lib.rs](file://velocity-workflow-engine/src/lib.rs)
+- [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
+- [velocity-nmcp-protocol/src/lib.rs](file://velocity-nmcp-protocol/src/lib.rs)
+- [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
+- [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
+- [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
+- [velocity-workflow-engine/src/pg_advisory_lock.rs](file://velocity-workflow-engine/src/pg_advisory_lock.rs)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)
 </cite>
 
 ## Table of Contents
 1. [System Architecture](#system-architecture)
-2. [Engine Flavors](#engine-flavors)
-3. [Persistence Layers](#persistence-layers)
-4. [Protocol Buffers and gRPC](#protocol-buffers-and-grpc)
-5. [SDK Architecture](#sdk-architecture)
-6. [Benchmark Architecture](#benchmark-architecture)
-7. [Deployment Architecture](#deployment-architecture)
-8. [Data Flow](#data-flow)
+2. [Workspace Crates](#workspace-crates)
+3. [Engine Flavors](#engine-flavors)
+4. [NMCP Protocol Transport](#nmcp-protocol-transport)
+5. [Persistence Layers](#persistence-layers)
+6. [Security Layer](#security-layer)
+7. [Distributed Tracing](#distributed-tracing)
+8. [Multi-Instance Coordination](#multi-instance-coordination)
+9. [Protocol Buffers and gRPC](#protocol-buffers-and-grpc)
+10. [SDK Architecture](#sdk-architecture)
+11. [Benchmark Architecture](#benchmark-architecture)
+12. [Deployment Architecture](#deployment-architecture)
+13. [Data Flow](#data-flow)
 
 ## System Architecture
 
-V.E.L.O.C.I.T.Y. is a multi-flavor workflow engine ecosystem designed for high performance, durability, and flexibility. The system is organized into three layers:
+V.E.L.O.C.I.T.Y. is a multi-flavor workflow engine ecosystem designed for high performance, durability, and flexibility. The system is organized into four layers with 17 workspace crates:
 
 ```mermaid
 graph TB
@@ -36,19 +43,24 @@ graph TB
     
     subgraph "Server Layer"
         S1[Velocity Server<br/>gRPC + WAL]
-        S2[Velocity Embedded<br/>HTTP + PostgreSQL]
-        S3[Velocity Classic<br/>HTTP + Temporal API]
+        S2[Velocity Embedded<br/>NMCP + PostgreSQL]
+        S3[Velocity Classic<br/>NMCP + WAL/PG]
+    end
+
+    subgraph "Bootstrap Layer"
+        B1[velocity-server-bootstrap<br/>auth, rate-limit, audit, tracing, mTLS]
     end
     
     subgraph "Core Engine"
         E1[velocity-workflow-core]
-        E2[velocity-workflow-engine]
+        E2[velocity-workflow-engine<br/>WAL, PG adapter, advisory locking, DurabilityConfig]
+        E3[velocity-nmcp-protocol<br/>shmem + WebSocket]
     end
     
     subgraph "Persistence Layer"
-        P1[WAL Files]
-        P2[(PostgreSQL)]
-        P3[In-Memory]
+        P1[WAL Files<br/>group-commit]
+        P2[(PostgreSQL)<br/>per-step journal]
+        P3[PG Advisory Locks<br/>multi-instance]
     end
     
     C1 --> S1
@@ -61,20 +73,49 @@ graph TB
     
     S1 --> E1
     S2 --> E1
-    S3 --> E2
+    S3 --> E1
+    S1 --> B1
+    S2 --> B1
+    S3 --> B1
     
     E1 --> E2
+    E2 --> E3
     E2 --> P1
     E2 --> P2
     E2 --> P3
 ```
 
 **Key Design Principles:**
-- **Multi-flavor deployment** — Same core engine, different persistence and API layers
+- **Multi-flavor deployment** — Same core engine, different transport and persistence layers
+- **NMCP transport** — Shared memory IPC (50-100x faster than HTTP) + WebSocket for remote
 - **Zero-allocation hot paths** — Fixed-size buffers in critical paths
 - **Deterministic execution** — Workflow state is fully reproducible
-- **Protocol-first design** — gRPC/protobuf for all inter-service communication
+- **Protocol-first design** — gRPC/protobuf for bench-suite, NMCP for production
+- **Shared bootstrap** — Auth, rate limiting, audit, tracing extracted to one crate
 - **SDK diversity** — Native SDKs for TypeScript, Python, Go, Java
+- **Production hardened** — Chaos tests, mTLS, OpenTelemetry, PG advisory locking
+
+## Workspace Crates
+
+The workspace contains 17 crates organized by role:
+
+| Crate | Role |
+|-------|------|
+| `velocity-workflow-core` | Core abstractions and FFI slab engine |
+| `velocity-workflow-engine` | Engine implementation (WAL, PG adapter, advisory locking, DurabilityConfig) |
+| `velocity-workflow-daemon` | Background daemon process |
+| `velocity-nmcp-protocol` | NMCP binary protocol (frame, shmem, WebSocket) |
+| `velocity-server-bootstrap` | Shared server init, auth, rate-limit, audit, tracing, mTLS |
+| `velocity-workflow-server` | gRPC server with WAL (original flavor) |
+| `velocity-classic` | Classic engine library (NMCP router) |
+| `velocity-classic-server` | Classic server binary (NMCP shmem + WebSocket) |
+| `velocity-embedded` | Embedded engine library (NMCP router + PostgreSQL) |
+| `velocity-embedded-server` | Embedded server binary (NMCP + PostgreSQL) |
+| `velocity-bench` | HTTP benchmark tool |
+| `velocity-dev-server` | Development server |
+| `velocity-test-framework` | Integration test framework |
+| `prod-bench` | Production benchmark suite (bench-suite/) |
+| `velocity-bench-server` | gRPC benchmark service (bench-suite/) |
 
 ## Engine Flavors
 
@@ -85,7 +126,7 @@ The production gRPC server with Write-Ahead Log persistence. Optimized for maxim
 ```mermaid
 graph LR
     A[gRPC Client] -->|HTTP/2| B[Velocity Server]
-    B --> C[WAL Writer]
+    B --> C[WAL Writer<br/>group-commit]
     C --> D[WAL Files]
     B --> E[Workflow Engine]
     E --> F[Activity Executor]
@@ -93,12 +134,12 @@ graph LR
 ```
 
 **Characteristics:**
-- **Protocol:** gRPC (HTTP/2)
-- **Persistence:** Write-Ahead Log (WAL)
+- **Protocol:** gRPC (HTTP/2) via BenchmarkService
+- **Persistence:** WAL with background group-commit thread
 - **Port:** 7234 (default), 17234 (Docker)
 - **Memory:** ~98 MiB
 - **Throughput:** ~43.6 ops/s (simple workflow)
-- **Use case:** Maximum throughput, simple deployment
+- **Use case:** Maximum throughput, simple deployment, bench-suite integration
 
 **Key files:**
 - `velocity-workflow-server/src/main.rs` — Server entry point
@@ -107,57 +148,151 @@ graph LR
 
 ### Velocity Embedded
 
-PostgreSQL-backed server for embedded deployments. Best balance of performance and durability.
+NMCP-based server with PostgreSQL persistence and per-step journal. Best balance of performance and durability.
 
 ```mermaid
 graph LR
-    A[HTTP Client] -->|REST| B[Velocity Embedded]
-    B --> C[Connection Pool]
-    C --> D[(PostgreSQL)]
-    B --> E[Workflow Engine]
-    E --> F[Activity Executors]
-    B --> G[Migration Manager]
+    A[Local Workers] -->|NMCP Shmem| B[Velocity Embedded]
+    C[Remote Clients] -->|NMCP WebSocket| B
+    B --> D[Connection Pool]
+    D --> E[(PostgreSQL)]
+    B --> F[Workflow Engine]
+    F --> G[Per-Step Journal]
+    B --> H[Migration Manager]
 ```
 
 **Characteristics:**
-- **Protocol:** HTTP/REST
-- **Persistence:** PostgreSQL
-- **Port:** 8082 (default), 18082 (Docker)
+- **Protocol:** NMCP (shmem + WebSocket)
+- **Persistence:** WAL + PostgreSQL (per-step journal)
+- **Port:** 8084 (WebSocket default)
 - **Memory:** ~1.25 MiB (server) + ~68 MiB (PostgreSQL)
 - **Throughput:** ~61.25 ops/s (simple workflow)
-- **Use case:** Embedded deployments, database durability
+- **Use case:** Embedded deployments, ACID transactions, SQL queries
 
 **Key files:**
-- `velocity-embedded/src/main.rs` — Server entry point
+- `velocity-embedded-server/src/main.rs` — Server entry point
+- `velocity-embedded/src/main.rs` — Engine library with NMCP router
 - Uses `async-pg` for PostgreSQL connection pooling
-- Implements HTTP endpoints for workflow operations
 
 ### Velocity Classic
 
-TypeScript SDK with Temporal-compatible API. Designed for easy migration from Temporal.
+Rust server with NMCP transport. Replaced the original TypeScript engine. Supports Temporal-compatible API patterns.
 
 ```mermaid
 graph LR
-    A[Temporal Client] -->|HTTP| B[Velocity Classic]
-    B --> C[Worker Pool]
-    C --> D[Workflow Instances]
-    B --> E[Activity Registry]
-    E --> F[Activity Executors]
-    B --> G[Task Queue]
+    A[Local Workers] -->|NMCP Shmem| B[Velocity Classic]
+    C[Remote Clients] -->|NMCP WebSocket| B
+    B --> D[WAL Writer]
+    D --> E[WAL Files]
+    B --> F[Workflow Engine]
+    B --> G[Optional PostgreSQL]
 ```
 
 **Characteristics:**
-- **Protocol:** HTTP/REST
-- **Persistence:** In-Memory (configurable)
-- **Port:** 8083 (default), 18083 (Docker)
+- **Protocol:** NMCP (shmem + WebSocket)
+- **Persistence:** WAL + optional PostgreSQL
+- **Port:** 8083 (WebSocket default)
 - **Memory:** ~9.23 MiB
 - **Throughput:** ~61.54 ops/s (simple workflow)
-- **Use case:** Temporal migration, TypeScript-native workflows
+- **Use case:** Temporal migration patterns, low-latency workflows
+- **Note:** Replaced TypeScript engine with Rust (commit 2bae043)
 
 **Key files:**
-- `velocity-classic-ts/src/index.ts` — Worker, Workflow, Activity classes
-- `velocity-classic-ts/src/main.ts` — Server entry point
-- Implements Temporal-compatible API
+- `velocity-classic-server/src/main.rs` — Server entry point
+- `velocity-classic/src/main.rs` — Engine library with NMCP router
+- Uses jemalloc global allocator
+
+## NMCP Protocol Transport
+
+All three flavors (except the original Server) use NMCP (Nano Message Communication Protocol) for inter-process communication:
+
+```mermaid
+graph TB
+    subgraph "NMCP Transport"
+        A[Local Workers] -->|Shmem IPC| B[NmcpShmemServer]
+        C[Remote Clients] -->|WebSocket| D[NmcpWebSocketServer]
+        B --> E[NmcpDispatch Trait]
+        D --> E
+        E --> F[Flavor-Specific Router]
+    end
+```
+
+**Key characteristics:**
+- **Binary frame format** — 16-byte header + JSON payload
+- **Shared memory** — File-backed shmem buffers for local IPC (50-100x faster than HTTP)
+- **WebSocket** — TCP-based for remote/cross-machine access
+- **TLS support** — Both shmem and WebSocket endpoints support mTLS via rustls
+- **NmcpDispatch trait** — Each flavor implements frame dispatch via its NmcpFrameRouter
+
+## Security Layer
+
+All servers share a common security layer via `velocity-server-bootstrap`:
+
+```mermaid
+graph LR
+    A[Request] --> B{Auth Check}
+    B -->|API Key / JWT| C{Rate Limit}
+    C -->|Token Bucket| D[Audit Log]
+    D --> E[Process Request]
+    E --> F[Response + Security Headers]
+```
+
+**Components:**
+- **Authentication** — API key (X-API-Key) and JWT (HS256/RS256) with zero-downtime key rotation
+- **Rate Limiting** — Token bucket per client IP via DashMap (lock-free)
+- **Audit Logging** — Structured logs for all API calls
+- **mTLS** — TLS certificate + key loading via rustls
+- **Security Headers** — Added to HTTP health endpoint responses
+- **Trivy Scanning** — Container security scanning in CI
+
+## Distributed Tracing
+
+OpenTelemetry-based distributed tracing with optional OTLP export:
+
+```mermaid
+graph LR
+    A[Velocity Server] -->|tracing| B[tracing-opentelemetry]
+    B -->|OTLP| C[Collector]
+    C --> D[Jaeger / Tempo / Grafana]
+```
+
+**Span hierarchy:**
+- `workflow.execute` — Top-level workflow execution
+- `step.persist` — Per-step journal INSERT
+- `signal.deliver` — Signal delivery
+- `nmcp.dispatch` — NMCP frame dispatch
+- `auth.check` — Authentication verification
+
+**Configuration:**
+- Optional OTLP export (works without collector in dev mode)
+- Configurable sampling rate (0.0 to 1.0)
+- Log formats: compact (human-readable) or JSON (production)
+
+## Multi-Instance Coordination
+
+PostgreSQL advisory locks enable safe multi-instance deployments:
+
+```mermaid
+graph TB
+    subgraph "Shared PostgreSQL"
+        L1[Leader Election Lock]
+        L2[Workflow Locks]
+        L3[Migration Lock]
+    end
+    
+    I1[Instance 1] -->|pg_try_advisory_lock| L1
+    I2[Instance 2] -->|pg_try_advisory_lock| L1
+    I1 -->|workflow_lock_key| L2
+    I2 -->|workflow_lock_key| L2
+    I1 -->|MIGRATION_LOCK_KEY| L3
+```
+
+**Lock key space (64-bit):**
+- `0xVE00_xxxx` — Leader election (one per role)
+- `0xVE10_xxxx` — Workflow processing (one per workflow)
+- `0xVE20_0000` — Schema migrations (one global)
+
+**Contention handling:** Non-blocking try → exponential backoff + jitter → retry
 
 ## Persistence Layers
 
@@ -186,6 +321,11 @@ sequenceDiagram
 **Characteristics:**
 - Append-only log files
 - Crash recovery from last committed state
+- **Background group-commit thread** — replaces per-operation fsync for better throughput
+- **Configurable durability (DurabilityConfig)** — Users pick their safety-throughput trade-off:
+  - `strict()` — fsync every step (sync_steps=0, maximum safety, financial transactions)
+  - `batched(N, ms)` — fsync every N steps or every ms (balanced, order processing)
+  - `async_only(ms)` — background fsync only (max throughput, event processing)
 - Fast writes (sequential I/O)
 - No external dependencies
 
@@ -219,13 +359,13 @@ sequenceDiagram
 
 ### In-Memory
 
-Used by Velocity Classic for maximum performance.
+Used by Velocity Classic when PostgreSQL is not configured.
 
 **Characteristics:**
 - No persistence (data lost on restart)
 - Fastest possible execution
 - Suitable for development/testing
-- Can be configured with external persistence
+- Can be configured with WAL + optional PostgreSQL persistence
 
 ## Protocol Buffers and gRPC
 
@@ -577,8 +717,11 @@ graph LR
 
 **Section sources**
 - [Cargo.toml](file://Cargo.toml)
-- [src/lib.rs](file://src/lib.rs)
+- [velocity-workflow-engine/src/lib.rs](file://velocity-workflow-engine/src/lib.rs)
+- [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
+- [velocity-nmcp-protocol/src/lib.rs](file://velocity-nmcp-protocol/src/lib.rs)
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
-- [velocity-embedded/src/main.rs](file://velocity-embedded/src/main.rs)
-- [velocity-classic-ts/src/index.ts](file://velocity-classic-ts/src/index.ts)
+- [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
+- [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
+- [velocity-workflow-engine/src/pg_advisory_lock.rs](file://velocity-workflow-engine/src/pg_advisory_lock.rs)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)

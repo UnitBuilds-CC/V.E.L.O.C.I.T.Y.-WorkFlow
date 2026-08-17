@@ -4,8 +4,8 @@
 **Referenced Files in This Document**
 - [Cargo.toml](file://Cargo.toml)
 - [velocity-workflow-server/Cargo.toml](file://velocity-workflow-server/Cargo.toml)
-- [velocity-classic-ts/package.json](file://velocity-classic-ts/package.json)
-- [bench-suite/prod-bench/Cargo.toml](file://bench-suite/prod-bench/Cargo.toml)
+- [velocity-server-bootstrap/Cargo.toml](file://velocity-server-bootstrap/Cargo.toml)
+- [velocity-nmcp-protocol/Cargo.toml](file://velocity-nmcp-protocol/Cargo.toml)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
 </cite>
@@ -21,6 +21,7 @@
 8. [Benchmark Development](#benchmark-development)
 9. [Docker Development](#docker-development)
 10. [Performance Profiling](#performance-profiling)
+11. [Security and Production Hardening](#security-and-production-hardening)
 
 ## Development Environment Setup
 
@@ -91,40 +92,61 @@ graph TB
         C[velocity-workflow-engine]
     end
     
+    subgraph "Protocol"
+        D[velocity-nmcp-protocol<br/>shmem + WebSocket]
+    end
+    
+    subgraph "Bootstrap"
+        E[velocity-server-bootstrap<br/>auth, rate-limit, audit, tracing]
+    end
+    
     subgraph "Servers"
-        D[velocity-workflow-server<br/>gRPC + WAL]
-        E[velocity-embedded<br/>HTTP + PostgreSQL]
-        F[velocity-classic-ts<br/>HTTP + Temporal API]
+        F[velocity-workflow-server<br/>gRPC + WAL]
+        G[velocity-classic-server<br/>NMCP + WAL/PG]
+        H[velocity-embedded-server<br/>NMCP + PostgreSQL]
     end
     
     subgraph "Runtimes"
-        G[velocity-runtime-typescript]
-        H[velocity-runtime-python]
+        I[velocity-runtime-typescript]
+        J[velocity-runtime-python]
     end
     
     subgraph "SDKs"
-        I[velocity-sdk-typescript]
-        J[velocity-sdk-python]
-        K[velocity-sdk-go]
-        L[velocity-sdk-java]
+        K[velocity-sdk-typescript]
+        L[velocity-sdk-python]
+        M[velocity-sdk-go]
+        N[velocity-sdk-java]
     end
     
     subgraph "Benchmarks"
-        M[bench-suite/prod-bench]
-        N[velocity-bench]
-        O[cloud-bench]
+        O[bench-suite/prod-bench]
+        P[velocity-bench]
+        Q[cloud-bench]
+    end
+    
+    subgraph "Tools"
+        R[velocity-dev-server]
+        S[velocity-test-framework]
+        T[velocity-migration-toolkit]
     end
     
     A --> B
     A --> C
-    B --> D
-    B --> E
-    C --> D
-    C --> E
-    G --> F
-    H --> F
-    I --> F
-    J --> F
+    B --> F
+    B --> G
+    B --> H
+    C --> F
+    C --> G
+    C --> H
+    D --> G
+    D --> H
+    E --> F
+    E --> G
+    E --> H
+    I --> G
+    J --> G
+    K --> G
+    L --> G
 ```
 
 ### Key Modules
@@ -135,23 +157,32 @@ graph TB
 - State management
 - Persistence abstractions
 
-**Server (`velocity-workflow-server/`):**
-- gRPC server implementation
-- WAL persistence
-- Benchmark service
-- Health checks
+**Server Bootstrap (`velocity-server-bootstrap/`):**
+- Shared server initialization (bootstrap_engine, bootstrap_nmcp, run_server_loop)
+- API authentication (API key + JWT with key rotation)
+- Rate limiting (token bucket per client IP)
+- Audit logging (structured API call logs)
+- Distributed tracing (OpenTelemetry/OTLP)
+- mTLS support (rustls)
+- Chaos and failure injection tests
 
-**Embedded (`velocity-embedded/`):**
-- HTTP server
-- PostgreSQL integration
-- Connection pooling
-- Migration management
+**NMCP Protocol (`velocity-nmcp-protocol/`):**
+- Binary frame format (16-byte header + JSON payload)
+- Shared memory IPC for local workers
+- WebSocket transport for remote clients
+- NmcpDispatch trait for flavor-specific routing
 
-**Classic TypeScript (`velocity-classic-ts/`):**
-- Worker implementation
-- Workflow/Activity classes
-- Temporal-compatible API
-- HTTP server
+**Classic Server (`velocity-classic-server/`):**
+- NMCP shmem + WebSocket transport
+- Replaced TypeScript engine with Rust
+- WAL + optional PostgreSQL persistence
+- Temporal-compatible API patterns
+
+**Embedded Server (`velocity-embedded-server/`):**
+- NMCP shmem + WebSocket transport
+- PostgreSQL integration with per-step journal
+- Connection pooling via deadpool-postgres
+- Automatic schema migrations
 
 ## Building and Testing
 
@@ -481,6 +512,23 @@ velocity-sdk-go/
 ./target/release/prod-bench --engines all --format json --output results.json
 ```
 
+### Configurable Durability in Bench Server
+
+The bench server (`bench-suite/velocity-bench-server`) supports `DurabilityConfig` CLI flags:
+
+```bash
+# Strict mode (default — fsync every step, maximum safety)
+velocity-bench-server --sync-steps 0
+
+# Batched mode (fsync every 10 steps or every 5ms)
+velocity-bench-server --sync-steps 10 --flush-interval-ms 5
+
+# Async mode (background fsync every 100ms, maximum throughput)
+velocity-bench-server --sync-steps 4294967295 --flush-interval-ms 100
+```
+
+Use `complete_step_durable()` in bench workloads to respect these settings.
+
 ## Docker Development
 
 ### Building Images
@@ -581,10 +629,52 @@ LIMIT 10;
 
 The project uses GitHub Actions for CI:
 
-- `.github/workflows/ci.yml` — Main CI pipeline
+- `.github/workflows/ci.yml` — Main CI pipeline (includes chaos/failure injection tests)
 - `.github/workflows/benchmark.yml` — Benchmark runs
 - `.github/workflows/e2e.yml` — End-to-end tests
 - `.github/workflows/release.yml` — Release builds
+
+**CI Security:**
+- Trivy container security scanning
+- Chaos/failure injection tests in CI pipeline
+- Production validation for all 3 flavors
+
+## Security and Production Hardening
+
+### Authentication
+All servers support optional API key and JWT authentication via `velocity-server-bootstrap`:
+```bash
+# Enable API key auth
+VELOCITY_API_KEYS=key1,key2 cargo run --bin velocity-classic-server
+
+# Enable JWT auth
+VELOCITY_JWT_SECRET=my-secret cargo run --bin velocity-classic-server
+```
+
+### Rate Limiting
+Token bucket rate limiter per client IP:
+```bash
+VELOCITY_RATE_LIMIT_BURST=100 VELOCITY_RATE_LIMIT_RATE=10.0 cargo run --bin velocity-classic-server
+```
+
+### Distributed Tracing
+OpenTelemetry tracing with optional OTLP export:
+```bash
+# With OTLP export (Jaeger/Tempo/Grafana)
+VELOCITY_OTLP_ENDPOINT=http://localhost:4317 cargo run --bin velocity-classic-server
+
+# Local JSON logs only
+cargo run --bin velocity-classic-server -- --log-format json
+```
+
+### mTLS
+TLS certificate + key for secure WebSocket:
+```bash
+cargo run --bin velocity-classic-server -- --tls-cert cert.pem --tls-key key.pem
+```
+
+### Operations Runbooks
+See `docs/ops-runbooks.md` for common incident scenarios and resolution procedures.
 
 ### Running CI Locally
 
@@ -633,5 +723,6 @@ RUST_LOG=trace cargo run --bin velocity-server
 **Section sources**
 - [Cargo.toml](file://Cargo.toml)
 - [velocity-workflow-server/Cargo.toml](file://velocity-workflow-server/Cargo.toml)
-- [bench-suite/prod-bench/Cargo.toml](file://bench-suite/prod-bench/Cargo.toml)
+- [velocity-server-bootstrap/Cargo.toml](file://velocity-server-bootstrap/Cargo.toml)
+- [velocity-nmcp-protocol/Cargo.toml](file://velocity-nmcp-protocol/Cargo.toml)
 - [proto/bench/v1/bench.proto](file://proto/bench/v1/bench.proto)

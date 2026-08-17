@@ -3,8 +3,10 @@
 <cite>
 **Referenced Files in This Document**
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
-- [velocity-embedded/src/main.rs](file://velocity-embedded/src/main.rs)
-- [velocity-classic-ts/src/main.ts](file://velocity-classic-ts/src/main.ts)
+- [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
+- [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
+- [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
+- [velocity-nmcp-protocol/src/lib.rs](file://velocity-nmcp-protocol/src/lib.rs)
 - [bench-suite/prod-bench/src/main.rs](file://bench-suite/prod-bench/src/main.rs)
 </cite>
 
@@ -24,9 +26,9 @@
 
 Velocity provides three distinct flavors, each optimized for different use cases:
 
-- **Velocity Server** — Single binary with WAL persistence for maximum simplicity
-- **Velocity Embedded** — PostgreSQL-backed for ACID transactions and SQL queries
-- **Velocity Classic** — TypeScript-native for Temporal compatibility and lowest latency
+- **Velocity Server** — Single binary with gRPC and WAL persistence for maximum simplicity
+- **Velocity Embedded** — NMCP-based with PostgreSQL (per-step journal) for ACID transactions and SQL queries
+- **Velocity Classic** — Rust server with NMCP transport for Temporal compatibility and lowest latency
 
 This guide helps you choose the right flavor for your use case and understand the trade-offs.
 
@@ -34,21 +36,25 @@ This guide helps you choose the right flavor for your use case and understand th
 
 | Feature | Velocity Server | Velocity Embedded | Velocity Classic |
 |---------|----------------|-------------------|------------------|
-| **Protocol** | gRPC (HTTP/2) | HTTP/REST | HTTP/REST |
-| **Persistence** | WAL (Write-Ahead Log) | PostgreSQL (ACID) | In-Memory (configurable) |
-| **Language** | Rust | Rust | TypeScript |
-| **Port** | 7234 (17234 Docker) | 8082 (18082 Docker) | 8083 (18083 Docker) |
+| **Protocol** | gRPC (HTTP/2) | NMCP (shmem + WebSocket) | NMCP (shmem + WebSocket) |
+| **Persistence** | WAL (group-commit) | WAL + PostgreSQL (per-step journal) | WAL + optional PostgreSQL |
+| **Language** | Rust | Rust | Rust (replaced TypeScript) |
+| **Port** | 7234 (17234 Docker) | 8084 (WebSocket) | 8083 (WebSocket) |
 | **Throughput** | 43.6 ops/s | 61.25 ops/s | 61.54 ops/s |
 | **p50 Latency** | 180ms | 14.65ms | 14.51ms |
 | **p99 Latency** | 332ms | 20.57ms | 18.1ms |
 | **Memory** | 98.76 MiB | 1.25 MiB | 9.23 MiB |
-| **Crash Recovery** | Yes (WAL) | Yes (ACID) | No (unless configured) |
+| **Crash Recovery** | Yes (WAL) | Yes (WAL + ACID) | Yes (WAL) |
 | **SQL Queries** | No | Yes | No |
-| **ACID Transactions** | No | Yes | No |
-| **Horizontal Scaling** | No | No | No |
-| **Temporal Compatible** | No | No | Yes |
+| **ACID Transactions** | No | Yes (per-step journal) | No |
+| **Multi-Instance** | No | Yes (PG advisory locks) | Yes (PG advisory locks) |
+| **Temporal Compatible** | No | No | Yes (API patterns) |
+| **Auth/Rate Limit** | Yes (bootstrap) | Yes (bootstrap) | Yes (bootstrap) |
+| **Configurable Durability** | Yes (DurabilityConfig) | No (ACID fixed) | Yes (DurabilityConfig) |
+| **Distributed Tracing** | Yes (OpenTelemetry) | Yes (OpenTelemetry) | Yes (OpenTelemetry) |
+| **mTLS** | Yes | Yes | Yes |
 | **External Dependencies** | None | PostgreSQL | None (default) |
-| **Best For** | Simple deployments | Transactional workflows | Temporal migration |
+| **Best For** | Simple deployments, bench-suite | Transactional workflows | Temporal migration, low-latency |
 
 ## Performance Comparison
 
@@ -127,20 +133,22 @@ graph LR
 graph TB
     subgraph "Velocity Server"
         S1[gRPC Server] --> S2[Workflow Engine]
-        S2 --> S3[WAL Writer]
+        S2 --> S3[WAL Writer<br/>group-commit]
         S3 --> S4[WAL Files]
     end
     
     subgraph "Velocity Embedded"
-        E1[HTTP Server] --> E2[Workflow Engine]
+        E1[NMCP Shmem/WS] --> E2[Workflow Engine]
         E2 --> E3[Connection Pool]
         E3 --> E4[(PostgreSQL)]
+        E2 --> E5[Per-Step Journal]
     end
     
     subgraph "Velocity Classic"
-        C1[HTTP Server] --> C2[Worker]
-        C2 --> C3[Task Queue]
-        C3 --> C4[In-Memory Store]
+        C1[NMCP Shmem/WS] --> C2[Workflow Engine]
+        C2 --> C3[WAL Writer]
+        C3 --> C4[WAL Files]
+        C2 --> C5[Optional PostgreSQL]
     end
 ```
 
@@ -148,26 +156,24 @@ graph TB
 
 **Velocity Server:**
 1. gRPC request → Parse protobuf
-2. Write to WAL (fsync) ← **Bottleneck**
+2. Write to WAL (group-commit via background thread)
 3. Execute workflow
-4. Write completion to WAL (fsync)
+4. Write completion to WAL
 5. Return response
 
 **Velocity Embedded:**
-1. HTTP request → Parse JSON
-2. Acquire connection from pool
-3. BEGIN transaction
-4. INSERT workflow
-5. COMMIT transaction
-6. Execute workflow
-7. Return response
+1. NMCP frame → Parse JSON from shmem/WebSocket
+2. Dispatch via NmcpFrameRouter
+3. Execute workflow with per-step journal
+4. Batch INSERT steps to PostgreSQL
+5. Return response via NMCP
 
 **Velocity Classic:**
-1. HTTP request → Parse JSON
-2. Queue workflow in memory
-3. Execute workflow
-4. Store result in memory
-5. Return response
+1. NMCP frame → Parse JSON from shmem/WebSocket
+2. Dispatch via NmcpFrameRouter
+3. Execute workflow with WAL
+4. Write completion to WAL
+5. Return response via NMCP
 
 ### Concurrency Model
 
@@ -175,26 +181,40 @@ graph TB
 - Single-threaded workflow execution
 - Activity parallelism within workflow
 - Limited by single CPU core
+- WAL group-commit reduces fsync overhead
 
 **Velocity Embedded:**
 - Connection pool (16 connections default)
 - Parallel workflow execution
 - PostgreSQL handles concurrency
+- PG advisory locks for multi-instance coordination
+- Per-step journal for fine-grained durability
 
 **Velocity Classic:**
-- Node.js event loop (single-threaded)
-- Async activity execution
-- High concurrency via async/await
+- NMCP shmem for local workers (50-100x faster than HTTP)
+- WebSocket for remote clients
+- jemalloc global allocator
+- Optional PostgreSQL for cross-instance durability
 
 ## Persistence Comparison
 
 ### Durability Guarantees
 
-| Flavor | Crash Recovery | Data Loss Risk | Durability Level |
-|--------|----------------|----------------|------------------|
-| Server | Yes (WAL) | Low (fsync) | High |
-| Embedded | Yes (ACID) | Very Low (transactions) | Very High |
-| Classic | No (default) | High (in-memory) | None |
+| Flavor | Crash Recovery | Data Loss Risk | Durability Level | Configurable |
+|--------|----------------|----------------|------------------|-------------|
+| Server | Yes (WAL group-commit) | Low (group-commit window) | High | Yes (DurabilityConfig) |
+| Embedded | Yes (WAL + ACID journal) | Very Low (per-step) | Very High | ACID (fixed) |
+| Classic | Yes (WAL) | Low (group-commit window) | High | Yes (DurabilityConfig) |
+
+### Configurable Durability (DurabilityConfig)
+
+Server and Classic flavors support user-configurable fsync batching:
+
+| Mode | Behavior | Data Loss Risk | Throughput |
+|------|----------|----------------|------------|
+| `strict()` | fsync every step | None | Baseline |
+| `batched(N, ms)` | fsync every N steps or every ms | ≤N steps | Higher |
+| `async_only(ms)` | background fsync only | ≤ms of work | Maximum |
 
 ### Recovery Mechanisms
 
@@ -212,12 +232,12 @@ Crash → PostgreSQL auto-recovery → Connections reconnect → Resume workflow
 - Recovery time: <1s (PostgreSQL handles it)
 - Data loss: None (ACID transactions)
 
-**Velocity Classic (In-Memory):**
+**Velocity Classic (WAL):**
 ```
-Crash → All data lost → Start fresh
+Crash → Read WAL → Replay events → Restore state → Resume workflows
 ```
-- Recovery time: N/A (no recovery)
-- Data loss: Everything (unless external persistence configured)
+- Recovery time: 1-2s for 10k workflows
+- Data loss: Only unfsync'd writes (group-commit window)
 
 ### Query Capabilities
 
@@ -252,18 +272,18 @@ Crash → All data lost → Start fresh
 - Code generation for all languages
 
 **Velocity Embedded:**
-- HTTP/REST
-- JSON
-- Text serialization
-- Standard HTTP methods
-- Easy to debug (curl, Postman)
+- NMCP (shmem + WebSocket)
+- JSON payload in binary frames
+- Shmem for local IPC (50-100x faster)
+- WebSocket for remote access
+- TLS/mTLS support
 
 **Velocity Classic:**
-- HTTP/REST
-- JSON
-- Text serialization
-- Standard HTTP methods
-- Temporal-compatible endpoints
+- NMCP (shmem + WebSocket)
+- JSON payload in binary frames
+- Shmem for local IPC (50-100x faster)
+- WebSocket for remote access
+- TLS/mTLS support
 
 ### Client SDKs
 
@@ -276,22 +296,18 @@ let (wf_id, run_id) = client.start_workflow("my_workflow", input).await?;
 
 **Velocity Embedded:**
 ```rust
-// Rust
-let client = reqwest::Client::new();
-let response = client.post("http://localhost:8082/workflows")
-    .json(&request)
-    .send()
-    .await?;
+// Rust (NMCP WebSocket client)
+// Connect via WebSocket to remote server
+let client = NmcpWebSocketClient::connect("ws://localhost:8084").await?;
+let response = client.send_request(workflow_request).await?;
 ```
 
 **Velocity Classic:**
-```typescript
-// TypeScript
-const response = await fetch('http://localhost:8083/workflows', {
-  method: 'POST',
-  body: JSON.stringify({ workflow_type: 'myWorkflow', input }),
-});
-const { workflow_id, run_id } = await response.json();
+```rust
+// Rust (NMCP shmem for local IPC)
+let client = NmcpShmemClient::connect("/tmp/velocity-classic.nmcp")?;
+let response = client.send_request(workflow_request)?;
+// 50-100x faster than HTTP for local workers
 ```
 
 ### Temporal Compatibility
@@ -322,9 +338,10 @@ Only **Velocity Classic** provides Temporal API compatibility:
 - Database migrations on startup
 
 **Velocity Classic:**
-- Node.js 22+ required
-- npm dependencies
+- Node.js 22+ required (for TypeScript SDK clients)
+- npm dependencies (for SDK)
 - No external services (default)
+- Server binary is Rust (no Node.js needed for server)
 
 ### Resource Requirements
 
@@ -348,18 +365,18 @@ Only **Velocity Classic** provides Temporal API compatibility:
 
 ### Scaling
 
-All three flavors are currently **single-node only**. Horizontal scaling is planned (see sharding spec) but not yet implemented.
+All three flavors now support **multi-instance coordination** via PostgreSQL advisory locks (Embedded and Classic with PG):
 
-**Current Limitations:**
-- No clustering
-- No load balancing
-- No automatic failover
-- Single point of failure
+**Current Capabilities:**
+- PG advisory locks for leader election
+- Workflow-level locking across instances
+- Migration locking for safe schema updates
+- Exponential backoff with jitter for contention
 
-**Workarounds:**
-- Use load balancer in front of multiple instances (manual sharding)
-- Use PostgreSQL HA for Embedded
-- Use WAL replication for Server (manual)
+**Limitations:**
+- No automatic sharding (planned)
+- No automatic failover (manual)
+- Single PostgreSQL instance (use PG HA for data redundancy)
 
 ## Use Case Matrix
 
@@ -535,5 +552,6 @@ Each Velocity flavor excels in different scenarios:
 **Section sources**
 - [bench-suite/prod-bench/src/main.rs](file://bench-suite/prod-bench/src/main.rs)
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
-- [velocity-embedded/src/main.rs](file://velocity-embedded/src/main.rs)
-- [velocity-classic-ts/src/main.ts](file://velocity-classic-ts/src/main.ts)
+- [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
+- [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
+- [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)

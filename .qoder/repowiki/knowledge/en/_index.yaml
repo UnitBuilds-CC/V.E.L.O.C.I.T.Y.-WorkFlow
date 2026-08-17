@@ -1,5 +1,6 @@
 # Knowledge Cards Index
 # Each knowledge card documents a specific pattern, convention, or architecture decision
+# Last updated: 2026-08-17
 
 cards:
   - name: "Write-Ahead Log WAL Persistence"
@@ -11,18 +12,20 @@ cards:
     source_files:
       - velocity-workflow-server/src/main.rs
       - velocity-workflow-engine/src/lib.rs
-    summary: "WAL-based durability for Velocity Server with append-only log and crash recovery"
+    summary: "WAL-based durability for Velocity Server with append-only log, group-commit optimization, and crash recovery"
     
   - name: "PostgreSQL Persistence with Connection Pooling"
     kind: persistence_system
     category: persistence
     scope:
       - "velocity-embedded/**"
+      - "velocity-embedded-server/**"
       - "migrations/**"
     source_files:
       - velocity-embedded/src/main.rs
+      - velocity-embedded-server/src/main.rs
       - migrations/001_initial_schema.sql
-    summary: "PostgreSQL-backed durability with deadpool-postgres connection pooling and ACID transactions"
+    summary: "PostgreSQL-backed durability with deadpool-postgres connection pooling, ACID transactions, and per-step journal"
     
   - name: "gRPC Benchmark Service API"
     kind: api_pattern
@@ -35,11 +38,87 @@ cards:
       - proto/bench/v1/bench.proto
       - velocity-workflow-server/src/main.rs
       - bench-suite/prod-bench/src/velocity_client.rs
-    summary: "Protocol Buffer-defined gRPC API for workflow operations across multiple languages"
+    summary: "Protocol Buffer-defined gRPC API for workflow benchmarking operations across multiple languages"
+
+  - name: "NMCP Protocol Transport"
+    kind: transport_protocol
+    category: networking
+    scope:
+      - "velocity-nmcp-protocol/**"
+      - "velocity-classic-server/**"
+      - "velocity-embedded-server/**"
+      - "velocity-classic/**"
+      - "velocity-embedded/**"
+    source_files:
+      - velocity-nmcp-protocol/src/lib.rs
+      - velocity-nmcp-protocol/src/frame.rs
+      - velocity-nmcp-protocol/src/shmem.rs
+      - velocity-nmcp-protocol/src/ws.rs
+      - velocity-classic-server/src/main.rs
+      - velocity-embedded-server/src/main.rs
+    summary: "NMCP binary protocol with shared memory IPC (50-100x faster than HTTP) for local workers and WebSocket for remote clients"
+
+  - name: "Server Bootstrap and Production Hardening"
+    kind: infrastructure
+    category: operations
+    scope:
+      - "velocity-server-bootstrap/**"
+    source_files:
+      - velocity-server-bootstrap/src/lib.rs
+      - velocity-server-bootstrap/src/auth.rs
+      - velocity-server-bootstrap/src/rate_limit.rs
+      - velocity-server-bootstrap/src/audit.rs
+      - velocity-server-bootstrap/src/tracing_setup.rs
+      - velocity-server-bootstrap/tests/chaos_tests.rs
+      - velocity-server-bootstrap/tests/production_hardening.rs
+    summary: "Shared server bootstrap logic: engine init, NMCP setup, shutdown loop, plus chaos tests and production validation"
+
+  - name: "API Authentication and Security"
+    kind: security
+    category: security
+    scope:
+      - "velocity-server-bootstrap/src/auth.rs"
+      - "velocity-server-bootstrap/src/rate_limit.rs"
+      - "velocity-server-bootstrap/src/audit.rs"
+    source_files:
+      - velocity-server-bootstrap/src/auth.rs
+      - velocity-server-bootstrap/src/rate_limit.rs
+      - velocity-server-bootstrap/src/audit.rs
+    summary: "API key + JWT auth with key rotation, token bucket rate limiting, structured audit logging, mTLS, and Trivy scanning"
+
+  - name: "Distributed Tracing OpenTelemetry"
+    kind: observability
+    category: monitoring
+    scope:
+      - "velocity-server-bootstrap/src/tracing_setup.rs"
+    source_files:
+      - velocity-server-bootstrap/src/tracing_setup.rs
+    summary: "OpenTelemetry-based distributed tracing with optional OTLP export to Jaeger/Tempo/Grafana and configurable sampling"
+
+  - name: "PostgreSQL Advisory Locking"
+    kind: coordination
+    category: distributed_systems
+    scope:
+      - "velocity-workflow-engine/src/pg_advisory_lock.rs"
+    source_files:
+      - velocity-workflow-engine/src/pg_advisory_lock.rs
+    summary: "Multi-instance coordination via PG advisory locks: leader election, workflow locking, and migration locking with backoff"
+
+  - name: "Per-Step Journal Persistence"
+    kind: persistence_system
+    category: persistence
+    scope:
+      - "velocity-embedded/**"
+      - "velocity-embedded-server/**"
+      - "velocity-workflow-engine/**"
+    source_files:
+      - velocity-embedded/src/main.rs
+      - velocity-workflow-engine/src/lib.rs
+    summary: "Append-only per-step journal with batch INSERT for true durable execution and crash recovery"
 
 # Conventions for knowledge cards:
-# - kind: Type of pattern (persistence_system, api_pattern, error_handling, configuration_system, etc.)
-# - category: Broad category (persistence, api, architecture, testing, deployment)
+# - kind: Type of pattern (persistence_system, api_pattern, transport_protocol, security, observability, coordination, infrastructure, etc.)
+# - category: Broad category (persistence, api, networking, security, monitoring, distributed_systems, operations, etc.)
 # - scope: Glob patterns for files this applies to
 # - source_files: Specific files that implement this pattern
 # - summary: One-line description

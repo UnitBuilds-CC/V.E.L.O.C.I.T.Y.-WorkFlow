@@ -23,15 +23,17 @@
 
 ## Overview
 
-Velocity Server is the **single-binary, gRPC-based** flavor of Velocity designed for maximum throughput with Write-Ahead Log (WAL) persistence. It's the simplest deployment option with no external dependencies beyond the binary itself.
+Velocity Server is the **single-binary, gRPC-based** flavor of Velocity designed for maximum throughput with Write-Ahead Log (WAL) persistence with background group-commit optimization. It's the simplest deployment option with no external dependencies beyond the binary itself.
 
 **Key Characteristics:**
 - **Protocol:** gRPC (HTTP/2)
-- **Persistence:** Write-Ahead Log (WAL)
+- **Persistence:** Write-Ahead Log (WAL) with background group-commit thread
 - **Port:** 7234 (default), 17234 (Docker)
 - **Memory:** ~98 MiB
 - **Throughput:** 43.6 ops/s (simple workflow)
 - **Latency:** p50=180ms, p99=332ms
+- **Security:** API auth, rate limiting, audit logging, mTLS (via velocity-server-bootstrap)
+- **Tracing:** OpenTelemetry with optional OTLP export
 
 **When to Use:**
 - Maximum throughput requirements
@@ -185,6 +187,37 @@ pub struct WalConfig {
 - **sync_interval = 100ms** — Better throughput, risk of losing 100ms of data on crash
 - **compression = true** — Smaller WAL files, CPU overhead
 - **batch_size = 10** — Better throughput, higher latency
+
+### Configurable Durability (DurabilityConfig)
+
+Users pick their point on the safety-throughput curve:
+
+```rust
+pub struct DurabilityConfig {
+    /// Number of steps between fsync calls. 0 = every step (strict).
+    pub sync_steps: u32,
+    /// Time-based floor: fsync at least this often even if step count not reached.
+    pub flush_interval_ms: u64,
+}
+```
+
+| Mode | sync_steps | flush_interval_ms | Use Case |
+|------|-----------|-------------------|----------|
+| `strict()` | 0 | 0 | Financial transactions (lose nothing) |
+| `batched(N, ms)` | N | ms | Order processing (lose ≤N steps) |
+| `async_only(ms)` | u32::MAX | ms | Event processing (max throughput) |
+
+**Bench server CLI flags:**
+```bash
+# Strict mode (default — fsync every step)
+velocity-bench-server --sync-steps 0
+
+# Batched mode (fsync every 10 steps or every 5ms)
+velocity-bench-server --sync-steps 10 --flush-interval-ms 5
+
+# Async mode (background fsync every 100ms)
+velocity-bench-server --sync-steps 4294967295 --flush-interval-ms 100
+```
 
 ### WAL File Format
 
@@ -388,7 +421,7 @@ RUST_LOG=info
 
 ### Bottlenecks
 
-1. **WAL fsync** — Each write requires disk sync (~5ms)
+1. **WAL group-commit** — Background thread batches fsync calls (~5ms per batch instead of per write)
 2. **Single-threaded** — Workflow execution is sequential
 3. **Memory allocation** — Payload serialization/deserialization
 4. **gRPC overhead** — Protocol buffer serialization
@@ -734,13 +767,13 @@ let result = client.wait_for_completion(&workflow_id, &run_id).await?;
 ### Trade-offs
 
 | Aspect | Velocity Server | Velocity Embedded | Trade-off |
-|--------|----------------|-------------------|-----------|
+|--------|----------------|-------------------|----------|
 | Throughput | Higher (43.6 ops/s) | Lower (61.25 ops/s) | WAL vs PostgreSQL overhead |
-| Latency | Higher (180ms p50) | Lower (14.65ms p50) | fsync vs connection pool |
+| Latency | Higher (180ms p50) | Lower (14.65ms p50) | group-commit vs connection pool |
 | Memory | Higher (98 MiB) | Lower (1.25 MiB) | WAL buffers vs connection pool |
 | Durability | WAL (crash recovery) | PostgreSQL (ACID) | Simplicity vs transactional |
 | Queryability | None | Full SQL | Performance vs flexibility |
-| Scalability | Single node | Single node | Both limited to single node |
+| Scalability | Single node | Multi-instance (PG advisory) | Both limited to single node |
 
 ### When to Choose Alternatives
 

@@ -2,8 +2,9 @@
 
 <cite>
 **Referenced Files in This Document**
-- [velocity-embedded/src/main.rs](file://velocity-embedded/src/main.rs)
+- [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
 - [velocity-embedded/Cargo.toml](file://velocity-embedded/Cargo.toml)
+- [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)
 - [migrations/001_initial_schema.sql](file://migrations/001_initial_schema.sql)
 - [migrations/002_add_indexes.sql](file://migrations/002_add_indexes.sql)
 - [docker-compose.yml](file://docker-compose.yml)
@@ -26,15 +27,18 @@
 
 ## Overview
 
-Velocity Embedded is the **PostgreSQL-backed** flavor of Velocity designed for embedded deployments requiring ACID transactions and SQL queryability. It provides the best balance of performance, durability, and developer experience.
+Velocity Embedded is the **NMCP-based, PostgreSQL-backed** flavor of Velocity designed for embedded deployments requiring ACID transactions, per-step journal durability, and SQL queryability. It provides the best balance of performance, durability, and developer experience.
 
 **Key Characteristics:**
-- **Protocol:** HTTP/REST
-- **Persistence:** PostgreSQL (ACID)
-- **Port:** 8082 (default), 18082 (Docker)
+- **Protocol:** NMCP (shmem + WebSocket)
+- **Persistence:** WAL + PostgreSQL (per-step journal with batch INSERT)
+- **Port:** 8084 (WebSocket default)
 - **Memory:** ~1.25 MiB (server) + ~68 MiB (PostgreSQL)
 - **Throughput:** 61.25 ops/s (simple workflow) — **highest of all flavors**
 - **Latency:** p50=14.65ms, p99=20.57ms — **lowest of all flavors**
+- **Security:** API auth, rate limiting, audit logging, mTLS (via velocity-server-bootstrap)
+- **Tracing:** OpenTelemetry with optional OTLP export
+- **Multi-instance:** PG advisory locks for leader election and workflow locking
 
 **When to Use:**
 - Need ACID transactions for workflow state
@@ -56,17 +60,18 @@ Velocity Embedded is the **PostgreSQL-backed** flavor of Velocity designed for e
 ```mermaid
 graph TB
     subgraph "Velocity Embedded"
-        A[HTTP Server<br/>axum] --> B[REST Handlers]
-        B --> C[Workflow Engine]
-        C --> D[Connection Pool<br/>deadpool-postgres]
-        D --> E[(PostgreSQL)]
-        C --> F[Activity Executor]
-        B --> G[Migration Manager]
-        G --> E
+        A[Local Workers] -->|NMCP Shmem| B[NMCP Server]
+        C[Remote Clients] -->|NMCP WebSocket| B
+        B --> D[REST Handlers]
+        D --> E[Workflow Engine]
+        E --> F[Connection Pool<br/>deadpool-postgres]
+        F --> G[(PostgreSQL)]
+        E --> H[Per-Step Journal]
+        D --> I[Migration Manager]
+        I --> G
     end
     
-    H[HTTP Client] -->|REST| A
-    B --> I[Metrics Exporter]
+    B --> J[Metrics Exporter]
 ```
 
 ### Request Flow
@@ -267,7 +272,7 @@ pub async fn search_workflows(
 
 ## HTTP API
 
-### Endpoints
+### Endpoints (via HTTP health endpoint)
 
 ```
 POST   /workflows              - Start workflow
@@ -281,8 +286,18 @@ POST   /workflows/:id/complete - Complete step
 GET    /workflows/:id/wait     - Wait for completion
 
 GET    /health                 - Health check
+GET    /ready                  - Readiness probe
+GET    /live                   - Liveness probe
 GET    /metrics                - Prometheus metrics
 ```
+
+### NMCP Transport
+
+Primary communication uses NMCP protocol:
+- **Local workers** connect via shared memory (shmem) at `/tmp/velocity-embedded.nmcp`
+- **Remote clients** connect via WebSocket at `ws://0.0.0.0:8084`
+- Both transports use the same binary frame format (16-byte header + JSON payload)
+- TLS/mTLS supported on WebSocket endpoint
 
 ### Request/Response Examples
 
@@ -1068,6 +1083,8 @@ Velocity Embedded is the **best all-around flavor** for production deployments r
 - Database maintenance (vacuum, backups)
 
 **Section sources**
+- [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
 - [velocity-embedded/src/main.rs](file://velocity-embedded/src/main.rs)
 - [migrations/001_initial_schema.sql](file://migrations/001_initial_schema.sql)
 - [velocity-embedded/Cargo.toml](file://velocity-embedded/Cargo.toml)
+- [velocity-server-bootstrap/src/lib.rs](file://velocity-server-bootstrap/src/lib.rs)

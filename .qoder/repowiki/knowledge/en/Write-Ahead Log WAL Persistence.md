@@ -69,7 +69,19 @@ pub struct WalConfig {
     pub sync_interval: Duration,    // fsync interval (default: 100ms)
     pub compression: bool,          // Enable zlib compression (default: false)
 }
+
+pub struct DurabilityConfig {
+    pub sync_steps: u32,            // 0 = every step (strict), N = batch every N steps
+    pub flush_interval_ms: u64,     // Time-based fsync floor (prevents unbounded data loss)
+}
 ```
+
+**Configurable Durability (DurabilityConfig):**
+- `DurabilityConfig::strict()` — fsync after every step (sync_steps=0). Maximum safety, lose nothing on crash.
+- `DurabilityConfig::batched(N, ms)` — fsync every N steps or every ms, whichever first. Balanced.
+- `DurabilityConfig::async_only(ms)` — background fsync thread only (sync_steps=u32::MAX). Maximum throughput.
+- Default is `strict()`. Bench server uses `--sync-steps` and `--flush-interval-ms` CLI flags.
+- `complete_step_durable()` method replaces `complete_step_sync()` when configurable durability is active.
 
 **Key files:**
 - `velocity-workflow-server/src/main.rs` — WAL integration

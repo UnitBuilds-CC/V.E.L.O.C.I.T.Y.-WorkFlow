@@ -5,10 +5,9 @@
 - [README.md](file://README.md)
 - [Cargo.toml](file://Cargo.toml)
 - [docker-compose.yml](file://docker-compose.yml)
-- [src/main.rs](file://src/main.rs)
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
-- [velocity-embedded/src/main.rs](file://velocity-embedded/src/main.rs)
-- [velocity-classic-ts/src/index.ts](file://velocity-classic-ts/src/index.ts)
+- [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
+- [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
 </cite>
 
 ## Table of Contents
@@ -35,29 +34,38 @@ The project offers three distinct flavors:
 ```
 Velocity-workflow/
 ├── src/                          # Core Rust library
-├── velocity-workflow-server/     # Single binary gRPC server
-├── velocity-embedded/            # Embedded PostgreSQL-backed server
-├── velocity-classic-ts/          # TypeScript Temporal-compatible SDK
+├── velocity-workflow-core/       # Core workflow abstractions & FFI
+├── velocity-workflow-engine/     # Engine (WAL, PG adapter, advisory locking)
+├── velocity-workflow-server/     # gRPC server with WAL (original flavor)
+├── velocity-workflow-daemon/     # Background daemon
+├── velocity-nmcp-protocol/       # NMCP binary protocol (shmem + WebSocket)
+├── velocity-server-bootstrap/    # Shared server init, auth, rate-limit, audit, tracing
+├── velocity-classic/             # Classic engine library (NMCP router)
+├── velocity-classic-server/      # Classic server binary (NMCP, replaces TypeScript)
+├── velocity-classic-ts/          # TypeScript SDK (legacy client)
+├── velocity-embedded/            # Embedded engine library (NMCP + PG)
+├── velocity-embedded-server/     # Embedded server binary (NMCP + PostgreSQL)
 ├── velocity-sdk-typescript/      # TypeScript SDK
 ├── velocity-sdk-python/          # Python SDK
 ├── velocity-sdk-go/              # Go SDK
 ├── velocity-sdk-java/            # Java SDK
 ├── velocity-runtime-typescript/  # TypeScript runtime
 ├── velocity-runtime-python/      # Python runtime
-├── velocity-workflow-core/       # Core workflow abstractions
-├── velocity-workflow-engine/     # Engine implementation
-├── velocity-workflow-daemon/     # Background daemon
-├── velocity-bench/               # Benchmark suite
-├── velocity-classic/             # Classic Rust implementation
+├── velocity-bench/               # HTTP benchmark tool
+├── velocity-dev-server/          # Development server
+├── velocity-test-framework/      # Integration test framework
+├── velocity-migration-toolkit/   # Migration toolkit
 ├── bench-suite/                  # Comprehensive benchmark suite
-│   └── prod-bench/               # Production benchmark tool
+│   ├── prod-bench/               # Production benchmark tool
+│   └── velocity-bench-server/    # gRPC benchmark service
 ├── cloud-bench/                  # Cloud benchmark scripts
 ├── deploy/                       # Deployment configurations
 ├── migrations/                   # Database migrations
 ├── proto/                        # Protocol buffer definitions
 ├── sdk/                          # SDK implementations
 ├── tests/                        # Integration tests
-└── docs/                         # Documentation
+├── docs/                         # Documentation (incl. ops-runbooks.md)
+└── V.A.L.I.D/                    # Validation framework
 ```
 
 ```mermaid
@@ -70,8 +78,8 @@ graph TB
     
     subgraph "Server Flavors"
         E[velocity-workflow-server] -->|gRPC + WAL| F[Single Binary]
-        G[velocity-embedded] -->|PostgreSQL| H[Embedded Server]
-        I[velocity-classic-ts] -->|Temporal API| J[Classic Server]
+        G[velocity-embedded-server] -->|NMCP + PostgreSQL| H[Embedded Server]
+        I[velocity-classic-server] -->|NMCP + WAL/PG| J[Classic Server]
     end
     
     subgraph "SDKs"
@@ -103,28 +111,30 @@ graph TB
 ## Core Components
 
 ### Velocity Server (Single Binary)
-The production gRPC server with Write-Ahead Log (WAL) persistence. This is the fastest flavor for pure throughput.
+The production gRPC server with Write-Ahead Log (WAL) persistence with background group-commit. This is the fastest flavor for pure throughput.
 
 **Key files:**
 - `velocity-workflow-server/src/main.rs` — Server entry point
-- Uses WAL for durable execution
+- Uses WAL with group-commit for durable execution
 - gRPC API on port 7234 (mapped to 17234 in Docker)
 
 ### Velocity Embedded
-PostgreSQL-backed server for embedded deployments where you need database durability without external dependencies.
+NMCP-based server with PostgreSQL persistence and per-step journal for embedded deployments requiring ACID transactions.
 
 **Key files:**
-- `velocity-embedded/src/main.rs` — Embedded server entry point
-- PostgreSQL persistence layer
-- HTTP API on port 8082 (mapped to 18082 in Docker)
+- `velocity-embedded-server/src/main.rs` — Embedded server entry point
+- NMCP shmem + WebSocket transport
+- PostgreSQL persistence with per-step journal
+- WebSocket API on port 8084
 
 ### Velocity Classic
-TypeScript SDK providing Temporal-compatible API for easy migration from Temporal workflows.
+Rust server with NMCP transport. Replaced the original TypeScript engine. Supports Temporal-compatible API patterns.
 
 **Key files:**
-- `velocity-classic-ts/src/index.ts` — Worker, Workflow, Activity classes
-- `velocity-classic-ts/src/main.ts` — Server entry point
-- HTTP API on port 8083 (mapped to 18083 in Docker)
+- `velocity-classic-server/src/main.rs` — Classic server entry point
+- NMCP shmem + WebSocket transport
+- WAL + optional PostgreSQL persistence
+- WebSocket API on port 8083
 
 ### SDKs
 Multi-language SDKs for building workflows:
@@ -146,8 +156,8 @@ graph TB
     
     subgraph "Server Layer"
         S1[Velocity Server<br/>gRPC + WAL]
-        S2[Velocity Embedded<br/>HTTP + PostgreSQL]
-        S3[Velocity Classic<br/>HTTP + Temporal API]
+        S2[Velocity Embedded<br/>NMCP + PostgreSQL]
+        S3[Velocity Classic<br/>NMCP + WAL/PG]
     end
     
     subgraph "Storage Layer"
@@ -171,8 +181,8 @@ graph TB
 
 **Diagram sources**
 - [velocity-workflow-server/src/main.rs](file://velocity-workflow-server/src/main.rs)
-- [velocity-embedded/src/main.rs](file://velocity-embedded/src/main.rs)
-- [velocity-classic-ts/src/main.ts](file://velocity-classic-ts/src/main.ts)
+- [velocity-embedded-server/src/main.rs](file://velocity-embedded-server/src/main.rs)
+- [velocity-classic-server/src/main.rs](file://velocity-classic-server/src/main.rs)
 
 ## Installation and Setup
 
@@ -228,14 +238,14 @@ cargo run --release --bin velocity-server
 # Start PostgreSQL first
 docker run -d --name velocity-pg -e POSTGRES_PASSWORD=velocity -p 5432:5432 postgres:16-alpine
 
-# Run embedded server
-cargo run --release --bin velocity-embedded-server
+# Run embedded server (NMCP shmem + WebSocket)
+cargo run --release --bin velocity-embedded-server -- --postgres "host=localhost port=5432 dbname=velocity user=velocity password=velocity"
 ```
 
 **Velocity Classic:**
 ```bash
-cd velocity-classic-ts
-npm run start
+# Run classic server (NMCP shmem + WebSocket)
+cargo run --release --bin velocity-classic-server
 ```
 
 ## Benchmarking
@@ -308,4 +318,5 @@ cargo build --release
 **Section sources**
 - [README.md](file://README.md)
 - [docker-compose.yml](file://docker-compose.yml)
+- [Cargo.toml](file://Cargo.toml)
 - [bench-suite/prod-bench/README.md](file://bench-suite/prod-bench/README.md)

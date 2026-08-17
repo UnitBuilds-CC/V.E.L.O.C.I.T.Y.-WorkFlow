@@ -1,5 +1,6 @@
 # Velocity Workflow Repowiki Metadata
-# Generated: 2026-08-14
+# Generated: 2026-08-17
+# Last updated: After commit 9ac91e2 (configurable durability with DurabilityConfig)
 
 project:
   name: "V.E.L.O.C.I.T.Y. WorkFlow"
@@ -8,30 +9,143 @@ project:
   repository: "https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow"
   license: "MIT"
 
+workspace:
+  resolver: "2"
+  profile_release:
+    opt_level: 3
+    lto: true
+    codegen_units: 1
+    panic: "abort"
+  profile_ci:
+    inherits: "release"
+    lto: false
+    codegen_unitsits: 16
+  crates:
+    # Core engine
+    - name: "velocity-workflow-core"
+      role: "core abstractions and FFI slab engine"
+    - name: "velocity-workflow-engine"
+      role: "workflow engine implementation with WAL, PG adapter, advisory locking, DurabilityConfig"
+    - name: "velocity-workflow-daemon"
+      role: "background daemon process"
+
+    # Protocol
+    - name: "velocity-nmcp-protocol"
+      role: "NMCP binary protocol: frame parsing, shmem IPC, WebSocket transport"
+
+    # Server bootstrap
+    - name: "velocity-server-bootstrap"
+      role: "shared server init, auth, rate limiting, audit, tracing, mTLS"
+
+    # Server flavors
+    - name: "velocity-workflow-server"
+      role: "gRPC server with WAL persistence (original flavor)"
+    - name: "velocity-classic"
+      role: "Classic engine library crate (NMCP router)"
+    - name: "velocity-classic-server"
+      role: "Classic server binary — NMCP shmem + WebSocket, replaces TypeScript"
+    - name: "velocity-embedded"
+      role: "Embedded engine library crate (NMCP router + PostgreSQL)"
+    - name: "velocity-embedded-server"
+      role: "Embedded server binary — NMCP shmem + WebSocket + PostgreSQL"
+
+    # Benchmarks and tools
+    - name: "velocity-bench"
+      role: "HTTP benchmark tool with workload adapters"
+    - name: "velocity-dev-server"
+      role: "development server with hot reload"
+    - name: "velocity-test-framework"
+      role: "integration test framework"
+    - name: "prod-bench"
+      path: "bench-suite/prod-bench"
+      role: "production benchmark suite (gRPC + HTTP clients)"
+    - name: "velocity-bench-server"
+      path: "bench-suite/velocity-bench-server"
+      role: "gRPC benchmark service server"
+
 flavors:
   - name: "Velocity Server"
     type: "single-binary"
-    protocol: "gRPC"
-    persistence: "WAL"
+    protocol: "gRPC (BenchmarkService)"
+    transport: "gRPC (HTTP/2) — original, still used for bench-suite"
+    persistence: "WAL (group-commit)"
     port: 17234
     throughput: "43.6 ops/s"
     memory: "98.76 MiB"
+    binary: "velocity-workflow-server"
     
   - name: "Velocity Embedded"
     type: "embedded"
-    protocol: "HTTP"
-    persistence: "PostgreSQL"
-    port: 18082
+    protocol: "NMCP (shmem + WebSocket)"
+    transport: "NMCP shmem for local IPC, WebSocket for remote"
+    persistence: "WAL + PostgreSQL (per-step journal)"
+    port: 8084
     throughput: "61.25 ops/s"
     memory: "1.25 MiB + 68 MiB PG"
+    binary: "velocity-embedded-server"
     
   - name: "Velocity Classic"
-    type: "typescript"
-    protocol: "HTTP"
-    persistence: "In-Memory"
-    port: 18083
+    type: "rust-server"
+    protocol: "NMCP (shmem + WebSocket)"
+    transport: "NMCP shmem for local IPC, WebSocket for remote"
+    persistence: "WAL + optional PostgreSQL"
+    port: 8083
     throughput: "61.54 ops/s"
     memory: "9.23 MiB"
+    binary: "velocity-classic-server"
+    note: "Replaced TypeScript engine with Rust (commit 2bae043)"
+
+security:
+  authentication:
+    - "API Key (X-API-Key header or Bearer token)"
+    - "JWT (HS256/RS256) with zero-downtime key rotation"
+  rate_limiting: "Token bucket per-client IP (DashMap-based)"
+  audit: "Structured audit logging for all API calls"
+  tls: "mTLS support via rustls (cert + key PEM files)"
+  scanning: "Trivy container security scanning in CI"
+  headers: "Security headers on HTTP health endpoints"
+
+tracing:
+  framework: "OpenTelemetry"
+  export: "OTLP (optional, to Jaeger/Tempo/Grafana)"
+  spans:
+    - "workflow.execute"
+    - "step.persist"
+    - "signal.deliver"
+  log_formats:
+    - "compact (human-readable)"
+    - "json (structured, recommended for production)"
+  sampling: "Configurable sample rate"
+
+coordination:
+  mechanism: "PostgreSQL advisory locks"
+  features:
+    - "Leader election (one instance runs periodic tasks)"
+    - "Workflow locking (one instance per workflow)"
+    - "Migration locking (one instance runs schema migrations)"
+  lock_key_space:
+    leader_election: "0xVE00_xxxx_xxxx_xxxx"
+    workflow_processing: "0xVE10_xxxx_xxxx_xxxx"
+    schema_migrations: "0xVE20_0000_0000_0000"
+
+durability:
+  configurable: true
+  struct: "DurabilityConfig { sync_steps: u32, flush_interval_ms: u64 }"
+  modes:
+    - name: "strict()"
+      sync_steps: 0
+      description: "fsync every step — maximum safety, financial transactions"
+    - name: "batched(N, ms)"
+      sync_steps: "N (configurable)"
+      description: "fsync every N steps or every ms — balanced, order processing"
+    - name: "async_only(ms)"
+      sync_steps: "u32::MAX"
+      description: "background fsync only — max throughput, event processing"
+  default: "strict()"
+  method: "complete_step_durable() replaces complete_step_sync()"
+  bench_cli_flags:
+    - "--sync-steps (0=strict, N=batched)"
+    - "--flush-interval-ms (time-based fsync floor)"
 
 sdks:
   - language: "TypeScript"
@@ -68,21 +182,31 @@ documentation:
     - "Getting Started.md"
     - "Development Guide.md"
     - "Architecture Overview.md"
+    - "Flavor Comparison Guide.md"
+    - "Velocity Server (Single Binary).md"
+    - "Velocity Embedded (PostgreSQL).md"
+    - "Velocity Classic (TypeScript).md"
     
   knowledge:
     - "Write-Ahead Log WAL Persistence.md"
     - "PostgreSQL Persistence with Connection Pooling.md"
     - "gRPC Benchmark Service API.md"
+    - "NMCP Protocol Transport.md"
+    - "Server Bootstrap and Production Hardening.md"
+    - "API Authentication and Security.md"
+    - "Distributed Tracing OpenTelemetry.md"
+    - "PostgreSQL Advisory Locking.md"
+    - "Per-Step Journal Persistence.md"
+
+  ops_runbooks:
+    - "docs/ops-runbooks.md"
 
 build:
   rust:
     toolchain: "stable"
     workspace: true
-    crates:
-      - "velocity-workflow-core"
-      - "velocity-workflow-engine"
-      - "velocity-workflow-server"
-      - "velocity-embedded"
+    crates: 17
+    allocator: "jemalloc (non-MSVC targets)"
       
   typescript:
     node_version: "22+"
@@ -93,11 +217,15 @@ build:
 
 deployment:
   docker:
-    compose_file: "bench-suite/prod-bench/docker-compose.yml"
+    compose_files:
+      - "docker-compose.yml"
+      - "docker-compose.e2e.yml"
+      - "docker-compose.fair-bench.yml"
+      - "docker-compose.flavors.yml"
     services:
-      - "velocity"
-      - "velocity-embedded"
-      - "velocity-classic"
+      - "velocity-server"
+      - "velocity-embedded-server"
+      - "velocity-classic-server"
       - "dbos"
       - "restate"
       - "temporal"
@@ -105,9 +233,25 @@ deployment:
   kubernetes:
     manifests: "deploy/k8s/"
     helm: "deploy/helm/velocity/"
+    kustomize: "deploy/kustomize/"
+
+ci:
+  workflows:
+    - name: "ci.yml"
+      description: "Main CI pipeline with chaos/failure injection tests"
+    - name: "benchmark.yml"
+      description: "Benchmark runs"
+    - name: "e2e.yml"
+      description: "End-to-end tests"
+    - name: "release.yml"
+      description: "Release builds"
+  security:
+    - "Trivy container scanning"
+    - "Chaos/failure injection tests"
 
 benchmarking:
   tool: "bench-suite/prod-bench"
+  http_bench: "velocity-bench"
   profiles:
     - "quick"
     - "standard"
