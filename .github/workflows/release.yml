@@ -21,7 +21,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/velocity-workflow-server
+  IMAGE_NAME: unitbuilds-cc/velocity-workflow
   CARGO_TERM_COLOR: always
 
 concurrency:
@@ -415,7 +415,7 @@ jobs:
           echo "## v${{ needs.version.outputs.version }} Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Published Packages" >> $GITHUB_STEP_SUMMARY
-          echo "- **Docker**: \`ghcr.io/${{ github.repository }}/velocity-workflow-server:${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker**: \`ghcr.io/unitbuilds-cc/velocity-workflow:${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **npm**: \`@velocity-workflow/sdk@${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **PyPI**: \`velocity-workflow==${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Maven**: \`io.velocity:velocity-sdk-java:${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
