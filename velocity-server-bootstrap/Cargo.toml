@@ -15,6 +15,7 @@ serde_json = "1"
 tokio-rustls = "0.26"
 rustls-pemfile = "2"
 sha2 = "0.10"        # API key hashing for constant-time comparison
+hmac = "0.12"       # Proper HMAC-SHA256 for JWT validation
 base64 = "0.22"   # JWT payload decoding
 chrono = "0.4"     # Audit log timestamps
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

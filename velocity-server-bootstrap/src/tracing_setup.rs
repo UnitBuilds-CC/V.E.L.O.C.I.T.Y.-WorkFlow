@@ -16,7 +16,7 @@
 //! # Usage
 //!
 //! ```rust,no_run
-//! use velocity_server_bootstrap::tracing_setup::{TracingConfig, init_tracing};
+//! use velocity_server_bootstrap::tracing_setup::{TracingConfig, LogFormat, init_tracing};
 //!
 //! let config = TracingConfig {
 //!     service_name: "velocity-vctp".to_string(),

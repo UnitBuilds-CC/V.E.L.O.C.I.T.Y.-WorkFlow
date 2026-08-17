@@ -31,6 +31,13 @@ internal class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--lifecycle")
+        {
+            Console.WriteLine("Running Real Workflow Lifecycle Benchmarks (engine via FFI)...");
+            BenchmarkRunner.Run<WorkflowLifecycleBenchmark>();
+            return;
+        }
+
         // Default run BenchmarkDotNet suite for Temporal vs Velocity comparison
         Console.WriteLine("Running Head-to-Head BenchmarkDotNet Suite...");
         BenchmarkRunner.Run<TemporalVsVelocityBenchmark>();

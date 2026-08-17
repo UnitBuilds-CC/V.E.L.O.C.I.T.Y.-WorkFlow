@@ -3642,6 +3642,7 @@ dependencies = [
  "chrono",
  "dashmap",
  "futures-util",
+ "hmac 0.12.1",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",

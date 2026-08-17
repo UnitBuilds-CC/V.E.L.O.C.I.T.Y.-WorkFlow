@@ -12,6 +12,7 @@
 //! # Example
 //!
 //! ```rust
+//! use velocity_server_bootstrap::rate_limit::RateLimiter;
 //! let limiter = RateLimiter::new(100, 10.0); // 100 burst, 10/sec sustained
 //! assert!(limiter.check("192.168.1.1"));
 //! ```

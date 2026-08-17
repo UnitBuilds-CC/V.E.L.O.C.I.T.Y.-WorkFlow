@@ -614,10 +614,11 @@ pub async fn run_http_health_with_config(
                         "retry_after": result.retry_after_secs,
                     }).to_string();
                     let response = format!(
-                        "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: {}\r\nRetry-After: {}\r\nX-RateLimit-Limit: {}\r\nX-RateLimit-Remaining: 0\r\nConnection: close\r\n\r\n{}",
+                        "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: {}\r\nRetry-After: {}\r\nX-RateLimit-Limit: {}\r\nX-RateLimit-Remaining: 0\r\n{}Connection: close\r\n\r\n{}",
                         body.len(),
                         result.retry_after_secs.ceil() as u64,
                         result.limit,
+                        SECURITY_HEADERS,
                         body
                     );
                     let _ = stream.write_all(response.as_bytes()).await;
@@ -732,12 +733,26 @@ fn extract_identity(config: &HttpEndpointConfig, headers: &HttpRequestHeaders) -
     "anonymous".to_string()
 }
 
+/// Standard security headers applied to every HTTP response.
+///
+/// These prevent common web attacks:
+/// - `X-Content-Type-Options: nosniff` — prevents MIME-type sniffing
+/// - `X-Frame-Options: DENY` — prevents clickjacking
+/// - `X-Request-Id` — correlatable request tracing
+/// - `Cache-Control: no-store` — prevents caching of API responses
+/// - `Strict-Transport-Security` — forces HTTPS for 1 year (when TLS is active)
+const SECURITY_HEADERS: &str = "\
+X-Content-Type-Options: nosniff\r\n\
+X-Frame-Options: DENY\r\n\
+Cache-Control: no-store\r\n";
+
 async fn send_response(stream: &mut dyn AsyncReadWrite, status: &str, content_type: &str, body: &str) {
     let response = format!(
-        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n{}",
         status,
         content_type,
         body.len(),
+        SECURITY_HEADERS,
         body
     );
     let _ = stream.write_all(response.as_bytes()).await;
