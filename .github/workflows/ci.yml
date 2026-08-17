@@ -82,6 +82,9 @@ jobs:
       - name: Run Auth E2E tests
         run: cargo test --release -p velocity-workflow-engine --test auth_e2e_tests
 
+      - name: Run chaos/failure injection tests
+        run: cargo test --release -p velocity-server-bootstrap --test chaos_tests
+
       - name: Run Queue Processor tests
         run: cargo test --release -p velocity-workflow-engine --test queue_processor_tests
 
