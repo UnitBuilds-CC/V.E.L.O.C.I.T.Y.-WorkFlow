@@ -41,10 +41,35 @@ test_err.txt
 # Canvas status files
 *.canvas.status.json
 
+# Canvas reports in root (canvases live in .qoder/projects/.../canvases/)
+/*.canvas.tsx
+
 # Benchmark result files (too large for GitHub)
 bench_results.csv
 bench_results.json
 sustained_front*.json
+/bench_*.json
+/velocity_*.json
+/restate_*.json
+/same_machine_comparison.json
+/symmetric_comparison.json
+/test.json
+/test_classic.json
+/bench_trend.jsonl
+
+# Ad-hoc scripts (proper ones live in bench-suite/ cloud-bench/ deploy/)
+/_*.ps1
+/check_*.ps1
+/compare_bench.ps1
+
+# Release artifacts
+release-artifacts/
+
+# Temp files
+/check_b31.txt
+/register.json
+/velocity-bench-bin
+/-p/
 
 # Python
 __pycache__/
