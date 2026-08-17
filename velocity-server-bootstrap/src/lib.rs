@@ -9,6 +9,16 @@
 //!
 //! Each server binary becomes ~30 lines: define CLI, create flavor-specific router,
 //! call bootstrap functions.
+//!
+//! # Production Hardening
+//!
+//! - [`auth`] — API key and JWT authentication
+//! - [`rate_limit`] — Token bucket rate limiter
+//! - [`audit`] — Structured audit logging
+
+pub mod auth;
+pub mod rate_limit;
+pub mod audit;
 
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -21,6 +31,10 @@ use velocity_nmcp_protocol::{NmcpDispatch, NmcpShmemServer, NmcpWebSocketServer}
 use velocity_workflow_engine::engine::{WorkflowEngine, WorkflowStatus};
 use velocity_workflow_engine::db_adapter::DatabaseConfig;
 use velocity_workflow_engine::LivePostgresAdapter;
+
+use auth::{AuthConfig, AuthResult, HttpRequestHeaders};
+use rate_limit::RateLimiter;
+use audit::AuditLogger;
 
 /// Combined AsyncRead + AsyncWrite trait for use in trait objects.
 trait AsyncReadWrite: AsyncRead + AsyncWrite + Unpin + Send {}
@@ -59,6 +73,75 @@ pub fn load_tls_config(cert_path: &str, key_path: &str) -> Result<tokio_rustls::
         .with_single_cert(certs, key)
         .map_err(|e| format!("Failed to build TLS config: {}", e))?;
 
+    Ok(tokio_rustls::TlsAcceptor::from(Arc::new(config)))
+}
+
+/// Load mTLS configuration — requires client certificates signed by the given CA.
+///
+/// - `cert_path`: Server certificate PEM
+/// - `key_path`: Server private key PEM
+/// - `ca_cert_path`: CA certificate PEM for verifying client certificates
+///
+/// When mTLS is enabled, clients MUST present a valid certificate signed by the CA.
+pub fn load_mtls_config(
+    cert_path: &str,
+    key_path: &str,
+    ca_cert_path: &str,
+) -> Result<tokio_rustls::TlsAcceptor, String> {
+    if cert_path.is_empty() || key_path.is_empty() || ca_cert_path.is_empty() {
+        return Err("mTLS requires cert, key, and CA cert paths".into());
+    }
+
+    // Load server cert and key
+    let cert_file = std::fs::File::open(cert_path)
+        .map_err(|e| format!("Failed to open TLS cert file '{}': {}", cert_path, e))?;
+    let key_file = std::fs::File::open(key_path)
+        .map_err(|e| format!("Failed to open TLS key file '{}': {}", key_path, e))?;
+
+    let mut cert_reader = std::io::BufReader::new(cert_file);
+    let certs: Vec<_> = rustls_pemfile::certs(&mut cert_reader)
+        .filter_map(|c| c.ok())
+        .collect();
+
+    if certs.is_empty() {
+        return Err(format!("No valid certificates found in '{}'", cert_path));
+    }
+
+    let mut key_reader = std::io::BufReader::new(key_file);
+    let key = rustls_pemfile::private_key(&mut key_reader)
+        .map_err(|e| format!("Failed to parse TLS private key: {}", e))?
+        .ok_or_else(|| format!("No private key found in '{}'", key_path))?;
+
+    // Load CA cert for client verification
+    let ca_file = std::fs::File::open(ca_cert_path)
+        .map_err(|e| format!("Failed to open CA cert file '{}': {}", ca_cert_path, e))?;
+    let mut ca_reader = std::io::BufReader::new(ca_file);
+    let ca_certs: Vec<_> = rustls_pemfile::certs(&mut ca_reader)
+        .filter_map(|c| c.ok())
+        .collect();
+
+    if ca_certs.is_empty() {
+        return Err(format!("No valid CA certificates found in '{}'", ca_cert_path));
+    }
+
+    // Build root cert store from CA
+    let mut root_store = tokio_rustls::rustls::RootCertStore::empty();
+    for ca_cert in ca_certs {
+        root_store.add(ca_cert)
+            .map_err(|e| format!("Failed to add CA cert to root store: {}", e))?;
+    }
+
+    // Require client certificates
+    let client_verifier = tokio_rustls::rustls::server::WebPkiClientVerifier::builder(Arc::new(root_store))
+        .build()
+        .map_err(|e| format!("Failed to build client verifier: {}", e))?;
+
+    let config = tokio_rustls::rustls::ServerConfig::builder()
+        .with_client_cert_verifier(client_verifier)
+        .with_single_cert(certs, key)
+        .map_err(|e| format!("Failed to build mTLS config: {}", e))?;
+
+    tracing::info!("mTLS enabled — client certificates required");
     Ok(tokio_rustls::TlsAcceptor::from(Arc::new(config)))
 }
 
@@ -390,19 +473,53 @@ impl ServerMetrics {
     }
 }
 
+/// Configuration for the HTTP health/metrics endpoint.
+///
+/// Encapsulates all optional production hardening features:
+/// - API authentication
+/// - Rate limiting
+/// - Audit logging
+pub struct HttpEndpointConfig {
+    /// Bearer token for /metrics endpoint (legacy, use auth_config instead).
+    pub metrics_token: Option<String>,
+    /// API authentication configuration.
+    pub auth_config: Option<AuthConfig>,
+    /// Rate limiter (shared across all endpoints).
+    pub rate_limiter: Option<Arc<RateLimiter>>,
+    /// Audit logger.
+    pub audit_logger: Option<Arc<AuditLogger>>,
+    /// TLS acceptor for HTTPS.
+    pub tls_acceptor: Option<tokio_rustls::TlsAcceptor>,
+}
+
+impl HttpEndpointConfig {
+    /// Create a minimal config (no auth, no rate limiting, no audit).
+    pub fn simple(metrics_token: Option<String>, tls_acceptor: Option<tokio_rustls::TlsAcceptor>) -> Self {
+        Self {
+            metrics_token,
+            auth_config: None,
+            rate_limiter: None,
+            audit_logger: None,
+            tls_acceptor,
+        }
+    }
+}
+
 /// Run a lightweight HTTP health/metrics endpoint.
 ///
 /// Supports:
 /// - `GET /health` → `{"status":"ok","engine":"<flavor>"}` (no auth required)
-/// - `GET /metrics` → Prometheus text format (bearer token auth if `metrics_token` is set)
+/// - `GET /metrics` → Prometheus text format (bearer token auth if configured)
 /// - `GET /ready`  → `{"status":"ready"}` (no auth, for K8s readiness probe)
 /// - All other paths → 404
 ///
-/// The `metrics_token` parameter enables bearer token auth on `/metrics`.
-/// If `None`, `/metrics` is open (development mode).
+/// Production hardening features (when configured via `HttpEndpointConfig`):
+/// - API key / JWT authentication on `/metrics`
+/// - Per-client rate limiting on all endpoints
+/// - Structured audit logging for auth events
 ///
-/// The `tls_acceptor` parameter enables TLS on the health endpoint.
-/// If `Some`, connections are wrapped with TLS before HTTP parsing.
+/// The legacy `metrics_token` parameter enables bearer token auth on `/metrics`.
+/// If `None` and no `auth_config` is set, `/metrics` is open (development mode).
 ///
 /// This is a minimal HTTP server using raw TCP — no axum/hyper dependency.
 pub async fn run_http_health(
@@ -412,27 +529,59 @@ pub async fn run_http_health(
     metrics_token: Option<String>,
     tls_acceptor: Option<tokio_rustls::TlsAcceptor>,
 ) -> Result<(), String> {
+    let config = HttpEndpointConfig {
+        metrics_token,
+        auth_config: None,
+        rate_limiter: None,
+        audit_logger: None,
+        tls_acceptor,
+    };
+    run_http_health_with_config(bind_addr, flavor_name, metrics, config).await
+}
+
+/// Run the HTTP health/metrics endpoint with full production hardening config.
+pub async fn run_http_health_with_config(
+    bind_addr: String,
+    flavor_name: &'static str,
+    metrics: Arc<ServerMetrics>,
+    config: HttpEndpointConfig,
+) -> Result<(), String> {
     let listener = TcpListener::bind(&bind_addr)
         .await
         .map_err(|e| format!("Health HTTP bind failed: {}", e))?;
 
     if let Ok(addr) = listener.local_addr() {
-        let scheme = if tls_acceptor.is_some() { "https" } else { "http" };
+        let scheme = if config.tls_acceptor.is_some() { "https" } else { "http" };
         tracing::info!("Health HTTP: {}://{}/health", scheme, addr);
+        if config.auth_config.as_ref().map_or(false, |a| a.is_enabled()) {
+            tracing::info!("Health HTTP: API authentication enabled");
+        }
+        if config.rate_limiter.is_some() {
+            tracing::info!("Health HTTP: Rate limiting enabled");
+        }
+        if config.audit_logger.is_some() {
+            tracing::info!("Health HTTP: Audit logging enabled");
+        }
     }
 
     loop {
-        let (stream, _) = match listener.accept().await {
+        let (stream, peer_addr) = match listener.accept().await {
             Ok(s) => s,
             Err(_) => continue,
         };
 
         let metrics = metrics.clone();
-        let token = metrics_token.clone();
-        let tls = tls_acceptor.clone();
+        let endpoint_config = HttpEndpointConfig {
+            metrics_token: config.metrics_token.clone(),
+            auth_config: config.auth_config.clone(),
+            rate_limiter: config.rate_limiter.clone(),
+            audit_logger: config.audit_logger.clone(),
+            tls_acceptor: config.tls_acceptor.clone(),
+        };
+        let client_ip = peer_addr.ip().to_string();
         tokio::spawn(async move {
             // Optionally wrap with TLS
-            let mut stream: Box<dyn AsyncReadWrite> = if let Some(acceptor) = tls {
+            let mut stream: Box<dyn AsyncReadWrite> = if let Some(ref acceptor) = endpoint_config.tls_acceptor {
                 match acceptor.accept(stream).await {
                     Ok(tls_stream) => Box::new(tls_stream),
                     Err(_) => return,
@@ -441,7 +590,7 @@ pub async fn run_http_health(
                 Box::new(stream)
             };
 
-            let mut buf = [0u8; 2048];
+            let mut buf = [0u8; 4096];
             let n = match stream.read(&mut buf).await {
                 Ok(n) if n > 0 => n,
                 _ => return,
@@ -449,22 +598,42 @@ pub async fn run_http_health(
 
             let request = String::from_utf8_lossy(&buf[..n]);
             let first_line = request.lines().next().unwrap_or("");
+            let headers = HttpRequestHeaders::from_raw_request(&request);
 
-            // Extract Authorization header for bearer token check
-            let auth_header = request.lines()
-                .find(|l| l.to_lowercase().starts_with("authorization:"))
-                .and_then(|l| l.splitn(2, ':').nth(1))
-                .map(|v| v.trim().to_string());
+            // ── Rate limiting check ──────────────────────────────────────
+            if let Some(ref limiter) = endpoint_config.rate_limiter {
+                let result = limiter.check_detailed(&client_ip);
+                if !result.allowed {
+                    if let Some(ref audit) = endpoint_config.audit_logger {
+                        audit.rate_limited(&client_ip, Some(&client_ip));
+                    }
+                    let body = serde_json::json!({
+                        "error": "rate limit exceeded",
+                        "retry_after": result.retry_after_secs,
+                    }).to_string();
+                    let response = format!(
+                        "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: {}\r\nRetry-After: {}\r\nX-RateLimit-Limit: {}\r\nX-RateLimit-Remaining: 0\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        result.retry_after_secs.ceil() as u64,
+                        result.limit,
+                        body
+                    );
+                    let _ = stream.write_all(response.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                    return;
+                }
+            }
 
+            // ── Route handling ───────────────────────────────────────────
             let (status, content_type, body) = if first_line.starts_with("GET /ready") {
-                // Readiness probe — distinct response for K8s readiness
+                // Readiness probe — no auth required (K8s compatibility)
                 let body = serde_json::json!({
                     "status": "ready",
                     "engine": flavor_name,
                 });
                 ("200 OK", "application/json", body.to_string())
             } else if first_line.starts_with("GET /health") {
-                // Liveness probe — no auth required
+                // Liveness probe — no auth required (K8s compatibility)
                 let body = serde_json::json!({
                     "status": "ok",
                     "engine": flavor_name,
@@ -472,17 +641,37 @@ pub async fn run_http_health(
                 });
                 ("200 OK", "application/json", body.to_string())
             } else if first_line.starts_with("GET /metrics") {
-                // Metrics — require bearer token if configured
-                if let Some(ref expected) = token {
-                    let provided = auth_header.as_deref().unwrap_or("");
-                    let bearer = provided.strip_prefix("Bearer ").unwrap_or("");
-                    if bearer != expected {
-                        let body = serde_json::json!({"error": "unauthorized"}).to_string();
+                // Metrics — check authentication
+                let auth_result = check_metrics_auth(&endpoint_config, &headers, &client_ip);
+                match auth_result {
+                    AuthCheck::Allowed => {
+                        if let Some(ref audit) = endpoint_config.audit_logger {
+                            let identity = extract_identity(&endpoint_config, &headers);
+                            audit.auth_success(&identity, Some(&client_ip));
+                        }
+                        let body = metrics.render_prometheus();
+                        // Append rate limiter and audit metrics
+                        let extra = if let Some(ref limiter) = endpoint_config.rate_limiter {
+                            limiter.stats().render_prometheus()
+                        } else {
+                            String::new()
+                        };
+                        let audit_extra = if let Some(ref audit) = endpoint_config.audit_logger {
+                            audit.render_prometheus()
+                        } else {
+                            String::new()
+                        };
+                        let full_body = format!("{}{}{}", body, extra, audit_extra);
+                        ("200 OK", "text/plain; version=0.0.4", full_body)
+                    }
+                    AuthCheck::Denied(reason) => {
+                        if let Some(ref audit) = endpoint_config.audit_logger {
+                            audit.auth_failure(&reason, Some(&client_ip));
+                        }
+                        let body = serde_json::json!({"error": "unauthorized", "detail": reason}).to_string();
                         return send_response(&mut stream, "401 Unauthorized", "application/json", &body).await;
                     }
                 }
-                let body = metrics.render_prometheus();
-                ("200 OK", "text/plain; version=0.0.4", body)
             } else {
                 ("404 Not Found", "application/json", serde_json::json!({"error": "not found"}).to_string())
             };
@@ -490,6 +679,55 @@ pub async fn run_http_health(
             send_response(&mut stream, status, content_type, &body).await;
         });
     }
+}
+
+/// Result of metrics auth check.
+enum AuthCheck {
+    Allowed,
+    Denied(String),
+}
+
+/// Check authentication for the /metrics endpoint.
+fn check_metrics_auth(
+    config: &HttpEndpointConfig,
+    headers: &HttpRequestHeaders,
+    _client_ip: &str,
+) -> AuthCheck {
+    // If full auth config is available, use it
+    if let Some(ref auth_config) = config.auth_config {
+        if auth_config.is_enabled() {
+            match auth::authenticate_request(auth_config, headers) {
+                AuthResult::Allowed { .. } => return AuthCheck::Allowed,
+                AuthResult::Denied { reason } => return AuthCheck::Denied(reason),
+                AuthResult::NotRequired => {} // fall through to legacy check
+            }
+        }
+    }
+
+    // Legacy metrics_token check
+    if let Some(ref expected) = config.metrics_token {
+        let provided = headers.authorization.as_deref().unwrap_or("");
+        let bearer = provided.strip_prefix("Bearer ").unwrap_or("");
+        if bearer != expected {
+            return AuthCheck::Denied("invalid or missing bearer token".to_string());
+        }
+    }
+
+    AuthCheck::Allowed
+}
+
+/// Extract client identity from request headers (for audit logging).
+fn extract_identity(config: &HttpEndpointConfig, headers: &HttpRequestHeaders) -> String {
+    if let Some(ref auth_config) = config.auth_config {
+        match auth::authenticate_request(auth_config, headers) {
+            AuthResult::Allowed { identity, .. } => return identity,
+            _ => {}
+        }
+    }
+    if let Some(ref api_key) = headers.api_key {
+        return format!("api-key:{}...", &api_key[..api_key.len().min(8)]);
+    }
+    "anonymous".to_string()
 }
 
 async fn send_response(stream: &mut dyn AsyncReadWrite, status: &str, content_type: &str, body: &str) {
