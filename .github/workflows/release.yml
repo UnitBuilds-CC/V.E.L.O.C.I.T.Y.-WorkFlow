@@ -196,7 +196,7 @@ jobs:
     name: Publish TypeScript SDK to npm
     runs-on: ubuntu-latest
     needs: [version, build-binaries]
-    if: needs.version.outputs.is_release == 'true' && secrets.NPM_TOKEN != ''
+    if: needs.version.outputs.is_release == 'true'
     steps:
       - uses: actions/checkout@v5
 
@@ -223,7 +223,7 @@ jobs:
     name: Publish Python SDK to PyPI
     runs-on: ubuntu-latest
     needs: [version, build-binaries]
-    if: needs.version.outputs.is_release == 'true' && secrets.PYPI_TOKEN != ''
+    if: needs.version.outputs.is_release == 'true'
     steps:
       - uses: actions/checkout@v5
 
@@ -250,7 +250,7 @@ jobs:
     name: Publish Java SDK to Maven Central
     runs-on: ubuntu-latest
     needs: [version, build-binaries]
-    if: needs.version.outputs.is_release == 'true' && secrets.OSSRH_USERNAME != ''
+    if: needs.version.outputs.is_release == 'true'
     steps:
       - uses: actions/checkout@v5
 
@@ -293,7 +293,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: [version, build]
-    if: (needs.version.outputs.is_release == 'true' || github.event.inputs.environment == 'staging') && secrets.KUBE_CONFIG_STAGING != ''
+    if: needs.version.outputs.is_release == 'true' || github.event.inputs.environment == 'staging'
     environment:
       name: staging
       url: https://staging.velocity.io
@@ -330,7 +330,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [version, build, deploy-staging]
-    if: needs.version.outputs.is_release == 'true' && startsWith(github.ref, 'refs/tags/v') && secrets.KUBE_CONFIG_PRODUCTION != ''
+    if: needs.version.outputs.is_release == 'true' && startsWith(github.ref, 'refs/tags/v')
     environment:
       name: production
       url: https://velocity.io
