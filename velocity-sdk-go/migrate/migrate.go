@@ -33,25 +33,25 @@ var TemporalPatterns = []*MigrationPattern{
 	{
 		Name:           "temporal-import-workflow",
 		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/workflow"`),
-		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`,
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go"`,
 		SourceFramework: "temporal",
 	},
 	{
 		Name:           "temporal-import-activity",
 		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/activity"`),
-		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`,
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go"`,
 		SourceFramework: "temporal",
 	},
 	{
 		Name:           "temporal-import-client",
 		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/client"`),
-		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`,
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go"`,
 		SourceFramework: "temporal",
 	},
 	{
 		Name:           "temporal-import-worker",
 		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/worker"`),
-		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`,
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go"`,
 		SourceFramework: "temporal",
 	},
 	// Function signature replacements
@@ -328,13 +328,68 @@ var TemporalPatterns = []*MigrationPattern{
 	{
 		Name:           "temporal-import-temporal-package",
 		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/temporal"`),
-		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`,
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go"`,
 		SourceFramework: "temporal",
 	},
 	{
 		Name:           "temporal-import-nexus-package",
 		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/temporalnexus"`),
-		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/relay"`,
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go/relay"`,
+		SourceFramework: "temporal",
+	},
+	// ─── Qualified Type Reference Conversions ──────────────────────────────────
+	{
+		Name:           "temporal-workflow-context-type",
+		SourcePattern:  regexp.MustCompile(`\bworkflow\.Context\b`),
+		TargetTemplate: `velocity.Context`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-activity-context-type",
+		SourcePattern:  regexp.MustCompile(`\bactivity\.Context\b`),
+		TargetTemplate: `velocity.ActivityContext`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-client-type",
+		SourcePattern:  regexp.MustCompile(`\bclient\.Client\b`),
+		TargetTemplate: `velocity.Client`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-client-start-options",
+		SourcePattern:  regexp.MustCompile(`\bclient\.StartWorkflowOptions\b`),
+		TargetTemplate: `velocity.StartWorkflowOptions`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-future-type",
+		SourcePattern:  regexp.MustCompile(`\bworkflow\.Future\b`),
+		TargetTemplate: `velocity.Future`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-workflow-info-type",
+		SourcePattern:  regexp.MustCompile(`\bworkflow\.Info\b`),
+		TargetTemplate: `velocity.WorkflowInfo`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-temporalnexus-ref",
+		SourcePattern:  regexp.MustCompile(`\btemporalnexus\.`),
+		TargetTemplate: `relay.`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-workflow-package-ref",
+		SourcePattern:  regexp.MustCompile(`\bworkflow\.(ExecuteActivity|GetSignalChannel|SetQueryHandler|SetUpdateHandler|NewTimer|Sleep|SideEffect|GetInfo|GetLogger|WithCancel|SignalExternalWorkflow|GetVersion|UpsertSearchAttributes|UpsertMemo|ContinueAsNew|ExecuteChildWorkflow|NewChildWorkflowStub|NewActivityStub|NewRandom)`),
+		TargetTemplate: `velocity.$1`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-activity-package-ref",
+		SourcePattern:  regexp.MustCompile(`\bactivity\.(GetInfo|Heartbeat|RecordHeartbeat)`),
+		TargetTemplate: `velocity.$1`,
 		SourceFramework: "temporal",
 	},
 }
@@ -345,7 +400,7 @@ var RestatePatterns = []*MigrationPattern{
 	{
 		Name:           "restate-import",
 		SourcePattern:  regexp.MustCompile(`"github\.com/restatedev/sdk-go"`),
-		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`,
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go"`,
 		SourceFramework: "restate",
 	},
 	{
@@ -400,7 +455,7 @@ var DBOSPatterns = []*MigrationPattern{
 	{
 		Name:           "dbos-import",
 		SourcePattern:  regexp.MustCompile(`"github\.com/dbos-inc/dbos-go"`),
-		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`,
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go"`,
 		SourceFramework: "dbos",
 	},
 	{
@@ -464,7 +519,7 @@ var AllPatterns = append(append(TemporalPatterns, RestatePatterns...), DBOSPatte
 var InterFlavorPatternSets = map[string][]*MigrationPattern{
 	// ── Server → Binary ──────────────────────────────────────────────────────
 	"server→binary": {
-		{Name: "server-to-binary-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/binary"`, SourceFramework: "server"},
+		{Name: "server-to-binary-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/sdk-go"`), TargetTemplate: `"github.com/velocity-workflow/sdk-go/binary"`, SourceFramework: "server"},
 		{Name: "server-to-binary-execute-activity", SourcePattern: regexp.MustCompile(`ctx\.ExecuteActivity\(`), TargetTemplate: `ctx.Call(`, SourceFramework: "server"},
 		{Name: "server-to-binary-child-workflow", SourcePattern: regexp.MustCompile(`ctx\.ExecuteChildWorkflow\(`), TargetTemplate: `ctx.Call(`, SourceFramework: "server"},
 		{Name: "server-to-binary-get-signal", SourcePattern: regexp.MustCompile(`ctx\.GetSignalChannel\(`), TargetTemplate: `ctx.Promise(`, SourceFramework: "server"},
@@ -479,7 +534,7 @@ var InterFlavorPatternSets = map[string][]*MigrationPattern{
 	},
 	// ── Server → Embedded ────────────────────────────────────────────────────
 	"server→embedded": {
-		{Name: "server-to-embedded-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/embedded"`, SourceFramework: "server"},
+		{Name: "server-to-embedded-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/sdk-go"`), TargetTemplate: `"github.com/velocity-workflow/sdk-go/embedded"`, SourceFramework: "server"},
 		{Name: "server-to-embedded-execute-activity", SourcePattern: regexp.MustCompile(`ctx\.ExecuteActivity\(`), TargetTemplate: `ctx.Invoke(`, SourceFramework: "server"},
 		{Name: "server-to-embedded-child-workflow", SourcePattern: regexp.MustCompile(`ctx\.ExecuteChildWorkflow\(`), TargetTemplate: `ctx.StartChildWorkflow(`, SourceFramework: "server"},
 		{Name: "server-to-embedded-get-signal", SourcePattern: regexp.MustCompile(`ctx\.GetSignalChannel\(`), TargetTemplate: `ctx.AwaitSignal(`, SourceFramework: "server"},
@@ -491,7 +546,7 @@ var InterFlavorPatternSets = map[string][]*MigrationPattern{
 	},
 	// ── Binary → Server ──────────────────────────────────────────────────────
 	"binary→server": {
-		{Name: "binary-to-server-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go/binary"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`, SourceFramework: "binary"},
+		{Name: "binary-to-server-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/sdk-go/binary"`), TargetTemplate: `"github.com/velocity-workflow/sdk-go"`, SourceFramework: "binary"},
 		{Name: "binary-to-server-call", SourcePattern: regexp.MustCompile(`ctx\.Call\(`), TargetTemplate: `ctx.ExecuteActivity(`, SourceFramework: "binary"},
 		{Name: "binary-to-server-promise", SourcePattern: regexp.MustCompile(`ctx\.Promise\(`), TargetTemplate: `ctx.GetSignalChannel(`, SourceFramework: "binary"},
 		{Name: "binary-to-server-await", SourcePattern: regexp.MustCompile(`ctx\.Await\(`), TargetTemplate: `ctx.WaitForSignal(`, SourceFramework: "binary"},
@@ -504,7 +559,7 @@ var InterFlavorPatternSets = map[string][]*MigrationPattern{
 	},
 	// ── Binary → Embedded ────────────────────────────────────────────────────
 	"binary→embedded": {
-		{Name: "binary-to-embedded-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go/binary"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/embedded"`, SourceFramework: "binary"},
+		{Name: "binary-to-embedded-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/sdk-go/binary"`), TargetTemplate: `"github.com/velocity-workflow/sdk-go/embedded"`, SourceFramework: "binary"},
 		{Name: "binary-to-embedded-call", SourcePattern: regexp.MustCompile(`ctx\.Call\(`), TargetTemplate: `ctx.Invoke(`, SourceFramework: "binary"},
 		{Name: "binary-to-embedded-promise", SourcePattern: regexp.MustCompile(`ctx\.Promise\(`), TargetTemplate: `ctx.AwaitSignal(`, SourceFramework: "binary"},
 		{Name: "binary-to-embedded-set", SourcePattern: regexp.MustCompile(`ctx\.Set\(`), TargetTemplate: `ctx.SetState(`, SourceFramework: "binary"},
@@ -515,7 +570,7 @@ var InterFlavorPatternSets = map[string][]*MigrationPattern{
 	},
 	// ── Embedded → Server ────────────────────────────────────────────────────
 	"embedded→server": {
-		{Name: "embedded-to-server-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go/embedded"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`, SourceFramework: "embedded"},
+		{Name: "embedded-to-server-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/sdk-go/embedded"`), TargetTemplate: `"github.com/velocity-workflow/sdk-go"`, SourceFramework: "embedded"},
 		{Name: "embedded-to-server-invoke", SourcePattern: regexp.MustCompile(`ctx\.Invoke\(`), TargetTemplate: `ctx.ExecuteActivity(`, SourceFramework: "embedded"},
 		{Name: "embedded-to-server-child-wf", SourcePattern: regexp.MustCompile(`ctx\.StartChildWorkflow\(`), TargetTemplate: `ctx.ExecuteChildWorkflow(`, SourceFramework: "embedded"},
 		{Name: "embedded-to-server-await-signal", SourcePattern: regexp.MustCompile(`ctx\.AwaitSignal\(`), TargetTemplate: `ctx.GetSignalChannel(`, SourceFramework: "embedded"},
@@ -524,7 +579,7 @@ var InterFlavorPatternSets = map[string][]*MigrationPattern{
 	},
 	// ── Embedded → Binary ────────────────────────────────────────────────────
 	"embedded→binary": {
-		{Name: "embedded-to-binary-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go/embedded"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/binary"`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/sdk-go/embedded"`), TargetTemplate: `"github.com/velocity-workflow/sdk-go/binary"`, SourceFramework: "embedded"},
 		{Name: "embedded-to-binary-invoke", SourcePattern: regexp.MustCompile(`ctx\.Invoke\(`), TargetTemplate: `ctx.Call(`, SourceFramework: "embedded"},
 		{Name: "embedded-to-binary-child-wf", SourcePattern: regexp.MustCompile(`ctx\.StartChildWorkflow\(`), TargetTemplate: `ctx.Call(`, SourceFramework: "embedded"},
 		{Name: "embedded-to-binary-await-signal", SourcePattern: regexp.MustCompile(`ctx\.AwaitSignal\(`), TargetTemplate: `ctx.Promise(`, SourceFramework: "embedded"},
@@ -578,16 +633,16 @@ func DetectFramework(content string) DetectResult {
 		{regexp.MustCompile(`dbos\.Enqueue`), "dbos", 1, "dbos.Enqueue"},
 		{regexp.MustCompile(`dbos\.HTTPHandler`), "dbos", 1, "dbos.HTTPHandler"},
 		// Velocity Server patterns
-		{regexp.MustCompile(`velocity-workflow/velocity-sdk-go"`), "server", 3, "Velocity Server SDK import"},
+		{regexp.MustCompile(`velocity-workflow/sdk-go"`), "server", 3, "Velocity Server SDK import"},
 		{regexp.MustCompile(`ctx\.ExecuteActivity\(`), "server", 1, "ctx.ExecuteActivity()"},
 		{regexp.MustCompile(`ctx\.GetSignalChannel\(`), "server", 1, "ctx.GetSignalChannel()"},
 		{regexp.MustCompile(`ctx\.WaitForSignal\(`), "server", 1, "ctx.WaitForSignal()"},
 		// Velocity Binary patterns
-		{regexp.MustCompile(`velocity-sdk-go/binary`), "binary", 3, "Velocity Binary SDK import"},
+		{regexp.MustCompile(`sdk-go/binary`), "binary", 3, "Velocity Binary SDK import"},
 		{regexp.MustCompile(`ctx\.NewServiceClient\(`), "binary", 1, "ctx.NewServiceClient()"},
 		{regexp.MustCompile(`ctx\.Send\(`), "binary", 1, "ctx.Send()"},
 		// Velocity Embedded patterns
-		{regexp.MustCompile(`velocity-sdk-go/embedded`), "embedded", 3, "Velocity Embedded SDK import"},
+		{regexp.MustCompile(`sdk-go/embedded`), "embedded", 3, "Velocity Embedded SDK import"},
 		{regexp.MustCompile(`ctx\.Invoke\(`), "embedded", 1, "ctx.Invoke()"},
 		{regexp.MustCompile(`ctx\.AwaitSignal\(`), "embedded", 1, "ctx.AwaitSignal()"},
 	}
@@ -707,9 +762,47 @@ func MigrateFile(content string, sourceFramework string, targetFlavor ...string)
 			migrated = newText
 		}
 	}
-	result.Transformations = count
 
+	// Deduplicate import lines (multiple source imports may map to same target)
+	migrated = deduplicateImports(migrated)
+
+	result.Transformations = count
 	return migrated, result
+}
+
+// deduplicateImports removes duplicate import lines within import blocks.
+func deduplicateImports(content string) string {
+	// Match import blocks
+	importBlockRe := regexp.MustCompile(`(?s)import\s*\((.*?)\)`)
+	return importBlockRe.ReplaceAllStringFunc(content, func(block string) string {
+		innerRe := regexp.MustCompile(`(?s)import\s*\((.*?)\)`)
+		m := innerRe.FindStringSubmatch(block)
+		if m == nil {
+			return block
+		}
+		lines := strings.Split(m[1], "\n")
+		seen := map[string]bool{}
+		var deduped []string
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || trimmed == "//" {
+				// preserve blank lines between groups
+				if len(deduped) > 0 && deduped[len(deduped)-1] != "" {
+					deduped = append(deduped, "")
+				}
+				continue
+			}
+			if !seen[trimmed] {
+				seen[trimmed] = true
+				deduped = append(deduped, line)
+			}
+		}
+		// Remove trailing blank line
+		for len(deduped) > 0 && strings.TrimSpace(deduped[len(deduped)-1]) == "" {
+			deduped = deduped[:len(deduped)-1]
+		}
+		return "import (\n" + strings.Join(deduped, "\n") + "\n)"
+	})
 }
 
 // ─── Project Scanner ─────────────────────────────────────────────────────────
@@ -744,8 +837,8 @@ func HasWorkflowContent(content string) bool {
 		"workflow.Context", "activity.Context",
 		"ExecuteActivity", "workflow.Sleep",
 		"restate.Context", "dbos.WorkflowContext",
-		"velocity-workflow/velocity-sdk-go", "velocity-sdk-go/binary",
-		"velocity-sdk-go/embedded", "ctx.Invoke(", "ctx.Call(",
+		"velocity-workflow/sdk-go", "sdk-go/binary",
+		"sdk-go/embedded", "ctx.Invoke(", "ctx.Call(",
 	}
 	for _, ind := range indicators {
 		if strings.Contains(content, ind) {

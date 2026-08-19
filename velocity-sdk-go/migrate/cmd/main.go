@@ -3,8 +3,8 @@
 //
 // Usage:
 //
-//	go run velocity-sdk-go/migrate/cmd/main.go --src ./my_project --from temporal
-//	go run velocity-sdk-go/migrate/cmd/main.go --detect ./my_project
+//	go run github.com/velocity-workflow/sdk-go/migrate/cmd --src ./my_project --from temporal
+//	go run github.com/velocity-workflow/sdk-go/migrate/cmd --detect ./my_project
 package main
 
 import (
@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/velocity-workflow/velocity-sdk-go/migrate"
+	"github.com/velocity-workflow/sdk-go/migrate"
 )
 
 func main() {
