@@ -1,1 +1,1 @@
-fix: shift ITY letters 1 cell right in middle rows of VELOCITY banner
+fix: correct ITY letter alignment in VELOCITY banner (shift left 1 cell)

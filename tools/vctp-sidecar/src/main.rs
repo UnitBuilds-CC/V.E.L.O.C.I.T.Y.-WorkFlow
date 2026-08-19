@@ -355,11 +355,11 @@ async fn main() {
     );
 
     println!(" #     #   #######   #          #####     ######   #######   #######   #     #");
-    println!(" #     #   #         #         #     #   #            #          #       #     #");
-    println!("  #   #    #         #         #     #   #            #          #        #   #");
-    println!("  #   #    #####     #         #     #   #            #          #         # #");
-    println!("   # #     #         #         #     #   #            #          #          #");
-    println!("   # #     #         #         #     #   #            #          #          #");
+    println!(" #     #   #         #         #     #   #            #         #      #     #");
+    println!("  #   #    #         #         #     #   #            #         #       #   #");
+    println!("  #   #    #####     #         #     #   #            #         #        # #");
+    println!("   # #     #         #         #     #   #            #         #         #");
+    println!("   # #     #         #         #     #   #            #         #         #");
     println!("    #      #######   #######    #####     ######   #######      #         #");
     println!("  VCTP Sidecar Proxy v{}", env!("CARGO_PKG_VERSION"));
     println!("  External: {}", cli.external_bind);
