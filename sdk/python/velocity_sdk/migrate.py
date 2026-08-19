@@ -285,20 +285,149 @@ TEMPORAL_PATTERNS: list[MigrationPattern] = [
     # ─── Error Handling Patterns ─────────────────────────────────────────────
     MigrationPattern(
         name='temporal-new-application-error',
-        source_pattern=re.compile(r'workflow\.ApplicationError\s*\('),
-        target_template='velocity.ApplicationError(',
+        source_pattern=re.compile(r'exceptions\.ApplicationError\s*\('),
+        target_template='ApplicationError(',
         source_framework='temporal',
     ),
     MigrationPattern(
         name='temporal-canceled-error',
-        source_pattern=re.compile(r'workflow\.CanceledError'),
-        target_template='velocity.CanceledError',
+        source_pattern=re.compile(r'exceptions\.CanceledError'),
+        target_template='CanceledError',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-nexus-operation-error',
+        source_pattern=re.compile(r'exceptions\.NexusOperationError'),
+        target_template='NexusOperationError',
         source_framework='temporal',
     ),
     MigrationPattern(
         name='temporal-import-temporal-package',
         source_pattern=re.compile(r'from\s+temporalio\.nexus\s+import'),
         target_template='from velocity_sdk.relay import',
+        source_framework='temporal',
+    ),
+    # ─── Import Patterns (comprehensive) ────────────────────────────────────
+    MigrationPattern(
+        name='temporal-import-exceptions-workflow',
+        source_pattern=re.compile(r'from\s+temporalio\s+import\s+exceptions\s*,\s*workflow'),
+        target_template='from velocity_sdk import exceptions, workflow\nfrom velocity_sdk.exceptions import ApplicationError, NexusOperationError',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-workflow-handles',
+        source_pattern=re.compile(r'from\s+temporalio\.workflow\s+import\s+ActivityHandle\s*,\s*ChildWorkflowHandle'),
+        target_template='from velocity_sdk.workflow import ActivityHandle, ChildWorkflowHandle',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-api-common',
+        source_pattern=re.compile(r'from\s+temporalio\.api\.'),
+        target_template='from velocity_sdk.api.',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-exceptions-submodule',
+        source_pattern=re.compile(r'from\s+temporalio\.exceptions\s+import'),
+        target_template='from velocity_sdk.exceptions import',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-common',
+        source_pattern=re.compile(r'from\s+temporalio\.common\s+import'),
+        target_template='from velocity_sdk.common import',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-converter',
+        source_pattern=re.compile(r'import\s+temporalio\.converter'),
+        target_template='import velocity_sdk.converter as workflow',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-bare-import-workflow',
+        source_pattern=re.compile(r'^import\s+temporalio\.workflow\s*$', re.MULTILINE),
+        target_template='import velocity_sdk.workflow',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-bare-import-activity',
+        source_pattern=re.compile(r'^import\s+temporalio\.activity\s*$', re.MULTILINE),
+        target_template='import velocity_sdk.activity',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-bare-import-client',
+        source_pattern=re.compile(r'^import\s+temporalio\.client\s*$', re.MULTILINE),
+        target_template='import velocity_sdk.client',
+        source_framework='temporal',
+    ),
+    # ─── Qualified Reference Conversions (code body) ────────────────────────
+    MigrationPattern(
+        name='temporal-qualified-workflow-ref',
+        source_pattern=re.compile(r'temporalio\.workflow\.'),
+        target_template='workflow.',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-qualified-converter-ref',
+        source_pattern=re.compile(r'temporalio\.converter\.'),
+        target_template='workflow.',
+        source_framework='temporal',
+    ),
+    # ─── Missing API Patterns ───────────────────────────────────────────────
+    MigrationPattern(
+        name='temporal-start-local-activity-kw',
+        source_pattern=re.compile(r'workflow\.start_local_activity\s*\('),
+        target_template='workflow.start_local_activity(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-start-activity-kw',
+        source_pattern=re.compile(r'workflow\.start_activity\s*\('),
+        target_template='workflow.execute_activity(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-create-nexus-client',
+        source_pattern=re.compile(r'workflow\.create_nexus_client\s*\('),
+        target_template='workflow.create_relay_client(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-get-external-workflow-handle',
+        source_pattern=re.compile(r'workflow\.get_external_workflow_handle\s*\('),
+        target_template='workflow.get_external_handle(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-deprecate-patch',
+        source_pattern=re.compile(r'workflow\.deprecate_patch\s*\('),
+        target_template='workflow.deprecate_patch(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-patched',
+        source_pattern=re.compile(r'workflow\.patched\s*\('),
+        target_template='workflow.patched(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-upsert-search-attrs-no-await',
+        source_pattern=re.compile(r'(?<!await\s)workflow\.upsert_search_attributes\s*\('),
+        target_template='workflow.upsert_search_attributes(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-wait-condition',
+        source_pattern=re.compile(r'workflow\.wait_condition\s*\('),
+        target_template='workflow.wait_condition(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-wait',
+        source_pattern=re.compile(r'workflow\.wait\s*\('),
+        target_template='workflow.wait(',
         source_framework='temporal',
     ),
 ]

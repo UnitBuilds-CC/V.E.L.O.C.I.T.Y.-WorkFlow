@@ -144,6 +144,113 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       }
     },
   },
+  // ── Temporal → Velocity: scheduleActivity → executeActivity ──
+  {
+    pattern: /\bscheduleActivity\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'executeActivity(';
+        case 'binary': return 'ctx.call(';
+        case 'embedded': return 'ctx.invoke(';
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: scheduleLocalActivity → executeLocalActivity ──
+  {
+    pattern: /\bscheduleLocalActivity\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'executeLocalActivity(';
+        case 'binary': return 'ctx.call(';
+        case 'embedded': return 'ctx.invoke(';
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: startChild → startChildWorkflow ──
+  {
+    pattern: /\bstartChild\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'startChildWorkflow(';
+        case 'binary': return 'ctx.startChildWorkflow(';
+        case 'embedded': return 'ctx.startChildWorkflow(';
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: continueAsNew ──
+  {
+    pattern: /\bcontinueAsNew\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'continueAsNew(';
+        case 'binary': return 'ctx.continueAsNew(';
+        case 'embedded': return 'ctx.continueAsNew(';
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: upsertSearchAttributes ──
+  {
+    pattern: /\bupsertSearchAttributes\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'upsertSearchAttributes(';
+        case 'binary': return 'ctx.upsertSearchAttributes(';
+        case 'embedded': return 'ctx.upsertSearchAttributes(';
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: deprecatePatch / patched ──
+  {
+    pattern: /\bdeprecatePatch\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'deprecatePatch(';
+        case 'binary': return 'ctx.deprecatePatch(';
+        case 'embedded': return 'ctx.deprecatePatch(';
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /\bpatched\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'patched(';
+        case 'binary': return 'ctx.patched(';
+        case 'embedded': return 'ctx.patched(';
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: ApplicationFailure ──
+  {
+    pattern: /\bApplicationFailure\b/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'ApplicationFailure';
+        case 'binary': return 'VelocityError';
+        case 'embedded': return 'VelocityError';
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: isCancellation ──
+  {
+    pattern: /\bisCancellation\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'server': return 'isCancellation(';
+        case 'binary': return 'ctx.isCancellation(';
+        case 'embedded': return 'ctx.isCancellation(';
+        default: return m[0];
+      }
+    },
+  },
   // ── Server → others: await this.executeActivity('Name', ...args) ──
   {
     pattern: /await\s+this\.executeActivity\(\s*['"](\w+)['"]\s*(?:,\s*([^)]+))?\)/g,
@@ -807,6 +914,17 @@ const IMPORT_TRANSFORMS: Record<string, ImportTransform[]> = {
     { from: /from\s+['"]@temporalio\/common['"]/g, to: `from '@velocity-workflow/common'` },
     { from: /from\s+['"]@temporalio\/worker['"]/g, to: `from '@velocity-workflow/worker'` },
     { from: /from\s+['"]@temporalio\/testing['"]/g, to: `from '@velocity-workflow/testing'` },
+    // Deep imports from @temporalio subpackages (e.g. @temporalio/common/lib/converter/...)
+    { from: /from\s+['"]@temporalio\/common\//g, to: `from '@velocity-workflow/common/` },
+    { from: /from\s+['"]@temporalio\/workflow\//g, to: `from '@velocity-workflow/server/` },
+    { from: /from\s+['"]@temporalio\/client\//g, to: `from '@velocity-workflow/client/` },
+    { from: /from\s+['"]@temporalio\/activity\//g, to: `from '@velocity-workflow/activity/` },
+    // require() calls with @temporalio packages
+    { from: /require\(\s*['"]@temporalio\/workflow['"]\s*\)/g, to: `require('@velocity-workflow/server')` },
+    { from: /require\(\s*['"]@temporalio\/client['"]\s*\)/g, to: `require('@velocity-workflow/client')` },
+    { from: /require\(\s*['"]@temporalio\/activity['"]\s*\)/g, to: `require('@velocity-workflow/activity')` },
+    { from: /require\(\s*['"]@temporalio\/common['"]\s*\)/g, to: `require('@velocity-workflow/common')` },
+    { from: /require\(\s*['"]@temporalio\/worker['"]\s*\)/g, to: `require('@velocity-workflow/worker')` },
     // Go go.temporal.io/* imports
     { from: /"go\.temporal\.io\/sdk\/workflow"/g, to: `"github.com/velocity-workflow/velocity-sdk-go"` },
     { from: /"go\.temporal\.io\/sdk\/client"/g, to: `"github.com/velocity-workflow/velocity-sdk-go/client"` },
