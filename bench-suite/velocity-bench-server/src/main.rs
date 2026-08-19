@@ -193,11 +193,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let listener = tokio::net::TcpListener::bind(&cli.bind).await?;
 
-    println!("██    ██ ███████  ██████ ██   ██ ██████  ████████ ███████");
-    println!("██    ██ ██      ██      ██   ██ ██   ██    ██    ██");
-    println!("██ ██ ██ ███████ ██      ███████ ██████     ██    █████");
-    println!("███  ███      ██ ██      ██   ██ ██   ██    ██    ██");
-    println!(" █  █  ███████  ██████ ██   ██ ██   ██    ██    ███████");
+    println!(" #     #   #######   #          #####     ######   #######   #######   #     #");
+    println!(" #     #   #         #         #     #   #           #         #      #     #");
+    println!("  #   #    #         #         #     #   #           #         #       #   #");
+    println!("  #   #    #####     #         #     #   #           #         #        # #");
+    println!("   # #     #         #         #     #   #           #         #         #");
+    println!("   # #     #         #         #     #   #           #         #         #");
+    println!("    #      #######   #######    #####     ######   #######      #         #");
     println!("  Benchmark Server v{}", env!("CARGO_PKG_VERSION"));
     println!("  HTTP:  http://{}", cli.bind);
     println!("  Mode:  Production (WAL persistence)");

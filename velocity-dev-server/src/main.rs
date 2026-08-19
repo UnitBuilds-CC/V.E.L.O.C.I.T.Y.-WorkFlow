@@ -3142,11 +3142,13 @@ fn format_duration(millis: i64) -> String {
 
 fn print_banner(config: &DevServerConfig) {
     println!();
-    println!("  \x1b[36m██    ██ ███████  ██████ ██   ██ ██████  ████████ ███████\x1b[0m");
-    println!("  \x1b[36m██    ██ ██      ██      ██   ██ ██   ██    ██    ██\x1b[0m");
-    println!("  \x1b[36m██ ██ ██ ███████ ██      ███████ ██████     ██    █████\x1b[0m");
-    println!("  \x1b[36m███  ███      ██ ██      ██   ██ ██   ██    ██    ██\x1b[0m");
-    println!("  \x1b[36m █  █  ███████  ██████ ██   ██ ██   ██    ██    ███████\x1b[0m");
+    println!("  \x1b[36m #     #   #######   #          #####     ######   #######   #######   #     #\x1b[0m");
+    println!("  \x1b[36m #     #   #         #         #     #   #           #         #      #     #\x1b[0m");
+    println!("  \x1b[36m  #   #    #         #         #     #   #           #         #       #   #\x1b[0m");
+    println!("  \x1b[36m  #   #    #####     #         #     #   #           #         #        # #\x1b[0m");
+    println!("  \x1b[36m   # #     #         #         #     #   #           #         #         #\x1b[0m");
+    println!("  \x1b[36m   # #     #         #         #     #   #           #         #         #\x1b[0m");
+    println!("  \x1b[36m    #      #######   #######    #####     ######   #######      #         #\x1b[0m");
     println!("  \x1b[1mVELOCITY Dev Server\x1b[0m  v0.1.0 — In-memory mode");
     println!();
     println!(

@@ -146,11 +146,13 @@ async fn main() {
         workflow_counter,
     ));
 
-    println!("██    ██ ███████  ██████ ██   ██ ██████  ████████ ███████");
-    println!("██    ██ ██      ██      ██   ██ ██   ██    ██    ██");
-    println!("██ ██ ██ ███████ ██      ███████ ██████     ██    █████");
-    println!("███  ███      ██ ██      ██   ██ ██   ██    ██    ██");
-    println!(" █  █  ███████  ██████ ██   ██ ██   ██    ██    ███████");
+    println!(" #     #   #######   #          #####     ######   #######   #######   #     #");
+    println!(" #     #   #         #         #     #   #           #         #      #     #");
+    println!("  #   #    #         #         #     #   #           #         #       #   #");
+    println!("  #   #    #####     #         #     #   #           #         #        # #");
+    println!("   # #     #         #         #     #   #           #         #         #");
+    println!("   # #     #         #         #     #   #           #         #         #");
+    println!("    #      #######   #######    #####     ######   #######      #         #");
     println!("  Embedded Server v{}", env!("CARGO_PKG_VERSION"));
     println!("  Shmem: {}", cli.shmem_path);
     println!("  WS:    {}://{}", if cli.tls_cert.is_some() { "wss" } else { "ws" }, cli.ws_bind);

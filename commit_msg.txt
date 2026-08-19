@@ -1,6 +1,6 @@
-fix: replace unreadable box-drawing banner with bold block letters
+fix: redesign VELOCITY ASCII banner with clearly readable 7-row letters
 
-The box-drawing character approach produced unrecognizable letters
-(C identical to O, Y unrecognizable, I misaligned). Switch to
-standard 5-row block-letter ASCII art using ██ characters that
-clearly spells VELOCITY in any terminal font.
+The previous 5-row banner had letters that were hard to distinguish:
+E looked like C (missing middle bar), L looked like I (no bottom bar),
+C and O were identical. Use Python-generated 7-row font with 9-char
+wide letters that are unambiguously readable in any terminal font.
