@@ -1,1 +1,21 @@
-fix: correct ITY letter alignment in VELOCITY banner (shift left 1 cell)
+fix: correct dev.to post accuracy and bump Ruby SDK to 1.0.0
+
+Post corrections (verified against codebase + production benchmark):
+- Title: "5 MB" → "90 MB" (actual measured under sustained load)
+- Memory: "~60 MB" → "~90 MB" (fixed-capacity slab pools)
+- SDKs: restored to 7 (PHP and Ruby SDKs exist under sdk/)
+- Throughput: added "~550 workflows/sec" end-to-end with HTTP + WAL
+- CI gates: "500K+ ops/s, <20µs p99" → "100K–5M ops/s, <30µs p99"
+- Micro-benchmarks: "11" → "15" baselines
+- WAL backup: added "SHA-256 integrity checksums"
+- OTLP: added "(Jaeger, Tempo, Grafana backends)"
+- Removed "cargo install" (not published to crates.io)
+- Removed C-ABI FFI from "What's next" (already implemented in ffi.rs)
+
+Ruby SDK: bumped version 0.1.0 → 1.0.0
+
+Production benchmark results (60s, 8 concurrent threads, batched fsync):
+- Throughput: 551 workflows/sec (10-step workflows)
+- p50: 11.95ms, p99: 40.37ms (~4ms per step)
+- Memory: 88 MB stable, zero growth
+- Error rate: 0%

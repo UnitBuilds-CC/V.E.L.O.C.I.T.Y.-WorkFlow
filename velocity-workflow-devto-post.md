@@ -1,4 +1,4 @@
-# We Built a Workflow Engine in Rust That Runs on 5 MB of RAM
+# We Built a Workflow Engine in Rust That Runs on 90 MB of RAM
 
 ## Why another workflow engine?
 
@@ -14,8 +14,8 @@ That's **Velocity Workflow** — and we just shipped v1.0.0.
 
 Velocity is a durable execution engine written in Rust with a zero-allocation hot path. It gives you:
 
-- **Sub-4ms p99 per-step latency** on production hardware (end-to-end workflows scale with step count)
-- **5 MB memory footprint** — runs comfortably on edge devices and tiny containers
+- **Sub-4ms p99 per-step latency** on production hardware (end-to-end HTTP + WAL durability: ~550 workflows/sec, 10-step workflows)
+- **~90 MB memory footprint** — fixed-capacity slab pools with zero unbounded growth under sustained load
 - **7 language SDKs** — TypeScript, Python, Go, Java, Rust, PHP, Ruby
 - **No external database required** — persistence lives in repr(C) slab files with chained SHA-256 Merkle proofs
 - **Three deployment flavors** — each designed to directly replace an existing tool
@@ -117,20 +117,19 @@ We just tagged v1.0.0. Here's what shipped:
 - **Native binaries** — Linux, macOS, Windows (5 platforms x 3 server variants = 15 binaries)
 - **SDK packages** — npm, PyPI, Maven Central, Go modules
 - **Helm chart** — production-ready with autoscaling, network policies, RBAC, pod security
-- **`cargo install`** — for Rust-native deployment
 
 ### Production hardening
 - 17 Prometheus alert rules (HTTP, VCTP, data integrity, replication lag)
-- OpenTelemetry/OTLP distributed tracing
+- OpenTelemetry/OTLP distributed tracing (Jaeger, Tempo, Grafana backends)
 - Pre-built Grafana dashboards
 - 65-point security audit checklist
 - 15 operations runbooks for incident response
-- Encrypted WAL backup with S3 upload
-- CI-gated benchmark regression thresholds (500K+ ops/s micro-benchmarks, <20µs p99)
+- Encrypted WAL backup with SHA-256 integrity checksums and S3 upload
+- CI-gated benchmark regression thresholds (100K–5M ops/s micro-benchmarks, <30µs p99)
 
 ### CI/CD gates
 Every PR must pass:
-- Benchmark regression gate (11 micro-benchmarks at 100K-500K ops/s minimum)
+- Benchmark regression gate (15 micro-benchmarks at 100K–5M ops/s minimum)
 - Fault injection tests
 - Chaos/failure injection tests
 - Property-based tests (proptest)
@@ -197,7 +196,7 @@ helm install velocity velocity/velocity --set replicas=3
 - **Teams running Temporal** who want lower latency and smaller infrastructure bills
 - **Teams evaluating DBOS** who want durable execution without the PostgreSQL lock-in (Embedded flavor uses Postgres, but Server and Classic don't need it)
 - **Teams building on Restate** who want authenticated transport and cryptographic state integrity
-- **Edge/IoT deployments** where 5 MB of RAM matters
+- **Edge/IoT deployments** where a small memory footprint matters (fixed ~90 MB regardless of total workflow volume)
 - **Anyone** who wants a workflow engine that treats performance and security as first-class concerns, not afterthoughts
 
 ---
@@ -207,7 +206,6 @@ helm install velocity velocity/velocity --set replicas=3
 We're just getting started. Post-1.0 priorities:
 
 - **Multi-region CRDT convergence** — AWORSet and PNCounter support is in the core; we're building the cross-region replication layer
-- **C-ABI FFI** — embed the Velocity engine in Python, Ruby, or any language with a C FFI
 - **WebAssembly targets** — run workflow logic in the browser or at the edge
 - **Visual workflow designer** — web UI for building and monitoring workflows
 
