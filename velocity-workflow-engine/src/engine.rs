@@ -9,10 +9,9 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use dashmap::DashMap;
-
 use velocity_workflow_core::SlabHeader;
 
+use crate::workflow_slab_pool::WorkflowContextPool;
 use crate::zero_alloc::{SlotMap, SlotVec};
 
 use crate::archival::{ArchivePolicy, ArchiveRecord, ArchiveStore};
@@ -420,7 +419,7 @@ impl WorkflowContext {
 /// The central workflow runtime engine. All workflow state lives in Rust-owned memory.
 /// C# interacts via FFI functions in `ffi.rs`.
 pub struct WorkflowEngine {
-    workflows: DashMap<u64, WorkflowContext>,
+    workflows: WorkflowContextPool,
     task_queue: Arc<TaskQueue>,
     timer_engine: Arc<TimerEngine>,
     wal: Option<Arc<WalManager>>,
@@ -493,7 +492,7 @@ impl WorkflowEngine {
         let te = Arc::new(TimerEngine::new());
 
         Self {
-            workflows: DashMap::new(),
+            workflows: WorkflowContextPool::new(),
             task_queue: tq,
             timer_engine: te,
             wal: None,
@@ -562,7 +561,7 @@ impl WorkflowEngine {
         let te = Arc::new(TimerEngine::new());
 
         Ok(Self {
-            workflows: DashMap::new(),
+            workflows: WorkflowContextPool::new(),
             task_queue: tq,
             timer_engine: te,
             wal: Some(wal),
@@ -733,7 +732,7 @@ impl WorkflowEngine {
     /// O(1) — no scanning required. Call this immediately after completing a workflow
     /// to enforce the fixed-memory contract.
     pub fn purge_workflow(&self, key: u64) {
-        self.workflows.remove(&key);
+        self.workflows.remove(key);
         self.visibility.remove(key);
         self.history_store.remove_history(key);
         self.archive_store.delete(key);
@@ -775,11 +774,13 @@ impl WorkflowEngine {
     /// Persist a workflow to the database adapter by key.
     /// Convenience method that looks up the context and persists it.
     pub fn persist_workflow_by_key(&self, key: u64, namespace_name: &str) -> Result<(), String> {
-        if let Some(ctx) = self.workflows.get(&key) {
-            self.persist_workflow(&ctx, namespace_name)
-        } else {
-            Err(format!("workflow {} not found", key))
-        }
+        self.workflows.with(key, |c| {
+            if let Some(ctx) = c {
+                self.persist_workflow(ctx, namespace_name)
+            } else {
+                Err(format!("workflow {} not found", key))
+            }
+        })
     }
 
     /// Complete a step AND persist it durably in one call.
@@ -955,7 +956,7 @@ impl WorkflowEngine {
                     let task_queue_hash =
                         u64::from_le_bytes(record.data[24..32].try_into().unwrap());
                     let total_steps = u32::from_le_bytes(record.data[32..36].try_into().unwrap());
-                    if let dashmap::mapref::entry::Entry::Vacant(e) = self.workflows.entry(key) {
+                    if self.workflows.insert_if_absent(key, {
                         let mut ctx = WorkflowContext::new(
                             workflow_id,
                             key & 0xFFFFFFFF,
@@ -964,92 +965,108 @@ impl WorkflowEngine {
                             total_steps,
                         );
                         ctx.namespace_id = namespace_id;
-                        e.insert(ctx);
+                        ctx
+                    }) {
                         recovered_workflows += 1;
                     }
                 }
                 WalEventType::StepCompleted => {
-                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
-                        if record.data.len() >= 4 {
-                            let step = u32::from_le_bytes(record.data[0..4].try_into().unwrap());
-                            ctx.complete_step(step, record.data[4..].to_vec());
+                    self.workflows.with_mut(key, |c| {
+                        if let Some(ctx) = c {
+                            if record.data.len() >= 4 {
+                                let step = u32::from_le_bytes(record.data[0..4].try_into().unwrap());
+                                ctx.complete_step(step, record.data[4..].to_vec());
+                            }
                         }
-                    }
+                    });
                 }
                 WalEventType::SignalReceived => {
-                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
-                        if record.data.len() >= 8 {
-                            let signal_name_id =
-                                u64::from_le_bytes(record.data[0..8].try_into().unwrap());
-                            ctx.signal(signal_name_id, record.data[8..].to_vec());
+                    self.workflows.with_mut(key, |c| {
+                        if let Some(ctx) = c {
+                            if record.data.len() >= 8 {
+                                let signal_name_id =
+                                    u64::from_le_bytes(record.data[0..8].try_into().unwrap());
+                                ctx.signal(signal_name_id, record.data[8..].to_vec());
+                            }
                         }
-                    }
+                    });
                 }
                 WalEventType::WorkflowCompleted => {
-                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
-                        ctx.complete(if record.data.is_empty() {
-                            None
-                        } else {
-                            Some(record.data.clone())
-                        });
-                    }
+                    self.workflows.with_mut(key, |c| {
+                        if let Some(ctx) = c {
+                            ctx.complete(if record.data.is_empty() {
+                                None
+                            } else {
+                                Some(record.data.clone())
+                            });
+                        }
+                    });
                 }
                 WalEventType::WorkflowFailed => {
-                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
-                        ctx.fail();
-                    }
+                    self.workflows.with_mut(key, |c| {
+                        if let Some(ctx) = c {
+                            ctx.fail();
+                        }
+                    });
                 }
                 WalEventType::WorkflowCanceled => {
-                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
-                        ctx.cancel();
-                    }
+                    self.workflows.with_mut(key, |c| {
+                        if let Some(ctx) = c {
+                            ctx.cancel();
+                        }
+                    });
                 }
                 WalEventType::WorkflowTerminated => {
-                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
-                        ctx.terminate();
-                    }
+                    self.workflows.with_mut(key, |c| {
+                        if let Some(ctx) = c {
+                            ctx.terminate();
+                        }
+                    });
                 }
                 _ => {}
             }
         }
 
         // Update next_run_id
-        let max_run_id = self.workflows.iter().map(|r| *r.key()).max().unwrap_or(0);
+        let max_run_id = self.workflows.keys().into_iter().max().unwrap_or(0);
         if max_run_id > 0 {
             self.next_run_id.store(max_run_id + 1, Ordering::Relaxed);
         }
 
         // Register recovered workflows in visibility index
-        for entry in self.workflows.iter() {
-            let key = *entry.key();
-            let ctx = entry.value();
-            if self.visibility.get(key).is_none() {
-                self.visibility.register(WorkflowExecutionInfo {
-                    workflow_key: key,
-                    workflow_id: ctx.workflow_id,
-                    run_id: ctx.run_id,
-                    workflow_type_id: ctx.workflow_type_id,
-                    namespace_id: ctx.namespace_id,
-                    status: ctx.status,
-                    start_time_ms: 0,
-                    close_time_ms: if matches!(
-                        ctx.status,
-                        WorkflowStatus::Completed
-                            | WorkflowStatus::Failed
-                            | WorkflowStatus::Canceled
-                            | WorkflowStatus::Terminated
-                            | WorkflowStatus::ContinuedAsNew
-                            | WorkflowStatus::TimedOut
-                    ) {
-                        Some(0)
-                    } else {
-                        None
-                    },
-                    task_queue_hash: ctx.task_queue_hash,
-                    search_attributes: HashMap::new(),
-                    memo: HashMap::new(),
-                });
-            }
+        let recovered_keys = self.workflows.keys();
+        for key in recovered_keys {
+            self.workflows.with(key, |c| {
+                if let Some(ctx) = c {
+                    if self.visibility.get(key).is_none() {
+                        self.visibility.register(WorkflowExecutionInfo {
+                            workflow_key: key,
+                            workflow_id: ctx.workflow_id,
+                            run_id: ctx.run_id,
+                            workflow_type_id: ctx.workflow_type_id,
+                            namespace_id: ctx.namespace_id,
+                            status: ctx.status,
+                            start_time_ms: 0,
+                            close_time_ms: if matches!(
+                                ctx.status,
+                                WorkflowStatus::Completed
+                                    | WorkflowStatus::Failed
+                                    | WorkflowStatus::Canceled
+                                    | WorkflowStatus::Terminated
+                                    | WorkflowStatus::ContinuedAsNew
+                                    | WorkflowStatus::TimedOut
+                            ) {
+                                Some(0)
+                            } else {
+                                None
+                            },
+                            task_queue_hash: ctx.task_queue_hash,
+                            search_attributes: HashMap::new(),
+                            memo: HashMap::new(),
+                        });
+                    }
+                }
+            });
         }
 
         // Rebuild history from WAL records for replay verification
@@ -1085,8 +1102,7 @@ impl WorkflowEngine {
 
         // Verify determinism via replay engine
         let mut verified = 0usize;
-        for entry in self.workflows.iter() {
-            let key = *entry.key();
+        for key in self.workflows.keys() {
             let history = self.history_store.get_history(key).unwrap_or_default();
             if !history.is_empty() {
                 let result = self.replay_engine.replay(key, &history, None);
@@ -1131,23 +1147,25 @@ impl WorkflowEngine {
 
         // Iterate over all workflows currently in memory (recovered from WAL)
         // and attempt to load their step journals from PG.
-        let workflow_keys: Vec<u64> = self.workflows.iter().map(|r| *r.key()).collect();
+        let workflow_keys: Vec<u64> = self.workflows.keys();
 
         for key in workflow_keys {
             match adapter.load_steps(key) {
                 Ok(steps) if !steps.is_empty() => {
                     let mut recovered_for_this_workflow = 0usize;
-                    if let Some(mut ctx) = self.workflows.get_mut(&key) {
-                        for (step_num, result_data) in steps {
-                            // Only apply if the step is not already completed
-                            // (WAL takes precedence)
-                            if !ctx.is_step_completed(step_num) {
-                                ctx.complete_step(step_num, result_data.unwrap_or_default());
-                                total_steps_recovered += 1;
-                                recovered_for_this_workflow += 1;
+                    self.workflows.with_mut(key, |c| {
+                        if let Some(ctx) = c {
+                            for (step_num, result_data) in steps {
+                                // Only apply if the step is not already completed
+                                // (WAL takes precedence)
+                                if !ctx.is_step_completed(step_num) {
+                                    ctx.complete_step(step_num, result_data.unwrap_or_default());
+                                    total_steps_recovered += 1;
+                                    recovered_for_this_workflow += 1;
+                                }
                             }
                         }
-                    }
+                    });
                     if recovered_for_this_workflow > 0 {
                         workflows_with_steps += 1;
                     }
@@ -1175,8 +1193,8 @@ impl WorkflowEngine {
         Ok((workflows_with_steps, total_steps_recovered))
     }
 
-    /// Access the workflows map for concurrent reads/writes (DashMap — sharded, lock-free).
-    pub fn workflows_write(&self) -> &DashMap<u64, WorkflowContext> {
+    /// Access the workflow context pool.
+    pub fn workflows_write(&self) -> &WorkflowContextPool {
         &self.workflows
     }
 
@@ -1562,22 +1580,19 @@ impl WorkflowEngine {
     /// Get the current step for a workflow (for the runner to know where to resume).
     pub fn get_current_step(&self, workflow_key: u64) -> u32 {
         self.workflows
-            .get(&workflow_key)
-            .map_or(0, |ctx| ctx.slab.current_step)
+            .with(workflow_key, |c| c.map_or(0, |ctx| ctx.slab.current_step))
     }
 
     /// Check if a step is completed (bitmask check, O(1)).
     pub fn is_step_completed(&self, workflow_key: u64, step: u32) -> bool {
         self.workflows
-            .get(&workflow_key)
-            .is_some_and(|ctx| ctx.is_step_completed(step))
+            .with(workflow_key, |c| c.is_some_and(|ctx| ctx.is_step_completed(step)))
     }
 
     /// Get the cached result for a completed step.
     pub fn get_step_result(&self, workflow_key: u64, step: u32) -> Option<Vec<u8>> {
         self.workflows
-            .get(&workflow_key)
-            .and_then(|ctx| ctx.get_step_result(step).cloned())
+            .with(workflow_key, |c| c.and_then(|ctx| ctx.get_step_result(step).cloned()))
     }
 
     /// Complete a step: store the result, update the bitmask + Merkle root, and schedule
@@ -1593,13 +1608,18 @@ impl WorkflowEngine {
             // durability: background fsync thread handles group-commit (amortized fsync)
         }
 
-        // Update context + extract values under ONE DashMap shard lock — HAL lock is NOT nested.
+        // Update context + extract values under ONE pool lock — HAL lock is NOT nested.
         let (task_queue_hash, merkle_root) = {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-                ctx.complete_step(step, result); // move — zero alloc
-                (ctx.task_queue_hash, ctx.slab.merkle_root)
-            } else {
-                return;
+            let mut found = None;
+            self.workflows.with_mut(workflow_key, |c| {
+                if let Some(ctx) = c {
+                    ctx.complete_step(step, result); // move — zero alloc
+                    found = Some((ctx.task_queue_hash, ctx.slab.merkle_root));
+                }
+            });
+            match found {
+                Some(v) => v,
+                None => return,
             }
         }; // DashMap shard lock released here
 
@@ -1639,13 +1659,18 @@ impl WorkflowEngine {
             let _ = wal.sync(); // Force fsync — synchronous durability
         }
 
-        // Update context + extract values under ONE DashMap shard lock
+        // Update context + extract values under ONE pool lock
         let (task_queue_hash, merkle_root) = {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-                ctx.complete_step(step, result);
-                (ctx.task_queue_hash, ctx.slab.merkle_root)
-            } else {
-                return;
+            let mut found = None;
+            self.workflows.with_mut(workflow_key, |c| {
+                if let Some(ctx) = c {
+                    ctx.complete_step(step, result);
+                    found = Some((ctx.task_queue_hash, ctx.slab.merkle_root));
+                }
+            });
+            match found {
+                Some(v) => v,
+                None => return,
             }
         };
 
@@ -1699,13 +1724,18 @@ impl WorkflowEngine {
                 let _ = wal.sync();
             }
 
-            // Update context + extract values under ONE DashMap shard lock
+            // Update context + extract values under ONE pool lock
             let (task_queue_hash, merkle_root) = {
-                if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-                    ctx.complete_step(step, result);
-                    (ctx.task_queue_hash, ctx.slab.merkle_root)
-                } else {
-                    return;
+                let mut found = None;
+                self.workflows.with_mut(workflow_key, |c| {
+                    if let Some(ctx) = c {
+                        ctx.complete_step(step, result);
+                        found = Some((ctx.task_queue_hash, ctx.slab.merkle_root));
+                    }
+                });
+                match found {
+                    Some(v) => v,
+                    None => return,
                 }
             };
 
@@ -1743,13 +1773,18 @@ impl WorkflowEngine {
             let _ = wal.append(WalEventType::StepCompleted, workflow_key, data);
         }
 
-        // Update context + extract values under ONE DashMap shard lock
+        // Update context + extract values under ONE pool lock
         let (task_queue_hash, merkle_root) = {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-                ctx.complete_step(step, result);
-                (ctx.task_queue_hash, ctx.slab.merkle_root)
-            } else {
-                return;
+            let mut found = None;
+            self.workflows.with_mut(workflow_key, |c| {
+                if let Some(ctx) = c {
+                    ctx.complete_step(step, result);
+                    found = Some((ctx.task_queue_hash, ctx.slab.merkle_root));
+                }
+            });
+            match found {
+                Some(v) => v,
+                None => return,
             }
         };
 
@@ -1821,14 +1856,19 @@ impl WorkflowEngine {
         }
         breakdown.wal_append_us = t0.elapsed().as_nanos() as f64 / 1000.0;
 
-        // Phase 2: DashMap shard lock + slab mutation + Merkle recalc
+        // Phase 2: Pool lock + slab mutation + Merkle recalc
         let t1 = Instant::now();
         let (task_queue_hash, merkle_root) = {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-                ctx.complete_step(step, vec![]);
-                (ctx.task_queue_hash, ctx.slab.merkle_root)
-            } else {
-                return breakdown;
+            let mut found = None;
+            self.workflows.with_mut(workflow_key, |c| {
+                if let Some(ctx) = c {
+                    ctx.complete_step(step, vec![]);
+                    found = Some((ctx.task_queue_hash, ctx.slab.merkle_root));
+                }
+            });
+            match found {
+                Some(v) => v,
+                None => return breakdown,
             }
         };
         breakdown.dashmap_slab_us = t1.elapsed().as_nanos() as f64 / 1000.0;
@@ -1894,9 +1934,10 @@ impl WorkflowEngine {
         schedule_to_close_ms: u64,
         heartbeat_ms: u64,
     ) {
-        if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-            // Store timeout tracking
-            let timeouts = ActivityTimeouts::new(
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
+                // Store timeout tracking
+                let timeouts = ActivityTimeouts::new(
                 if schedule_to_start_ms > 0 {
                     Some(Duration::from_millis(schedule_to_start_ms))
                 } else {
@@ -1918,27 +1959,28 @@ impl WorkflowEngine {
                     None
                 },
             );
-            ctx.activity_timeouts.insert(step as u64, timeouts);
-            // Store activity input payload for retrieval during poll
-            if !_args.is_empty() {
-                ctx.activity_inputs.insert(step as u64, _args);
-            }
+                ctx.activity_timeouts.insert(step as u64, timeouts);
+                // Store activity input payload for retrieval during poll
+                if !_args.is_empty() {
+                    ctx.activity_inputs.insert(step as u64, _args);
+                }
 
-            self.task_queue.enqueue(
-                ctx.task_queue_hash,
-                TaskItem {
-                    task_id: 0,
-                    kind: TaskKind::ActivityTask,
-                    workflow_key,
-                    task_queue_hash: ctx.task_queue_hash,
-                    step_index: step,
-                    activity_name_id,
-                    attempt: 1,
-                    priority: 0,
-                    deadline_ms: 0,
-                },
-            );
-        }
+                self.task_queue.enqueue(
+                    ctx.task_queue_hash,
+                    TaskItem {
+                        task_id: 0,
+                        kind: TaskKind::ActivityTask,
+                        workflow_key,
+                        task_queue_hash: ctx.task_queue_hash,
+                        step_index: step,
+                        activity_name_id,
+                        attempt: 1,
+                        priority: 0,
+                        deadline_ms: 0,
+                    },
+                );
+            }
+        });
     }
 
     /// Schedule an activity for execution. The activity worker will pick this up
@@ -1970,47 +2012,50 @@ impl WorkflowEngine {
     /// Fail an activity with optional retry logic.
     /// Returns true if the activity was retried, false if it failed permanently.
     pub fn fail_activity_with_retry(&self, workflow_key: u64, step: u32) -> bool {
-        if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-            let task_queue_hash = ctx.task_queue_hash;
-            if let Some(timeouts) = ctx.activity_timeouts.get_mut(step as u64) {
-                if let Some(policy) = &timeouts.retry_policy {
-                    if timeouts.attempt < policy.max_attempts {
-                        timeouts.attempt += 1;
-                        let attempt = timeouts.attempt;
-                        let delay = policy.calculate_delay(attempt);
+        let mut retry_result = false;
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
+                let task_queue_hash = ctx.task_queue_hash;
+                if let Some(timeouts) = ctx.activity_timeouts.get_mut(step as u64) {
+                    if let Some(policy) = &timeouts.retry_policy {
+                        if timeouts.attempt < policy.max_attempts {
+                            timeouts.attempt += 1;
+                            let attempt = timeouts.attempt;
+                            let delay = policy.calculate_delay(attempt);
 
-                        if delay.as_millis() < 10 {
-                            // Short delay — immediately re-enqueue
-                            self.task_queue.enqueue(
-                                task_queue_hash,
-                                TaskItem {
-                                    task_id: 0,
-                                    kind: TaskKind::ActivityTask,
-                                    workflow_key,
+                            if delay.as_millis() < 10 {
+                                // Short delay — immediately re-enqueue
+                                self.task_queue.enqueue(
                                     task_queue_hash,
-                                    step_index: step,
-                                    activity_name_id: 0,
-                                    attempt,
-                                    priority: 0,
-                                    deadline_ms: 0,
-                                },
-                            );
-                        } else {
-                            // Schedule a timer for the backoff delay
-                            self.pending_retries
-                                .lock()
-                                .unwrap()
-                                .entry(workflow_key)
-                                .or_default()
-                                .push((step, task_queue_hash));
-                            self.timer_engine.schedule(workflow_key, delay);
+                                    TaskItem {
+                                        task_id: 0,
+                                        kind: TaskKind::ActivityTask,
+                                        workflow_key,
+                                        task_queue_hash,
+                                        step_index: step,
+                                        activity_name_id: 0,
+                                        attempt,
+                                        priority: 0,
+                                        deadline_ms: 0,
+                                    },
+                                );
+                            } else {
+                                // Schedule a timer for the backoff delay
+                                self.pending_retries
+                                    .lock()
+                                    .unwrap()
+                                    .entry(workflow_key)
+                                    .or_default()
+                                    .push((step, task_queue_hash));
+                                self.timer_engine.schedule(workflow_key, delay);
+                            }
+                            retry_result = true; // Activity was retried
                         }
-                        return true; // Activity was retried
                     }
                 }
             }
-        }
-        false // Activity failed permanently
+        });
+        retry_result // Activity failed permanently if not retried
     }
 
     /// Process a fired timer by re-enqueuing any pending activity retries for the workflow.
@@ -2023,8 +2068,7 @@ impl WorkflowEngine {
             for (step, task_queue_hash) in entries {
                 let attempt = {
                     self.workflows
-                        .get(&workflow_key)
-                        .and_then(|ctx| ctx.activity_timeouts.get(step as u64).map(|t| t.attempt))
+                        .with(workflow_key, |c| c.and_then(|ctx| ctx.activity_timeouts.get(step as u64).map(|t| t.attempt)))
                         .unwrap_or(1)
                 };
                 self.task_queue.enqueue(
@@ -2056,27 +2100,26 @@ impl WorkflowEngine {
             // durability: background fsync thread handles group-commit (amortized fsync)
         }
 
-        {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
                 if ctx.status != WorkflowStatus::Running {
                     return;
                 }
                 // Move payload into context — zero alloc
                 ctx.signal(signal_name_id, payload);
-            } else {
-                return;
             }
-        }
+        });
 
         // Schedule a workflow task to process the signal
-        if let Some(ctx) = self.workflows.get(&workflow_key) {
+        let tq_hash = self.workflows.with(workflow_key, |c| c.map_or(0, |ctx| ctx.task_queue_hash));
+        if tq_hash > 0 {
             self.task_queue.enqueue(
-                ctx.task_queue_hash,
+                tq_hash,
                 TaskItem {
                     task_id: 0,
                     kind: TaskKind::SignalTask,
                     workflow_key,
-                    task_queue_hash: ctx.task_queue_hash,
+                    task_queue_hash: tq_hash,
                     step_index: 0,
                     activity_name_id: signal_name_id,
                     attempt: 1,
@@ -2090,26 +2133,24 @@ impl WorkflowEngine {
     /// Check if a signal is pending for a workflow.
     pub fn has_signal(&self, workflow_key: u64, signal_name_id: u64) -> bool {
         self.workflows
-            .get(&workflow_key)
-            .is_some_and(|ctx| ctx.has_signal(signal_name_id))
+            .with(workflow_key, |c| c.is_some_and(|ctx| ctx.has_signal(signal_name_id)))
     }
 
     /// Take the next pending signal payload.
     pub fn take_signal(&self, workflow_key: u64, signal_name_id: u64) -> Option<Vec<u8>> {
         self.workflows
-            .get_mut(&workflow_key)
-            .and_then(|mut ctx| ctx.take_signal(signal_name_id))
+            .with_mut(workflow_key, |c| c.and_then(|ctx| ctx.take_signal(signal_name_id)))
     }
 
     /// Complete a workflow with a result.
     pub fn complete_workflow(&self, workflow_key: u64, result: Option<Vec<u8>>) {
         // Zero-alloc: do NOT clone result for WAL — just record the completion event.
         // The result payload lives in the WorkflowContext until purge.
-        {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
                 ctx.complete(result);
             }
-        }
+        });
         self.visibility
             .update_status(workflow_key, WorkflowStatus::Completed, Some(now_ms()));
         self.history_store.record_event(
@@ -2126,8 +2167,7 @@ impl WorkflowEngine {
         // skip format!() when no active deployments exist (common case).
         let wf_type_id = self
             .workflows
-            .get(&workflow_key)
-            .map_or(0, |c| c.workflow_type_id);
+            .with(workflow_key, |c| c.map_or(0, |ctx| ctx.workflow_type_id));
         // Execution tracker and circuit breaker always record (zero-alloc)
         self.execution_tracker.record_completion(wf_type_id, 0);
         self.circuit_breaker.record_success(wf_type_id);
@@ -2165,11 +2205,11 @@ impl WorkflowEngine {
 
     /// Fail a workflow.
     pub fn fail_workflow(&self, workflow_key: u64) {
-        {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
                 ctx.fail();
             }
-        }
+        });
         self.visibility
             .update_status(workflow_key, WorkflowStatus::Failed, Some(now_ms()));
         self.history_store.record_event(
@@ -2184,8 +2224,7 @@ impl WorkflowEngine {
         {
             let wf_type_id = self
                 .workflows
-                .get(&workflow_key)
-                .map_or(0, |c| c.workflow_type_id);
+                .with(workflow_key, |c| c.map_or(0, |ctx| ctx.workflow_type_id));
             let wf_type = format!("wf_type_{}", wf_type_id);
             if let Some(dep_id) = self.deployment_pipeline.get_active_deployment_id(&wf_type) {
                 self.deployment_pipeline.record_execution(dep_id, false, 0);
@@ -2212,11 +2251,11 @@ impl WorkflowEngine {
 
     /// Cancel a workflow.
     pub fn cancel_workflow(&self, workflow_key: u64) {
-        {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
                 ctx.cancel();
             }
-        }
+        });
         self.visibility
             .update_status(workflow_key, WorkflowStatus::Canceled, Some(now_ms()));
         self.history_store.record_event(
@@ -2231,8 +2270,7 @@ impl WorkflowEngine {
         {
             let wf_type_id = self
                 .workflows
-                .get(&workflow_key)
-                .map_or(0, |c| c.workflow_type_id);
+                .with(workflow_key, |c| c.map_or(0, |ctx| ctx.workflow_type_id));
             self.execution_tracker.record_cancellation(wf_type_id);
         }
         // Remove from dependency graph tracking
@@ -2251,11 +2289,11 @@ impl WorkflowEngine {
 
     /// Terminate a workflow immediately.
     pub fn terminate_workflow(&self, workflow_key: u64) {
-        {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
                 ctx.terminate();
             }
-        }
+        });
         self.visibility
             .update_status(workflow_key, WorkflowStatus::Terminated, Some(now_ms()));
         self.history_store.record_event(
@@ -2270,8 +2308,7 @@ impl WorkflowEngine {
         {
             let wf_type_id = self
                 .workflows
-                .get(&workflow_key)
-                .map_or(0, |c| c.workflow_type_id);
+                .with(workflow_key, |c| c.map_or(0, |ctx| ctx.workflow_type_id));
             self.execution_tracker.record_termination(wf_type_id);
         }
         // Remove from dependency graph tracking
@@ -2300,7 +2337,8 @@ impl WorkflowEngine {
             return;
         }
 
-        if let Some(ctx) = self.workflows.get(&workflow_key) {
+        self.workflows.with(workflow_key, |c| {
+        if let Some(ctx) = c {
             let record = ArchiveRecord {
                 workflow_key,
                 workflow_id: ctx.workflow_id,
@@ -2323,41 +2361,41 @@ impl WorkflowEngine {
             };
             self.archive_store.archive(record);
         }
+        });
     }
 
     /// Get the status of a workflow.
     pub fn get_status(&self, workflow_key: u64) -> WorkflowStatus {
         self.workflows
-            .get(&workflow_key)
-            .map_or(WorkflowStatus::Void, |ctx| ctx.status)
+            .with(workflow_key, |c| c.map_or(WorkflowStatus::Void, |ctx| ctx.status))
     }
 
     /// Get the total steps for a workflow.
     pub fn get_total_steps(&self, workflow_key: u64) -> u32 {
         self.workflows
-            .get(&workflow_key)
-            .map_or(0, |ctx| ctx.slab.total_steps)
+            .with(workflow_key, |c| c.map_or(0, |ctx| ctx.slab.total_steps))
     }
 
     /// Get the input payload for a scheduled activity (by workflow key and step index).
     pub fn get_activity_input(&self, workflow_key: u64, step: u32) -> Option<Vec<u8>> {
         self.workflows
-            .get(&workflow_key)
-            .and_then(|ctx| ctx.activity_inputs.get(step as u64).cloned())
+            .with(workflow_key, |c| c.and_then(|ctx| ctx.activity_inputs.get(step as u64).cloned()))
     }
 
     /// Get the slab header for a workflow (for Merkle verification).
     /// Also triggers ECC verification via the HAL (Merkle ECC self-healing read path).
     pub fn get_slab(&self, workflow_key: u64) -> Option<SlabHeader> {
-        if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-            // ── HAL: Verify slab integrity via Merkle ECC self-healing loop ──
-            let mut hal = self.hal.write().unwrap();
-            let slab_data = &mut ctx.slab.merkle_root;
-            let _ = hal.merkle_ecc_self_heal(workflow_key, slab_data.as_mut());
-            Some(ctx.slab)
-        } else {
-            None
-        }
+        let mut result = None;
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
+                // ── HAL: Verify slab integrity via Merkle ECC self-healing loop ──
+                let mut hal = self.hal.write().unwrap();
+                let slab_data = &mut ctx.slab.merkle_root;
+                let _ = hal.merkle_ecc_self_heal(workflow_key, slab_data.as_mut());
+                result = Some(ctx.slab);
+            }
+        });
+        result
     }
 
     /// Schedule a durable timer. When it fires, a workflow task is enqueued.
@@ -2368,9 +2406,7 @@ impl WorkflowEngine {
 
     /// Get the event sequence number for a workflow.
     pub fn get_event_sequence(&self, workflow_key: u64) -> u64 {
-        self.workflows
-            .get(&workflow_key)
-            .map_or(0, |ctx| ctx.event_sequence)
+        self.workflows.with(workflow_key, |c| c.map_or(0, |ctx| ctx.event_sequence))
     }
 
     /// Get the number of active workflows.
@@ -2399,12 +2435,16 @@ impl WorkflowEngine {
         );
 
         // Link parent → child
-        if let Some(mut parent) = self.workflows.get_mut(&parent_key) {
-            parent.child_keys.push(child_key);
-        }
-        if let Some(mut child) = self.workflows.get_mut(&child_key) {
-            child.parent_key = Some(parent_key);
-        }
+        self.workflows.with_mut(parent_key, |c| {
+            if let Some(parent) = c {
+                parent.child_keys.push(child_key);
+            }
+        });
+        self.workflows.with_mut(child_key, |c| {
+            if let Some(child) = c {
+                child.parent_key = Some(parent_key);
+            }
+        });
 
         // Track parent→child dependency in the dependency graph
         self.dependency_graph.add_dependency(
@@ -2455,10 +2495,9 @@ impl WorkflowEngine {
         let json_path = dir.join(format!("engine_backup_{}.json", timestamp));
 
         let mut workflows_json = Vec::new();
-        for entry in self.workflows.iter() {
-            let ctx = entry.value();
+        self.workflows.for_each(|key, ctx| {
             workflows_json.push(serde_json::json!({
-                "workflow_key": *entry.key(),
+                "workflow_key": key,
                 "workflow_id": ctx.workflow_id,
                 "workflow_type_id": ctx.workflow_type_id,
                 "namespace_id": ctx.namespace_id,
@@ -2467,7 +2506,7 @@ impl WorkflowEngine {
                 "completed_steps": ctx.step_results.len(),
                 "event_sequence": ctx.event_sequence,
             }));
-        }
+        });
 
         let backup_json = serde_json::json!({
             "backup_timestamp": timestamp,
@@ -2487,24 +2526,26 @@ impl WorkflowEngine {
 
     /// Dispatch an update to a running workflow.
     pub fn update_workflow(&self, workflow_key: u64, update_name_id: u64, payload: Vec<u8>) {
-        {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+        let mut tq_hash = 0u64;
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
                 if ctx.status != WorkflowStatus::Running {
                     return;
                 }
                 ctx.update(update_name_id, payload);
+                tq_hash = ctx.task_queue_hash;
             }
-        }
+        });
 
         // Schedule a workflow task to process the update
-        if let Some(ctx) = self.workflows.get(&workflow_key) {
+        if tq_hash > 0 {
             self.task_queue.enqueue(
-                ctx.task_queue_hash,
+                tq_hash,
                 TaskItem {
                     task_id: 0,
                     kind: TaskKind::SignalTask, // Reuse SignalTask kind for updates
                     workflow_key,
-                    task_queue_hash: ctx.task_queue_hash,
+                    task_queue_hash: tq_hash,
                     step_index: 0,
                     activity_name_id: update_name_id,
                     attempt: 1,
@@ -2517,16 +2558,16 @@ impl WorkflowEngine {
 
     /// Check if an update is pending for a workflow.
     pub fn has_update(&self, workflow_key: u64, update_name_id: u64) -> bool {
-        self.workflows
-            .get(&workflow_key)
-            .is_some_and(|ctx| ctx.has_update(update_name_id))
+        self.workflows.with(workflow_key, |c| {
+            c.is_some_and(|ctx| ctx.has_update(update_name_id))
+        })
     }
 
     /// Take the next pending update payload.
     pub fn take_update(&self, workflow_key: u64, update_name_id: u64) -> Option<Vec<u8>> {
-        self.workflows
-            .get_mut(&workflow_key)
-            .and_then(|mut ctx| ctx.take_update(update_name_id))
+        self.workflows.with_mut(workflow_key, |c| {
+            c.and_then(|ctx| ctx.take_update(update_name_id))
+        })
     }
 
     // ─── Cron ────────────────────────────────────────────────────────────────
@@ -2604,15 +2645,13 @@ impl WorkflowEngine {
     pub fn check_activity_timeouts(&self) -> Vec<(u64, u32, String)> {
         let mut timed_out = Vec::new();
 
-        for entry in self.workflows.iter() {
-            let workflow_key = *entry.key();
-            let ctx = entry.value();
+        self.workflows.for_each(|workflow_key, ctx| {
             for (step, timeouts) in ctx.activity_timeouts.iter() {
                 if let Some(timeout_type) = timeouts.check_timeouts() {
                     timed_out.push((workflow_key, step as u32, timeout_type.to_string()));
                 }
             }
-        }
+        });
 
         timed_out
     }
@@ -2623,28 +2662,22 @@ impl WorkflowEngine {
         let mut timed_out = Vec::new();
         let now = Instant::now();
 
-        for entry in self.workflows.iter() {
-            let workflow_key = *entry.key();
-            let ctx = entry.value();
+        self.workflows.for_each(|workflow_key, ctx| {
             if ctx.status != WorkflowStatus::Running {
-                continue;
+                return;
             }
-
-            // Check execution timeout
             if let Some(timeout) = ctx.workflow_execution_timeout {
                 if now.duration_since(ctx.start_time) > timeout {
                     timed_out.push(workflow_key);
-                    continue;
+                    return;
                 }
             }
-
-            // Check run timeout
             if let Some(timeout) = ctx.workflow_run_timeout {
                 if now.duration_since(ctx.start_time) > timeout {
                     timed_out.push(workflow_key);
                 }
             }
-        }
+        });
 
         // Terminate timed-out workflows
         let count = timed_out.len() as u32;
@@ -2656,13 +2689,15 @@ impl WorkflowEngine {
 
     /// Set workflow execution timeout.
     pub fn set_workflow_execution_timeout(&self, workflow_key: u64, timeout_ms: u64) {
-        if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-            ctx.workflow_execution_timeout = if timeout_ms > 0 {
-                Some(Duration::from_millis(timeout_ms))
-            } else {
-                None
-            };
-        }
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
+                ctx.workflow_execution_timeout = if timeout_ms > 0 {
+                    Some(Duration::from_millis(timeout_ms))
+                } else {
+                    None
+                };
+            }
+        });
     }
 
     // ─── Parent Close Policy ──────────────────────────────────────────────────
@@ -2670,12 +2705,12 @@ impl WorkflowEngine {
     /// Apply parent close policy when a parent workflow completes.
     /// Terminates/cancels/abandons child workflows based on the policy.
     pub fn apply_parent_close_policy(&self, parent_key: u64, policy: ParentClosePolicy) {
-        let child_keys = {
-            match self.workflows.get(&parent_key) {
-                Some(ctx) => ctx.child_keys.clone(),
-                None => return,
-            }
-        };
+        let child_keys: Vec<u64> = self.workflows.with(parent_key, |c| {
+            c.map_or_else(Vec::new, |ctx| ctx.child_keys.clone())
+        });
+        if child_keys.is_empty() {
+            return;
+        }
 
         for child_key in child_keys {
             match policy {
@@ -2717,37 +2752,33 @@ impl WorkflowEngine {
     /// Clears step results after the reset point and resets the workflow state.
     /// Returns true if reset was successful, false otherwise.
     pub fn reset_workflow(&self, workflow_key: u64, reset_to_event_id: u64) -> bool {
-        let reset_ok = {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
-                // Only reset running or failed workflows
-                if ctx.status != WorkflowStatus::Running && ctx.status != WorkflowStatus::Failed {
-                    return false;
-                }
-
-                // Create a reset point
-                let _reset_id = self.workflow_resetter.create_reset_point(
-                    workflow_key,
-                    reset_to_event_id,
-                    ResetReason::ManualReset,
-                );
-
-                // Clear step results after the reset point
-                // (In a full implementation, we'd replay from event history)
-                ctx.step_results.retain(|&step, _| step < reset_to_event_id);
-
-                // Reset the slab bitmask for steps after the reset point
-                for step in reset_to_event_id..ctx.slab.total_steps as u64 {
-                    ctx.slab.step_bitmask.clear_step(step as usize);
-                }
-
-                // Reset status to Running
-                ctx.status = WorkflowStatus::Running;
-                ctx.close_time = None;
-                true
-            } else {
+        let reset_ok = self.workflows.with_mut(workflow_key, |c| {
+            let Some(ctx) = c else { return false; };
+            // Only reset running or failed workflows
+            if ctx.status != WorkflowStatus::Running && ctx.status != WorkflowStatus::Failed {
                 return false;
             }
-        }; // DashMap shard lock released here
+
+            // Create a reset point
+            let _reset_id = self.workflow_resetter.create_reset_point(
+                workflow_key,
+                reset_to_event_id,
+                ResetReason::ManualReset,
+            );
+
+            // Clear step results after the reset point
+            ctx.step_results.retain(|&step, _| step < reset_to_event_id);
+
+            // Reset the slab bitmask for steps after the reset point
+            for step in reset_to_event_id..ctx.slab.total_steps as u64 {
+                ctx.slab.step_bitmask.clear_step(step as usize);
+            }
+
+            // Reset status to Running
+            ctx.status = WorkflowStatus::Running;
+            ctx.close_time = None;
+            true
+        });
 
         if reset_ok {
             // Update visibility
@@ -2800,25 +2831,29 @@ impl WorkflowEngine {
     /// Complete current workflow and start a new run with the given input.
     /// Returns the new workflow key.
     pub fn continue_as_new(&self, workflow_key: u64, new_input: Option<Vec<u8>>) -> u64 {
-        let (_workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps) = {
-            match self.workflows.get(&workflow_key) {
-                Some(ctx) => (
-                    ctx.workflow_id,
-                    ctx.workflow_type_id,
-                    ctx.namespace_id,
-                    ctx.task_queue_hash,
-                    ctx.slab.total_steps,
-                ),
-                None => return 0,
-            }
-        };
+        let (_workflow_id, workflow_type_id, namespace_id, task_queue_hash, total_steps) =
+            self.workflows.with(workflow_key, |c| {
+                match c {
+                    Some(ctx) => (
+                        ctx.workflow_id,
+                        ctx.workflow_type_id,
+                        ctx.namespace_id,
+                        ctx.task_queue_hash,
+                        ctx.slab.total_steps,
+                    ),
+                    None => return (0, 0, 0, 0, 0),
+                }
+            });
+        if _workflow_id == 0 && workflow_type_id == 0 && namespace_id == 0 {
+            return 0;
+        }
         // Mark current as ContinuedAsNew
-        {
-            if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
+        self.workflows.with_mut(workflow_key, |c| {
+            if let Some(ctx) = c {
                 ctx.status = WorkflowStatus::ContinuedAsNew;
                 ctx.close_time = Some(Instant::now());
             }
-        }
+        });
         self.visibility
             .update_status(workflow_key, WorkflowStatus::ContinuedAsNew, Some(now_ms()));
         self.history_store.record_event(
@@ -2880,8 +2915,8 @@ impl WorkflowEngine {
     /// Describe a workflow execution with pending activities, children, timers, and signals.
     pub fn describe_workflow(&self, workflow_key: u64) -> Option<WorkflowExecutionDescription> {
         // Extract context data under one read guard, then release
-        let ctx_data = {
-            let ctx = self.workflows.get(&workflow_key)?;
+        let ctx_data = self.workflows.with(workflow_key, |c| {
+            let Some(ctx) = c else { return None; };
 
             // Pending activities: steps that are scheduled but not completed
             let mut pending_activities = Vec::new();
@@ -2904,7 +2939,7 @@ impl WorkflowEngine {
             }
 
             // Pending children keys
-            let child_keys = ctx.child_keys.clone();
+            let child_keys: Vec<u64> = ctx.child_keys.clone();
 
             // Pending signals
             let pending_signals: Vec<PendingSignalInfo> = ctx
@@ -2921,7 +2956,7 @@ impl WorkflowEngine {
                 .unwrap_or_else(Instant::now)
                 .duration_since(ctx.start_time);
 
-            (
+            Some((
                 ctx.workflow_id,
                 ctx.run_id,
                 ctx.workflow_type_id,
@@ -2936,8 +2971,10 @@ impl WorkflowEngine {
                 ctx.slab.total_steps,
                 ctx.slab.step_bitmask.count_completed(),
                 ctx.parent_key,
-            )
-        }; // DashMap read guard released here
+            ))
+        });
+
+        let Some(ctx_data) = ctx_data else { return None; };
 
         let (
             workflow_id,
@@ -2960,11 +2997,9 @@ impl WorkflowEngine {
         let pending_children: Vec<PendingChildInfo> = child_keys
             .iter()
             .map(|&child_key| {
-                let child_status = self
-                    .workflows
-                    .get(&child_key)
-                    .map(|c| c.status)
-                    .unwrap_or(WorkflowStatus::Void);
+                let child_status = self.workflows.with(child_key, |c| {
+                    c.map(|ctx| ctx.status).unwrap_or(WorkflowStatus::Void)
+                });
                 PendingChildInfo {
                     workflow_key: child_key,
                     status: child_status,
@@ -3170,12 +3205,15 @@ mod tests {
 
         assert_eq!(engine.get_status(child_key), WorkflowStatus::Running);
 
-        let parent = engine.workflows.get(&parent_key).unwrap();
-        assert!(parent.child_keys.contains(&child_key));
-        drop(parent);
+        engine.workflows.with(parent_key, |c| {
+            let parent = c.expect("parent should exist");
+            assert!(parent.child_keys.contains(&child_key));
+        });
 
-        let child = engine.workflows.get(&child_key).unwrap();
-        assert_eq!(child.parent_key, Some(parent_key));
+        engine.workflows.with(child_key, |c| {
+            let child = c.expect("child should exist");
+            assert_eq!(child.parent_key, Some(parent_key));
+        });
 
         engine.shutdown();
     }

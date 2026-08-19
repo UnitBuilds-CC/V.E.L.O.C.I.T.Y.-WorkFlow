@@ -1,0 +1,9 @@
+workload,engine,ops_sec,p50_us,p95_us,p99_us,p999_us,mean_us,min_us,max_us,memory_mb,total_ops,success_ops,failed_ops,duration_ms
+handler_invocation,Velocity Runtime,589.4,1533,2065,2665,8517,1689,1292,159603,59.3,10000,10000,0,16967
+stateful_handler,Velocity Runtime,444.2,1994,2625,2997,114084,2242,1710,114084,59.5,1000,1000,0,2251
+concurrent_handlers,Velocity Runtime,598.5,91045,163154,165355,165355,90944,3765,165355,60.8,100,100,0,167
+payload_roundtrip,Velocity Runtime,605.4,1538,2042,2302,3659,1644,1301,91108,61.0,5000,5000,0,8259
+sustained_load,Velocity Runtime,602.2,72571,153627,253247,998469,80719,1784,1142239,57.4,36175,36175,0,60070
+mixed_operations,Velocity Runtime,627.3,1495,1898,2158,4405,1586,1303,110411,57.0,5000,5000,0,7970
+cold_start,Velocity Runtime,483.0,1781,2046,8701,8701,1918,1618,8701,61.7,100,100,0,207
+durable_promise,Velocity Runtime,274.3,2208,2596,18915,461633,3638,1861,461633,61.8,500,500,0,1823

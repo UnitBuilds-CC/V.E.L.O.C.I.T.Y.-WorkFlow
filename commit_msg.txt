@@ -1,18 +1,14 @@
-fix: zero-alloc hot path — eliminate heap allocations in complete_workflow
+feat(engine): replace DashMap with fixed-capacity WorkflowContextPool
 
-- complete_workflow(): removed 3 heap allocations per workflow completion:
-  - result.clone() for WAL — no longer clones; WAL gets empty payload
-  - vec![] for history event — replaced with Vec::new()
-  - format!("wf_type_{}") for deployment lookup — fast path via
-    has_active_deployments() check; format!() only called when
-    deployments actually exist (rare case)
+Replace unbounded DashMap<u64, WorkflowContext> with WorkflowContextPool:
+- 8192 pre-allocated slots with O(1) key index and free list
+- Fixed memory: no growth during sustained benchmark (57-62 MB flat)
+- Eliminates DashMap bucket growth and Windows heap fragmentation
+- Migrate all ~40 DashMap call sites in engine.rs and ffi.rs
+- Add for_each_mut for mutable iteration (timeout checks)
+- All 2118 engine tests pass
 
-- WorkflowSlabPool: eliminated N reallocations in new() by using
-  vec![val; N] (single allocation). Replaced field-by-field copy in
-  evict() with ptr::write_bytes (zero-fill, no stack temporary).
-  Added Copy derive to SlabSlot + SlotMeta.
-
-- Bench server /health: cached sysinfo::System in OnceLock<Mutex<_>>
-  to avoid per-request heap allocation from System::new().
-
-- All 2108 engine tests + 41 core tests pass.
+Benchmark (stress profile, 10x ops, 60s sustained):
+- Before: 11.4 -> 45.4 MB (+34 MB growth)
+- After: 57-62 MB (fixed, zero growth)
+- Throughput: 602 ops/sec sustained

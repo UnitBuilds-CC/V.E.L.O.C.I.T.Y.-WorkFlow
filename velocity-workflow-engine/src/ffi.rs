@@ -5415,21 +5415,24 @@ pub unsafe extern "C" fn velocity_engine_set_workflow_timeouts(
     }
     let h = &*handle;
     let workflows = h.engine.workflows_write();
-    if let Some(mut ctx) = workflows.get_mut(&workflow_key) {
-        if execution_timeout_ms > 0 {
-            ctx.workflow_execution_timeout =
-                Some(std::time::Duration::from_millis(execution_timeout_ms));
+    workflows.with_mut(workflow_key, |c| {
+        if let Some(ctx) = c {
+            if execution_timeout_ms > 0 {
+                ctx.workflow_execution_timeout =
+                    Some(std::time::Duration::from_millis(execution_timeout_ms));
+            }
+            if run_timeout_ms > 0 {
+                ctx.workflow_run_timeout = Some(std::time::Duration::from_millis(run_timeout_ms));
+            }
+            if task_timeout_ms > 0 {
+                ctx.workflow_task_timeout = Some(std::time::Duration::from_millis(task_timeout_ms));
+            }
+        } else {
+            return;
         }
-        if run_timeout_ms > 0 {
-            ctx.workflow_run_timeout = Some(std::time::Duration::from_millis(run_timeout_ms));
-        }
-        if task_timeout_ms > 0 {
-            ctx.workflow_task_timeout = Some(std::time::Duration::from_millis(task_timeout_ms));
-        }
-        0
-    } else {
-        -1
-    }
+    });
+    // Return 0 if workflow exists, -1 otherwise
+    workflows.with(workflow_key, |c| if c.is_some() { 0 } else { -1 })
 }
 
 /// Check and enforce workflow timeouts. Returns the number of workflows timed out.
@@ -5442,11 +5445,9 @@ pub unsafe extern "C" fn velocity_engine_check_timeouts(handle: *mut EngineHandl
     let mut timed_out = 0u64;
     let workflows = h.engine.workflows_write();
 
-    for mut entry in workflows.iter_mut() {
-        let key = *entry.key();
-        let ctx = entry.value_mut();
+    workflows.for_each_mut(|key, ctx| {
         if ctx.status != crate::engine::WorkflowStatus::Running {
-            continue;
+            return;
         }
 
         // Check execution timeout
@@ -5463,7 +5464,7 @@ pub unsafe extern "C" fn velocity_engine_check_timeouts(handle: *mut EngineHandl
                 );
             }
         }
-    }
+    });
 
     // Also clean expired tasks from the task queue
     let now_ms = std::time::SystemTime::now()
@@ -5515,8 +5516,10 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
             let result = h.engine.replay_engine().replay(workflow_key, &events, None);
             if result.success {
                 let workflows = h.engine.workflows_write();
-                // If context doesn't exist (crash recovery), create one
-                if let dashmap::mapref::entry::Entry::Vacant(e) = workflows.entry(workflow_key) {
+                // Check if context exists
+                let exists = workflows.with(workflow_key, |c| c.is_some());
+                if !exists {
+                    // Crash recovery: create a new context
                     let total_steps = result
                         .step_results
                         .keys()
@@ -5541,19 +5544,23 @@ pub unsafe extern "C" fn velocity_engine_apply_replay(
                             ctx.signal_buffer.push(*signal_id, payload.clone());
                         }
                     }
-                    e.insert(ctx);
-                } else if let Some(mut ctx) = workflows.get_mut(&workflow_key) {
+                    workflows.insert(workflow_key, ctx);
+                } else {
                     // Existing context — apply replay results
-                    for (step, data) in &result.step_results {
-                        ctx.step_results.insert(*step as u64, data.clone());
-                        ctx.slab.step_bitmask.set_step(*step as usize);
-                    }
-                    ctx.status = result.status;
-                    for (signal_id, payloads) in &result.pending_signals {
-                        for payload in payloads {
-                            ctx.signal_buffer.push(*signal_id, payload.clone());
+                    workflows.with_mut(workflow_key, |c| {
+                        if let Some(ctx) = c {
+                            for (step, data) in &result.step_results {
+                                ctx.step_results.insert(*step as u64, data.clone());
+                                ctx.slab.step_bitmask.set_step(*step as usize);
+                            }
+                            ctx.status = result.status;
+                            for (signal_id, payloads) in &result.pending_signals {
+                                for payload in payloads {
+                                    ctx.signal_buffer.push(*signal_id, payload.clone());
+                                }
+                            }
                         }
-                    }
+                    });
                 }
                 1
             } else {
