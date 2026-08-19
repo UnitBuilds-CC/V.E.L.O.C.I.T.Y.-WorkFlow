@@ -21,6 +21,8 @@ use velocity_workflow_engine::task_queue::{TaskItem, TaskKind, TaskQueue};
 use velocity_workflow_engine::timer_engine::TimerEngine;
 use velocity_workflow_engine::visibility::SearchAttributeValue;
 use velocity_workflow_engine::wal::{WalRecord, WalWriter};
+use velocity_workflow_core::vctp::Aes256GcmCipher;
+use velocity_workflow_core::slab::SlabHeader;
 
 // ─── Baseline Thresholds ─────────────────────────────────────────────────────
 // MINIMUM acceptable ops/sec and MAXIMUM acceptable p99 latency (µs).
@@ -88,6 +90,26 @@ const BASELINES: &[Baseline] = &[
         name: "codec_encode_decode",
         min_ops_per_sec: 500_000.0,
         max_p99_us: 10,
+    },
+    Baseline {
+        name: "aes256gcm_encrypt_256B",
+        min_ops_per_sec: 200_000.0,
+        max_p99_us: 20,
+    },
+    Baseline {
+        name: "aes256gcm_decrypt_256B",
+        min_ops_per_sec: 200_000.0,
+        max_p99_us: 20,
+    },
+    Baseline {
+        name: "merkle_chain_step",
+        min_ops_per_sec: 100_000.0,
+        max_p99_us: 30,
+    },
+    Baseline {
+        name: "replay_window_check",
+        min_ops_per_sec: 5_000_000.0,
+        max_p99_us: 5,
     },
 ];
 
@@ -360,6 +382,56 @@ fn benchmark_regression_gate() {
             &BASELINES[10],
             &mut failures,
         );
+    }
+
+    // ── AES-256-GCM Authenticated Encryption ────────────────────────────
+    {
+        let cipher = Aes256GcmCipher::from_passphrase("bench-ci-gate-key-2026");
+        let plaintext = vec![0xABu8; 256]; // 256-byte payload (typical workflow message)
+
+        // Encrypt benchmark
+        let mut seq = 0u64;
+        let result = measure(10_000, Duration::from_millis(200), || {
+            black_box(cipher.encrypt(black_box(&plaintext), black_box(seq)));
+            seq += 1;
+        });
+        print_result("aes256gcm_encrypt_256B", &result, &BASELINES[11], &mut failures);
+
+        // Decrypt benchmark — encrypt once, then measure decrypt throughput
+        let ciphertext = cipher.encrypt(&plaintext, 0);
+        let mut dseq = 0u64;
+        let result = measure(10_000, Duration::from_millis(200), || {
+            black_box(cipher.decrypt(black_box(&ciphertext), black_box(dseq)));
+            dseq += 1;
+        });
+        print_result("aes256gcm_decrypt_256B", &result, &BASELINES[12], &mut failures);
+    }
+
+    // ── Merkle Chain Step ───────────────────────────────────────────────
+    {
+        // Measure the cost of advancing the Merkle chain by one step
+        // (recalculate_merkle_root with prev_merkle_root chain link).
+        let mut header = SlabHeader::new(1, 1, 10);
+        let result = measure(10_000, Duration::from_millis(200), || {
+            // Simulate marking a step complete (saves prev root + recalculates)
+            header.prev_merkle_root = header.merkle_root;
+            header.current_step += 1;
+            header.recalculate_merkle_root();
+        });
+        print_result("merkle_chain_step", &result, &BASELINES[13], &mut failures);
+    }
+
+    // ── Replay Window ───────────────────────────────────────────────────
+    {
+        use velocity_workflow_core::vctp::VctpReplayWindow;
+        let mut window = VctpReplayWindow::new(64);
+        let mut seq: u64 = 0;
+
+        let result = measure(100_000, Duration::from_millis(200), || {
+            black_box(window.check_and_record(black_box(seq)));
+            seq += 1;
+        });
+        print_result("replay_window_check", &result, &BASELINES[14], &mut failures);
     }
 
     // ── Summary ─────────────────────────────────────────────────────────

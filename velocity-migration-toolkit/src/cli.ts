@@ -12,6 +12,7 @@ Velocity Migration Toolkit
 ==========================
 
 Convert workflows between SDK flavors:
+- temporal: Temporal SDK (direct migration source)
 - classic: Temporal-compatible SDK
 - runtime: Restate-compatible SDK
 - embedded: DBOS-compatible SDK
@@ -21,6 +22,9 @@ Usage:
   velocity-migrate <source-file> --from <source-sdk> --to <target-sdk> [--output <output-file>]
 
 Examples:
+  velocity-migrate workflow.ts --from temporal --to classic
+  velocity-migrate workflow.ts --from temporal --to runtime
+  velocity-migrate workflow.ts --from temporal --to embedded
   velocity-migrate workflow.ts --from classic --to runtime
   velocity-migrate workflow.ts --from runtime --to embedded --output migrated.ts
   velocity-migrate workflow.py --from python-runtime --to classic

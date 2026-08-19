@@ -1,8 +1,9 @@
 //! VCTP (V.E.L.O.C.I.T.Y. Zero-Copy Transport Protocol) for high-speed slab delta replication.
 //!
-//! Full transport stack: packet header, serialization, XOR-AES encryption, AIMD congestion
-//! control, ACK tracking, and retransmission. Designed for sub-microsecond slab delta
-//! replication between cluster nodes over UDP.
+//! Full transport stack: packet header, serialization, XOR-AES encryption, AES-256-GCM
+//! authenticated encryption-in-transit, AIMD congestion control, ACK tracking, and
+//! retransmission. Designed for sub-microsecond slab delta replication between cluster
+//! nodes over UDP with io_uring zero-copy support.
 
 /// Size of the VCTP packet header in bytes.
 pub const VCTP_HEADER_SIZE: usize = 28; // 4 + 8 + 8 + 4 + 4
@@ -10,6 +11,15 @@ pub const VCTP_HEADER_SIZE: usize = 28; // 4 + 8 + 8 + 4 + 4
 pub const VCTP_MAX_PAYLOAD: usize = 65507 - VCTP_HEADER_SIZE;
 /// ACK packet magic.
 pub const VCTP_ACK_MAGIC: u32 = 0x4B435656; // "ACKV"
+
+/// Encryption mode for VCTP packets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EncryptionMode {
+    /// XOR stream cipher (lightweight, cluster-internal traffic)
+    XorStream,
+    /// AES-256-GCM authenticated encryption (production/external traffic)
+    Aes256Gcm,
+}
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -234,6 +244,85 @@ impl VctpCipher {
     }
 }
 
+/// AES-256-GCM authenticated encryption for VCTP packets.
+/// Provides both confidentiality and integrity for production/external traffic.
+#[derive(Clone)]
+pub struct Aes256GcmCipher {
+    key: [u8; 32],
+}
+
+impl Aes256GcmCipher {
+    /// Create a new AES-256-GCM cipher with the given 256-bit key.
+    pub fn new(key: [u8; 32]) -> Self {
+        Self { key }
+    }
+
+    /// Create a cipher from a passphrase (SHA-256 hash of the passphrase).
+    pub fn from_passphrase(passphrase: &str) -> Self {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(passphrase.as_bytes());
+        let result = hasher.finalize();
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&result);
+        Self { key }
+    }
+
+    /// Derive a 96-bit nonce from a 64-bit sequence number.
+    /// Uses a simple construction: nonce = sequence (8 bytes) + 4 zero bytes.
+    fn derive_nonce(sequence: u64) -> [u8; 12] {
+        let mut nonce = [0u8; 12];
+        nonce[..8].copy_from_slice(&sequence.to_le_bytes());
+        nonce
+    }
+
+    /// Encrypt data with AES-256-GCM, returning ciphertext + 16-byte GCM tag.
+    pub fn encrypt(&self, data: &[u8], sequence: u64) -> Vec<u8> {
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+        use aes_gcm::aead::Aead;
+
+        let cipher = Aes256Gcm::new_from_slice(&self.key).expect("Invalid key length");
+        let nonce_bytes = Self::derive_nonce(sequence);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        cipher.encrypt(nonce, data).expect("Encryption failed")
+    }
+
+    /// Decrypt data with AES-256-GCM. Input should be ciphertext + 16-byte GCM tag.
+    /// Returns None if authentication fails (tampered data).
+    pub fn decrypt(&self, data: &[u8], sequence: u64) -> Option<Vec<u8>> {
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+        use aes_gcm::aead::Aead;
+
+        let cipher = Aes256Gcm::new_from_slice(&self.key).expect("Invalid key length");
+        let nonce_bytes = Self::derive_nonce(sequence);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        cipher.decrypt(nonce, data).ok()
+    }
+
+    /// Encrypt a VCTP packet in-place with AES-256-GCM.
+    pub fn encrypt_packet(&self, packet: &mut VctpPacket, sequence: u64) {
+        let ciphertext = self.encrypt(&packet.payload, sequence);
+        packet.payload = ciphertext;
+        packet.header.payload_length = packet.payload.len() as u32;
+        packet.checksum = VctpPacket::compute_checksum(&packet.header, &packet.payload);
+    }
+
+    /// Decrypt a VCTP packet in-place with AES-256-GCM.
+    /// Returns false if authentication fails (tampered data).
+    pub fn decrypt_packet(&self, packet: &mut VctpPacket, sequence: u64) -> bool {
+        if let Some(plaintext) = self.decrypt(&packet.payload, sequence) {
+            packet.payload = plaintext;
+            packet.header.payload_length = packet.payload.len() as u32;
+            packet.checksum = VctpPacket::compute_checksum(&packet.header, &packet.payload);
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Sliding window replay protection.
 /// Tracks recently seen sequence numbers and rejects duplicates.
 /// Window size determines how far back we can detect replays.
@@ -271,9 +360,14 @@ impl VctpReplayWindow {
 
         if seq > self.highest_seq {
             // New high watermark — shift window forward
-            let shift = (seq - self.highest_seq).min(self.window_size);
-            self.window_mask <<= shift;
-            self.window_mask |= 1; // Mark current as seen
+            let shift = seq - self.highest_seq;
+            if shift >= 64 {
+                // Jump exceeds bitmask width — clear entire window
+                self.window_mask = 1;
+            } else {
+                self.window_mask <<= shift;
+                self.window_mask |= 1; // Mark current as seen
+            }
             self.highest_seq = seq;
             true
         } else {
@@ -612,10 +706,10 @@ mod tests {
     #[test]
     fn test_hmac_tamper_detection() {
         let cipher = VctpCipher::from_passphrase("secret", 0);
-        let mut packet = VctpPacket {
-            header: VctpPacketHeader::new(1, 100, 0, 10),
-            payload: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        };
+        let mut packet = VctpPacket::new(
+            VctpPacketHeader::new(1, 100, 0, 10),
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        );
 
         // Compute MAC before encryption
         let mac = cipher.compute_mac(&packet.payload, 1);
@@ -677,11 +771,11 @@ mod tests {
     #[test]
     fn test_replay_window_out_of_order() {
         let mut window = VctpReplayWindow::new(64);
-        // Accept in random order
+        // Accept in random order (all within 64-wide window)
         assert!(window.check_and_record(50));
         assert!(window.check_and_record(25));
         assert!(window.check_and_record(75));
-        assert!(window.check_and_record(10));
+        assert!(window.check_and_record(15)); // 75 - 15 = 60 < 64, within window
         // All should be accepted (within window)
         assert_eq!(window.tracked_count(), 4);
         // Duplicates still rejected
@@ -701,5 +795,85 @@ mod tests {
         assert!(!window.check_and_record(935)); // 1000 - 935 = 65 > 64
         // Recent sequences should still work
         assert!(window.check_and_record(950)); // 1000 - 950 = 50 < 64
+    }
+
+    // ─── AES-256-GCM Authenticated Encryption Tests ─────────────────────────
+
+    #[test]
+    fn test_aes256gcm_encrypt_decrypt() {
+        let cipher = Aes256GcmCipher::from_passphrase("production-secret-key");
+        let original = b"sensitive workflow data in transit";
+        let sequence = 42u64;
+
+        let ciphertext = cipher.encrypt(original, sequence);
+        assert_ne!(&ciphertext, original);
+        // AES-256-GCM adds 16-byte authentication tag
+        assert_eq!(ciphertext.len(), original.len() + 16);
+
+        let decrypted = cipher.decrypt(&ciphertext, sequence).expect("Decryption failed");
+        assert_eq!(&decrypted, original);
+    }
+
+    #[test]
+    fn test_aes256gcm_tamper_detection() {
+        let cipher = Aes256GcmCipher::from_passphrase("test-key");
+        let original = b"important data";
+        let sequence = 1u64;
+
+        let mut ciphertext = cipher.encrypt(original, sequence);
+        // Tamper with ciphertext
+        ciphertext[0] ^= 0xFF;
+
+        // Decryption should fail (authentication tag mismatch)
+        assert!(cipher.decrypt(&ciphertext, sequence).is_none());
+    }
+
+    #[test]
+    fn test_aes256gcm_wrong_sequence_fails() {
+        let cipher = Aes256GcmCipher::from_passphrase("test-key");
+        let original = b"test data";
+
+        let ciphertext = cipher.encrypt(original, 10);
+        // Wrong sequence number should fail authentication
+        assert!(cipher.decrypt(&ciphertext, 11).is_none());
+    }
+
+    #[test]
+    fn test_aes256gcm_packet_roundtrip() {
+        let cipher = Aes256GcmCipher::from_passphrase("packet-key");
+        let header = VctpPacketHeader::new(1, 100, 0, 10);
+        let original_payload = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let mut packet = VctpPacket::new(header, original_payload.clone());
+
+        // Encrypt
+        cipher.encrypt_packet(&mut packet, 1);
+        assert_ne!(packet.payload, original_payload);
+
+        // Decrypt
+        let success = cipher.decrypt_packet(&mut packet, 1);
+        assert!(success);
+        assert_eq!(packet.payload, original_payload);
+    }
+
+    #[test]
+    fn test_aes256gcm_packet_tamper_detection() {
+        let cipher = Aes256GcmCipher::from_passphrase("test-key");
+        let header = VctpPacketHeader::new(1, 100, 0, 5);
+        let mut packet = VctpPacket::new(header, vec![1, 2, 3, 4, 5]);
+
+        cipher.encrypt_packet(&mut packet, 1);
+        // Tamper with encrypted payload
+        packet.payload[0] ^= 0xFF;
+
+        // Decryption should fail
+        let success = cipher.decrypt_packet(&mut packet, 1);
+        assert!(!success);
+    }
+
+    #[test]
+    fn test_encryption_mode_enum() {
+        assert_eq!(EncryptionMode::XorStream, EncryptionMode::XorStream);
+        assert_eq!(EncryptionMode::Aes256Gcm, EncryptionMode::Aes256Gcm);
+        assert_ne!(EncryptionMode::XorStream, EncryptionMode::Aes256Gcm);
     }
 }

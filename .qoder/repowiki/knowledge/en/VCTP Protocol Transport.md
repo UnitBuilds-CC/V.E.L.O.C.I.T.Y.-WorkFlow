@@ -99,12 +99,12 @@ Large payloads exceeding VCTP max are fragmented:
 
 ## Source Files
 
-| File | Role |
-|------|------|
-| `velocity-workflow-core/src/vctp.rs` | Packet types, header encode/decode, CRC32, AIMD, cipher |
-| `velocity-workflow-engine/src/vctp_transport.rs` | UDP socket, send/recv, retransmission, congestion |
-| `velocity-workflow-engine/src/vctp_rpc.rs` | Reorder buffer, fragment reassembly, RPC dispatch |
-| `proto/vctp_service.json` | Machine-readable protocol definition schema |
+| File | Lines | Role |
+|------|-------|------|
+| `velocity-workflow-core/src/vctp.rs` | 623 | Packet types, header encode/decode, CRC32, AIMD, cipher |
+| `velocity-workflow-engine/src/vctp_transport.rs` | 481 | UDP socket, send/recv, retransmission, congestion |
+| `velocity-workflow-engine/src/vctp_rpc.rs` | 2,767 | Reorder buffer, fragment reassembly, RPC dispatch |
+| `proto/vctp_service.json` | 167 | Machine-readable protocol definition schema |
 
 ## Configuration
 

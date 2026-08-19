@@ -131,4 +131,74 @@ spec:
           annotations:
             summary: "Spike in VCTP auth rejections"
             description: "More than 10 VCTP requests/s are being rejected for authentication failures."
+
+        # ── Data Integrity Alerts ─────────────────────────────────────────────
+        - alert: VctpReplayDetected
+          expr: |
+            sum(rate(vctp_replay_detected_total{job="{{ include "velocity.fullname" . }}"}[5m])) > 0
+          for: "2m"
+          labels:
+            severity: warning
+          annotations:
+            summary: "VCTP replay attacks detected"
+            description: "{{ \"{{ $value }}\" }} replayed packets detected per second. Possible replay attack or network duplication."
+
+        - alert: SlabIntegrityMismatch
+          expr: |
+            sum(rate(slab_integrity_check_failures_total{job="{{ include "velocity.fullname" . }}"}[5m])) > 0
+          for: "1m"
+          labels:
+            severity: critical
+          annotations:
+            summary: "Slab Merkle root integrity mismatch detected"
+            description: "SHA-256 Merkle root verification failures detected. Storage corruption or tampering may have occurred."
+
+        - alert: WalRecoveryFailure
+          expr: |
+            sum(rate(wal_recovery_errors_total{job="{{ include "velocity.fullname" . }}"}[5m])) > 0
+          for: "1m"
+          labels:
+            severity: critical
+          annotations:
+            summary: "WAL recovery failures detected"
+            description: "Write-ahead log recovery encountered errors. Recent crash may have corrupted WAL entries."
+
+        - alert: HighSlabUtilization
+          expr: |
+            velocity_slab_used_bytes{job="{{ include "velocity.fullname" . }}"}
+            /
+            velocity_slab_capacity_bytes{job="{{ include "velocity.fullname" . }}"} > 0.85
+          for: "10m"
+          labels:
+            severity: warning
+          annotations:
+            summary: "High slab storage utilization on {{ \"{{ $labels.pod }}\" }}"
+            description: "Slab storage is above 85% capacity. Consider scaling or archiving old workflows."
+
+        # ── Replication & Resource Alerts ─────────────────────────────────────
+        - alert: CrdtReplicationLag
+          expr: |
+            max(crdt_last_merge_timestamp{job="{{ include "velocity.fullname" . }}"})
+            -
+            min(crdt_last_merge_timestamp{job="{{ include "velocity.fullname" . }}"}) > 30
+          for: "5m"
+          labels:
+            severity: warning
+          annotations:
+            summary: "CRDT replication lag exceeds 30 seconds"
+            description: "Cross-region CRDT convergence is lagging. Multi-region state may be temporarily inconsistent."
+
+        - alert: PodMemoryOOMRisk
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="{{ .Release.Namespace }}",pod=~"{{ include "velocity.fullname" . }}.*"}
+              /
+              container_spec_memory_limit_bytes{namespace="{{ .Release.Namespace }}",pod=~"{{ include "velocity.fullname" . }}.*"}
+            ) > 0.95
+          for: "5m"
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ \"{{ $labels.pod }}\" }} at risk of OOM kill"
+            description: "Container memory usage exceeds 95% of limit. OOM kill imminent."
 {{- end }}

@@ -75,7 +75,7 @@ Comprehensive security audit checklist covering all 39 production hardening item
 
 | # | Check | Status | Evidence |
 |---|-------|--------|----------|
-| 7.1 | Prometheus alert rules deployed (17 rules: 11 HTTP + 6 VCTP) | ☐ | `deploy/helm/velocity/templates/prometheus-rules.yaml` |
+| 7.1 | Prometheus alert rules deployed (17 rules: 5 HTTP, 7 VCTP, 5 data integrity) | ☐ | `deploy/helm/velocity/templates/prometheus-rules.yaml` |
 | 7.2 | VCTP circuit breaker alert configured | ☐ | `VctpCircuitBreakerOpen` alert rule |
 | 7.3 | VCTP high error rate alert configured | ☐ | `VctpHighErrorRate` — >5% for 2m |
 | 7.4 | VCTP high latency alert configured | ☐ | `VctpHighLatency` — p99 >100ms for 5m |

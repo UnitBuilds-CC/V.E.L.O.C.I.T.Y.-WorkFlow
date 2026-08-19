@@ -21,6 +21,10 @@ dashmap = "6"
 aes-gcm = "0.10"
 tracing = "0.1"
 
+# io_uring zero-copy transport (Linux only)
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = { version = "0.7", optional = true }
+
 # gRPC dependencies (only when grpc feature is enabled)
 tonic = { version = "0.12", optional = true }
 prost = { version = "0.13", optional = true }
@@ -41,6 +45,7 @@ cloud-s3 = ["dep:hmac", "dep:hex", "dep:reqwest"]
 cloud-gcs = ["dep:reqwest"]
 grpc = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio", "dep:tokio-stream", "dep:tonic-build", "dep:protox"]
 postgres = ["dep:tokio-postgres", "dep:tokio"]
+io-uring = ["dep:io-uring"]
 
 [[bench]]
 name = "engine_benchmarks"

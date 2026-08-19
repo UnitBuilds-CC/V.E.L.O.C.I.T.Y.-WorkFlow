@@ -695,6 +695,50 @@ impl WorkflowEngine {
         purged
     }
 
+    /// Immediately purge ALL completed/failed/canceled/terminated/timed-out workflows.
+    ///
+    /// This enforces the fixed-memory contract: only *active* workflows consume memory.
+    /// Completed workflows are evicted from all in-memory stores (workflows DashMap,
+    /// visibility index, history store). Their state lives only in the WAL for crash recovery.
+    ///
+    /// Returns the number of workflows purged.
+    pub fn purge_completed(&self) -> usize {
+        // Collect keys of terminal workflows
+        let all = self.visibility.list_all();
+        let mut keys_to_purge = Vec::new();
+
+        for info in &all {
+            if matches!(
+                info.status,
+                WorkflowStatus::Completed
+                    | WorkflowStatus::Failed
+                    | WorkflowStatus::Canceled
+                    | WorkflowStatus::Terminated
+                    | WorkflowStatus::TimedOut
+            ) {
+                keys_to_purge.push(info.workflow_key);
+            }
+        }
+
+        let count = keys_to_purge.len();
+
+        for key in keys_to_purge {
+            self.purge_workflow(key);
+        }
+
+        count
+    }
+
+    /// Purge a single workflow by key from all in-memory stores.
+    /// O(1) — no scanning required. Call this immediately after completing a workflow
+    /// to enforce the fixed-memory contract.
+    pub fn purge_workflow(&self, key: u64) {
+        self.workflows.remove(&key);
+        self.visibility.remove(key);
+        self.history_store.remove_history(key);
+        self.archive_store.delete(key);
+    }
+
     /// Enable database persistence with the given adapter.
     /// When set, workflow state changes are persisted to the database in addition to in-memory storage.
     pub fn enable_db_adapter(&mut self, adapter: Arc<dyn DatabaseAdapter>) {

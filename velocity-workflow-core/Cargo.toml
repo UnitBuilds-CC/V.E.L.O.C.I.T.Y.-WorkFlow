@@ -11,4 +11,5 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 sha2 = { version = "0.10", default-features = false }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 

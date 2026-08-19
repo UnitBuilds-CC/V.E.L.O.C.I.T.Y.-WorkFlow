@@ -1,5 +1,5 @@
 import {
-  migrate, parseClassic, parseRuntime, parseEmbedded, parsePythonRuntime,
+  migrate, parseClassic, parseRuntime, parseEmbedded, parsePythonRuntime, parseTemporal,
   generateClassic, generateRuntime, generateEmbedded, generatePythonRuntime,
   getSupportedMigrations, validateMigration, transformBody,
   pythonToTsType, tsToPyType, SDKFlavor,
@@ -9,18 +9,28 @@ import {
 
 describe('Migration Toolkit', () => {
   describe('Supported Migrations', () => {
-    test('should list all 12 migration paths', () => {
+    test('should list all 20 migration paths (including temporal)', () => {
       const migrations = getSupportedMigrations();
-      expect(migrations.length).toBe(12);
+      expect(migrations.length).toBe(20);
+      // Temporal source paths (new)
+      expect(migrations).toContain('temporal → classic');
+      expect(migrations).toContain('temporal → runtime');
+      expect(migrations).toContain('temporal → embedded');
+      expect(migrations).toContain('temporal → python-runtime');
+      // Classic paths
       expect(migrations).toContain('classic → runtime');
       expect(migrations).toContain('classic → embedded');
       expect(migrations).toContain('classic → python-runtime');
+      expect(migrations).toContain('classic → temporal');
+      // Runtime paths
       expect(migrations).toContain('runtime → classic');
       expect(migrations).toContain('runtime → embedded');
       expect(migrations).toContain('runtime → python-runtime');
+      // Embedded paths
       expect(migrations).toContain('embedded → classic');
       expect(migrations).toContain('embedded → runtime');
       expect(migrations).toContain('embedded → python-runtime');
+      // Python-runtime paths
       expect(migrations).toContain('python-runtime → classic');
       expect(migrations).toContain('python-runtime → runtime');
       expect(migrations).toContain('python-runtime → embedded');
@@ -928,6 +938,111 @@ class ChargeActivity extends Activity {
       expect(ir[0].type).toBe('workflow');
       expect(ir[1].name).toBe('ChargeActivity');
       expect(ir[1].type).toBe('activity');
+    });
+  });
+
+  // ─── Temporal Migration ──────────────────────────────────────────────────────
+
+  describe('Temporal Parser', () => {
+    test('parseTemporal extracts defineWorkflow functions', () => {
+      const source = `
+import { proxyActivities, defineWorkflow } from '@temporalio/workflow';
+
+const { greet, charge } = proxyActivities({ startToCloseTimeout: '1 minute' });
+
+export const orderWorkflow = defineWorkflow(async (orderId: string) => {
+  const greeting = await greet(orderId);
+  const result = await charge(greeting);
+  return result;
+});
+`;
+      const ir = parseTemporal(source);
+      expect(ir.length).toBe(1);
+      expect(ir[0].name).toBe('orderWorkflow');
+      expect(ir[0].type).toBe('workflow');
+      expect(ir[0].metadata.sdk).toBe('temporal');
+      expect(ir[0].methods.length).toBe(1);
+      expect(ir[0].methods[0].isAsync).toBe(true);
+    });
+
+    test('parseTemporal transforms proxied activity calls', () => {
+      const source = `
+import { proxyActivities, defineWorkflow } from '@temporalio/workflow';
+const { greet } = proxyActivities({ startToCloseTimeout: '1 minute' });
+
+export const myWorkflow = defineWorkflow(async (name: string) => {
+  const result = await greet(name);
+  return result;
+});
+`;
+      const ir = parseTemporal(source);
+      expect(ir.length).toBe(1);
+      const body = ir[0].methods[0].body;
+      // Proxied activity call should be transformed to this.executeActivity
+      expect(body).toContain("this.executeActivity('greet'");
+      expect(body).not.toContain('await greet(');
+    });
+
+    test('parseTemporal extracts export async function workflows', () => {
+      const source = `
+import { proxyActivities } from '@temporalio/workflow';
+const { processPayment } = proxyActivities({});
+
+export async function paymentWorkflow(orderId: string): Promise<string> {
+  const result = await processPayment(orderId);
+  return result;
+}
+`;
+      const ir = parseTemporal(source);
+      expect(ir.length).toBe(1);
+      expect(ir[0].name).toBe('paymentWorkflow');
+      expect(ir[0].type).toBe('workflow');
+    });
+
+    test('parseTemporal extracts Workflow and Activity classes', () => {
+      const source = `
+class OrderWorkflow extends Workflow {
+  async execute(ctx: Context, orderId: string): Promise<any> {
+    return orderId;
+  }
+}
+
+class ChargeActivity extends Activity {
+  async execute(amount: number): Promise<any> {
+    return { charged: true };
+  }
+}
+`;
+      const ir = parseTemporal(source);
+      expect(ir.length).toBe(2);
+      expect(ir[0].name).toBe('OrderWorkflow');
+      expect(ir[1].name).toBe('ChargeActivity');
+    });
+
+    test('temporal → classic migration transforms activity calls', () => {
+      const source = `
+import { proxyActivities, defineWorkflow } from '@temporalio/workflow';
+const { greet } = proxyActivities({});
+
+export const myWorkflow = defineWorkflow(async (name: string) => {
+  const result = await greet(name);
+  return result;
+});
+`;
+      const result = migrate(source, { source: 'temporal', target: 'classic' });
+      expect(result).toContain("this.executeActivity('greet'");
+    });
+
+    test('validateMigration works for temporal source', () => {
+      const source = `
+import { defineWorkflow } from '@temporalio/workflow';
+export const testWorkflow = defineWorkflow(async () => {
+  return 'done';
+});
+`;
+      const validation = validateMigration(source, 'temporal');
+      expect(validation.valid).toBe(true);
+      expect(validation.errors.length).toBe(0);
     });
   });
 });

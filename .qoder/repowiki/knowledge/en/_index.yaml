@@ -173,7 +173,7 @@ cards:
       - tools/vctp-wireshark/vctp.lua
       - tools/vctp-openapi/gen_openapi.py
       - proto/vctp_service.json
-    summary: "Native VCTP client SDKs (TypeScript, Python, Go), CLI tool, Wireshark dissector, OpenAPI 3.0 spec generator, and machine-readable protocol schema"
+    summary: "Native VCTP client SDKs (TypeScript 358 lines, Python 316 lines, Go 451 lines), CLI tool (267 lines), Wireshark dissector (221 lines), OpenAPI 3.0 spec generator (407 lines), and machine-readable protocol schema"
 
   - name: "Slab Engine Merkle Root State Proof"
     kind: persistence_system
@@ -197,7 +197,9 @@ cards:
     source_files:
       - deploy/helm/velocity/values.yaml
       - deploy/helm/velocity/templates/deployment.yaml
-    summary: "Helm chart with VCTP UDP port (9090), health probes, preStop graceful drain hook, circuit breaker/heartbeat/security config, and TLS gateway termination (HTTPS 8443, WSS 8444)"
+      - deploy/helm/velocity/templates/backup-cronjob.yaml
+      - deploy/helm/velocity/templates/prometheus-rules.yaml
+    summary: "Helm chart with VCTP UDP port (9090), health probes, preStop graceful drain hook, circuit breaker/heartbeat/security config, TLS gateway termination (HTTPS 8443, WSS 8444), WAL backup CronJob, and Prometheus alert rules"
 
 # Conventions for knowledge cards:
 # - kind: Type of pattern (persistence_system, api_pattern, transport_protocol, security, observability, coordination, infrastructure, etc.)

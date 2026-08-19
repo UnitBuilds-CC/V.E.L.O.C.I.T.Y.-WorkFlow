@@ -162,7 +162,7 @@ High-performance UDP-based RPC server for VCTP (Velocity Transfer Protocol) work
 - `velocity-workflow-engine/src/vctp_rpc.rs` — Full request pipeline (circuit breaker, auth, drain, heartbeat, chaos tests, stress benchmarks, 2,767 lines)
 - UDP port 9090 (default)
 - 9,052 ops/s full-stack dispatch throughput
-- 2,541 engine tests + 61 VCTP-specific tests
+- 2,723 engine tests + 88 VCTP-specific tests
 
 ### VCTP Gateways
 

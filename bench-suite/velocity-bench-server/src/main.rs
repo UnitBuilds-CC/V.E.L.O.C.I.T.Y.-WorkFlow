@@ -234,6 +234,7 @@ async fn handle_simple_workflow(State(state): State<AppState>) -> Json<BenchResp
     // Complete workflow — writes completion to WAL
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal(); // Synchronous durability
+    state.engine.purge_workflow(key);
 
     Json(BenchResponse {
         status: "completed".into(),
@@ -269,7 +270,7 @@ async fn handle_multi_step(
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: None,
@@ -311,7 +312,7 @@ async fn handle_signal_storm(
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: None,
@@ -338,7 +339,7 @@ async fn handle_cold_start(State(state): State<AppState>) -> Json<BenchResponse>
     state.engine.complete_step_durable(key, 0, b"cold_start_done".to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: Some(1),
@@ -369,7 +370,7 @@ async fn handle_stateful(State(state): State<AppState>) -> Json<BenchResponse> {
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: Some(2),
@@ -399,7 +400,7 @@ async fn handle_echo(
     state.engine.complete_step_durable(key, 0, b"echo_done".to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: Some(1),
@@ -430,7 +431,7 @@ async fn handle_payload(
     state.engine.complete_step_durable(key, 0, size.to_le_bytes().to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: Some(1),
@@ -461,7 +462,7 @@ async fn handle_durable_promise(State(state): State<AppState>) -> Json<BenchResp
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: Some(2),
@@ -488,7 +489,7 @@ async fn handle_concurrent(State(state): State<AppState>) -> Json<BenchResponse>
     state.engine.complete_step_durable(key, 0, b"concurrent_done".to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: Some(1),
@@ -519,7 +520,7 @@ async fn handle_activity_scheduling(State(state): State<AppState>) -> Json<Bench
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: Some(5),
@@ -550,7 +551,7 @@ async fn handle_long_running(State(state): State<AppState>) -> Json<BenchRespons
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(BenchResponse {
         status: "completed".into(),
         steps: Some(50),
@@ -578,6 +579,7 @@ async fn handle_invoke(State(state): State<AppState>) -> Json<BenchResponse> {
     state.engine.complete_step_durable(key, 0, b"invoke_done".to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
+    state.engine.purge_workflow(key);
 
     Json(BenchResponse {
         status: "ok".into(),
@@ -613,7 +615,7 @@ async fn handle_keyed_stateful(
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(serde_json::json!({
         "status": "ok",
         "key": key_str,
@@ -643,7 +645,7 @@ async fn handle_keyed_invoke(
     state.engine.complete_step_durable(key, 0, b"keyed_invoke_done".to_vec());
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal();
-
+    state.engine.purge_workflow(key);
     Json(serde_json::json!({
         "status": "ok",
         "key": key_str,
@@ -653,12 +655,23 @@ async fn handle_keyed_invoke(
 
 /// Health check endpoint.
 async fn handle_health() -> Json<serde_json::Value> {
+    // Read process RSS for memory reporting
+    let rss_mb = {
+        use sysinfo::{Pid, System, ProcessesToUpdate};
+        let mut sys = System::new();
+        let pid = Pid::from(std::process::id() as usize);
+        sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), false);
+        sys.process(pid)
+            .map(|p| p.memory() as f64 / 1_048_576.0)
+            .unwrap_or(0.0)
+    };
     Json(serde_json::json!({
         "status": "ok",
         "engine": "Velocity",
         "mode": "production",
         "persistence": "WAL",
-        "durability": "synchronous"
+        "durability": "synchronous",
+        "memory_rss_mb": (rss_mb * 100.0).round() / 100.0
     }))
 }
 
@@ -804,4 +817,5 @@ async fn execute_api_workflow(state: &AppState, workflow_id: &str, workflow_type
 
     state.engine.complete_workflow(key, Some(b"completed".to_vec()));
     state.engine.sync_wal(); // fsync after complete
+    state.engine.purge_workflow(key);
 }

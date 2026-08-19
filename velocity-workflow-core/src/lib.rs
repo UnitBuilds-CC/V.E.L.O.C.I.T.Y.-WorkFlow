@@ -14,7 +14,7 @@ pub mod wal;
 
 pub use arena::BumpArenaPage;
 pub use bitmask::Bitmask256;
-pub use crdt::PNCounter;
+pub use crdt::{AWORSet, Dot, PNCounter};
 pub use ffi::*;
 pub use nda::NdaHeader;
 pub use slab::SlabHeader;

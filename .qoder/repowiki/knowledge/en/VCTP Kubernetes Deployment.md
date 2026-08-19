@@ -11,7 +11,9 @@ deploy/helm/velocity/
 ├── Chart.yaml
 ├── values.yaml
 └── templates/
-    └── deployment.yaml
+    ├── deployment.yaml
+    ├── backup-cronjob.yaml
+    └── prometheus-rules.yaml
 ```
 
 ## VCTP Configuration (values.yaml)
@@ -168,11 +170,13 @@ VCTP-specific alerts in `deploy/helm/velocity/templates/prometheus-rules.yaml`:
 | VctpDrainActive | warning | Drain active | 10m |
 | VctpAuthRejectionsSpike | warning | >10 auth rejections/s | 5m |
 
-These complement the 11 existing HTTP-level alerts for a total of 17 Prometheus alert rules.
+These complement the 5 existing HTTP-level alerts for a total of 11 Prometheus alert rules.
 
 ## Source Files
 
-| File | Role |
-|------|------|
-| `deploy/helm/velocity/values.yaml` | VCTP configuration values |
-| `deploy/helm/velocity/templates/deployment.yaml` | K8s deployment with VCTP port, probes, preStop |
+| File | Lines | Role |
+|------|-------|------|
+| `deploy/helm/velocity/values.yaml` | 676 | VCTP configuration values |
+| `deploy/helm/velocity/templates/deployment.yaml` | 167 | K8s deployment with VCTP port, probes, preStop |
+| `deploy/helm/velocity/templates/backup-cronjob.yaml` | 107 | WAL backup CronJob with encryption and S3 upload |
+| `deploy/helm/velocity/templates/prometheus-rules.yaml` | 135 | 6 VCTP-specific + 5 HTTP Prometheus alert rules |

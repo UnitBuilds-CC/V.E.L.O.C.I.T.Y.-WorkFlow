@@ -757,7 +757,7 @@ services:
   velocity-embedded:
     build:
       context: .
-      dockerfile: velocity-embedded/Dockerfile
+      dockerfile: velocity-embedded-server/Dockerfile
     ports:
       - "18082:8082"
     environment:

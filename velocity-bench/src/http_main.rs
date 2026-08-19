@@ -238,60 +238,60 @@ async fn run_http_workload(
         }
 
         HttpWorkloadKind::ConcurrentHandlers => {
-            // Concurrent handler invocations
+            // Concurrent handler invocations — reuse shared client to avoid
+            // per-task TCP handshake overhead skewing latency.
             let payload = vec![b'x'; workload.payload_size];
             let mut handles = Vec::new();
+            let shared_client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .pool_max_idle_per_host(100)
+                .build()
+                .unwrap();
 
             for _ in 0..workload.concurrency {
                 let p = payload.clone();
                 let svc = workload.service.clone();
                 let hdl = workload.handler.clone();
-                // Use the adapter for correct URL format and JSON wrapping
-                handles.push(tokio::spawn({
-                    let base_url = adapter.base_url().to_string();
-                    let kind = adapter.kind();
-                    async move {
-                        let client = reqwest::Client::builder()
-                            .timeout(Duration::from_secs(30))
-                            .build()
-                            .unwrap();
-                        let url = match kind {
-                            HttpEngineKind::Restate => {
-                                format!("{}/{}/default/{}", base_url, svc, hdl)
-                            }
-                            HttpEngineKind::VelocityRuntime => {
-                                format!("{}/{}/{}", base_url, svc, hdl)
-                            }
-                        };
-                        let body = if serde_json::from_slice::<serde_json::Value>(&p).is_ok() {
-                            p
-                        } else {
-                            match kind {
-                                HttpEngineKind::Restate => {
-                                    let text = String::from_utf8_lossy(&p);
-                                    serde_json::to_vec(&serde_json::json!({ "data": text }))
-                                        .unwrap_or(p)
-                                }
-                                HttpEngineKind::VelocityRuntime => p,
-                            }
-                        };
-                        let s = Instant::now();
-                        match client.post(&url)
-                            .header("content-type", "application/json")
-                            .body(body)
-                            .send().await
-                        {
-                            Ok(resp) => {
-                                let status = resp.status().as_u16();
-                                let bytes = resp.content_length().unwrap_or(0);
-                                (
-                                    s.elapsed().as_micros() as u64,
-                                    status >= 200 && status < 300,
-                                    bytes,
-                                )
-                            }
-                            Err(_) => (s.elapsed().as_micros() as u64, false, 0),
+                let client = shared_client.clone();
+                let base_url = adapter.base_url().to_string();
+                let kind = adapter.kind();
+                handles.push(tokio::spawn(async move {
+                    let url = match kind {
+                        HttpEngineKind::Restate => {
+                            format!("{}/{}/default/{}", base_url, svc, hdl)
                         }
+                        HttpEngineKind::VelocityRuntime => {
+                            format!("{}/{}/{}", base_url, svc, hdl)
+                        }
+                    };
+                    let body = if serde_json::from_slice::<serde_json::Value>(&p).is_ok() {
+                        p
+                    } else {
+                        match kind {
+                            HttpEngineKind::Restate => {
+                                let text = String::from_utf8_lossy(&p);
+                                serde_json::to_vec(&serde_json::json!({ "data": text }))
+                                    .unwrap_or(p)
+                            }
+                            HttpEngineKind::VelocityRuntime => p,
+                        }
+                    };
+                    let s = Instant::now();
+                    match client.post(&url)
+                        .header("content-type", "application/json")
+                        .body(body)
+                        .send().await
+                    {
+                        Ok(resp) => {
+                            let status = resp.status().as_u16();
+                            let bytes = resp.content_length().unwrap_or(0);
+                            (
+                                s.elapsed().as_micros() as u64,
+                                status >= 200 && status < 300,
+                                bytes,
+                            )
+                        }
+                        Err(_) => (s.elapsed().as_micros() as u64, false, 0),
                     }
                 }));
             }
@@ -326,9 +326,16 @@ async fn run_http_workload(
         }
 
         HttpWorkloadKind::SustainedLoad => {
+            // Proper steady-state load: maintain `concurrency` in-flight requests
+            // continuously. As each request completes, immediately fire the next one.
+            // This avoids the batch-wait-batch pattern that artificially lowers throughput.
             let duration = Duration::from_secs(workload.duration_secs);
             let payload = vec![b'x'; workload.payload_size];
-            let mut iteration: u64 = 0;
+            let shared_client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .pool_max_idle_per_host(100)
+                .build()
+                .unwrap();
 
             tracing::info!(
                 "  Running sustained load for {}s at concurrency {}...",
@@ -336,60 +343,73 @@ async fn run_http_workload(
                 workload.concurrency
             );
 
-            while start.elapsed() < duration {
-                let mut handles = Vec::new();
-                for _ in 0..workload.concurrency {
-                    let p = payload.clone();
-                    let svc = workload.service.clone();
-                    let hdl = workload.handler.clone();
-                    let base_url = adapter.base_url().to_string();
-                    let kind = adapter.kind();
-                    handles.push(tokio::spawn(async move {
-                        let client = reqwest::Client::builder()
-                            .timeout(Duration::from_secs(30))
-                            .build()
-                            .unwrap();
-                        let url = match kind {
-                            HttpEngineKind::Restate => {
-                                format!("{}/{}/default/{}", base_url, svc, hdl)
-                            }
-                            HttpEngineKind::VelocityRuntime => {
-                                format!("{}/{}/{}", base_url, svc, hdl)
-                            }
-                        };
-                        let body = if serde_json::from_slice::<serde_json::Value>(&p).is_ok() {
-                            p
-                        } else {
-                            match kind {
-                                HttpEngineKind::Restate => {
-                                    let text = String::from_utf8_lossy(&p);
-                                    serde_json::to_vec(&serde_json::json!({ "data": text }))
-                                        .unwrap_or(p)
-                                }
-                                HttpEngineKind::VelocityRuntime => p,
-                            }
-                        };
-                        let s = Instant::now();
-                        match client.post(&url)
-                            .header("content-type", "application/json")
-                            .body(body)
-                            .send().await
-                        {
-                            Ok(resp) => {
-                                let status = resp.status().as_u16();
-                                let bytes = resp.content_length().unwrap_or(0);
-                                (
-                                    s.elapsed().as_micros() as u64,
-                                    status >= 200 && status < 300,
-                                    bytes,
-                                )
-                            }
-                            Err(_) => (s.elapsed().as_micros() as u64, false, 0),
+            // Helper to build URL + body
+            let make_request = |client: &reqwest::Client| {
+                let p = payload.clone();
+                let svc = workload.service.clone();
+                let hdl = workload.handler.clone();
+                let base_url = adapter.base_url().to_string();
+                let kind = adapter.kind();
+                let client = client.clone();
+                async move {
+                    let url = match kind {
+                        HttpEngineKind::Restate => {
+                            format!("{}/{}/default/{}", base_url, svc, hdl)
                         }
-                    }));
+                        HttpEngineKind::VelocityRuntime => {
+                            format!("{}/{}/{}", base_url, svc, hdl)
+                        }
+                    };
+                    let body = if serde_json::from_slice::<serde_json::Value>(&p).is_ok() {
+                        p
+                    } else {
+                        match kind {
+                            HttpEngineKind::Restate => {
+                                let text = String::from_utf8_lossy(&p);
+                                serde_json::to_vec(&serde_json::json!({ "data": text }))
+                                    .unwrap_or(p)
+                            }
+                            HttpEngineKind::VelocityRuntime => p,
+                        }
+                    };
+                    let s = Instant::now();
+                    match client.post(&url)
+                        .header("content-type", "application/json")
+                        .body(body)
+                        .send().await
+                    {
+                        Ok(resp) => {
+                            let status = resp.status().as_u16();
+                            let bytes = resp.content_length().unwrap_or(0);
+                            (
+                                s.elapsed().as_micros() as u64,
+                                status >= 200 && status < 300,
+                                bytes,
+                            )
+                        }
+                        Err(_) => (s.elapsed().as_micros() as u64, false, 0),
+                    }
                 }
+            };
 
-                for handle in handles {
+            // Seed initial in-flight requests
+            let mut in_flight: Vec<tokio::task::JoinHandle<(u64, bool, u64)>> = Vec::new();
+            for _ in 0..workload.concurrency {
+                in_flight.push(tokio::spawn(make_request(&shared_client)));
+            }
+
+            // Continuously replace completed requests with new ones
+            while start.elapsed() < duration {
+                // Wait for any one request to complete
+                let mut completed_idx = None;
+                for (i, handle) in in_flight.iter().enumerate() {
+                    if handle.is_finished() {
+                        completed_idx = Some(i);
+                        break;
+                    }
+                }
+                if let Some(idx) = completed_idx {
+                    let handle = in_flight.remove(idx);
                     if let Ok((latency, success, bytes)) = handle.await {
                         if success {
                             success_count += 1;
@@ -399,13 +419,30 @@ async fn run_http_workload(
                             fail_count += 1;
                         }
                     }
+                    // Immediately replace with a new request
+                    in_flight.push(tokio::spawn(make_request(&shared_client)));
+                } else {
+                    // All in-flight requests are still running — yield briefly
+                    tokio::time::sleep(Duration::from_millis(1)).await;
                 }
-                iteration += 1;
+            }
+
+            // Drain remaining in-flight requests
+            for handle in in_flight {
+                if let Ok((latency, success, bytes)) = handle.await {
+                    if success {
+                        success_count += 1;
+                        latencies.push(latency);
+                        total_bytes += bytes;
+                    } else {
+                        fail_count += 1;
+                    }
+                }
             }
 
             tracing::info!(
-                "  Completed {} iterations in {:.1}s",
-                iteration,
+                "  Completed {} ops in {:.1}s",
+                success_count,
                 start.elapsed().as_secs_f64()
             );
         }
@@ -444,7 +481,8 @@ async fn run_http_workload(
         }
 
         HttpWorkloadKind::ColdStart => {
-            // Idle for 5 seconds, then measure first N invocations
+            // Idle for 5 seconds, then measure first N invocations.
+            // ops/sec should reflect only the active measurement window, not idle time.
             tokio::time::sleep(Duration::from_secs(5)).await;
             let payload = vec![b'x'; workload.payload_size];
             for _ in 0..workload.operation_count {
@@ -459,6 +497,8 @@ async fn run_http_workload(
                     fail_count += 1;
                 }
             }
+            // Override total_duration to exclude idle sleep — only active measurement
+            // This is handled below via the cold_start_duration override
         }
 
         HttpWorkloadKind::DurablePromise => {
@@ -478,7 +518,15 @@ async fn run_http_workload(
         }
     }
 
-    let total_duration = start.elapsed();
+    // For cold_start, exclude the 5s idle sleep from throughput calculation
+    let total_duration = match workload.kind {
+        HttpWorkloadKind::ColdStart => {
+            // Re-measure from just the active portion (total time minus 5s sleep)
+            let active_time = start.elapsed() - Duration::from_secs(5);
+            if active_time.as_secs_f64() > 0.0 { active_time } else { start.elapsed() }
+        }
+        _ => start.elapsed(),
+    };
 
     // Get server memory
     let peak_memory_mb = adapter.server_memory_mb().await.unwrap_or(0.0);

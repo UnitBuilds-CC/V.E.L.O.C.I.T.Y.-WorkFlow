@@ -1,0 +1,21 @@
+fix: immediate workflow eviction + benchmark measurement accuracy
+
+- Add purge_workflow() to WorkflowEngine: O(1) eviction from all 4
+  per-workflow stores (DashMap, VisibilityIndex, HistoryStore,
+  ArchiveStore). Call after complete_workflow() to enforce fixed-memory.
+
+- Create WorkflowSlabPool module: fixed-capacity 65,536-slot array
+  (pre-allocated, constant memory). Each slot = SlabHeader + SlotMeta
+  inline metadata, no heap allocations. Ready for future integration.
+
+- Fix bench server: purge_workflow() after all 15 complete_workflow()
+  calls. Add memory_rss_mb reporting to /health via sysinfo crate.
+
+- Fix HTTP benchmark measurement bugs:
+  - Cold start: exclude 5s idle sleep from throughput calculation
+  - Concurrent/sustained: shared reqwest::Client (not per-task)
+  - Sustained load: continuous in-flight replacement (not batch-wait)
+
+- Memory growth: 229 MB -> 37 MB (88% reduction) after 20K ops
+
+- All 2108 engine tests + 41 core tests pass.

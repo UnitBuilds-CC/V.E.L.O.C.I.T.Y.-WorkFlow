@@ -120,9 +120,9 @@ vctp_request_duration_seconds_count 990
 
 ## Source Files
 
-| File | Role |
-|------|------|
-| `velocity-workflow-engine/src/vctp_rpc.rs` | VctpRpcServer, pipeline, dispatch, heartbeat, drain, metrics, chaos tests, stress benchmarks |
+| File | Lines | Role |
+|------|-------|------|
+| `velocity-workflow-engine/src/vctp_rpc.rs` | 2,767 | VctpRpcServer, pipeline, dispatch, heartbeat, drain, metrics, chaos tests, stress benchmarks |
 
 ## Safety Improvements
 

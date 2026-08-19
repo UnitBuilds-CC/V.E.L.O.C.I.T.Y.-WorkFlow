@@ -154,6 +154,10 @@ pub mod update;
 pub mod validation;
 pub mod vctp_rpc;
 pub mod vctp_transport;
+#[cfg(all(target_os = "linux", feature = "io-uring"))]
+pub mod vctp_uring;
+#[cfg(not(all(target_os = "linux", feature = "io-uring")))]
+pub mod vctp_uring;
 pub mod virtual_objects;
 pub mod visibility;
 pub mod visibility_query;
@@ -176,6 +180,7 @@ pub mod workflow_replay;
 pub mod workflow_reset;
 pub mod workflow_state_machine;
 pub mod workflow_task_handler;
+pub mod workflow_slab_pool;
 pub mod zero_alloc;
 
 // gRPC server module — only compiled when the `grpc` feature is enabled.

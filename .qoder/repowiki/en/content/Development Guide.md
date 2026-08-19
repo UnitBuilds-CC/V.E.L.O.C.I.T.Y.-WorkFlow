@@ -311,7 +311,7 @@ cargo build --release
 ### Testing VCTP
 
 ```bash
-# Run all engine tests (includes 61 VCTP tests)
+# Run all engine tests (includes 64 VCTP tests)
 cargo test -p velocity-workflow-engine
 
 # Run only VCTP-specific tests
@@ -324,7 +324,7 @@ cargo test -p velocity-workflow-engine --release -- vctp_bench
 cd tools/vctp-sidecar
 cargo test
 
-# Total: 2,541 engine tests + 6 sidecar tests = 2,547 passing
+# Total: 2,723 engine tests + 6 sidecar tests = 2,729 passing
 ```
 
 ### Running VCTP CLI Tool
@@ -346,7 +346,7 @@ python tools/vctp-cli/vctp_cli.py cancel --server 127.0.0.1:9090 --workflow-id w
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Core VCTP | 18 | Wire format, CRC32, reorder buffer, heartbeat |
+| Core VCTP | 21 | Wire format, CRC32, reorder buffer, heartbeat, packet types, cipher |
 | Security integration | 12 | Auth, rate limiting, circuit breaker tests |
 | HMAC authenticated encryption | 4 | MAC computation, verification, tamper detection, constant-time |
 | Replay protection | 6 | Window first/sequential/duplicate/old/out-of-order/large-jump |
@@ -354,10 +354,10 @@ python tools/vctp-cli/vctp_cli.py cancel --server 127.0.0.1:9090 --workflow-id w
 | Concurrent stress | 2 | 100-thread stress (≥2,000 ops/s), delivery ratio >90% |
 | Cross-network | 2 | 4-zone simulation (≥1,000 ops/s), delivery ratio >85% |
 | Performance benchmarks | 6 | Throughput, latency, HMAC (≥100K), replay (≥10M), E2E latency |
-| Cross-gateway E2E | 4 | WebSocket/HTTP/sidecar → VCTP roundtrip |
+| Cross-gateway E2E | 15 | WebSocket (11) + HTTP gateway → VCTP roundtrip tests |
 | Drain tests | 2 | Graceful drain + 503 rejection |
-| Gateway integration (HTTP) | 5 | Live HTTP ingress tests (start, signal, query, cancel, health) |
-| **Total VCTP** | **61** | Engine tests: 2,541 total + sidecar: 6 = **2,547 passing** |
+| Gateway integration (HTTP) | 18 | HTTP ingress + WS gateway integration tests |
+| **Total VCTP** | **88** | Engine tests: 2,723 total + sidecar: 6 = **2,729 passing** |
 
 ### VCTP Protocol Schema
 
@@ -751,14 +751,13 @@ dotnet run -c Release -- --lifecycle  # Real engine lifecycle (FFI)
 ### Building Images
 
 ```bash
-# Velocity Server
-docker build -t velocity-server -f velocity-workflow-server/Dockerfile .
+# Main workspace image (all 15 crates + VCTP tools)
+docker build -t velocity-server .
 
-# Velocity Embedded
-docker build -t velocity-embedded -f velocity-embedded/Dockerfile .
-
-# Velocity Classic
-docker build -t velocity-classic -f velocity-classic-ts/Dockerfile .
+# Production flavor-specific images
+docker build -t velocity-workflow-server -f deploy/Dockerfile.production-server .
+docker build -t velocity-classic-server -f deploy/Dockerfile.classic-server .
+docker build -t velocity-embedded-server -f deploy/Dockerfile.embedded-server .
 ```
 
 ### Local Development with Docker
@@ -849,7 +848,7 @@ The project uses GitHub Actions for CI:
 - `.github/workflows/ci.yml` — Main CI pipeline (includes chaos/failure injection tests)
 - `.github/workflows/benchmark.yml` — Benchmark runs with regression gates
 - `.github/workflows/e2e.yml` — End-to-end tests
-- `.github/workflows/release.yml` — Release builds
+- `.github/workflows/release.yml` — Cross-compile binaries (5 targets), Docker image push to GHCR, SDK publishing (npm, PyPI), GitHub Release
 
 **CI Security:**
 - Trivy container security scanning
@@ -872,16 +871,16 @@ The benchmark CI pipeline enforces performance regression thresholds:
 
 | Alert | Condition | Severity |
 |-------|-----------|----------|
-| VctpHighErrorRate | Error rate >5% for 2m | critical |
-| VctpHighLatency | p99 >100ms for 5m | warning |
-| VctpCircuitBreakerOpen | Circuit breaker open | critical |
-| VctpDrainStuck | Drain >60s with inflight >0 | warning |
-| VctpReplayDetected | Replay attempts >0 | warning |
-| VctpLowThroughput | <500 ops/s for 5m | warning |
+| VctpHighErrorRate | Error rate >5% for 5m | critical |
+| VctpCircuitBreakerOpen | Circuit breaker open for 2m | critical |
+| VctpLowThroughput | <1 req/s for 10m | warning |
+| VctpHighLatency | Avg duration >50ms for 5m | warning |
+| VctpDrainActive | Drain active for 10m | warning |
+| VctpAuthRejectionsSpike | >10 auth rejections/s for 5m | warning |
 
-**HTTP alerts (11 rules):** Standard HTTP error rate, latency, and saturation alerts.
+**HTTP alerts (5 rules):** Standard HTTP error rate, latency, and saturation alerts.
 
-**Total: 17 Prometheus alert rules** (11 HTTP + 6 VCTP)
+**Total: 11 Prometheus alert rules** (5 HTTP + 6 VCTP)
 
 ## Security and Production Hardening
 
@@ -952,6 +951,8 @@ Packet-level authenticated encryption with HMAC-SHA256 and replay protection:
 
 ### Operations Runbooks
 See `docs/ops-runbooks.md` for common incident scenarios and resolution procedures (15 runbooks covering WAL recovery, VCTP circuit breaker, replay attacks, HMAC failures, TLS issues, and throughput degradation).
+
+See `deploy/RUNBOOK.md` (392 lines) for production operational procedures: scaling guide, PostgreSQL backup/restore, monitoring alerts & thresholds, troubleshooting, rollback procedures, and mTLS certificate management.
 
 ### Security Audit
 See `docs/security-audit-checklist.md` for a 65-point security audit checklist covering all 39 production hardening items across 10 categories (transport, encryption, access control, network, persistence, observability, monitoring, container, CI/CD, and operational readiness).

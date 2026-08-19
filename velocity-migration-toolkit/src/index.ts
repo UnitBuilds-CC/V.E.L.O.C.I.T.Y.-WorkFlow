@@ -2,6 +2,7 @@
  * Velocity Migration Toolkit
  * 
  * Converts workflows between SDK flavors:
+ * - Temporal (Temporal SDK — direct migration)
  * - Classic (Temporal-compatible)
  * - Runtime (Restate-compatible)
  * - Embedded (DBOS-compatible)
@@ -13,7 +14,7 @@
 
 // ─── SDK Flavors ─────────────────────────────────────────────────────────────
 
-export type SDKFlavor = 'classic' | 'runtime' | 'embedded' | 'python-runtime';
+export type SDKFlavor = 'temporal' | 'classic' | 'runtime' | 'embedded' | 'python-runtime';
 
 export interface MigrationOptions {
   source: SDKFlavor;
@@ -69,6 +70,73 @@ interface TransformRule {
  * Each rule matches a source-pattern and produces the correct target-pattern.
  */
 const BODY_TRANSFORM_RULES: TransformRule[] = [
+  // ── Temporal → Velocity: proxied activity call (e.g. await greet(args)) ──
+  {
+    pattern: /(?<!this\.|ctx\.|\w)await\s+([a-z]\w*)\s*\(([^)]*)\)/g,
+    replacement: (m, target) => {
+      if (target === 'temporal') return m[0];
+      const fnName = m[1];
+      const args = m[2];
+      // Skip known non-activity functions
+      const skip = ['console','JSON','String','Number','Array','Object','Math','Date','parseInt','parseFloat','setTimeout','setInterval','require','import','Error','Promise','Buffer','Map','Set','Symbol','RegExp','Reflect','Proxy','WeakMap','WeakSet','AbortController','fetch','queueMicrotask','structuredClone'];
+      if (skip.includes(fnName) || fnName.startsWith('_')) return m[0];
+      if (['if','for','while','switch','catch','return','new','throw','typeof','instanceof','void','delete','in','of'].includes(fnName)) return m[0];
+      switch (target) {
+        case 'classic': return `await this.executeActivity('${fnName}'${args ? ', ' + args : ''})`;
+        case 'runtime': return `await ctx.invoke('${fnName}', 'execute'${args ? ', ' + args : ''})`;
+        case 'embedded': return `await ctx.invoke('${fnName}', 'execute'${args ? ', ' + args : ''})`;
+        case 'python-runtime': return `await ctx.invoke('${fnName}', 'execute'${args ? ', ' + args : ''})`;
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: wf.sleep / sleep ──
+  {
+    pattern: /await\s+(?:wf\.)?sleep\s*\(\s*([^)]+)\)/g,
+    replacement: (m, target) => {
+      if (target === 'temporal') return m[0];
+      switch (target) {
+        case 'classic': return `await this.sleep(${m[1]})`;
+        case 'runtime': return `await ctx.sleep(${m[1]})`;
+        case 'embedded': return `await ctx.sleep(${m[1]})`;
+        case 'python-runtime': return `await ctx.sleep(${m[1]})`;
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: wf.condition / condition ──
+  {
+    pattern: /await\s+(?:wf\.)?condition\s*\(\s*([^)]+)\)/g,
+    replacement: (m, target) => {
+      if (target === 'temporal') return m[0];
+      const args = m[1];
+      // Extract signal name from first arg if it's a string
+      const sigMatch = /['"](\w+)['"]/.exec(args);
+      const sigName = sigMatch ? sigMatch[1] : args;
+      switch (target) {
+        case 'classic': return `await this.waitForSignal('${sigName}')`;
+        case 'runtime': return `await ctx.promise('${sigName}')`;
+        case 'embedded': return `await ctx.promise('${sigName}')`;
+        case 'python-runtime': return `await ctx.promise('${sigName}')`;
+        default: return m[0];
+      }
+    },
+  },
+  // ── Temporal → Velocity: wf.signalHandler / setHandler ──
+  {
+    pattern: /(?:wf\.)?setHandler\s*\(\s*(?:wf\.)?signal\s*\(\s*['"](\w+)['"]\s*\)\s*,/g,
+    replacement: (m, target) => {
+      if (target === 'temporal') return m[0];
+      const sigName = m[1];
+      switch (target) {
+        case 'classic': return `/* signal: ${sigName} */`;
+        case 'runtime': return `/* signal: ${sigName} */`;
+        case 'embedded': return `/* signal: ${sigName} */`;
+        case 'python-runtime': return `# signal: ${sigName}`;
+        default: return m[0];
+      }
+    },
+  },
   // ── Classic → others: await this.executeActivity('Name', ...args) ──
   {
     pattern: /await\s+this\.executeActivity\(\s*['"](\w+)['"]\s*(?:,\s*([^)]+))?\)/g,
@@ -501,6 +569,132 @@ export function transformBody(body: string, source: SDKFlavor, target: SDKFlavor
 }
 
 // ─── Parsers (SDK → IR) ─────────────────────────────────────────────────────
+
+// ─── Temporal Parser (SDK → IR) ──────────────────────────────────────────────
+
+/**
+ * Parse Temporal TypeScript SDK workflows.
+ * Handles: proxyActivities, executeActivity, defineWorkflow, defineSignal,
+ * wf.sleep, wf.condition, wf.signalHandler, wf.queryHandler, and
+ * standard Temporal workflow function patterns.
+ */
+export function parseTemporal(code: string): WorkflowIR[] {
+  const workflows: WorkflowIR[] = [];
+  const allImports = extractImports(code);
+
+  // Extract proxied activity names from: const { a, b } = proxyActivities(...)
+  const proxiedActivities = new Set<string>();
+  const proxyRegex = /const\s*\{([^}]+)\}\s*=\s*proxyActivities\s*\(/g;
+  let proxyMatch;
+  while ((proxyMatch = proxyRegex.exec(code)) !== null) {
+    const names = proxyMatch[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
+    names.forEach(n => proxiedActivities.add(n));
+  }
+
+  // Parse defineWorkflow functions
+  const defineWfRegex = /export\s+const\s+(\w+)\s*=\s*defineWorkflow\s*\(\s*async\s*\(([^)]*)\)\s*(?::\s*(?:Promise<[^>]*>|[^{;]+?))?\s*=>\s*\{/g;
+  let dwMatch;
+  while ((dwMatch = defineWfRegex.exec(code)) !== null) {
+    const name = dwMatch[1];
+    const params = dwMatch[2];
+    const bodyStart = dwMatch.index + dwMatch[0].length - 1;
+    const extracted = extractBraceBlock(code, bodyStart);
+    if (!extracted) continue;
+    let body = extracted.block;
+    // Transform proxied activity calls to this.executeActivity
+    for (const actName of proxiedActivities) {
+      const actCallRegex = new RegExp(`await\\s+${actName}\\s*\\(([^)]*)\\)`, 'g');
+      body = body.replace(actCallRegex, (_, args) => `await this.executeActivity('${actName}'${args ? ', ' + args : ''})`);
+    }
+    workflows.push({
+      name,
+      type: 'workflow',
+      methods: [{
+        name: 'execute',
+        parameters: parseTSParams(params),
+        returnType: 'any',
+        body,
+        transformedBody: '',
+        decorators: [],
+        contextUsage: [],
+        isAsync: true,
+      }],
+      imports: allImports,
+      metadata: { sdk: 'temporal', proxiedActivities: [...proxiedActivities] },
+    });
+  }
+
+  // Parse standard Temporal workflow functions (export async function)
+  const exportFnRegex = /export\s+async\s+function\s+(\w+)\s*\(([^)]*)\)\s*(?::\s*(?:Promise<[^>]*>|[^{;]+?))?\s*\{/g;
+  let efMatch;
+  while ((efMatch = exportFnRegex.exec(code)) !== null) {
+    const name = efMatch[1];
+    // Skip if already parsed as defineWorkflow
+    if (workflows.some(w => w.name === name)) continue;
+    const params = efMatch[2];
+    const bodyStart = efMatch.index + efMatch[0].length - 1;
+    const extracted = extractBraceBlock(code, bodyStart);
+    if (!extracted) continue;
+    let body = extracted.block;
+    // Transform proxied activity calls
+    for (const actName of proxiedActivities) {
+      const actCallRegex = new RegExp(`await\\s+${actName}\\s*\\(([^)]*)\\)`, 'g');
+      body = body.replace(actCallRegex, (_, args) => `await this.executeActivity('${actName}'${args ? ', ' + args : ''})`);
+    }
+    workflows.push({
+      name,
+      type: 'workflow',
+      methods: [{
+        name: 'execute',
+        parameters: parseTSParams(params),
+        returnType: 'any',
+        body,
+        transformedBody: '',
+        decorators: [],
+        contextUsage: [],
+        isAsync: true,
+      }],
+      imports: allImports,
+      metadata: { sdk: 'temporal', proxiedActivities: [...proxiedActivities] },
+    });
+  }
+
+  // Parse Temporal Workflow classes (class-based pattern)
+  const classRegex = /class\s+(\w+)\s+extends\s+(?:BaseWorkflow|Workflow)\s*(?:<[^>]*>)?\s*\{/g;
+  let classMatch;
+  while ((classMatch = classRegex.exec(code)) !== null) {
+    const name = classMatch[1];
+    if (workflows.some(w => w.name === name)) continue;
+    const extracted = extractBraceBlock(code, classMatch.index);
+    if (!extracted) continue;
+    workflows.push({
+      name,
+      type: 'workflow',
+      methods: parseTSMethods(extracted.block),
+      imports: allImports,
+      metadata: { sdk: 'temporal' },
+    });
+  }
+
+  // Parse Temporal Activity classes
+  const actClassRegex = /class\s+(\w+)\s+extends\s+(?:BaseActivity|Activity)\s*(?:<[^>]*>)?\s*\{/g;
+  let actMatch;
+  while ((actMatch = actClassRegex.exec(code)) !== null) {
+    const name = actMatch[1];
+    if (workflows.some(w => w.name === name)) continue;
+    const extracted = extractBraceBlock(code, actMatch.index);
+    if (!extracted) continue;
+    workflows.push({
+      name,
+      type: 'activity',
+      methods: parseTSMethods(extracted.block),
+      imports: allImports.filter(i => i !== name),
+      metadata: { sdk: 'temporal' },
+    });
+  }
+
+  return workflows;
+}
 
 export function parseClassic(code: string): WorkflowIR[] {
   const workflows: WorkflowIR[] = [];
@@ -1103,6 +1297,9 @@ export function migrate(code: string, options: MigrationOptions): string {
   // Parse source to IR
   let ir: WorkflowIR[];
   switch (source) {
+    case 'temporal':
+      ir = parseTemporal(code);
+      break;
     case 'classic':
       ir = parseClassic(code);
       break;
@@ -1137,7 +1334,7 @@ export function migrate(code: string, options: MigrationOptions): string {
 // ─── Utility Exports ─────────────────────────────────────────────────────────
 
 export function getSupportedMigrations(): string[] {
-  const flavors: SDKFlavor[] = ['classic', 'runtime', 'embedded', 'python-runtime'];
+  const flavors: SDKFlavor[] = ['temporal', 'classic', 'runtime', 'embedded', 'python-runtime'];
   const migrations: string[] = [];
   for (const source of flavors) {
     for (const target of flavors) {
@@ -1151,7 +1348,8 @@ export function getSupportedMigrations(): string[] {
 
 export function validateMigration(code: string, source: SDKFlavor): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
-  const ir = source === 'classic' ? parseClassic(code) :
+  const ir = source === 'temporal' ? parseTemporal(code) :
+             source === 'classic' ? parseClassic(code) :
              source === 'runtime' ? parseRuntime(code) :
              source === 'embedded' ? parseEmbedded(code) :
              parsePythonRuntime(code);

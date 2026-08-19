@@ -51,6 +51,7 @@ This directory contains AI-optimized documentation and specifications for the V.
 - `docs/otlp-tracing-guide.md` — OTLP/Jaeger/Tempo distributed tracing configuration guide
 - `deploy/scripts/vctp-prod-loadtest.sh` — Kubernetes-native VCTP production load test (100 clients, CI thresholds)
 - `deploy/scripts/wal-backup.sh` — WAL backup script with encryption, checksums, S3 upload, and retention
+- `deploy/RUNBOOK.md` — Production operations runbook (392 lines): scaling, backup/restore, monitoring alerts, troubleshooting, rollback, mTLS cert management
 
 ## Documentation Pages
 
@@ -72,7 +73,7 @@ Comprehensive guide for developers contributing to Velocity.
 **Contents:**
 - Development environment setup (Rust, Node.js, Docker)
 - Project architecture and module organization (15 crates + VCTP tools)
-- Building and testing procedures (2,547 total tests: 2,541 engine + 6 sidecar)
+- Building and testing procedures (2,729 total tests: 2,723 engine + 6 sidecar)
 - VCTP development workflow (building, testing with 11 test categories, CLI, Wireshark, OpenAPI)
 - TLS configuration for gateways (HTTPS/WSS setup)
 - VCTP authenticated encryption (HMAC-SHA256, replay protection)
@@ -98,7 +99,7 @@ Deep dive into Velocity's system architecture and design decisions.
 - VCTP performance table (9 benchmarks with CI thresholds)
 - Slab engine with Merkle root state proof (SHA-256, Bitmask256)
 - Persistence layers (WAL with DurabilityConfig, PostgreSQL, Per-Step Journal)
-- Security layer (auth, rate limiting, audit logging, TLS termination, VCTP authenticated encryption, replay protection, 17 Prometheus alerts)
+- Security layer (auth, rate limiting, audit logging, TLS termination, VCTP authenticated encryption, replay protection, 11 Prometheus alerts)
 - Distributed tracing (OpenTelemetry/OTLP)
 - PG advisory locking for multi-instance coordination
 - Protocol buffers and gRPC (legacy, still used by bench-suite)
@@ -310,7 +311,7 @@ Documents K8s deployment with Helm charts.
 - Graceful drain with preStop hook
 - Helm values for circuit breaker, heartbeat, security
 - TLS gateway termination config (secretName, HTTPS 8443, WSS 8444, cert-manager compatible)
-- Prometheus alert rules (6 VCTP-specific alerts + note about 17 total)
+- Prometheus alert rules (6 VCTP-specific alerts + note about 11 total)
 
 ## Specifications
 
@@ -336,7 +337,7 @@ YAML-formatted metadata about the project:
 - SDK status and paths
 - Security features and hardening (TLS, HMAC-SHA256, JWT key rotation, replay protection, XOR cipher, gateway rate limiting, security headers, RwLock safety)
 - Configurable durability (DurabilityConfig: strict/batched/async, direct execution mode)
-- VCTP protocol (18 features, gateways, 9 benchmarks, 2,547 total tests)
+- VCTP protocol (18 features, gateways, 9 benchmarks, 2,729 total tests)
 - Competitor benchmarks
 - Build configuration (Rust, TypeScript)
 - Deployment information (Docker, Kubernetes with TLS config)

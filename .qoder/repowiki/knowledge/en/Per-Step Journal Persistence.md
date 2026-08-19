@@ -18,6 +18,7 @@ The per-step journal provides true durable execution by persisting each workflow
 - **Batch INSERT** — Steps are flushed to PostgreSQL in batches for efficiency
 - **Crash recovery** — On restart, replay journal to restore workflow state
 - **Per-step durability** — Each step is individually durable, not just the workflow
+- **InMemoryAdapter** — Real step journal with `save_step`, `save_steps_batch`, and `load_steps` (was previously stub; now stores steps in `HashMap<u64, Vec<(u32, Option<Vec<u8>>)>>`)
 
 **Write Path:**
 ```

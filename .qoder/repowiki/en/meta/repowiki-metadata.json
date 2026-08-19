@@ -1,6 +1,6 @@
 # Velocity Workflow Repowiki Metadata
 # Generated: 2026-08-18
-# Last updated: After configurable durability (DurabilityConfig), security hardening (HMAC-SHA256 JWT + key rotation, security headers), OpenTelemetry tracing, C# lifecycle benchmarks, direct execution mode
+# Last updated: After v1.0.0 release — line count audit post junk-file cleanup (vctp_rpc.rs 2,767, vctp.rs 623, gateway files reduced, SDK counts updated, test count 2,729 total)
 
 project:
   name: "V.E.L.O.C.I.T.Y. WorkFlow"
@@ -23,9 +23,9 @@ workspace:
   crates:
     # Core engine
     - name: "velocity-workflow-core"
-      role: "core abstractions and FFI slab engine"
+      role: "core abstractions and FFI slab engine, VCTP packet types and authenticated encryption (vctp.rs, 623 lines)"
     - name: "velocity-workflow-engine"
-      role: "workflow engine implementation with WAL, PG adapter, advisory locking, DurabilityConfig (engine.rs)"
+      role: "workflow engine implementation with WAL, PG adapter, advisory locking, DurabilityConfig (engine.rs), VCTP transport + RPC (vctp_rpc.rs 2,767 lines)"
     - name: "velocity-workflow-daemon"
       role: "background daemon process"
 
@@ -51,7 +51,7 @@ workspace:
 
     # Benchmarks and tools
     - name: "velocity-bench"
-      role: "HTTP benchmark tool with workload adapters and universal 6-engine harness (universal_main.rs, 922 lines)"
+      role: "HTTP benchmark tool with workload adapters and universal 6-engine harness (universal_main.rs, 812 lines) — tests Velocity, Classic, Embedded, Restate, DBOS, Temporal"
     - name: "velocity-dev-server"
       role: "development server with hot reload"
     - name: "velocity-test-framework"
@@ -126,7 +126,7 @@ security:
   gateway_rate_limiting:
     http: "Per-second window rate limiting (AtomicU64, lock-free)"
     ws: "Per-connection rate limiting (configurable)"
-  prometheus_alerts: "17 rules total (11 HTTP + 6 VCTP-specific)"
+  prometheus_alerts: "11 rules total (5 HTTP + 6 VCTP-specific)"
   rwlock_safety: "27 unwrap() → expect('descriptive message') in production hot path"
 
 tracing:
@@ -229,7 +229,7 @@ vctp:
     - "Reorder buffer (BTreeMap in-order delivery)"
     - "AIMD congestion control"
     - "Packet fragmentation/reassembly"
-    - "Prometheus metrics export (6 VCTP + 11 HTTP = 17 alert rules)"
+    - "Prometheus metrics export (6 VCTP + 5 HTTP = 11 alert rules)"
     - "OpenTelemetry tracing spans"
     - "HMAC-SHA256 authenticated encryption (constant-time verification)"
     - "Replay protection (64-depth sliding window, ≥10M checks/s)"
@@ -253,10 +253,10 @@ vctp:
     hmac_sha256_throughput: "≥100,000 ops/s"
     replay_window_checks: "≥10,000,000 ops/s"
   tests:
-    engine_tests: 2541
-    vctp_tests: 61
+    engine_tests: 2723
+    vctp_tests: 88
     sidecar_tests: 6
-    total: 2547
+    total: 2729
 
 documentation:
   content:
@@ -289,6 +289,7 @@ documentation:
     - "docs/ops-runbooks.md"
     - "docs/security-audit-checklist.md"
     - "docs/otlp-tracing-guide.md"
+    - "deploy/RUNBOOK.md"
     - "deploy/scripts/vctp-prod-loadtest.sh"
     - "deploy/scripts/wal-backup.sh"
 
@@ -337,7 +338,7 @@ ci:
     - name: "e2e.yml"
       description: "End-to-end tests"
     - name: "release.yml"
-      description: "Release builds"
+      description: "Cross-compile binaries (5 targets: linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, windows-amd64), Docker image push to GHCR, SDK publishing (npm, PyPI), GitHub Release with changelog and assets"
   security:
     - "Trivy container scanning"
     - "Chaos/failure injection tests"
@@ -349,7 +350,7 @@ ci:
 benchmarking:
   tool: "bench-suite/prod-bench"
   http_bench: "velocity-bench (universal_main.rs: 6-engine HTTP comparison, http_adapter.rs: velocity-specific)"
-  dotnet_bench: "benchmarks/Velocity.Workflow.Benchmarks (C# lifecycle benchmarks: WorkflowLifecycleBenchmark 143 lines, --lifecycle flag, Params 1/10/100 steps via FFI)"
+  dotnet_bench: "benchmarks/Velocity.Workflow.Benchmarks (C# lifecycle benchmarks: WorkflowLifecycleBenchmark 167 lines, --lifecycle flag, Params 1/10/100 steps via FFI)"
   profiles:
     - "quick"
     - "standard"

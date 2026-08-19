@@ -3073,6 +3073,7 @@ mod tests {
     #[test]
     fn bench_vctp_authenticated_encryption_overhead() {
         use velocity_workflow_core::vctp::VctpCipher;
+        use std::hint::black_box;
 
         let cipher = VctpCipher::from_passphrase("benchmark-key", 42);
         let data_sizes = [64, 256, 1024, 4096];
@@ -3083,8 +3084,9 @@ mod tests {
 
             let start = Instant::now();
             for i in 0..iterations {
-                let mac = cipher.compute_mac(&data, i);
-                let _valid = cipher.verify_mac(&data, i, &mac);
+                let mac = cipher.compute_mac(black_box(&data), black_box(i));
+                let valid = cipher.verify_mac(black_box(&data), black_box(i), black_box(&mac));
+                black_box(valid);
             }
             let elapsed = start.elapsed();
             let ops_per_sec = (iterations as f64 / elapsed.as_secs_f64()) as u64;
@@ -3102,17 +3104,135 @@ mod tests {
         }
     }
 
+    /// VCTP AES-256-GCM encryption-in-transit benchmark.
+    /// Measures encrypt/decrypt throughput at various payload sizes.
+    /// AES-256-GCM is the production encryption mode for VCTP traffic.
+    #[test]
+    fn bench_vctp_aes256gcm_encryption_throughput() {
+        use velocity_workflow_core::vctp::{Aes256GcmCipher, VctpPacket, VctpPacketHeader};
+        use std::hint::black_box;
+
+        let cipher = Aes256GcmCipher::from_passphrase("vctp-production-bench-key-2026");
+        let data_sizes = [64, 256, 1024, 4096];
+
+        eprintln!();
+        eprintln!("  AES-256-GCM Encryption Throughput:");
+
+        for &size in &data_sizes {
+            let plaintext = vec![0xABu8; size];
+            let iterations = 5_000;
+
+            // Encrypt benchmark — use black_box to prevent compiler optimization
+            let mut seq = 0u64;
+            let mut ciphertexts = Vec::with_capacity(iterations);
+            let start = Instant::now();
+            for _ in 0..iterations {
+                ciphertexts.push(black_box(cipher.encrypt(black_box(&plaintext), black_box(seq))));
+                seq += 1;
+            }
+            let enc_elapsed = start.elapsed();
+            let enc_ops = (iterations as f64 / enc_elapsed.as_secs_f64()) as u64;
+            let enc_ns = enc_elapsed.as_nanos() / iterations as u128;
+
+            // Decrypt benchmark
+            let mut dseq = 0u64;
+            let start = Instant::now();
+            for i in 0..iterations {
+                let result = black_box(cipher.decrypt(black_box(&ciphertexts[i]), black_box(dseq)));
+                black_box(result);
+                dseq += 1;
+            }
+            let dec_elapsed = start.elapsed();
+            let dec_ops = (iterations as f64 / dec_elapsed.as_secs_f64()) as u64;
+            let dec_ns = dec_elapsed.as_nanos() / iterations as u128;
+
+            eprintln!("    {}B payload: encrypt={} ops/s ({} ns/op), decrypt={} ops/s ({} ns/op)",
+                size, enc_ops, enc_ns, dec_ops, dec_ns);
+
+            assert!(
+                enc_ops >= 100_000,
+                "AES-256-GCM encrypt too slow for {}B: {} ops/s < 100,000",
+                size, enc_ops
+            );
+        }
+
+        // Packet-level encryption benchmark (full VCTP packet encrypt/decrypt)
+        eprintln!();
+        eprintln!("  AES-256-GCM Packet Round-trip:");
+        let payload = vec![0xCDu8; 256];
+        let iterations = 5_000;
+        let start = Instant::now();
+        for i in 0..iterations {
+            let header = VctpPacketHeader::new(black_box(i as u64), 42, 0, payload.len() as u32);
+            let mut packet = VctpPacket::new(header, black_box(payload.clone()));
+            cipher.encrypt_packet(black_box(&mut packet), black_box(i as u64));
+            let ok = cipher.decrypt_packet(black_box(&mut packet), black_box(i as u64));
+            assert!(ok, "Packet decrypt failed at seq {}", i);
+        }
+        let elapsed = start.elapsed();
+        let ops = (iterations as f64 / elapsed.as_secs_f64()) as u64;
+        let ns = elapsed.as_nanos() / iterations as u128;
+        eprintln!("    256B packet encrypt+decrypt: {} ops/s, {} ns/op", ops, ns);
+    }
+
+    /// Merkle chain throughput benchmark.
+    /// Measures how fast we can advance the chained Merkle root (blockchain-style).
+    #[test]
+    fn bench_vctp_merkle_chain_throughput() {
+        use velocity_workflow_core::slab::SlabHeader;
+        use std::hint::black_box;
+
+        let iterations = 10_000u32;
+        eprintln!();
+        eprintln!("  Merkle Chain Throughput ({} steps):", iterations);
+
+        // Genesis header
+        let mut header = SlabHeader::new(1, 1, iterations);
+        let genesis_root = header.merkle_root;
+
+        let start = Instant::now();
+        for step in 0..iterations {
+            // Each step: save prev root, advance step, recalculate
+            header.prev_merkle_root = black_box(header.merkle_root);
+            header.current_step = black_box(step + 1);
+            header.step_bitmask.set_step(step as usize);
+            black_box(header.recalculate_merkle_root());
+        }
+        let elapsed = start.elapsed();
+        let ops = (iterations as f64 / elapsed.as_secs_f64()) as u64;
+        let ns = elapsed.as_nanos() / iterations as u128;
+
+        eprintln!("    Chain step: {} ops/s, {} ns/op", ops, ns);
+        eprintln!("    Genesis root: {:02x}{:02x}...", genesis_root[0], genesis_root[1]);
+        eprintln!("    Final root:   {:02x}{:02x}...", header.merkle_root[0], header.merkle_root[1]);
+        eprintln!("    Prev root:    {:02x}{:02x}...", header.prev_merkle_root[0], header.prev_merkle_root[1]);
+
+        // Verify chain integrity: prev_merkle_root should equal the root before the last step
+        assert_ne!(header.merkle_root, header.prev_merkle_root, "Chain should advance");
+        assert_ne!(header.merkle_root, genesis_root, "Root should differ from genesis");
+        assert_ne!(header.prev_merkle_root, [0u8; 32], "Prev root should be set");
+
+        assert!(
+            ops >= 100_000,
+            "Merkle chain throughput too low: {} ops/s < 100,000",
+            ops
+        );
+    }
+
     /// VCTP replay window performance benchmark.
     #[test]
     fn bench_vctp_replay_window_performance() {
         use velocity_workflow_core::vctp::VctpReplayWindow;
+        use std::hint::black_box;
 
         let mut window = VctpReplayWindow::new(64);
         let iterations: u64 = 1_000_000;
 
+        let mut seq: u64 = 0;
         let start = Instant::now();
-        for i in 0..iterations {
-            let _ = window.check_and_record(i);
+        for _ in 0..iterations {
+            black_box(window.check_and_record(black_box(seq)));
+            seq += 1;
         }
         let elapsed = start.elapsed();
         let ops_per_sec = (iterations as f64 / elapsed.as_secs_f64()) as u64;
