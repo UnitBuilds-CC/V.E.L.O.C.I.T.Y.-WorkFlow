@@ -325,8 +325,10 @@ class Worker:
         while self._running:
             try:
                 self._stats.tasks_polled += 1
-                task = self._client.poll_task(
+                task = self._client.poll_workflow_task_queue(
                     self._options.task_queue,
+                    namespace=self._options.namespace,
+                    build_id=self._options.build_id,
                     timeout_ms=self._options.poll_timeout_ms,
                 )
                 if task is not None:
@@ -343,9 +345,21 @@ class Worker:
         """Long-poll loop for activity tasks."""
         while self._running:
             try:
-                await asyncio.sleep(0.5)
+                task = self._client.poll_activity_task_queue(
+                    self._options.task_queue,
+                    namespace=self._options.namespace,
+                    build_id=self._options.build_id,
+                    timeout_ms=self._options.poll_timeout_ms,
+                )
+                if task is not None:
+                    await self._execute_activity_task(task)
+                else:
+                    await asyncio.sleep(0.1)
             except asyncio.CancelledError:
                 break
+            except Exception as exc:
+                logger.error("Activity poll error: %s", exc)
+                await asyncio.sleep(1.0)
 
     async def _heartbeat_loop(self) -> None:
         """Periodic heartbeat sender."""
@@ -364,13 +378,17 @@ class Worker:
         """Dispatch a workflow task to the registered implementation."""
         workflow_type = task.get("workflow_type", "unknown")
         workflow_key = task.get("workflow_key", 0)
+        task_token = task.get("task_token", 0)
         workflow_id = task.get("workflow_id", f"wf-{workflow_key}")
-        input_data = task.get("input", "{}")
 
         cls = self._workflows.get(workflow_type)
         if cls is None:
             logger.warning("No workflow registered for '%s'", workflow_type)
-            self._client.fail_task(workflow_key, f"No handler for {workflow_type}")
+            # Fail the task via server
+            self._client.respond_workflow_task_completed(
+                task_token=task_token,
+                commands=[{"fail_workflow": {"reason": f"No handler for {workflow_type}"}}],
+            )
             return
 
         ctx = WorkflowContext(
@@ -391,6 +409,8 @@ class Worker:
                 raise RuntimeError(f"Workflow '{workflow_type}' has no 'run' method")
 
             import json
+            # Input comes from the task history or is empty
+            input_data = task.get("input", "{}")
             args = json.loads(input_data) if isinstance(input_data, str) else input_data
             if isinstance(args, dict):
                 result = await run_method(ctx, **args) if inspect.iscoroutinefunction(run_method) else run_method(ctx, **args)
@@ -401,14 +421,75 @@ class Worker:
 
             import json as _json
             result_bytes = _json.dumps(result).encode() if result is not None else b""
-            self._client.complete_workflow(workflow_key, result_bytes)
+
+            # Build commands: complete workflow with result
+            commands = [{"complete_workflow": {"result": result_bytes}}]
+            self._client.respond_workflow_task_completed(
+                task_token=task_token,
+                commands=commands,
+            )
             self._stats.workflows_completed += 1
             logger.info("Workflow '%s' completed (key=%s)", workflow_type, workflow_key)
 
         except Exception as exc:
             self._stats.workflows_failed += 1
             logger.error("Workflow '%s' failed: %s\n%s", workflow_type, exc, traceback.format_exc())
-            self._client.fail_task(workflow_key, str(exc))
+            commands = [{"fail_workflow": {"reason": str(exc)}}]
+            self._client.respond_workflow_task_completed(
+                task_token=task_token,
+                commands=commands,
+            )
+
+    async def _execute_activity_task(self, task: dict) -> None:
+        """Dispatch an activity task to the registered implementation."""
+        activity_type = task.get("activity_type", "unknown")
+        task_token = task.get("task_token", 0)
+        workflow_key = task.get("workflow_key", 0)
+        step_index = task.get("step_index", 0)
+        input_data = task.get("input", b"")
+
+        fn = self._activities.get(activity_type)
+        if fn is None:
+            logger.warning("No activity registered for '%s'", activity_type)
+            self._client.respond_activity_task_failed(
+                task_token=task_token,
+                failure=f"No handler for {activity_type}".encode(),
+                workflow_key=workflow_key,
+                step_index=step_index,
+            )
+            return
+
+        self._stats.activities_scheduled += 1
+        try:
+            import json
+            args = json.loads(input_data) if isinstance(input_data, (str, bytes)) else input_data
+            if isinstance(args, dict):
+                result = await fn(**args) if inspect.iscoroutinefunction(fn) else fn(**args)
+            elif isinstance(args, list):
+                result = await fn(*args) if inspect.iscoroutinefunction(fn) else fn(*args)
+            else:
+                result = await fn(args) if inspect.iscoroutinefunction(fn) else fn(args)
+
+            import json as _json
+            result_bytes = _json.dumps(result).encode() if result is not None else b""
+            self._client.respond_activity_task_completed(
+                task_token=task_token,
+                result=result_bytes,
+                workflow_key=workflow_key,
+                step_index=step_index,
+            )
+            self._stats.activities_completed += 1
+            logger.info("Activity '%s' completed (token=%s)", activity_type, task_token)
+
+        except Exception as exc:
+            self._stats.activities_failed += 1
+            logger.error("Activity '%s' failed: %s", activity_type, exc)
+            self._client.respond_activity_task_failed(
+                task_token=task_token,
+                failure=str(exc).encode(),
+                workflow_key=workflow_key,
+                step_index=step_index,
+            )
 
     # ─── Stats ────────────────────────────────────────────────────────────
 

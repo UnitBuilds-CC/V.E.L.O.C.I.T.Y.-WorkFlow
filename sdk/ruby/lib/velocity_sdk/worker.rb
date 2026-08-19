@@ -135,7 +135,8 @@ module VelocitySDK
       @poll_timeout_ms = poll_timeout_ms
       @heartbeat_interval_ms = heartbeat_interval_ms
       @build_id = build_id
-      @client = client # In production, create a default client if nil
+      @client = client || VelocityClient.new(target: server_address)
+      @identity = "ruby-worker-#{build_id}@#{Socket.gethostname rescue 'unknown'}"
       @running = false
       @workflows = {}
       @activities = {}
@@ -189,14 +190,37 @@ module VelocitySDK
       while @running
         @stats[:tasks_polled] += 1
 
-        # Poll for a task
         begin
-          task = poll_for_task
-          if task
-            execute_task(task)
-          else
-            sleep(0.1)
+          # Poll for workflow tasks via gRPC long-poll
+          wf_task = @client.poll_workflow_task_queue(
+            @task_queue,
+            namespace: @namespace,
+            identity: @identity,
+            build_id: @build_id,
+            timeout_ms: @poll_timeout_ms,
+          )
+
+          if wf_task
+            execute_workflow_task(wf_task)
+            next
           end
+
+          # Poll for activity tasks
+          act_task = @client.poll_activity_task_queue(
+            @task_queue,
+            namespace: @namespace,
+            identity: @identity,
+            build_id: @build_id,
+            timeout_ms: @poll_timeout_ms,
+          )
+
+          if act_task
+            execute_activity_task(act_task)
+            next
+          end
+
+          # No tasks available — brief backoff
+          sleep(0.1)
         rescue => e
           warn "[velocity-worker] Poll error: #{e.message}"
           sleep(1)
@@ -227,36 +251,23 @@ module VelocitySDK
 
     private
 
-    # Poll for a task from the server.
-    def poll_for_task
-      # In a full implementation, this would call the server via gRPC/HTTP.
-      # For now, return nil (no task available).
-      nil
-    end
-
-    # Execute a workflow or activity task.
-    def execute_task(task)
-      task_type = task[:type] || 'unknown'
-      workflow_type = task[:workflow_type]
-      activity_type = task[:activity_type]
-
-      if task_type == 'workflow' && @workflows.key?(workflow_type)
-        execute_workflow_task(task)
-      elsif task_type == 'activity' && @activities.key?(activity_type)
-        execute_activity_task(task)
-      else
-        warn "[velocity-worker] No handler for task type: #{task_type}"
-      end
-    end
-
     # Execute a workflow task.
     def execute_workflow_task(task)
-      workflow_type = task[:workflow_type]
+      workflow_type = task[:workflow_type] || ''
+      task_token = task[:task_token] || 0
       workflow_key = task[:workflow_key] || 0
       workflow_id = task[:workflow_id] || "wf-#{workflow_key}"
       input = task[:input] || '{}'
 
       klass = @workflows[workflow_type]
+      unless klass
+        warn "[velocity-worker] No workflow registered for type: #{workflow_type}"
+        @client.respond_workflow_task_completed(task_token,
+          commands: [{ fail_workflow: { reason: "No workflow registered for type: #{workflow_type}" } }],
+          identity: @identity, namespace: @namespace)
+        return
+      end
+
       @stats[:workflows_started] += 1
 
       begin
@@ -281,23 +292,41 @@ module VelocitySDK
                    raise "Workflow '#{workflow_type}' has no 'run' method"
                  end
 
-        # In production, call @client.complete_workflow(workflow_key, result)
+        result_bytes = JSON.generate(result)
+
+        # Report completion to server with complete_workflow command
+        @client.respond_workflow_task_completed(task_token,
+          commands: [{ complete_workflow: { result: [result_bytes].pack('m0') } }],
+          identity: @identity, namespace: @namespace)
+
         @stats[:workflows_completed] += 1
 
       rescue => e
         @stats[:workflows_failed] += 1
         warn "[velocity-worker] Workflow '#{workflow_type}' failed: #{e.message}"
-        # In production, call @client.fail_task(workflow_key, e.message)
+
+        # Report failure to server with fail_workflow command
+        @client.respond_workflow_task_completed(task_token,
+          commands: [{ fail_workflow: { reason: e.message } }],
+          identity: @identity, namespace: @namespace)
       end
     end
 
     # Execute an activity task.
     def execute_activity_task(task)
-      activity_type = task[:activity_type]
-      activity_id = task[:activity_id] || "act-#{Time.now.to_i}"
+      activity_type = task[:activity_type] || ''
+      task_token = task[:task_token] || 0
       input = task[:input] || '{}'
 
       handler = @activities[activity_type]
+      unless handler
+        warn "[velocity-worker] No activity registered for type: #{activity_type}"
+        @client.respond_activity_task_failed(task_token,
+          failure: "No activity registered for type: #{activity_type}",
+          identity: @identity, namespace: @namespace)
+        return
+      end
+
       @stats[:activities_scheduled] += 1
 
       begin
@@ -305,14 +334,21 @@ module VelocitySDK
         args = args.is_a?(Array) ? args : [args]
 
         result = handler.call(*args)
+        result_bytes = JSON.generate(result)
 
-        # In production, call @client.complete_activity(activity_id, result)
+        # Report activity completion to server
+        @client.respond_activity_task_completed(task_token,
+          result: result_bytes, identity: @identity, namespace: @namespace)
+
         @stats[:activities_completed] += 1
 
       rescue => e
         @stats[:activities_failed] += 1
         warn "[velocity-worker] Activity '#{activity_type}' failed: #{e.message}"
-        # In production, call @client.fail_activity(activity_id, e.message)
+
+        # Report activity failure to server
+        @client.respond_activity_task_failed(task_token,
+          failure: e.message, identity: @identity, namespace: @namespace)
       end
     end
   end

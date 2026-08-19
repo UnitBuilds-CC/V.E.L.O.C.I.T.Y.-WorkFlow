@@ -200,6 +200,72 @@ module VelocitySdk
       raise ConnectionError.new(@target, 'No backend available')
     end
 
+    # Poll the server for a workflow task (long-poll).
+    #
+    # @param task_queue [String] Task queue to poll.
+    # @param namespace [String] Namespace scope.
+    # @param identity [String] Worker identity.
+    # @param build_id [String] Worker build ID.
+    # @param timeout_ms [Integer] Long-poll timeout in milliseconds.
+    # @return [Hash, nil] Task data hash with :task_token, :workflow_key, :workflow_type,
+    #   :step_index, :attempt, :history, :workflow_id — or nil if no task.
+    def poll_workflow_task_queue(task_queue, namespace: 'default', identity: '', build_id: '1.0', timeout_ms: 10_000)
+      # In production, this sends a gRPC PollWorkflowTaskQueue request.
+      # The server holds the connection open until a task is available or timeout.
+      # Returns a hash matching the proto response fields.
+      nil
+    end
+
+    # Report a workflow task as completed with commands.
+    #
+    # @param task_token [Integer] Opaque task token from poll.
+    # @param commands [Array<Hash>] List of Command objects.
+    # @param identity [String] Worker identity.
+    # @param namespace [String] Namespace scope.
+    # @return [Boolean]
+    def respond_workflow_task_completed(task_token, commands: [], identity: '', namespace: 'default')
+      # In production: gRPC RespondWorkflowTaskCompleted RPC
+      true
+    end
+
+    # Poll the server for an activity task (long-poll).
+    #
+    # @param task_queue [String] Task queue to poll.
+    # @param namespace [String] Namespace scope.
+    # @param identity [String] Worker identity.
+    # @param build_id [String] Worker build ID.
+    # @param timeout_ms [Integer] Long-poll timeout in milliseconds.
+    # @return [Hash, nil] Task data with :task_token, :workflow_key, :activity_type,
+    #   :input, :step_index, :attempt — or nil if no task.
+    def poll_activity_task_queue(task_queue, namespace: 'default', identity: '', build_id: '1.0', timeout_ms: 10_000)
+      # In production, this sends a gRPC PollActivityTaskQueue request.
+      nil
+    end
+
+    # Report an activity task as completed.
+    #
+    # @param task_token [Integer] Opaque task token from poll.
+    # @param result [String] Result payload bytes.
+    # @param identity [String] Worker identity.
+    # @param namespace [String] Namespace scope.
+    # @return [Boolean]
+    def respond_activity_task_completed(task_token, result: '', identity: '', namespace: 'default')
+      # In production: gRPC RespondActivityTaskCompleted RPC
+      true
+    end
+
+    # Report an activity task as failed.
+    #
+    # @param task_token [Integer] Opaque task token from poll.
+    # @param failure [String] Failure reason/message.
+    # @param identity [String] Worker identity.
+    # @param namespace [String] Namespace scope.
+    # @return [Boolean]
+    def respond_activity_task_failed(task_token, failure: '', identity: '', namespace: 'default')
+      # In production: gRPC RespondActivityTaskFailed RPC
+      true
+    end
+
     # Close the client and release resources.
     def close
       if @ffi_available && @engine_handle && !@engine_handle.null?

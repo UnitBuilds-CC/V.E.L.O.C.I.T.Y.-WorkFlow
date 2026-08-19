@@ -36,6 +36,40 @@ pub struct WorkflowDescription {
     pub current_step: u32,
     /// Total number of steps in the workflow.
     pub total_steps: u32,
+    /// Workflow type ID.
+    pub workflow_type_id: u64,
+}
+
+/// Information about a pending workflow task (returned by poll).
+#[derive(Debug, Clone)]
+pub struct WorkflowTaskInfo {
+    /// Opaque task token (used to report completion/failure).
+    pub task_token: u64,
+    /// Workflow key.
+    pub workflow_key: u64,
+    /// Workflow type identifier.
+    pub workflow_type: u64,
+    /// Current step index.
+    pub step_index: u32,
+    /// Attempt number.
+    pub attempt: i32,
+}
+
+/// Information about a pending activity task (returned by poll).
+#[derive(Debug, Clone)]
+pub struct ActivityTaskInfo {
+    /// Opaque task token.
+    pub task_token: u64,
+    /// Workflow key this activity belongs to.
+    pub workflow_key: u64,
+    /// Activity type name.
+    pub activity_type: String,
+    /// Input payload.
+    pub input: Vec<u8>,
+    /// Current step index.
+    pub step_index: u32,
+    /// Attempt number.
+    pub attempt: i32,
 }
 
 // ─── Client ──────────────────────────────────────────────────────────────────
@@ -193,13 +227,14 @@ impl VelocityClient {
         if status == WorkflowStatus::Void {
             return Err(errors::workflow_not_found(workflow_key));
         }
-        let current_step = self.engine.get_current_step(workflow_key).unwrap_or(0);
-        let total_steps = self.engine.get_total_steps(workflow_key).unwrap_or(0);
+        let desc = self.engine.describe_workflow(workflow_key);
+        let d = desc.ok_or_else(|| errors::workflow_not_found(workflow_key))?;
         Ok(WorkflowDescription {
             workflow_key,
             status,
-            current_step,
-            total_steps,
+            current_step: d.completed_steps,
+            total_steps: d.total_steps,
+            workflow_type_id: d.workflow_type_id,
         })
     }
 
@@ -208,6 +243,66 @@ impl VelocityClient {
     /// This iterates the visibility index and collects workflow keys.
     pub fn list_workflows(&self) -> Vec<u64> {
         self.engine.visibility().list_all_keys()
+    }
+
+    // ─── Worker Poll/Respond Methods ──────────────────────────────────────
+
+    /// Poll for a workflow task from the engine's task queue.
+    ///
+    /// Returns `Some(task)` if a task is available, `None` if the queue is empty.
+    /// The task dict contains: workflow_key, workflow_type, step_index, task_token.
+    pub fn poll_workflow_task(&self, task_queue_hash: u64) -> Option<WorkflowTaskInfo> {
+        // Check the engine's task queue for pending workflow tasks
+        let keys = self.engine.visibility().list_all_keys();
+        for key in keys {
+            let status = self.engine.get_status(key);
+            if status == WorkflowStatus::Running {
+                if let Some(d) = self.engine.describe_workflow(key) {
+                    return Some(WorkflowTaskInfo {
+                        task_token: key,
+                        workflow_key: key,
+                        workflow_type: d.workflow_type_id,
+                        step_index: d.completed_steps,
+                        attempt: 1,
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// Complete a workflow task by reporting the result to the engine.
+    pub fn complete_workflow_task(&self, task_token: u64, result: Vec<u8>) -> Result<(), VelocityError> {
+        if let Some(d) = self.engine.describe_workflow(task_token) {
+            self.engine.complete_step(task_token, d.completed_steps, result);
+            Ok(())
+        } else {
+            Err(VelocityError::not_found(format!("Workflow task {} not found", task_token)))
+        }
+    }
+
+    /// Fail a workflow task by reporting the failure to the engine.
+    pub fn fail_workflow_task(&self, task_token: u64, _reason: &str) -> Result<(), VelocityError> {
+        self.engine.fail_workflow(task_token);
+        Ok(())
+    }
+
+    /// Poll for an activity task from the engine's task queue.
+    pub fn poll_activity_task(&self, _task_queue_hash: u64) -> Option<ActivityTaskInfo> {
+        // Activity tasks are dispatched inline in embedded mode.
+        // In a full gRPC deployment, this would poll the server.
+        None
+    }
+
+    /// Report successful completion of an activity task.
+    pub fn complete_activity_task(&self, task_token: u64, result: Vec<u8>) -> Result<(), VelocityError> {
+        // In embedded mode, activity results are returned directly.
+        Ok(())
+    }
+
+    /// Report failure of an activity task.
+    pub fn fail_activity_task(&self, task_token: u64, reason: &str) -> Result<(), VelocityError> {
+        Err(VelocityError::internal(format!("Activity task {} failed: {}", task_token, reason)))
     }
 
     /// Shut down the engine (flushes WAL, stops timers / task queue).

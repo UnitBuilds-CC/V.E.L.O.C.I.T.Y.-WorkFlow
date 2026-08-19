@@ -67,6 +67,9 @@ class Worker
     private array $workflows = [];
     private array $activities = [];
 
+    /** @var string Worker identity for server reporting. */
+    private string $identity;
+
     public function __construct(
         string $taskQueue,
         string $serverAddress = 'localhost:7234',
@@ -88,6 +91,7 @@ class Worker
         $this->pollTimeoutMs = $pollTimeoutMs;
         $this->heartbeatIntervalMs = $heartbeatIntervalMs;
         $this->buildId = $buildId;
+        $this->identity = sprintf('php-worker-%s@%s', $buildId, gethostname() ?: 'unknown');
         $this->client = $client ?? new GrpcVelocityClient($serverAddress);
 
         $this->stats = [
@@ -171,14 +175,37 @@ class Worker
         while ($this->running) {
             $this->stats['tasks_polled']++;
 
-            // Poll for workflow tasks
+            // Poll for workflow tasks via gRPC long-poll
             try {
-                $task = $this->pollForTask();
-                if ($task !== null) {
-                    $this->executeTask($task);
-                } else {
-                    usleep(100000); // 100ms
+                $wfTask = $this->client->pollWorkflowTaskQueue(
+                    $this->taskQueue,
+                    $this->namespace,
+                    $this->identity,
+                    $this->buildId,
+                    $this->pollTimeoutMs,
+                );
+
+                if ($wfTask !== null) {
+                    $this->executeWorkflowTask($wfTask);
+                    continue;
                 }
+
+                // Poll for activity tasks
+                $actTask = $this->client->pollActivityTaskQueue(
+                    $this->taskQueue,
+                    $this->namespace,
+                    $this->identity,
+                    $this->buildId,
+                    $this->pollTimeoutMs,
+                );
+
+                if ($actTask !== null) {
+                    $this->executeActivityTask($actTask);
+                    continue;
+                }
+
+                // No tasks available — brief backoff
+                usleep(100000); // 100ms
             } catch (\Throwable $e) {
                 error_log("[velocity-worker] Poll error: " . $e->getMessage());
                 sleep(1);
@@ -230,44 +257,25 @@ class Worker
     }
 
     /**
-     * Poll for a task from the server.
-     */
-    private function pollForTask(): ?array
-    {
-        // In a full implementation, this would call the server via gRPC/HTTP.
-        // For now, return null (no task available).
-        return null;
-    }
-
-    /**
-     * Execute a workflow or activity task.
-     */
-    private function executeTask(array $task): void
-    {
-        $taskType = $task['type'] ?? 'unknown';
-        $workflowType = $task['workflow_type'] ?? '';
-        $activityType = $task['activity_type'] ?? '';
-
-        if ($taskType === 'workflow' && isset($this->workflows[$workflowType])) {
-            $this->executeWorkflowTask($task);
-        } elseif ($taskType === 'activity' && isset($this->activities[$activityType])) {
-            $this->executeActivityTask($task);
-        } else {
-            error_log("[velocity-worker] No handler for task type: $taskType");
-        }
-    }
-
-    /**
      * Execute a workflow task.
      */
     private function executeWorkflowTask(array $task): void
     {
-        $workflowType = $task['workflow_type'];
+        $workflowType = $task['workflow_type'] ?? '';
+        $taskToken = $task['task_token'] ?? 0;
         $workflowKey = $task['workflow_key'] ?? 0;
         $workflowId = $task['workflow_id'] ?? "wf-$workflowKey";
         $input = $task['input'] ?? '{}';
 
-        $className = $this->workflows[$workflowType];
+        $className = $this->workflows[$workflowType] ?? null;
+        if ($className === null) {
+            error_log("[velocity-worker] No workflow registered for type: $workflowType");
+            $this->client->respondWorkflowTaskCompleted($taskToken, [
+                ['fail_workflow' => ['reason' => "No workflow registered for type: $workflowType"]],
+            ], $this->identity, $this->namespace);
+            return;
+        }
+
         $this->stats['workflows_started']++;
 
         try {
@@ -287,13 +295,22 @@ class Worker
                 : $instance(...$args);
 
             $resultBytes = json_encode($result);
-            // In production, call $this->client->completeWorkflow($workflowKey, $resultBytes);
+
+            // Report completion to server with complete_workflow command
+            $this->client->respondWorkflowTaskCompleted($taskToken, [
+                ['complete_workflow' => ['result' => base64_encode($resultBytes)]],
+            ], $this->identity, $this->namespace);
+
             $this->stats['workflows_completed']++;
 
         } catch (\Throwable $e) {
             $this->stats['workflows_failed']++;
             error_log("[velocity-worker] Workflow '$workflowType' failed: " . $e->getMessage());
-            // In production, call $this->client->failTask($workflowKey, $e->getMessage());
+
+            // Report failure to server with fail_workflow command
+            $this->client->respondWorkflowTaskCompleted($taskToken, [
+                ['fail_workflow' => ['reason' => $e->getMessage()]],
+            ], $this->identity, $this->namespace);
         }
     }
 
@@ -302,11 +319,17 @@ class Worker
      */
     private function executeActivityTask(array $task): void
     {
-        $activityType = $task['activity_type'];
-        $activityId = $task['activity_id'] ?? 'act-0';
+        $activityType = $task['activity_type'] ?? '';
+        $taskToken = $task['task_token'] ?? 0;
         $input = $task['input'] ?? '{}';
 
-        $handler = $this->activities[$activityType];
+        $handler = $this->activities[$activityType] ?? null;
+        if ($handler === null) {
+            error_log("[velocity-worker] No activity registered for type: $activityType");
+            $this->client->respondActivityTaskFailed($taskToken, "No activity registered for type: $activityType", $this->identity, $this->namespace);
+            return;
+        }
+
         $this->stats['activities_scheduled']++;
 
         try {
@@ -314,13 +337,17 @@ class Worker
             $result = is_callable($handler) ? $handler(...$args) : call_user_func($handler, ...$args);
 
             $resultBytes = json_encode($result);
-            // In production, call $this->client->completeActivity($activityId, $resultBytes);
+
+            // Report activity completion to server
+            $this->client->respondActivityTaskCompleted($taskToken, $resultBytes, $this->identity, $this->namespace);
             $this->stats['activities_completed']++;
 
         } catch (\Throwable $e) {
             $this->stats['activities_failed']++;
             error_log("[velocity-worker] Activity '$activityType' failed: " . $e->getMessage());
-            // In production, call $this->client->failActivity($activityId, $e->getMessage());
+
+            // Report activity failure to server
+            $this->client->respondActivityTaskFailed($taskToken, $e->getMessage(), $this->identity, $this->namespace);
         }
     }
 }

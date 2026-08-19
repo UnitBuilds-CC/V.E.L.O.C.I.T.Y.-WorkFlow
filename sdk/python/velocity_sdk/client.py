@@ -478,6 +478,157 @@ class VelocityClient:
             "failed": response.failed,
         }
 
+    # ─── Worker Poll/Respond Methods ──────────────────────────────────────────
+
+    def poll_workflow_task_queue(
+        self,
+        task_queue: str,
+        namespace: str = "default",
+        identity: str = "",
+        build_id: str = "1.0",
+        timeout_ms: int = 10000,
+    ) -> Optional[dict]:
+        """
+        Long-poll for a workflow task from the server.
+
+        Returns None if no task is available within the timeout.
+        Returns a dict with task_token, workflow_key, workflow_type,
+        step_index, attempt, and history on success.
+        """
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.PollWorkflowTaskQueueRequest(
+            namespace=namespace,
+            task_queue=workflow_service_pb2.TaskQueue(name=task_queue),
+            identity=identity or f"python-worker-{__import__('os').getpid()}",
+            build_id=build_id,
+            long_poll_timeout_ms=timeout_ms,
+        )
+        response = stub.PollWorkflowTaskQueue(request, metadata=self._metadata)
+
+        # Empty response means no task available
+        if response.task_token == 0:
+            return None
+
+        return {
+            "task_token": response.task_token,
+            "workflow_key": response.workflow_key,
+            "workflow_id": response.workflow_execution.workflow_id if response.workflow_execution else "",
+            "run_id": response.workflow_execution.run_id if response.workflow_execution else "",
+            "workflow_type": response.workflow_type.name if response.workflow_type else "",
+            "step_index": response.step_index,
+            "attempt": response.attempt,
+            "history": response.history,
+        }
+
+    def respond_workflow_task_completed(
+        self,
+        task_token: int,
+        commands: list = None,
+        identity: str = "",
+        namespace: str = "default",
+    ) -> bool:
+        """Report successful completion of a workflow task."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.RespondWorkflowTaskCompletedRequest(
+            task_token=task_token,
+            identity=identity or f"python-worker-{__import__('os').getpid()}",
+            commands=commands or [],
+            namespace=namespace,
+        )
+        stub.RespondWorkflowTaskCompleted(request, metadata=self._metadata)
+        return True
+
+    def poll_activity_task_queue(
+        self,
+        task_queue: str,
+        namespace: str = "default",
+        identity: str = "",
+        build_id: str = "1.0",
+        timeout_ms: int = 10000,
+    ) -> Optional[dict]:
+        """
+        Long-poll for an activity task from the server.
+
+        Returns None if no task is available within the timeout.
+        Returns a dict with task_token, activity_type, input, workflow_key,
+        step_index, and attempt on success.
+        """
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.PollActivityTaskQueueRequest(
+            namespace=namespace,
+            task_queue=workflow_service_pb2.TaskQueue(name=task_queue),
+            identity=identity or f"python-worker-{__import__('os').getpid()}",
+            build_id=build_id,
+            long_poll_timeout_ms=timeout_ms,
+        )
+        response = stub.PollActivityTaskQueue(request, metadata=self._metadata)
+
+        if response.task_token == 0:
+            return None
+
+        return {
+            "task_token": response.task_token,
+            "workflow_key": response.workflow_key,
+            "activity_type": response.activity_type.name if response.activity_type else "",
+            "input": response.input.data if response.input else b"",
+            "step_index": response.step_index,
+            "attempt": response.attempt,
+        }
+
+    def respond_activity_task_completed(
+        self,
+        task_token: int,
+        result: bytes = b"",
+        identity: str = "",
+        namespace: str = "default",
+        workflow_key: int = 0,
+        step_index: int = 0,
+    ) -> bool:
+        """Report successful completion of an activity task."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.RespondActivityTaskCompletedRequest(
+            task_token=task_token,
+            result=workflow_service_pb2.Payload(data=result),
+            identity=identity or f"python-worker-{__import__('os').getpid()}",
+            namespace=namespace,
+            workflow_key=workflow_key,
+            step_index=step_index,
+        )
+        stub.RespondActivityTaskCompleted(request, metadata=self._metadata)
+        return True
+
+    def respond_activity_task_failed(
+        self,
+        task_token: int,
+        failure: bytes = b"",
+        identity: str = "",
+        namespace: str = "default",
+        workflow_key: int = 0,
+        step_index: int = 0,
+    ) -> bool:
+        """Report failure of an activity task."""
+        stub = self._get_stub()
+        from . import workflow_service_pb2
+
+        request = workflow_service_pb2.RespondActivityTaskFailedRequest(
+            task_token=task_token,
+            failure=workflow_service_pb2.Payload(data=failure),
+            identity=identity or f"python-worker-{__import__('os').getpid()}",
+            namespace=namespace,
+            workflow_key=workflow_key,
+            step_index=step_index,
+        )
+        stub.RespondActivityTaskFailed(request, metadata=self._metadata)
+        return True
+
     def close(self):
         """Close the gRPC channel."""
         self._channel.close()

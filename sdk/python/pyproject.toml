@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "velocity-workflow-sdk"
+version = "1.0.0"
+description = "Python SDK for the VELOCITY-WorkFlow engine — durable workflow orchestration"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+authors = [
+    {name = "UnitBuilds", email = "ian@unitbuilds.com"},
+]
+keywords = ["velocity", "workflow", "orchestration", "durable", "distributed"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+]
+dependencies = [
+    "grpcio>=1.50.0",
+    "grpcio-tools>=1.50.0",
+    "protobuf>=4.21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[project.urls]
+Homepage = "https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow"
+Repository = "https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow"
+Documentation = "https://github.com/UnitBuilds-CC/V.E.L.O.C.I.T.Y.-WorkFlow/tree/main/docs"
+
+[tool.setuptools.packages.find]
+include = ["velocity_sdk*"]

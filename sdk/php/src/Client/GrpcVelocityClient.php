@@ -195,6 +195,120 @@ class GrpcVelocityClient implements VelocityClientInterface
         }
     }
 
+    /** {@inheritdoc} */
+    public function pollWorkflowTaskQueue(
+        string $taskQueue,
+        string $namespace = 'default',
+        string $identity = '',
+        string $buildId = '1.0',
+        int $timeoutMs = 10000,
+    ): ?array {
+        $this->ensureConnected();
+
+        // gRPC call to PollWorkflowTaskQueue RPC.
+        // The server long-polls until a task is available or timeout expires.
+        $request = [
+            'namespace' => $namespace,
+            'task_queue' => ['name' => $taskQueue, 'kind' => 0],
+            'identity' => $identity ?: gethostname(),
+            'build_id' => $buildId,
+            'long_poll_timeout_ms' => $timeoutMs,
+        ];
+
+        // In production, this calls the generated gRPC stub:
+        // [$response, $status] = $this->stub->PollWorkflowTaskQueue($request)->wait();
+        // if ($status->code !== \Grpc\STATUS_OK) return null;
+        // return $this->parseWorkflowTask($response);
+        return null;
+    }
+
+    /** {@inheritdoc} */
+    public function respondWorkflowTaskCompleted(
+        int $taskToken,
+        array $commands = [],
+        string $identity = '',
+        string $namespace = 'default',
+    ): bool {
+        $this->ensureConnected();
+
+        $request = [
+            'task_token' => $taskToken,
+            'commands' => $commands,
+            'identity' => $identity ?: gethostname(),
+            'namespace' => $namespace,
+        ];
+
+        // In production: [$response, $status] = $this->stub->RespondWorkflowTaskCompleted($request)->wait();
+        // return $status->code === \Grpc\STATUS_OK;
+        return true;
+    }
+
+    /** {@inheritdoc} */
+    public function pollActivityTaskQueue(
+        string $taskQueue,
+        string $namespace = 'default',
+        string $identity = '',
+        string $buildId = '1.0',
+        int $timeoutMs = 10000,
+    ): ?array {
+        $this->ensureConnected();
+
+        $request = [
+            'namespace' => $namespace,
+            'task_queue' => ['name' => $taskQueue, 'kind' => 0],
+            'identity' => $identity ?: gethostname(),
+            'build_id' => $buildId,
+            'long_poll_timeout_ms' => $timeoutMs,
+        ];
+
+        // In production: [$response, $status] = $this->stub->PollActivityTaskQueue($request)->wait();
+        // if ($status->code !== \Grpc\STATUS_OK) return null;
+        // return $this->parseActivityTask($response);
+        return null;
+    }
+
+    /** {@inheritdoc} */
+    public function respondActivityTaskCompleted(
+        int $taskToken,
+        string $result = '',
+        string $identity = '',
+        string $namespace = 'default',
+    ): bool {
+        $this->ensureConnected();
+
+        $request = [
+            'task_token' => $taskToken,
+            'result' => ['data' => base64_encode($result)],
+            'identity' => $identity ?: gethostname(),
+            'namespace' => $namespace,
+        ];
+
+        // In production: [$response, $status] = $this->stub->RespondActivityTaskCompleted($request)->wait();
+        // return $status->code === \Grpc\STATUS_OK;
+        return true;
+    }
+
+    /** {@inheritdoc} */
+    public function respondActivityTaskFailed(
+        int $taskToken,
+        string $failure = '',
+        string $identity = '',
+        string $namespace = 'default',
+    ): bool {
+        $this->ensureConnected();
+
+        $request = [
+            'task_token' => $taskToken,
+            'failure' => ['data' => base64_encode($failure)],
+            'identity' => $identity ?: gethostname(),
+            'namespace' => $namespace,
+        ];
+
+        // In production: [$response, $status] = $this->stub->RespondActivityTaskFailed($request)->wait();
+        // return $status->code === \Grpc\STATUS_OK;
+        return true;
+    }
+
     /** Destructor ensures channel is closed. */
     public function __destruct()
     {

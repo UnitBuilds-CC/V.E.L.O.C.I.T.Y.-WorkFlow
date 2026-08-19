@@ -269,8 +269,21 @@ impl Worker {
         workflows: &HashMap<String, String>,
         activities: &HashMap<String, String>,
     ) -> Result<bool, VelocityError> {
-        // In a full implementation, this would poll the server via gRPC/HTTP.
-        // For now, this is a placeholder that demonstrates the dispatch pattern.
+        // Poll the engine for a pending workflow task
+        let task_queue_hash = self.options.task_queue.as_bytes().iter()
+            .fold(0u64, |acc, &b| acc.wrapping_mul(31).wrapping_add(b as u64));
+
+        if let Some(task) = self.client.poll_workflow_task(task_queue_hash) {
+            let workflow_type = task.workflow_type.to_string();
+            return self.execute_workflow(
+                &workflow_type,
+                task.workflow_key,
+                &format!("wf-{}", task.workflow_key),
+                &[],
+            ).map(|_| true);
+        }
+
+        // No task available
         std::thread::sleep(Duration::from_millis(100));
         Ok(false)
     }
@@ -310,16 +323,21 @@ impl Worker {
 
                 match h.execute(&ctx, input) {
                     Ok(result) => {
+                        // Report completion to the engine
+                        let _ = self.client.complete_workflow_task(workflow_key, result.clone());
                         self.stats.workflows_completed.fetch_add(1, Ordering::Relaxed);
                         Ok(result)
                     }
                     Err(e) => {
+                        // Report failure to the engine
+                        let _ = self.client.fail_workflow_task(workflow_key, &e.to_string());
                         self.stats.workflows_failed.fetch_add(1, Ordering::Relaxed);
                         Err(e)
                     }
                 }
             }
             None => {
+                let _ = self.client.fail_workflow_task(workflow_key, &format!("No workflow registered for '{}'", workflow_type));
                 self.stats.workflows_failed.fetch_add(1, Ordering::Relaxed);
                 Err(format!("No workflow handler registered for '{}'", workflow_type).into())
             }

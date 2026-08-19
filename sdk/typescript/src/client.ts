@@ -98,6 +98,27 @@ export interface ListWorkflowOptions {
   nextPageToken?: Uint8Array;
 }
 
+/** Pending workflow task from the server. */
+export interface WorkflowTaskPoll {
+  taskToken: bigint;
+  workflowKey: bigint;
+  workflowType: string;
+  workflowId: string;
+  stepIndex: number;
+  attempt: number;
+  history: Uint8Array;
+}
+
+/** Pending activity task from the server. */
+export interface ActivityTaskPoll {
+  taskToken: bigint;
+  workflowKey: bigint;
+  activityType: string;
+  input: Uint8Array;
+  stepIndex: number;
+  attempt: number;
+}
+
 /** gRPC service client type. */
 type GrpcClient = grpc.Client & Record<string, Function>;
 
@@ -587,6 +608,193 @@ export class VelocityClient {
 
     try {
       await this.grpcCall('resetWorkflowExecution', request);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ─── Worker-facing poll/respond methods ──────────────────────────────────────
+
+  /**
+   * Poll the server for a workflow task (long-poll).
+   * @param taskQueue - Task queue to poll
+   * @param namespace - Namespace scope
+   * @param identity - Worker identity
+   * @param buildId - Worker build ID
+   * @param timeoutMs - Long-poll timeout in milliseconds
+   * @returns Pending task or null if no task available
+   */
+  async pollWorkflowTaskQueue(
+    taskQueue: string,
+    namespace = 'default',
+    identity = '',
+    buildId = '1.0',
+    timeoutMs = 10000,
+  ): Promise<WorkflowTaskPoll | null> {
+    if (!this.connected) {
+      throw new Error('VelocityClient: not connected. Call connect() first.');
+    }
+
+    const request = {
+      namespace,
+      task_queue: { name: taskQueue, kind: 0 },
+      identity: identity || `ts-worker-${buildId}`,
+      build_id: buildId,
+      long_poll_timeout_ms: timeoutMs,
+    };
+
+    try {
+      const response = await this.grpcCall<typeof request, any>('pollWorkflowTaskQueue', request);
+      if (!response || !response.task_token) return null;
+      return {
+        taskToken: BigInt(response.task_token),
+        workflowKey: BigInt(response.workflow_key ?? 0),
+        workflowType: response.workflow_type ?? '',
+        workflowId: response.workflow_id ?? '',
+        stepIndex: response.step_index ?? 0,
+        attempt: response.attempt ?? 0,
+        history: response.history ?? new Uint8Array(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Report a workflow task as completed with commands.
+   * @param taskToken - Opaque task token from poll
+   * @param commands - List of Command objects
+   * @param identity - Worker identity
+   * @param namespace - Namespace scope
+   */
+  async respondWorkflowTaskCompleted(
+    taskToken: bigint,
+    commands: any[] = [],
+    identity = '',
+    namespace = 'default',
+  ): Promise<boolean> {
+    if (!this.connected) {
+      throw new Error('VelocityClient: not connected. Call connect() first.');
+    }
+
+    const request = {
+      task_token: taskToken.toString(),
+      commands,
+      identity: identity || 'ts-worker',
+      namespace,
+    };
+
+    try {
+      await this.grpcCall('respondWorkflowTaskCompleted', request);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Poll the server for an activity task (long-poll).
+   * @param taskQueue - Task queue to poll
+   * @param namespace - Namespace scope
+   * @param identity - Worker identity
+   * @param buildId - Worker build ID
+   * @param timeoutMs - Long-poll timeout in milliseconds
+   * @returns Pending task or null if no task available
+   */
+  async pollActivityTaskQueue(
+    taskQueue: string,
+    namespace = 'default',
+    identity = '',
+    buildId = '1.0',
+    timeoutMs = 10000,
+  ): Promise<ActivityTaskPoll | null> {
+    if (!this.connected) {
+      throw new Error('VelocityClient: not connected. Call connect() first.');
+    }
+
+    const request = {
+      namespace,
+      task_queue: { name: taskQueue, kind: 0 },
+      identity: identity || `ts-worker-${buildId}`,
+      build_id: buildId,
+      long_poll_timeout_ms: timeoutMs,
+    };
+
+    try {
+      const response = await this.grpcCall<typeof request, any>('pollActivityTaskQueue', request);
+      if (!response || !response.task_token) return null;
+      return {
+        taskToken: BigInt(response.task_token),
+        workflowKey: BigInt(response.workflow_key ?? 0),
+        activityType: response.activity_type ?? '',
+        input: response.input ?? new Uint8Array(),
+        stepIndex: response.step_index ?? 0,
+        attempt: response.attempt ?? 0,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Report an activity task as completed.
+   * @param taskToken - Opaque task token from poll
+   * @param result - Result payload
+   * @param identity - Worker identity
+   * @param namespace - Namespace scope
+   */
+  async respondActivityTaskCompleted(
+    taskToken: bigint,
+    result: Uint8Array = new Uint8Array(),
+    identity = '',
+    namespace = 'default',
+  ): Promise<boolean> {
+    if (!this.connected) {
+      throw new Error('VelocityClient: not connected. Call connect() first.');
+    }
+
+    const request = {
+      task_token: taskToken.toString(),
+      result: { data: result },
+      identity: identity || 'ts-worker',
+      namespace,
+    };
+
+    try {
+      await this.grpcCall('respondActivityTaskCompleted', request);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Report an activity task as failed.
+   * @param taskToken - Opaque task token from poll
+   * @param failure - Failure reason
+   * @param identity - Worker identity
+   * @param namespace - Namespace scope
+   */
+  async respondActivityTaskFailed(
+    taskToken: bigint,
+    failure: Uint8Array = new Uint8Array(),
+    identity = '',
+    namespace = 'default',
+  ): Promise<boolean> {
+    if (!this.connected) {
+      throw new Error('VelocityClient: not connected. Call connect() first.');
+    }
+
+    const request = {
+      task_token: taskToken.toString(),
+      failure: { data: failure },
+      identity: identity || 'ts-worker',
+      namespace,
+    };
+
+    try {
+      await this.grpcCall('respondActivityTaskFailed', request);
       return true;
     } catch {
       return false;

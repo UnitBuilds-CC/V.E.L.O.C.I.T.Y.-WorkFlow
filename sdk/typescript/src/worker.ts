@@ -27,6 +27,7 @@ import {
   getRegisteredActivities,
   type WorkflowClass,
 } from './decorators';
+import { VelocityClient } from './client';
 
 // ─── Worker Configuration ─────────────────────────────────────────────────────
 
@@ -471,6 +472,8 @@ export class Worker extends EventEmitter {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private workflows: Record<string, WorkflowImplementation>;
   private activities: Record<string, ActivityImplementation>;
+  private client: VelocityClient | null = null;
+  private identity: string;
   /** Internal queue of workflow tasks (for embedded/testing use). */
   private _workflowTaskQueue: WorkflowTask[] = [];
   /** Internal queue of activity tasks (for embedded/testing use). */
@@ -513,6 +516,8 @@ export class Worker extends EventEmitter {
         this.activities[activityName] = handler as ActivityImplementation;
       }
     });
+
+    this.identity = `ts-worker-${this.options.buildId}@${typeof process !== 'undefined' ? process.pid : 'unknown'}`;
   }
 
   /**
@@ -541,6 +546,15 @@ export class Worker extends EventEmitter {
     this.startTime = Date.now();
     this.emit('started', { taskQueue: this.options.taskQueue });
 
+    // Connect to server for gRPC polling
+    try {
+      this.client = new VelocityClient(this.options.serverAddress);
+      await this.client.connect();
+    } catch {
+      // If client connection fails, fall back to internal queue mode
+      this.client = null;
+    }
+
     // Start heartbeat interval
     this.heartbeatTimer = setInterval(() => {
       this.stats.heartbeatsSent++;
@@ -564,15 +578,60 @@ export class Worker extends EventEmitter {
 
   /**
    * Poll loop for workflow tasks.
-   * In production, this sends PollWorkflowTaskQueue gRPC calls.
-   * Here, it processes internally queued tasks for testing/embedded use.
+   * Uses gRPC PollWorkflowTaskQueue when connected to server,
+   * falls back to internal queue for embedded/testing use.
    */
   private async pollWorkflowTasks(): Promise<void> {
     while (this.running) {
       this.stats.tasksPolled++;
       this.emit('polling', { taskQueue: this.options.taskQueue, kind: 'workflow' });
 
-      // Process any pending workflow tasks from the internal queue
+      // Try server-side poll first
+      if (this.client) {
+        try {
+          const task = await this.client.pollWorkflowTaskQueue(
+            this.options.taskQueue,
+            this.options.namespace,
+            this.identity,
+            this.options.buildId,
+            this.options.pollTimeoutMs,
+          );
+
+          if (task) {
+            try {
+              const result = await this.executeWorkflow(
+                task.workflowType,
+                task.workflowKey,
+                task.workflowId || `wf-${task.workflowKey}`,
+                [],
+              );
+
+              // Report completion to server
+              const commands = [{
+                complete_workflow: {
+                  result: Buffer.from(JSON.stringify(result ?? {})).toString('base64'),
+                },
+              }];
+              await this.client.respondWorkflowTaskCompleted(
+                task.taskToken, commands, this.identity, this.options.namespace,
+              );
+            } catch (err) {
+              // Report failure to server
+              const commands = [{
+                fail_workflow: { reason: err instanceof Error ? err.message : String(err) },
+              }];
+              await this.client.respondWorkflowTaskCompleted(
+                task.taskToken, commands, this.identity, this.options.namespace,
+              );
+            }
+            continue;
+          }
+        } catch {
+          // Server poll failed — fall through to internal queue
+        }
+      }
+
+      // Fall back to internal queue (embedded/testing mode)
       const task = this._workflowTaskQueue.shift();
       if (task) {
         try {
@@ -586,7 +645,6 @@ export class Worker extends EventEmitter {
           // Workflow failure is recorded in executeWorkflow
         }
       } else {
-        // No task available — wait for the poll timeout (long-poll simulation)
         await new Promise((resolve) => setTimeout(resolve, Math.min(this.options.pollTimeoutMs, 1000)));
       }
     }
@@ -594,14 +652,46 @@ export class Worker extends EventEmitter {
 
   /**
    * Poll loop for activity tasks.
-   * In production, this sends PollActivityTaskQueue gRPC calls.
+   * Uses gRPC PollActivityTaskQueue when connected to server,
+   * falls back to internal queue for embedded/testing use.
    */
   private async pollActivityTasks(): Promise<void> {
     while (this.running) {
       this.stats.tasksPolled++;
       this.emit('polling', { taskQueue: this.options.taskQueue, kind: 'activity' });
 
-      // Process any pending activity tasks from the internal queue
+      // Try server-side poll first
+      if (this.client) {
+        try {
+          const task = await this.client.pollActivityTaskQueue(
+            this.options.taskQueue,
+            this.options.namespace,
+            this.identity,
+            this.options.buildId,
+            this.options.pollTimeoutMs,
+          );
+
+          if (task) {
+            try {
+              const result = await this.executeActivity(task.activityType, []);
+              const resultBytes = new TextEncoder().encode(JSON.stringify(result ?? {}));
+              await this.client.respondActivityTaskCompleted(
+                task.taskToken, resultBytes, this.identity, this.options.namespace,
+              );
+            } catch (err) {
+              const failBytes = new TextEncoder().encode(err instanceof Error ? err.message : String(err));
+              await this.client.respondActivityTaskFailed(
+                task.taskToken, failBytes, this.identity, this.options.namespace,
+              );
+            }
+            continue;
+          }
+        } catch {
+          // Server poll failed — fall through to internal queue
+        }
+      }
+
+      // Fall back to internal queue (embedded/testing mode)
       const task = this._activityTaskQueue.shift();
       if (task) {
         try {
@@ -733,6 +823,10 @@ export class Worker extends EventEmitter {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+    if (this.client) {
+      this.client.close().catch(() => {});
+      this.client = null;
     }
     this.emit('shutdown');
   }
