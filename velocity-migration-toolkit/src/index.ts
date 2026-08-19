@@ -65,6 +65,13 @@ interface TransformRule {
   replacement: (match: RegExpMatchArray, target: SDKFlavor) => string;
 }
 
+// Pre-compiled regex for ctx.run() transformation (avoids TS parser issues with => in regex literals)
+const CTX_RUN_PATTERN = new RegExp(
+  'await\\s+ctx\\.run\\(\\s*[\'\"\\x60](\\w+)[\'\"\\x60]\\s*,\\s*' +
+  '(?:(?:\\(\\)\\s*=>\\s*(.+?)|(\\w+))\\s*\\)\\s*\\))',
+  'g'
+);
+
 /**
  * All cross-SDK API transformation rules.
  * Each rule matches a source-pattern and produces the correct target-pattern.
@@ -246,7 +253,7 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
   },
   // ── Binary → others: ctx.run('name', () => expr) ──
   {
-    pattern: /await\s+ctx\.run\(\s*['"](\w+)['"]\s*,\s*(?:\(\)\s*=>\s*([^)]+)|(\w+)\s*\)\)/g,
+    pattern: CTX_RUN_PATTERN,
     replacement: (m, target) => {
       const name = m[1];
       const expr = m[2] || m[3] || '';
@@ -785,9 +792,58 @@ function extractImports(code: string): string[] {
 
 // ─── Body Transformation ─────────────────────────────────────────────────────
 
+/** Import transformation rules: source pattern → target replacement */
+interface ImportTransform {
+  from: RegExp;
+  to: string | ((match: string, target: SDKFlavor) => string);
+}
+
+const IMPORT_TRANSFORMS: Record<string, ImportTransform[]> = {
+  temporal: [
+    // TypeScript @temporalio/* imports
+    { from: /from\s+['"]@temporalio\/workflow['"]/g, to: (m, t) => `from '${t === 'binary' ? '@velocity-workflow/binary' : t === 'embedded' ? '@velocity-workflow/embedded' : '@velocity-workflow/server'}'` },
+    { from: /from\s+['"]@temporalio\/client['"]/g, to: `from '@velocity-workflow/client'` },
+    { from: /from\s+['"]@temporalio\/activity['"]/g, to: `from '@velocity-workflow/activity'` },
+    { from: /from\s+['"]@temporalio\/common['"]/g, to: `from '@velocity-workflow/common'` },
+    { from: /from\s+['"]@temporalio\/worker['"]/g, to: `from '@velocity-workflow/worker'` },
+    { from: /from\s+['"]@temporalio\/testing['"]/g, to: `from '@velocity-workflow/testing'` },
+    // Go go.temporal.io/* imports
+    { from: /"go\.temporal\.io\/sdk\/workflow"/g, to: `"github.com/velocity-workflow/velocity-sdk-go"` },
+    { from: /"go\.temporal\.io\/sdk\/client"/g, to: `"github.com/velocity-workflow/velocity-sdk-go/client"` },
+    { from: /"go\.temporal\.io\/sdk\/activity"/g, to: `"github.com/velocity-workflow/velocity-sdk-go/activity"` },
+    { from: /"go\.temporal\.io\/sdk\/temporal"/g, to: `"github.com/velocity-workflow/velocity-sdk-go/temporal"` },
+    { from: /"go\.temporal\.io\/sdk\/temporalnexus"/g, to: `"github.com/velocity-workflow/velocity-sdk-go/nexus"` },
+    { from: /"go\.temporal\.io\/api\//g, to: `"github.com/velocity-workflow/velocity-sdk-go/api/` },
+    // Python temporalio imports
+    { from: /from\s+temporalio\s+import\s+workflow/g, to: `from velocity_sdk import workflow` },
+    { from: /from\s+temporalio\s+import\s+activity/g, to: `from velocity_sdk import activity` },
+    { from: /from\s+temporalio\s+import\s+exceptions/g, to: `from velocity_sdk.exceptions import` },
+    { from: /from\s+temporalio\.client\s+import/g, to: `from velocity_sdk.client import` },
+    { from: /from\s+temporalio\.workflow\s+import/g, to: `from velocity_sdk.workflow import` },
+    { from: /from\s+temporalio\.exceptions\s+import/g, to: `from velocity_sdk.exceptions import` },
+    { from: /import\s+temporalio\.workflow/g, to: `import velocity_sdk.workflow` },
+    { from: /from\s+temporalio\.api\./g, to: `from velocity_sdk.api.` },
+    { from: /from\s+temporalio\.common\s+import/g, to: `from velocity_sdk.common import` },
+  ],
+};
+
 export function transformBody(body: string, source: SDKFlavor, target: SDKFlavor): string {
   if (source === target) return body;
   let result = body;
+
+  // Phase 1: Import transformations
+  const importRules = IMPORT_TRANSFORMS[source];
+  if (importRules) {
+    for (const rule of importRules) {
+      rule.from.lastIndex = 0;
+      result = result.replace(rule.from, (...args) => {
+        if (typeof rule.to === 'function') return rule.to(args[0], target);
+        return rule.to as string;
+      });
+    }
+  }
+
+  // Phase 2: Body/API transformations
   for (const rule of BODY_TRANSFORM_RULES) {
     // Reset regex state
     rule.pattern.lastIndex = 0;
@@ -974,7 +1030,7 @@ export function parseBinary(code: string): WorkflowIR[] {
   while ((match = voRegex.exec(code)) !== null) {
     const varName = match[1];
     const objName = match[2];
-    const handlers = parseRuntimeHandlers(code, varName);
+    const handlers = parseBinaryHandlers(code, varName);
     workflows.push({
       name: objName,
       type: 'virtualObject',

@@ -53,7 +53,13 @@ export type PatternType =
   | 'event-handler'
   | 'temporal-workflow'
   | 'restate-service'
-  | 'dbos-transaction';
+  | 'dbos-transaction'
+  | 'search-attributes'
+  | 'queue-operation'
+  | 'http-handler'
+  | 'update-handler'
+  | 'continue-as-new'
+  | 'idempotency';
 
 /** A pattern scanner that looks for a specific non-durable pattern. */
 interface PatternScanner {
