@@ -1,4 +1,4 @@
-//! Nexus — cross-service asynchronous operations.
+//! Relay — cross-service asynchronous operations.
 //! Full lifecycle: Scheduled → Started → Completed/Failed/Canceled/TimedOut.
 //! Supports callback delivery, timeout scheduling, retry with attempt tracking,
 //! and persistent endpoint registry.
@@ -10,7 +10,7 @@ use std::sync::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NexusOperationState {
+pub enum RelayOperationState {
     Scheduled = 0,
     Started = 1,
     Completed = 2,
@@ -19,7 +19,7 @@ pub enum NexusOperationState {
     TimedOut = 5,
 }
 
-/// Callback result delivered by the Nexus handler.
+/// Callback result delivered by the Relay handler.
 #[derive(Debug, Clone)]
 pub struct CallbackResult {
     pub operation_id: u64,
@@ -29,12 +29,12 @@ pub struct CallbackResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct NexusOperation {
+pub struct RelayOperation {
     pub operation_id: u64,
     pub service_name: String,
     pub operation_name: String,
     pub workflow_key: u64,
-    pub state: NexusOperationState,
+    pub state: RelayOperationState,
     pub input: Option<Vec<u8>>,
     pub result: Option<Vec<u8>>,
     pub callback_url: Option<String>,
@@ -56,7 +56,7 @@ pub struct NexusOperation {
 
 /// Endpoint registry entry with metadata.
 #[derive(Debug, Clone)]
-pub struct NexusEndpoint {
+pub struct RelayEndpoint {
     pub name: String,
     pub url: String,
     pub description: Option<String>,
@@ -66,9 +66,9 @@ pub struct NexusEndpoint {
     pub active_operations: u32,
 }
 
-pub struct NexusManager {
-    operations: Mutex<HashMap<u64, NexusOperation>>,
-    endpoints: Mutex<HashMap<String, NexusEndpoint>>,
+pub struct RelayManager {
+    operations: Mutex<HashMap<u64, RelayOperation>>,
+    endpoints: Mutex<HashMap<String, RelayEndpoint>>,
     /// Pending callbacks waiting to be delivered.
     pending_callbacks: Mutex<Vec<CallbackResult>>,
     next_id: AtomicU64,
@@ -76,7 +76,7 @@ pub struct NexusManager {
     next_token: AtomicU64,
 }
 
-impl NexusManager {
+impl RelayManager {
     pub fn new() -> Self {
         Self {
             operations: Mutex::new(HashMap::new()),
@@ -87,11 +87,11 @@ impl NexusManager {
         }
     }
 
-    /// Register a Nexus endpoint with metadata.
+    /// Register a Relay endpoint with metadata.
     pub fn register_service(&self, name: &str, endpoint: &str) {
         self.endpoints.lock().unwrap().insert(
             name.to_string(),
-            NexusEndpoint {
+            RelayEndpoint {
                 name: name.to_string(),
                 url: endpoint.to_string(),
                 description: None,
@@ -111,7 +111,7 @@ impl NexusManager {
     ) -> bool {
         self.endpoints.lock().unwrap().insert(
             name.to_string(),
-            NexusEndpoint {
+            RelayEndpoint {
                 name: name.to_string(),
                 url: url.to_string(),
                 description: Some(description.to_string()),
@@ -136,7 +136,7 @@ impl NexusManager {
         }
     }
 
-    /// Start a Nexus operation. Returns the operation ID.
+    /// Start a Relay operation. Returns the operation ID.
     /// Validates the service exists and has capacity.
     pub fn start_operation(
         &self,
@@ -149,7 +149,7 @@ impl NexusManager {
         self.start_operation_with_config(service, operation, workflow_key, input, callback, 0, 3)
     }
 
-    /// Start a Nexus operation with full configuration (timeout, max_attempts).
+    /// Start a Relay operation with full configuration (timeout, max_attempts).
     pub fn start_operation_with_config(
         &self,
         service: &str,
@@ -172,16 +172,16 @@ impl NexusManager {
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let token_id = self.next_token.fetch_add(1, Ordering::Relaxed);
-        let token = format!("nexus-token-{}", token_id);
+        let token = format!("relay-token-{}", token_id);
 
         self.operations.lock().unwrap().insert(
             id,
-            NexusOperation {
+            RelayOperation {
                 operation_id: id,
                 service_name: service.to_string(),
                 operation_name: operation.to_string(),
                 workflow_key,
-                state: NexusOperationState::Scheduled,
+                state: RelayOperationState::Scheduled,
                 input,
                 result: None,
                 callback_url: callback,
@@ -201,10 +201,10 @@ impl NexusManager {
     pub fn mark_started(&self, op_id: u64, operation_token: Option<String>) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state != NexusOperationState::Scheduled {
+            if op.state != RelayOperationState::Scheduled {
                 return false;
             }
-            op.state = NexusOperationState::Started;
+            op.state = RelayOperationState::Started;
             if let Some(token) = operation_token {
                 op.operation_token = Some(token);
             }
@@ -218,12 +218,12 @@ impl NexusManager {
     pub fn complete_operation(&self, op_id: u64, result: Vec<u8>) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state != NexusOperationState::Started
-                && op.state != NexusOperationState::Scheduled
+            if op.state != RelayOperationState::Started
+                && op.state != RelayOperationState::Scheduled
             {
                 return false;
             }
-            op.state = NexusOperationState::Completed;
+            op.state = RelayOperationState::Completed;
             op.result = Some(result);
             let service = op.service_name.clone();
             drop(ops);
@@ -243,12 +243,12 @@ impl NexusManager {
     pub fn fail_operation_with_error(&self, op_id: u64, error: Option<String>) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state == NexusOperationState::Completed
-                || op.state == NexusOperationState::Canceled
+            if op.state == RelayOperationState::Completed
+                || op.state == RelayOperationState::Canceled
             {
                 return false;
             }
-            op.state = NexusOperationState::Failed;
+            op.state = RelayOperationState::Failed;
             op.error_message = error;
             let service = op.service_name.clone();
             drop(ops);
@@ -263,12 +263,12 @@ impl NexusManager {
     pub fn cancel_operation(&self, op_id: u64) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state == NexusOperationState::Completed
-                || op.state == NexusOperationState::Canceled
+            if op.state == RelayOperationState::Completed
+                || op.state == RelayOperationState::Canceled
             {
                 return false;
             }
-            op.state = NexusOperationState::Canceled;
+            op.state = RelayOperationState::Canceled;
             let service = op.service_name.clone();
             drop(ops);
             self.decrement_active(&service);
@@ -282,12 +282,12 @@ impl NexusManager {
     pub fn timeout_operation(&self, op_id: u64) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state == NexusOperationState::Completed
-                || op.state == NexusOperationState::Canceled
+            if op.state == RelayOperationState::Completed
+                || op.state == RelayOperationState::Canceled
             {
                 return false;
             }
-            op.state = NexusOperationState::TimedOut;
+            op.state = RelayOperationState::TimedOut;
             let service = op.service_name.clone();
             drop(ops);
             self.decrement_active(&service);
@@ -302,7 +302,7 @@ impl NexusManager {
     pub fn retry_operation(&self, op_id: u64) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&op_id) {
-            if op.state != NexusOperationState::Failed && op.state != NexusOperationState::TimedOut
+            if op.state != RelayOperationState::Failed && op.state != RelayOperationState::TimedOut
             {
                 return false;
             }
@@ -310,7 +310,7 @@ impl NexusManager {
                 return false;
             }
             op.attempt += 1;
-            op.state = NexusOperationState::Scheduled;
+            op.state = RelayOperationState::Scheduled;
             op.result = None;
             op.error_message = None;
             let service = op.service_name.clone();
@@ -323,19 +323,19 @@ impl NexusManager {
         }
     }
 
-    /// Deliver a callback result from the Nexus handler.
+    /// Deliver a callback result from the Relay handler.
     /// Queues the result for processing.
     pub fn deliver_callback(&self, result: CallbackResult) -> bool {
         let mut ops = self.operations.lock().unwrap();
         if let Some(op) = ops.get_mut(&result.operation_id) {
-            if op.state != NexusOperationState::Started {
+            if op.state != RelayOperationState::Started {
                 return false;
             }
             if result.success {
-                op.state = NexusOperationState::Completed;
+                op.state = RelayOperationState::Completed;
                 op.result = result.payload;
             } else {
-                op.state = NexusOperationState::Failed;
+                op.state = RelayOperationState::Failed;
                 op.error_message = result.error_message;
             }
             let service = op.service_name.clone();
@@ -365,10 +365,10 @@ impl NexusManager {
         for op in ops.values_mut() {
             if op.timeout_ms > 0
                 && op.started_at_ms > 0
-                && op.state == NexusOperationState::Started
+                && op.state == RelayOperationState::Started
                 && current_time_ms.saturating_sub(op.started_at_ms) > op.timeout_ms
             {
-                op.state = NexusOperationState::TimedOut;
+                op.state = RelayOperationState::TimedOut;
                 timed_out.push(op.operation_id);
             }
         }
@@ -386,7 +386,7 @@ impl NexusManager {
         }
     }
 
-    pub fn get_operation(&self, op_id: u64) -> Option<NexusOperation> {
+    pub fn get_operation(&self, op_id: u64) -> Option<RelayOperation> {
         self.operations.lock().unwrap().get(&op_id).cloned()
     }
 
@@ -398,7 +398,7 @@ impl NexusManager {
     }
 
     /// Count operations in a specific state.
-    pub fn count_by_state(&self, state: NexusOperationState) -> usize {
+    pub fn count_by_state(&self, state: RelayOperationState) -> usize {
         self.operations
             .lock()
             .unwrap()
@@ -413,7 +413,7 @@ impl NexusManager {
     }
 
     /// Get endpoint info.
-    pub fn get_endpoint(&self, name: &str) -> Option<NexusEndpoint> {
+    pub fn get_endpoint(&self, name: &str) -> Option<RelayEndpoint> {
         self.endpoints.lock().unwrap().get(name).cloned()
     }
 
@@ -437,7 +437,7 @@ impl NexusManager {
     }
 }
 
-impl Default for NexusManager {
+impl Default for RelayManager {
     fn default() -> Self {
         Self::new()
     }
@@ -448,49 +448,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_nexus_lifecycle() {
-        let mgr = NexusManager::new();
+    fn test_relay_lifecycle() {
+        let mgr = RelayManager::new();
         mgr.register_service("payments", "http://payments:8080");
         let op_id = mgr
             .start_operation("payments", "charge", 42, Some(vec![1]), None)
             .unwrap();
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::Scheduled
+            RelayOperationState::Scheduled
         );
 
         // Transition to Started
         assert!(mgr.mark_started(op_id, None));
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::Started
+            RelayOperationState::Started
         );
 
         // Complete
         assert!(mgr.complete_operation(op_id, vec![2, 3]));
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::Completed
+            RelayOperationState::Completed
         );
     }
 
     #[test]
-    fn test_nexus_cancel() {
-        let mgr = NexusManager::new();
+    fn test_relay_cancel() {
+        let mgr = RelayManager::new();
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr.start_operation("svc", "op", 1, None, None).unwrap();
         assert!(mgr.cancel_operation(op_id));
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::Canceled
+            RelayOperationState::Canceled
         );
         // Can't cancel again
         assert!(!mgr.cancel_operation(op_id));
     }
 
     #[test]
-    fn test_nexus_timeout() {
-        let mgr = NexusManager::new();
+    fn test_relay_timeout() {
+        let mgr = RelayManager::new();
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr
             .start_operation_with_config("svc", "op", 1, None, None, 1000, 1)
@@ -499,13 +499,13 @@ mod tests {
         assert!(mgr.timeout_operation(op_id));
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::TimedOut
+            RelayOperationState::TimedOut
         );
     }
 
     #[test]
-    fn test_nexus_retry() {
-        let mgr = NexusManager::new();
+    fn test_relay_retry() {
+        let mgr = RelayManager::new();
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr
             .start_operation_with_config("svc", "op", 1, None, None, 0, 3)
@@ -514,7 +514,7 @@ mod tests {
         assert!(mgr.fail_operation(op_id));
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::Failed
+            RelayOperationState::Failed
         );
         assert_eq!(mgr.get_operation(op_id).unwrap().attempt, 1);
 
@@ -522,14 +522,14 @@ mod tests {
         assert!(mgr.retry_operation(op_id));
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::Scheduled
+            RelayOperationState::Scheduled
         );
         assert_eq!(mgr.get_operation(op_id).unwrap().attempt, 2);
     }
 
     #[test]
-    fn test_nexus_max_retries() {
-        let mgr = NexusManager::new();
+    fn test_relay_max_retries() {
+        let mgr = RelayManager::new();
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr
             .start_operation_with_config("svc", "op", 1, None, None, 0, 2)
@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn test_callback_delivery() {
-        let mgr = NexusManager::new();
+        let mgr = RelayManager::new();
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr
             .start_operation("svc", "op", 1, None, Some("http://callback:9090".into()))
@@ -566,14 +566,14 @@ mod tests {
         assert!(mgr.deliver_callback(result));
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::Completed
+            RelayOperationState::Completed
         );
         assert_eq!(mgr.get_operation(op_id).unwrap().result, Some(vec![42]));
     }
 
     #[test]
     fn test_callback_failure() {
-        let mgr = NexusManager::new();
+        let mgr = RelayManager::new();
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr.start_operation("svc", "op", 1, None, None).unwrap();
         assert!(mgr.mark_started(op_id, None));
@@ -587,7 +587,7 @@ mod tests {
         assert!(mgr.deliver_callback(result));
         assert_eq!(
             mgr.get_operation(op_id).unwrap().state,
-            NexusOperationState::Failed
+            RelayOperationState::Failed
         );
         assert_eq!(
             mgr.get_operation(op_id).unwrap().error_message,
@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn test_unknown_service() {
-        let mgr = NexusManager::new();
+        let mgr = RelayManager::new();
         assert!(mgr
             .start_operation("unknown", "op", 1, None, None)
             .is_none());
@@ -605,7 +605,7 @@ mod tests {
 
     #[test]
     fn test_endpoint_registry() {
-        let mgr = NexusManager::new();
+        let mgr = RelayManager::new();
         mgr.register_endpoint("payments", "http://payments:8080", "Payment service", 50);
         let ep = mgr.get_endpoint("payments").unwrap();
         assert_eq!(ep.url, "http://payments:8080");
@@ -615,20 +615,20 @@ mod tests {
 
     #[test]
     fn test_count_by_state() {
-        let mgr = NexusManager::new();
+        let mgr = RelayManager::new();
         mgr.register_service("svc", "http://svc:8080");
         let op1 = mgr.start_operation("svc", "op", 1, None, None).unwrap();
         let _op2 = mgr.start_operation("svc", "op", 2, None, None).unwrap();
         assert!(mgr.mark_started(op1, None));
 
-        assert_eq!(mgr.count_by_state(NexusOperationState::Scheduled), 1);
-        assert_eq!(mgr.count_by_state(NexusOperationState::Started), 1);
-        assert_eq!(mgr.count_by_state(NexusOperationState::Completed), 0);
+        assert_eq!(mgr.count_by_state(RelayOperationState::Scheduled), 1);
+        assert_eq!(mgr.count_by_state(RelayOperationState::Started), 1);
+        assert_eq!(mgr.count_by_state(RelayOperationState::Completed), 0);
     }
 
     #[test]
     fn test_routing_key() {
-        let mgr = NexusManager::new();
+        let mgr = RelayManager::new();
         mgr.register_service("svc", "http://svc:8080");
         let op_id = mgr.start_operation("svc", "op", 1, None, None).unwrap();
         assert!(mgr.set_routing_key(op_id, "shard-42"));

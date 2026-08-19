@@ -1,6 +1,6 @@
-//! Deep Nexus operations matching Temporal's 6.5K-line Nexus subsystem.
+//! Deep Relay operations matching Temporal's 6.5K-line Relay subsystem.
 //!
-//! Covers: Nexus endpoints, operations, callbacks, handler registry,
+//! Covers: Relay endpoints, operations, callbacks, handler registry,
 //! request/response routing, and operation lifecycle management.
 
 use std::collections::HashMap;
@@ -11,11 +11,11 @@ use std::sync::{
 use std::time::SystemTime;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Nexus Endpoint
+// Relay Endpoint
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone)]
-pub struct NexusEndpoint {
+pub struct RelayEndpoint {
     pub id: String,
     pub name: String,
     pub description: String,
@@ -46,11 +46,11 @@ pub enum AuthMethod {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Nexus Endpoint Manager
+// Relay Endpoint Manager
 // ═══════════════════════════════════════════════════════════════════════════════
 
-pub struct NexusEndpointManager {
-    endpoints: RwLock<HashMap<String, NexusEndpoint>>,
+pub struct RelayEndpointManager {
+    endpoints: RwLock<HashMap<String, RelayEndpoint>>,
     name_index: RwLock<HashMap<String, String>>,
     stats: EndpointManagerStats,
 }
@@ -66,7 +66,7 @@ pub struct EndpointManagerStats {
     pub callbacks_received: AtomicU64,
 }
 
-impl NexusEndpointManager {
+impl RelayEndpointManager {
     pub fn new() -> Self {
         Self {
             endpoints: RwLock::new(HashMap::new()),
@@ -80,15 +80,15 @@ impl NexusEndpointManager {
         name: &str,
         target: EndpointTarget,
         description: &str,
-    ) -> Result<NexusEndpoint, NexusError> {
+    ) -> Result<RelayEndpoint, RelayError> {
         let mut endpoints = self.endpoints.write().unwrap();
         let mut name_index = self.name_index.write().unwrap();
 
         if name_index.contains_key(name) {
-            return Err(NexusError::EndpointAlreadyExists(name.to_string()));
+            return Err(RelayError::EndpointAlreadyExists(name.to_string()));
         }
 
-        let endpoint = NexusEndpoint {
+        let endpoint = RelayEndpoint {
             id: format!("ep-{}", uuid_simple()),
             name: name.to_string(),
             description: description.to_string(),
@@ -107,11 +107,11 @@ impl NexusEndpointManager {
         Ok(endpoint)
     }
 
-    pub fn get_endpoint(&self, id: &str) -> Option<NexusEndpoint> {
+    pub fn get_endpoint(&self, id: &str) -> Option<RelayEndpoint> {
         self.endpoints.read().unwrap().get(id).cloned()
     }
 
-    pub fn get_endpoint_by_name(&self, name: &str) -> Option<NexusEndpoint> {
+    pub fn get_endpoint_by_name(&self, name: &str) -> Option<RelayEndpoint> {
         let name_index = self.name_index.read().unwrap();
         let id = name_index.get(name)?;
         self.endpoints.read().unwrap().get(id).cloned()
@@ -122,11 +122,11 @@ impl NexusEndpointManager {
         id: &str,
         description: Option<&str>,
         target: Option<EndpointTarget>,
-    ) -> Result<NexusEndpoint, NexusError> {
+    ) -> Result<RelayEndpoint, RelayError> {
         let mut endpoints = self.endpoints.write().unwrap();
         let endpoint = endpoints
             .get_mut(id)
-            .ok_or(NexusError::EndpointNotFound(id.to_string()))?;
+            .ok_or(RelayError::EndpointNotFound(id.to_string()))?;
 
         if let Some(desc) = description {
             endpoint.description = desc.to_string();
@@ -140,20 +140,20 @@ impl NexusEndpointManager {
         Ok(endpoint.clone())
     }
 
-    pub fn delete_endpoint(&self, id: &str) -> Result<(), NexusError> {
+    pub fn delete_endpoint(&self, id: &str) -> Result<(), RelayError> {
         let mut endpoints = self.endpoints.write().unwrap();
         let mut name_index = self.name_index.write().unwrap();
 
         let endpoint = endpoints
             .remove(id)
-            .ok_or(NexusError::EndpointNotFound(id.to_string()))?;
+            .ok_or(RelayError::EndpointNotFound(id.to_string()))?;
         name_index.remove(&endpoint.name);
         self.stats.endpoints_deleted.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
     }
 
-    pub fn list_endpoints(&self) -> Vec<NexusEndpoint> {
+    pub fn list_endpoints(&self) -> Vec<RelayEndpoint> {
         self.endpoints.read().unwrap().values().cloned().collect()
     }
 
@@ -163,30 +163,30 @@ impl NexusEndpointManager {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Nexus Operation
+// Relay Operation
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone)]
-pub struct NexusOperation {
+pub struct RelayOperation {
     pub operation_id: String,
     pub endpoint_id: String,
     pub service: String,
     pub operation_name: String,
-    pub state: NexusOperationState,
+    pub state: RelayOperationState,
     pub input: Option<Vec<u8>>,
     pub result: Option<Vec<u8>>,
-    pub failure: Option<NexusFailure>,
+    pub failure: Option<RelayFailure>,
     pub callback_url: Option<String>,
     pub created_at: i64,
     pub completed_at: Option<i64>,
     pub attempt: i32,
     pub max_attempts: i32,
     pub header: HashMap<String, String>,
-    pub links: Vec<NexusLink>,
+    pub links: Vec<RelayLink>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NexusOperationState {
+pub enum RelayOperationState {
     Pending = 0,
     Running = 1,
     Succeeded = 2,
@@ -196,29 +196,29 @@ pub enum NexusOperationState {
 }
 
 #[derive(Debug, Clone)]
-pub struct NexusFailure {
+pub struct RelayFailure {
     pub message: String,
     pub failure_type: String,
     pub retryable: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct NexusLink {
+pub struct RelayLink {
     pub url: String,
     pub link_type: String,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Nexus Operation Manager
+// Relay Operation Manager
 // ═══════════════════════════════════════════════════════════════════════════════
 
-pub struct NexusOperationManager {
-    operations: RwLock<HashMap<String, NexusOperation>>,
+pub struct RelayOperationManager {
+    operations: RwLock<HashMap<String, RelayOperation>>,
     endpoint_ops: RwLock<HashMap<String, Vec<String>>>,
     stats: Arc<EndpointManagerStats>,
 }
 
-impl NexusOperationManager {
+impl RelayOperationManager {
     pub fn new(stats: Arc<EndpointManagerStats>) -> Self {
         Self {
             operations: RwLock::new(HashMap::new()),
@@ -234,17 +234,17 @@ impl NexusOperationManager {
         operation_name: &str,
         input: Option<Vec<u8>>,
         callback_url: Option<&str>,
-    ) -> Result<NexusOperation, NexusError> {
+    ) -> Result<RelayOperation, RelayError> {
         self.stats
             .operations_started
             .fetch_add(1, Ordering::Relaxed);
 
-        let op = NexusOperation {
+        let op = RelayOperation {
             operation_id: format!("op-{}", uuid_simple()),
             endpoint_id: endpoint_id.to_string(),
             service: service.to_string(),
             operation_name: operation_name.to_string(),
-            state: NexusOperationState::Pending,
+            state: RelayOperationState::Pending,
             input,
             result: None,
             failure: None,
@@ -279,13 +279,13 @@ impl NexusOperationManager {
         &self,
         operation_id: &str,
         result: Option<Vec<u8>>,
-    ) -> Result<(), NexusError> {
+    ) -> Result<(), RelayError> {
         let mut ops = self.operations.write().unwrap();
         let op = ops
             .get_mut(operation_id)
-            .ok_or(NexusError::OperationNotFound(operation_id.to_string()))?;
+            .ok_or(RelayError::OperationNotFound(operation_id.to_string()))?;
 
-        op.state = NexusOperationState::Succeeded;
+        op.state = RelayOperationState::Succeeded;
         op.result = result;
         op.completed_at = Some(
             SystemTime::now()
@@ -303,14 +303,14 @@ impl NexusOperationManager {
     pub fn fail_operation(
         &self,
         operation_id: &str,
-        failure: NexusFailure,
-    ) -> Result<(), NexusError> {
+        failure: RelayFailure,
+    ) -> Result<(), RelayError> {
         let mut ops = self.operations.write().unwrap();
         let op = ops
             .get_mut(operation_id)
-            .ok_or(NexusError::OperationNotFound(operation_id.to_string()))?;
+            .ok_or(RelayError::OperationNotFound(operation_id.to_string()))?;
 
-        op.state = NexusOperationState::Failed;
+        op.state = RelayOperationState::Failed;
         op.failure = Some(failure);
         op.completed_at = Some(
             SystemTime::now()
@@ -323,12 +323,12 @@ impl NexusOperationManager {
         Ok(())
     }
 
-    pub fn cancel_operation(&self, operation_id: &str) -> Result<(), NexusError> {
+    pub fn cancel_operation(&self, operation_id: &str) -> Result<(), RelayError> {
         let mut ops = self.operations.write().unwrap();
         let op = ops
             .get_mut(operation_id)
-            .ok_or(NexusError::OperationNotFound(operation_id.to_string()))?;
-        op.state = NexusOperationState::Canceled;
+            .ok_or(RelayError::OperationNotFound(operation_id.to_string()))?;
+        op.state = RelayOperationState::Canceled;
         op.completed_at = Some(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -338,11 +338,11 @@ impl NexusOperationManager {
         Ok(())
     }
 
-    pub fn get_operation(&self, operation_id: &str) -> Option<NexusOperation> {
+    pub fn get_operation(&self, operation_id: &str) -> Option<RelayOperation> {
         self.operations.read().unwrap().get(operation_id).cloned()
     }
 
-    pub fn get_operations_for_endpoint(&self, endpoint_id: &str) -> Vec<NexusOperation> {
+    pub fn get_operations_for_endpoint(&self, endpoint_id: &str) -> Vec<RelayOperation> {
         let endpoint_ops = self.endpoint_ops.read().unwrap();
         let ops = self.operations.read().unwrap();
         endpoint_ops
@@ -355,7 +355,7 @@ impl NexusOperationManager {
         &self,
         operation_id: &str,
         result: CallbackResult,
-    ) -> Result<(), NexusError> {
+    ) -> Result<(), RelayError> {
         self.stats
             .callbacks_received
             .fetch_add(1, Ordering::Relaxed);
@@ -369,7 +369,7 @@ impl NexusOperationManager {
 #[derive(Debug, Clone)]
 pub enum CallbackResult {
     Success(Option<Vec<u8>>),
-    Failure(NexusFailure),
+    Failure(RelayFailure),
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -377,7 +377,7 @@ pub enum CallbackResult {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone)]
-pub enum NexusError {
+pub enum RelayError {
     EndpointNotFound(String),
     EndpointAlreadyExists(String),
     OperationNotFound(String),
@@ -405,13 +405,13 @@ mod tests {
 
     #[test]
     fn test_endpoint_create() {
-        let mgr = NexusEndpointManager::new();
+        let mgr = RelayEndpointManager::new();
         let ep = mgr
             .create_endpoint(
                 "test-ep",
                 EndpointTarget::Worker {
                     namespace: "default".to_string(),
-                    task_queue: "nexus-queue".to_string(),
+                    task_queue: "relay-queue".to_string(),
                     identity: None,
                 },
                 "Test endpoint",
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn test_endpoint_get_by_name() {
-        let mgr = NexusEndpointManager::new();
+        let mgr = RelayEndpointManager::new();
         mgr.create_endpoint(
             "my-ep",
             EndpointTarget::Worker {
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn test_endpoint_update() {
-        let mgr = NexusEndpointManager::new();
+        let mgr = RelayEndpointManager::new();
         let ep = mgr
             .create_endpoint(
                 "ep1",
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn test_endpoint_delete() {
-        let mgr = NexusEndpointManager::new();
+        let mgr = RelayEndpointManager::new();
         let ep = mgr
             .create_endpoint(
                 "ep1",
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_endpoint_duplicate() {
-        let mgr = NexusEndpointManager::new();
+        let mgr = RelayEndpointManager::new();
         mgr.create_endpoint(
             "ep1",
             EndpointTarget::Worker {
@@ -506,8 +506,8 @@ mod tests {
     }
 
     #[test]
-    fn test_nexus_operation_lifecycle() {
-        let mgr = NexusEndpointManager::new();
+    fn test_relay_operation_lifecycle() {
+        let mgr = RelayEndpointManager::new();
         let ep = mgr
             .create_endpoint(
                 "ep1",
@@ -520,7 +520,7 @@ mod tests {
             )
             .unwrap();
 
-        let op_mgr = NexusOperationManager::new(Arc::new(EndpointManagerStats::default()));
+        let op_mgr = RelayOperationManager::new(Arc::new(EndpointManagerStats::default()));
         let op = op_mgr
             .start_operation(
                 &ep.id,
@@ -530,20 +530,20 @@ mod tests {
                 Some("http://callback"),
             )
             .unwrap();
-        assert_eq!(op.state, NexusOperationState::Pending);
+        assert_eq!(op.state, RelayOperationState::Pending);
 
         op_mgr
             .complete_operation(&op.operation_id, Some(b"result".to_vec()))
             .unwrap();
         let completed = op_mgr.get_operation(&op.operation_id).unwrap();
-        assert_eq!(completed.state, NexusOperationState::Succeeded);
+        assert_eq!(completed.state, RelayOperationState::Succeeded);
         assert!(completed.result.is_some());
     }
 
     #[test]
-    fn test_nexus_operation_failure() {
-        let op_mgr = NexusOperationManager::new(Arc::new(EndpointManagerStats::default()));
-        let ep_mgr = NexusEndpointManager::new();
+    fn test_relay_operation_failure() {
+        let op_mgr = RelayOperationManager::new(Arc::new(EndpointManagerStats::default()));
+        let ep_mgr = RelayEndpointManager::new();
         let ep = ep_mgr
             .create_endpoint(
                 "ep1",
@@ -562,7 +562,7 @@ mod tests {
         op_mgr
             .fail_operation(
                 &op.operation_id,
-                NexusFailure {
+                RelayFailure {
                     message: "payment declined".to_string(),
                     failure_type: "BusinessError".to_string(),
                     retryable: false,
@@ -571,14 +571,14 @@ mod tests {
             .unwrap();
 
         let failed = op_mgr.get_operation(&op.operation_id).unwrap();
-        assert_eq!(failed.state, NexusOperationState::Failed);
+        assert_eq!(failed.state, RelayOperationState::Failed);
         assert!(failed.failure.is_some());
     }
 
     #[test]
-    fn test_nexus_callback() {
-        let op_mgr = NexusOperationManager::new(Arc::new(EndpointManagerStats::default()));
-        let ep_mgr = NexusEndpointManager::new();
+    fn test_relay_callback() {
+        let op_mgr = RelayOperationManager::new(Arc::new(EndpointManagerStats::default()));
+        let ep_mgr = RelayEndpointManager::new();
         let ep = ep_mgr
             .create_endpoint(
                 "ep1",
@@ -602,12 +602,12 @@ mod tests {
             .unwrap();
 
         let completed = op_mgr.get_operation(&op.operation_id).unwrap();
-        assert_eq!(completed.state, NexusOperationState::Succeeded);
+        assert_eq!(completed.state, RelayOperationState::Succeeded);
     }
 
     #[test]
     fn test_list_endpoints() {
-        let mgr = NexusEndpointManager::new();
+        let mgr = RelayEndpointManager::new();
         mgr.create_endpoint(
             "ep1",
             EndpointTarget::Worker {
@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn test_operations_for_endpoint() {
-        let ep_mgr = NexusEndpointManager::new();
+        let ep_mgr = RelayEndpointManager::new();
         let ep = ep_mgr
             .create_endpoint(
                 "ep1",
@@ -646,7 +646,7 @@ mod tests {
             )
             .unwrap();
 
-        let op_mgr = NexusOperationManager::new(Arc::new(EndpointManagerStats::default()));
+        let op_mgr = RelayOperationManager::new(Arc::new(EndpointManagerStats::default()));
         op_mgr
             .start_operation(&ep.id, "svc", "op1", None, None)
             .unwrap();

@@ -1815,7 +1815,7 @@ pub unsafe extern "C" fn velocity_engine_register_nexus_service(
         ))
         .unwrap_or("")
     };
-    h.engine.nexus_manager().register_service(name, endpoint);
+    h.engine.relay_manager().register_service(name, endpoint);
     0
 }
 
@@ -1825,7 +1825,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_service_count(handle: *mut Engine
         return 0;
     }
     let h = &*handle;
-    h.engine.nexus_manager().service_count() as u64
+    h.engine.relay_manager().service_count() as u64
 }
 
 #[no_mangle]
@@ -1834,7 +1834,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_operation_count(handle: *mut Engi
         return 0;
     }
     let h = &*handle;
-    h.engine.nexus_manager().operation_count() as u64
+    h.engine.relay_manager().operation_count() as u64
 }
 
 // ─── Namespace Enhanced (Batch 24) ──────────────────────────────────────
@@ -2567,7 +2567,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_start_operation(
         .map(|s| s.to_string())
     };
     h.engine
-        .nexus_manager()
+        .relay_manager()
         .start_operation(service, operation, workflow_key, input, callback)
         .unwrap_or(0)
 }
@@ -2589,7 +2589,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_complete_operation(
         std::slice::from_raw_parts(result_ptr, result_len as usize).to_vec()
     };
     if h.engine
-        .nexus_manager()
+        .relay_manager()
         .complete_operation(operation_id, result)
     {
         1
@@ -2607,7 +2607,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_fail_operation(
         return -1;
     }
     let h = &*handle;
-    if h.engine.nexus_manager().fail_operation(operation_id) {
+    if h.engine.relay_manager().fail_operation(operation_id) {
         1
     } else {
         0
@@ -2624,7 +2624,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_get_operation(
         return 0;
     }
     let h = &*handle;
-    match h.engine.nexus_manager().get_operation(operation_id) {
+    match h.engine.relay_manager().get_operation(operation_id) {
         Some(op) => {
             *out.add(0) = op.operation_id;
             *out.add(1) = op.workflow_key;
@@ -6365,7 +6365,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_register_service(
         std::slice::from_raw_parts(endpoint_ptr, endpoint_len as usize)
     };
     let endpoint = std::str::from_utf8(ep_slice).unwrap_or("");
-    h.engine.nexus_manager().register_service(name, endpoint);
+    h.engine.relay_manager().register_service(name, endpoint);
     1
 }
 
@@ -6593,7 +6593,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_mark_started(
         return 0;
     }
     let h = &*handle;
-    if h.engine.nexus_manager().mark_started(op_id, None) {
+    if h.engine.relay_manager().mark_started(op_id, None) {
         1
     } else {
         0
@@ -6610,7 +6610,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_cancel(
         return 0;
     }
     let h = &*handle;
-    if h.engine.nexus_manager().cancel_operation(op_id) {
+    if h.engine.relay_manager().cancel_operation(op_id) {
         1
     } else {
         0
@@ -6627,7 +6627,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_timeout(
         return 0;
     }
     let h = &*handle;
-    if h.engine.nexus_manager().timeout_operation(op_id) {
+    if h.engine.relay_manager().timeout_operation(op_id) {
         1
     } else {
         0
@@ -6641,7 +6641,7 @@ pub unsafe extern "C" fn velocity_engine_nexus_retry(handle: *mut EngineHandle, 
         return 0;
     }
     let h = &*handle;
-    if h.engine.nexus_manager().retry_operation(op_id) {
+    if h.engine.relay_manager().retry_operation(op_id) {
         1
     } else {
         0
@@ -6659,15 +6659,15 @@ pub unsafe extern "C" fn velocity_engine_nexus_count_by_state(
     }
     let h = &*handle;
     let s = match state {
-        0 => crate::nexus::NexusOperationState::Scheduled,
-        1 => crate::nexus::NexusOperationState::Started,
-        2 => crate::nexus::NexusOperationState::Completed,
-        3 => crate::nexus::NexusOperationState::Failed,
-        4 => crate::nexus::NexusOperationState::Canceled,
-        5 => crate::nexus::NexusOperationState::TimedOut,
-        _ => crate::nexus::NexusOperationState::Scheduled,
+        0 => crate::relay::RelayOperationState::Scheduled,
+        1 => crate::relay::RelayOperationState::Started,
+        2 => crate::relay::RelayOperationState::Completed,
+        3 => crate::relay::RelayOperationState::Failed,
+        4 => crate::relay::RelayOperationState::Canceled,
+        5 => crate::relay::RelayOperationState::TimedOut,
+        _ => crate::relay::RelayOperationState::Scheduled,
     };
-    h.engine.nexus_manager().count_by_state(s) as u64
+    h.engine.relay_manager().count_by_state(s) as u64
 }
 
 // ─── Worker Registry Load-Aware Dispatch (Batch 31) ───────────────────────

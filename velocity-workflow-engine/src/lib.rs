@@ -100,8 +100,8 @@ pub mod namespace_mgmt;
 pub mod ndc_replication;
 pub mod ndc_replication_deep;
 pub mod network_replication;
-pub mod nexus;
-pub mod nexus_deep;
+pub mod relay;
+pub mod relay_deep;
 pub mod notification_system;
 pub mod observability;
 pub mod operational_api;
@@ -325,7 +325,7 @@ pub use network_replication::{
     TcpReplicationStats, UdpReplicationConfig, UdpReplicationStats, UdpReplicationTransport,
     WireFrame,
 };
-pub use nexus::{NexusManager, NexusOperation, NexusOperationState};
+pub use relay::{RelayManager, RelayOperation, RelayOperationState};
 pub use observability::{
     global, init_global, LogLevel, MetricsExporter, ObservabilityConfig, ObservabilityContext,
     SpanId, SpanStatus, SpanTracker, StructuredLogger,
@@ -693,12 +693,12 @@ pub use workflow_task_handler::{
     VisibilityTask as HandlerVisibilityTask, WorkflowCommand as TaskWorkflowCommand,
     WorkflowTaskCompletion, WorkflowTaskHandler,
 };
-// nexus_deep: deep nexus operations, endpoints, callbacks.
-pub use nexus_deep::{
-    AuthMethod as NexusAuthMethod, CallbackResult, EndpointManagerStats, EndpointTarget,
-    NexusEndpoint, NexusEndpointManager as DeepNexusEndpointManager, NexusError, NexusFailure,
-    NexusLink, NexusOperation as DeepNexusOperation, NexusOperationManager,
-    NexusOperationState as DeepNexusOperationState,
+// relay_deep: deep relay operations, endpoints, callbacks.
+pub use relay_deep::{
+    AuthMethod as RelayAuthMethod, CallbackResult, EndpointManagerStats, EndpointTarget,
+    RelayEndpoint, RelayEndpointManager as DeepRelayEndpointManager, RelayError, RelayFailure,
+    RelayLink, RelayOperation as DeepRelayOperation, RelayOperationManager,
+    RelayOperationState as DeepRelayOperationState,
 };
 // clock_abstraction: time source, mock time, hybrid logical clock.
 pub use clock_abstraction::{

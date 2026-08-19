@@ -29,7 +29,7 @@ use crate::matching_service::{MatchTask, MatchingService, MatchingServiceConfig}
 use crate::memo::MemoStore;
 use crate::metrics::MetricsRegistry;
 use crate::namespace::NamespaceRegistry;
-use crate::nexus::NexusManager;
+use crate::relay::RelayManager;
 use crate::partition::PartitionManager;
 use crate::patch::PatchRegistry;
 use crate::payload_codec::CodecChain;
@@ -445,7 +445,7 @@ pub struct WorkflowEngine {
     patch_registry: Arc<PatchRegistry>,
     cluster_manager: Arc<ClusterManager>,
     shard_manager: Arc<ShardManager>,
-    nexus_manager: Arc<NexusManager>,
+    relay_manager: Arc<RelayManager>,
     metrics_registry: Arc<MetricsRegistry>,
     saga_orchestrator: Arc<SagaOrchestrator>,
     partition_manager: Arc<PartitionManager>,
@@ -517,7 +517,7 @@ impl WorkflowEngine {
             patch_registry: Arc::new(PatchRegistry::new()),
             cluster_manager: Arc::new(ClusterManager::new("local")),
             shard_manager: Arc::new(ShardManager::default()),
-            nexus_manager: Arc::new(NexusManager::new()),
+            relay_manager: Arc::new(RelayManager::new()),
             metrics_registry: Arc::new(MetricsRegistry::new()),
             saga_orchestrator: Arc::new(SagaOrchestrator::new()),
             partition_manager: Arc::new(PartitionManager::new(4)),
@@ -586,7 +586,7 @@ impl WorkflowEngine {
             patch_registry: Arc::new(PatchRegistry::new()),
             cluster_manager: Arc::new(ClusterManager::new("local")),
             shard_manager: Arc::new(ShardManager::default()),
-            nexus_manager: Arc::new(NexusManager::new()),
+            relay_manager: Arc::new(RelayManager::new()),
             metrics_registry: Arc::new(MetricsRegistry::new()),
             saga_orchestrator: Arc::new(SagaOrchestrator::new()),
             partition_manager: Arc::new(PartitionManager::new(4)),
@@ -1257,8 +1257,8 @@ impl WorkflowEngine {
     pub fn shard_manager(&self) -> &Arc<ShardManager> {
         &self.shard_manager
     }
-    pub fn nexus_manager(&self) -> &Arc<NexusManager> {
-        &self.nexus_manager
+    pub fn relay_manager(&self) -> &Arc<RelayManager> {
+        &self.relay_manager
     }
     pub fn metrics_registry(&self) -> &Arc<MetricsRegistry> {
         &self.metrics_registry
