@@ -1,6 +1,6 @@
-fix: realign VELOCITY ASCII art banner across all servers
+fix: replace unreadable box-drawing banner with bold block letters
 
-The box-drawing characters in the original banner did not form
-recognizable letters in many terminal fonts (E middle row looked
-like vertical lines, L middle looked like a corner). Redesign
-using proper horizontal bars for clear letter forms.
+The box-drawing character approach produced unrecognizable letters
+(C identical to O, Y unrecognizable, I misaligned). Switch to
+standard 5-row block-letter ASCII art using ██ characters that
+clearly spells VELOCITY in any terminal font.

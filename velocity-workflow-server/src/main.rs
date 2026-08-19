@@ -136,9 +136,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bind_addr = format!("{}:{}", cli.ip, cli.vctp_port);
 
-    println!("╔══╗ ╔═╗ ╔╦  ╔═╗ ╔═╗ ╦ ╦ ╔══╗ ╔═╗");
-    println!("║╞══ ║   ╠╦╗ ╠═  ║   ╞═╣ ║ ║ ╠╦╗");
-    println!("╚══╝ ╚═╝ ╩ ╚═ ╚═╝ ╚═╝ ╩ ╩ ╚══╝ ╩");
+    println!("██    ██ ███████  ██████ ██   ██ ██████  ████████ ███████");
+    println!("██    ██ ██      ██      ██   ██ ██   ██    ██    ██");
+    println!("██ ██ ██ ███████ ██      ███████ ██████     ██    █████");
+    println!("███  ███      ██ ██      ██   ██ ██   ██    ██    ██");
+    println!(" █  █  ███████  ██████ ██   ██ ██   ██    ██    ███████");
     println!("  Workflow Server v{}", env!("CARGO_PKG_VERSION"));
     println!("  VCTP:    udp://{}", bind_addr);
     println!("  Health:  http://{}/health", cli.health_bind);
