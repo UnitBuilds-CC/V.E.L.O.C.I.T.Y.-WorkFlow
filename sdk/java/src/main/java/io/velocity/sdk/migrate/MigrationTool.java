@@ -270,6 +270,62 @@ public class MigrationTool {
             "@HttpHandler", "dbos")
     );
 
+    // ─── Inter-Flavor Migration Patterns (Server ↔ Binary ↔ Embedded) ────────
+
+    static final Map<String, List<MigrationPattern>> INTER_FLAVOR_PATTERNS = Map.of(
+        "server→binary", List.of(
+            new MigrationPattern("s2b-import", "import\\s+io\\.velocity\\.sdk\\.", "import io.velocity.sdk.binary.", "server"),
+            new MigrationPattern("s2b-execute-activity", "ctx\\.executeActivity\\(", "ctx.invoke(", "server"),
+            new MigrationPattern("s2b-child-workflow", "ctx\\.executeChildWorkflow\\(", "ctx.invoke(", "server"),
+            new MigrationPattern("s2b-get-signal", "ctx\\.getSignalChannel\\(", "ctx.promise(", "server"),
+            new MigrationPattern("s2b-wait-signal", "ctx\\.waitForSignal\\(", "ctx.awaitCondition(", "server"),
+            new MigrationPattern("s2b-set-state", "ctx\\.setState\\(", "ctx.set(", "server"),
+            new MigrationPattern("s2b-get-state", "ctx\\.getState\\(", "ctx.get(", "server"),
+            new MigrationPattern("s2b-relay-client", "ctx\\.newRelayClient\\(", "ctx.newServiceClient(", "server")
+        ),
+        "server→embedded", List.of(
+            new MigrationPattern("s2e-import", "import\\s+io\\.velocity\\.sdk\\.", "import io.velocity.sdk.embedded.", "server"),
+            new MigrationPattern("s2e-execute-activity", "ctx\\.executeActivity\\(", "ctx.invoke(", "server"),
+            new MigrationPattern("s2e-child-workflow", "ctx\\.executeChildWorkflow\\(", "ctx.startChildWorkflow(", "server"),
+            new MigrationPattern("s2e-get-signal", "ctx\\.getSignalChannel\\(", "ctx.awaitSignal(", "server"),
+            new MigrationPattern("s2e-relay-client", "ctx\\.newRelayClient\\(", "ctx.newClient(", "server")
+        ),
+        "binary→server", List.of(
+            new MigrationPattern("b2s-import", "import\\s+io\\.velocity\\.sdk\\.binary\\.", "import io.velocity.sdk.", "binary"),
+            new MigrationPattern("b2s-invoke", "ctx\\.invoke\\(", "ctx.executeActivity(", "binary"),
+            new MigrationPattern("b2s-promise", "ctx\\.promise\\(", "ctx.getSignalChannel(", "binary"),
+            new MigrationPattern("b2s-set", "ctx\\.set\\(", "ctx.setState(", "binary"),
+            new MigrationPattern("b2s-get", "ctx\\.get\\(", "ctx.getState(", "binary"),
+            new MigrationPattern("b2s-service-client", "ctx\\.newServiceClient\\(", "ctx.newRelayClient(", "binary")
+        ),
+        "binary→embedded", List.of(
+            new MigrationPattern("b2e-import", "import\\s+io\\.velocity\\.sdk\\.binary\\.", "import io.velocity.sdk.embedded.", "binary"),
+            new MigrationPattern("b2e-invoke", "ctx\\.invoke\\(", "ctx.invoke(", "binary"),
+            new MigrationPattern("b2e-promise", "ctx\\.promise\\(", "ctx.awaitSignal(", "binary"),
+            new MigrationPattern("b2e-set", "ctx\\.set\\(", "ctx.setState(", "binary"),
+            new MigrationPattern("b2e-get", "ctx\\.get\\(", "ctx.getState(", "binary"),
+            new MigrationPattern("b2e-service-client", "ctx\\.newServiceClient\\(", "ctx.newClient(", "binary")
+        ),
+        "embedded→server", List.of(
+            new MigrationPattern("e2s-import", "import\\s+io\\.velocity\\.sdk\\.embedded\\.", "import io.velocity.sdk.", "embedded"),
+            new MigrationPattern("e2s-await-signal", "ctx\\.awaitSignal\\(", "ctx.getSignalChannel(", "embedded"),
+            new MigrationPattern("e2s-child-wf", "ctx\\.startChildWorkflow\\(", "ctx.executeChildWorkflow(", "embedded"),
+            new MigrationPattern("e2s-client", "ctx\\.newClient\\(", "ctx.newRelayClient(", "embedded")
+        ),
+        "embedded→binary", List.of(
+            new MigrationPattern("e2b-import", "import\\s+io\\.velocity\\.sdk\\.embedded\\.", "import io.velocity.sdk.binary.", "embedded"),
+            new MigrationPattern("e2b-await-signal", "ctx\\.awaitSignal\\(", "ctx.promise(", "embedded"),
+            new MigrationPattern("e2b-set-state", "ctx\\.setState\\(", "ctx.set(", "embedded"),
+            new MigrationPattern("e2b-get-state", "ctx\\.getState\\(", "ctx.get(", "embedded"),
+            new MigrationPattern("e2b-child-wf", "ctx\\.startChildWorkflow\\(", "ctx.invoke(", "embedded"),
+            new MigrationPattern("e2b-client", "ctx\\.newClient\\(", "ctx.newServiceClient(", "embedded")
+        )
+    );
+
+    static List<MigrationPattern> getInterFlavorPatterns(String source, String target) {
+        return INTER_FLAVOR_PATTERNS.getOrDefault(source + "→" + target, List.of());
+    }
+
     // ─── Framework Detection ─────────────────────────────────────────────────
 
     public static class DetectionResult {
@@ -289,10 +345,16 @@ public class MigrationTool {
         scores.put("temporal", 0);
         scores.put("restate", 0);
         scores.put("dbos", 0);
+        scores.put("server", 0);
+        scores.put("binary", 0);
+        scores.put("embedded", 0);
         Map<String, List<String>> evidence = new HashMap<>();
         evidence.put("temporal", new ArrayList<>());
         evidence.put("restate", new ArrayList<>());
         evidence.put("dbos", new ArrayList<>());
+        evidence.put("server", new ArrayList<>());
+        evidence.put("binary", new ArrayList<>());
+        evidence.put("embedded", new ArrayList<>());
 
         // Temporal checks
         if (content.contains("io.temporal.workflow")) {
@@ -352,6 +414,40 @@ public class MigrationTool {
             evidence.get("dbos").add("DBOS queue/HTTP handler");
         }
 
+        // Velocity Server checks
+        if (content.contains("io.velocity.sdk") && !content.contains("io.velocity.sdk.binary") && !content.contains("io.velocity.sdk.embedded")) {
+            scores.merge("server", 3, Integer::sum);
+            evidence.get("server").add("Velocity Server SDK import");
+        }
+        if (content.contains("ctx.executeActivity(")) {
+            scores.merge("server", 1, Integer::sum);
+            evidence.get("server").add("ctx.executeActivity()");
+        }
+        if (content.contains("ctx.getSignalChannel(")) {
+            scores.merge("server", 1, Integer::sum);
+            evidence.get("server").add("ctx.getSignalChannel()");
+        }
+
+        // Velocity Binary checks
+        if (content.contains("io.velocity.sdk.binary")) {
+            scores.merge("binary", 3, Integer::sum);
+            evidence.get("binary").add("Velocity Binary SDK import");
+        }
+        if (content.contains("ctx.newServiceClient(")) {
+            scores.merge("binary", 1, Integer::sum);
+            evidence.get("binary").add("ctx.newServiceClient()");
+        }
+
+        // Velocity Embedded checks
+        if (content.contains("io.velocity.sdk.embedded")) {
+            scores.merge("embedded", 3, Integer::sum);
+            evidence.get("embedded").add("Velocity Embedded SDK import");
+        }
+        if (content.contains("ctx.awaitSignal(")) {
+            scores.merge("embedded", 1, Integer::sum);
+            evidence.get("embedded").add("ctx.awaitSignal()");
+        }
+
         // Find best match
         String best = "temporal";
         int bestScore = 0;
@@ -379,9 +475,10 @@ public class MigrationTool {
         public int transformations;
     }
 
-    public static String[] migrateFile(String content, String sourceFramework) {
+    public static String[] migrateFile(String content, String sourceFramework, String targetFlavor) {
         FileResult result = new FileResult();
         result.success = true;
+        if (targetFlavor == null || targetFlavor.isEmpty()) targetFlavor = "server";
 
         // Auto-detect if needed
         if ("auto".equals(sourceFramework)) {
@@ -397,7 +494,28 @@ public class MigrationTool {
             result.detectedFramework = sourceFramework;
         }
 
-        // Select patterns
+        // Check if this is an inter-flavor migration
+        Set<String> velocityFlavors = Set.of("server", "binary", "embedded");
+        if (velocityFlavors.contains(sourceFramework) && !sourceFramework.equals(targetFlavor)) {
+            List<MigrationPattern> patterns = getInterFlavorPatterns(sourceFramework, targetFlavor);
+            if (patterns.isEmpty()) {
+                result.success = false;
+                result.error = "No inter-flavor patterns: " + sourceFramework + " → " + targetFlavor;
+                return new String[]{content, "FAIL:" + result.error};
+            }
+            String migrated = content;
+            int count = 0;
+            for (MigrationPattern p : patterns) {
+                String newText = p.sourcePattern.matcher(migrated).replaceAll(p.targetTemplate);
+                if (!newText.equals(migrated)) {
+                    count++;
+                    migrated = newText;
+                }
+            }
+            return new String[]{migrated, "OK:" + count + ":" + result.detectedFramework};
+        }
+
+        // Select patterns for external framework migrations
         List<MigrationPattern> patterns;
         switch (sourceFramework) {
             case "temporal": patterns = TEMPORAL_PATTERNS; break;
@@ -454,6 +572,7 @@ public class MigrationTool {
     public static void main(String[] args) throws Exception {
         String src = null;
         String from = "auto";
+        String to = "server";
         String output = null;
         boolean dryRun = false;
         boolean detect = false;
@@ -462,6 +581,7 @@ public class MigrationTool {
             switch (args[i]) {
                 case "--src": src = args[++i]; break;
                 case "--from": from = args[++i]; break;
+                case "--to": to = args[++i]; break;
                 case "--output": case "-o": output = args[++i]; break;
                 case "--dry-run": dryRun = true; break;
                 case "--detect": detect = true; break;
@@ -469,7 +589,8 @@ public class MigrationTool {
                     System.out.println("Velocity Java Migration Tool");
                     System.out.println("Usage:");
                     System.out.println("  --src <file|dir>     Source file or directory");
-                    System.out.println("  --from <framework>   Source: temporal, restate, dbos, auto");
+                    System.out.println("  --from <framework>   Source: temporal, restate, dbos, server, binary, embedded, auto");
+                    System.out.println("  --to <flavor>        Target: server, binary, embedded");
                     System.out.println("  --output <path>      Output file or directory");
                     System.out.println("  --dry-run            Detect without writing");
                     System.out.println("  --detect             Detect framework in directory");
@@ -508,7 +629,7 @@ public class MigrationTool {
         // Mode: single file
         if (Files.isRegularFile(srcPath)) {
             String content = Files.readString(srcPath);
-            String[] result = migrateFile(content, from);
+            String[] result = migrateFile(content, from, to);
 
             if (result[1].startsWith("FAIL:")) {
                 System.err.println("Migration failed: " + result[1].substring(5));
@@ -541,7 +662,7 @@ public class MigrationTool {
             String content = Files.readString(f);
             if (!hasWorkflowContent(content)) { skipped++; continue; }
 
-            String[] result = migrateFile(content, from);
+            String[] result = migrateFile(content, from, to);
             if (result[1].startsWith("FAIL:")) {
                 failed++;
                 System.out.printf("  [FAIL] %s: %s%n", srcPath.relativize(f), result[1].substring(5));

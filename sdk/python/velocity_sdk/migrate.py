@@ -439,12 +439,71 @@ DBOS_PATTERNS: list[MigrationPattern] = [
 
 ALL_PATTERNS = TEMPORAL_PATTERNS + RESTATE_PATTERNS + DBOS_PATTERNS
 
+# ─── Inter-Flavor Migration Patterns (Server ↔ Binary ↔ Embedded) ────────────
+
+INTER_FLAVOR_PATTERNS: dict[str, list[MigrationPattern]] = {
+    'server→binary': [
+        MigrationPattern(name='s2b-import', source_pattern=re.compile(r'from\s+velocity_sdk\s+import'), target_template='from velocity_sdk.binary import', source_framework='server'),
+        MigrationPattern(name='s2b-execute-activity', source_pattern=re.compile(r'ctx\.execute_activity\('), target_template='ctx.invoke(', source_framework='server'),
+        MigrationPattern(name='s2b-child-workflow', source_pattern=re.compile(r'ctx\.execute_child_workflow\('), target_template='ctx.invoke(', source_framework='server'),
+        MigrationPattern(name='s2b-get-signal', source_pattern=re.compile(r'ctx\.get_signal_channel\('), target_template='ctx.promise(', source_framework='server'),
+        MigrationPattern(name='s2b-wait-signal', source_pattern=re.compile(r'ctx\.wait_for_signal\('), target_template='ctx.await_condition(', source_framework='server'),
+        MigrationPattern(name='s2b-set-state', source_pattern=re.compile(r'ctx\.set_state\('), target_template='ctx.set(', source_framework='server'),
+        MigrationPattern(name='s2b-get-state', source_pattern=re.compile(r'ctx\.get_state\('), target_template='ctx.get(', source_framework='server'),
+        MigrationPattern(name='s2b-relay-client', source_pattern=re.compile(r'ctx\.new_relay_client\('), target_template='ctx.new_service_client(', source_framework='server'),
+    ],
+    'server→embedded': [
+        MigrationPattern(name='s2e-import', source_pattern=re.compile(r'from\s+velocity_sdk\s+import'), target_template='from velocity_sdk.embedded import', source_framework='server'),
+        MigrationPattern(name='s2e-execute-activity', source_pattern=re.compile(r'ctx\.execute_activity\('), target_template='ctx.invoke(', source_framework='server'),
+        MigrationPattern(name='s2e-child-workflow', source_pattern=re.compile(r'ctx\.execute_child_workflow\('), target_template='ctx.start_child_workflow(', source_framework='server'),
+        MigrationPattern(name='s2e-get-signal', source_pattern=re.compile(r'ctx\.get_signal_channel\('), target_template='ctx.await_signal(', source_framework='server'),
+        MigrationPattern(name='s2e-wait-signal', source_pattern=re.compile(r'ctx\.wait_for_signal\('), target_template='ctx.await_condition(', source_framework='server'),
+        MigrationPattern(name='s2e-relay-client', source_pattern=re.compile(r'ctx\.new_relay_client\('), target_template='ctx.new_client(', source_framework='server'),
+    ],
+    'binary→server': [
+        MigrationPattern(name='b2s-import', source_pattern=re.compile(r'from\s+velocity_sdk\.binary\s+import'), target_template='from velocity_sdk import', source_framework='binary'),
+        MigrationPattern(name='b2s-invoke', source_pattern=re.compile(r'ctx\.invoke\('), target_template='ctx.execute_activity(', source_framework='binary'),
+        MigrationPattern(name='b2s-promise', source_pattern=re.compile(r'ctx\.promise\('), target_template='ctx.get_signal_channel(', source_framework='binary'),
+        MigrationPattern(name='b2s-set', source_pattern=re.compile(r'ctx\.set\('), target_template='ctx.set_state(', source_framework='binary'),
+        MigrationPattern(name='b2s-get', source_pattern=re.compile(r'ctx\.get\('), target_template='ctx.get_state(', source_framework='binary'),
+        MigrationPattern(name='b2s-service-client', source_pattern=re.compile(r'ctx\.new_service_client\('), target_template='ctx.new_relay_client(', source_framework='binary'),
+    ],
+    'binary→embedded': [
+        MigrationPattern(name='b2e-import', source_pattern=re.compile(r'from\s+velocity_sdk\.binary\s+import'), target_template='from velocity_sdk.embedded import', source_framework='binary'),
+        MigrationPattern(name='b2e-invoke', source_pattern=re.compile(r'ctx\.invoke\('), target_template='ctx.invoke(', source_framework='binary'),
+        MigrationPattern(name='b2e-promise', source_pattern=re.compile(r'ctx\.promise\('), target_template='ctx.await_signal(', source_framework='binary'),
+        MigrationPattern(name='b2e-set', source_pattern=re.compile(r'ctx\.set\('), target_template='ctx.set_state(', source_framework='binary'),
+        MigrationPattern(name='b2e-get', source_pattern=re.compile(r'ctx\.get\('), target_template='ctx.get_state(', source_framework='binary'),
+        MigrationPattern(name='b2e-service-client', source_pattern=re.compile(r'ctx\.new_service_client\('), target_template='ctx.new_client(', source_framework='binary'),
+    ],
+    'embedded→server': [
+        MigrationPattern(name='e2s-import', source_pattern=re.compile(r'from\s+velocity_sdk\.embedded\s+import'), target_template='from velocity_sdk import', source_framework='embedded'),
+        MigrationPattern(name='e2s-await-signal', source_pattern=re.compile(r'ctx\.await_signal\('), target_template='ctx.get_signal_channel(', source_framework='embedded'),
+        MigrationPattern(name='e2s-child-wf', source_pattern=re.compile(r'ctx\.start_child_workflow\('), target_template='ctx.execute_child_workflow(', source_framework='embedded'),
+        MigrationPattern(name='e2s-client', source_pattern=re.compile(r'ctx\.new_client\('), target_template='ctx.new_relay_client(', source_framework='embedded'),
+    ],
+    'embedded→binary': [
+        MigrationPattern(name='e2b-import', source_pattern=re.compile(r'from\s+velocity_sdk\.embedded\s+import'), target_template='from velocity_sdk.binary import', source_framework='embedded'),
+        MigrationPattern(name='e2b-await-signal', source_pattern=re.compile(r'ctx\.await_signal\('), target_template='ctx.promise(', source_framework='embedded'),
+        MigrationPattern(name='e2b-set-state', source_pattern=re.compile(r'ctx\.set_state\('), target_template='ctx.set(', source_framework='embedded'),
+        MigrationPattern(name='e2b-get-state', source_pattern=re.compile(r'ctx\.get_state\('), target_template='ctx.get(', source_framework='embedded'),
+        MigrationPattern(name='e2b-child-wf', source_pattern=re.compile(r'ctx\.start_child_workflow\('), target_template='ctx.invoke(', source_framework='embedded'),
+        MigrationPattern(name='e2b-client', source_pattern=re.compile(r'ctx\.new_client\('), target_template='ctx.new_service_client(', source_framework='embedded'),
+    ],
+}
+
+
+def get_inter_flavor_patterns(source: str, target: str) -> list[MigrationPattern]:
+    """Get migration patterns for a Velocity flavor-to-flavor migration."""
+    key = f'{source}→{target}'
+    return INTER_FLAVOR_PATTERNS.get(key, [])
+
 
 # ─── Framework Detection ─────────────────────────────────────────────────────
 
 def detect_framework(content: str) -> tuple[str, float]:
     """Detect which framework the code uses. Returns (framework, confidence)."""
-    scores = {'temporal': 0, 'restate': 0, 'dbos': 0}
+    scores = {'temporal': 0, 'restate': 0, 'dbos': 0, 'server': 0, 'binary': 0, 'embedded': 0}
 
     # Temporal indicators
     if re.search(r'from\s+temporalio', content): scores['temporal'] += 3
@@ -473,6 +532,21 @@ def detect_framework(content: str) -> tuple[str, float]:
     if re.search(r'DBOS\.enqueue', content): scores['dbos'] += 1
     if re.search(r'@DBOS\.http_handler', content): scores['dbos'] += 1
 
+    # Velocity Server indicators
+    if re.search(r'from\s+velocity_sdk\s+import', content): scores['server'] += 3
+    if re.search(r'ctx\.execute_activity\(', content): scores['server'] += 1
+    if re.search(r'ctx\.get_signal_channel\(', content): scores['server'] += 1
+    if re.search(r'ctx\.wait_for_signal\(', content): scores['server'] += 1
+
+    # Velocity Binary indicators
+    if re.search(r'from\s+velocity_sdk\.binary', content): scores['binary'] += 3
+    if re.search(r'ctx\.new_service_client\(', content): scores['binary'] += 1
+
+    # Velocity Embedded indicators
+    if re.search(r'from\s+velocity_sdk\.embedded', content): scores['embedded'] += 3
+    if re.search(r'ctx\.await_signal\(', content): scores['embedded'] += 1
+    if re.search(r'ctx\.start_child_workflow\(', content): scores['embedded'] += 1
+
     best = max(scores, key=scores.get)
     total = sum(scores.values())
     confidence = scores[best] / total if total > 0 else 0.0
@@ -496,6 +570,7 @@ def migrate_file(
     content: str,
     source_framework: str,
     file_path: str = '<unknown>',
+    target_flavor: str = 'server',
 ) -> tuple[str, FileMigrationResult]:
     """Migrate a single file's content. Returns (migrated_code, result)."""
     result = FileMigrationResult(source_path=file_path)
@@ -513,7 +588,25 @@ def migrate_file(
     else:
         result.detected_framework = source_framework
 
-    # Select patterns
+    # Check if this is an inter-flavor migration
+    velocity_flavors = {'server', 'binary', 'embedded'}
+    if source_framework in velocity_flavors and source_framework != target_flavor:
+        patterns = get_inter_flavor_patterns(source_framework, target_flavor)
+        if not patterns:
+            result.success = False
+            result.error = f'No inter-flavor patterns: {source_framework} → {target_flavor}'
+            return content, result
+        migrated = content
+        count = 0
+        for pattern in patterns:
+            new_text, n = pattern.source_pattern.subn(pattern.target_template, migrated)
+            if n > 0:
+                migrated = new_text
+                count += n
+        result.transformations = count
+        return migrated, result
+
+    # Select patterns for external framework migrations
     if source_framework == 'temporal':
         patterns = TEMPORAL_PATTERNS
     elif source_framework == 'restate':
@@ -570,6 +663,7 @@ def has_workflow_content(content: str) -> bool:
         r'@workflow', r'@activity', r'@DBOS',
         r'async\s+def.*workflow', r'async\s+def.*activity',
         r'execute_activity', r'ctx\.run\(', r'ctx\.invoke\(',
+        r'velocity_sdk', r'velocity_sdk\.binary', r'velocity_sdk\.embedded',
     ]
     return any(re.search(p, content) for p in indicators)
 
@@ -590,6 +684,7 @@ def bulk_migrate(
     output_dir: str,
     source_framework: str = 'auto',
     dry_run: bool = False,
+    target_flavor: str = 'server',
 ) -> BulkResult:
     """Migrate all Python workflow files in a directory."""
     result = BulkResult()
@@ -616,7 +711,7 @@ def bulk_migrate(
 
         # Migrate
         migrated_code, file_result = migrate_file(
-            content, source_framework, file_path,
+            content, source_framework, file_path, target_flavor=target_flavor,
         )
         file_result.source_path = os.path.relpath(file_path, source_dir)
 
@@ -662,9 +757,11 @@ Examples:
     )
     parser.add_argument('--src', required=True, help='Source file or directory')
     parser.add_argument('--from', dest='source_framework', default='auto',
-                        choices=['temporal', 'restate', 'dbos', 'auto'],
+                        choices=['temporal', 'restate', 'dbos', 'server', 'binary', 'embedded', 'auto'],
                         help='Source framework (default: auto-detect)')
-    parser.add_argument('--to', default='velocity', help='Target (always velocity)')
+    parser.add_argument('--to', default='server',
+                        choices=['server', 'binary', 'embedded', 'velocity'],
+                        help='Target Velocity flavor (default: server)')
     parser.add_argument('--output', '-o', help='Output file or directory')
     parser.add_argument('--dry-run', action='store_true', help='Detect and report without writing')
     parser.add_argument('--detect', action='store_true', help='Detect framework in directory')
@@ -719,7 +816,7 @@ Examples:
         print(f'Source framework: {args.source_framework}')
         print()
 
-        bulk = bulk_migrate(args.src, output_dir, args.source_framework, args.dry_run)
+        bulk = bulk_migrate(args.src, output_dir, args.source_framework, args.dry_run, args.to)
 
         print(f'Results:')
         print(f'  Total files: {bulk.total_files}')

@@ -458,6 +458,90 @@ var DBOSPatterns = []*MigrationPattern{
 // AllPatterns combines all framework patterns.
 var AllPatterns = append(append(TemporalPatterns, RestatePatterns...), DBOSPatterns...)
 
+// ─── Inter-Flavor Migration Patterns (Server ↔ Binary ↔ Embedded) ────────────
+
+// InterFlavorPatternSets maps "source→target" to pattern lists for Velocity flavor-to-flavor migration.
+var InterFlavorPatternSets = map[string][]*MigrationPattern{
+	// ── Server → Binary ──────────────────────────────────────────────────────
+	"server→binary": {
+		{Name: "server-to-binary-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/binary"`, SourceFramework: "server"},
+		{Name: "server-to-binary-execute-activity", SourcePattern: regexp.MustCompile(`ctx\.ExecuteActivity\(`), TargetTemplate: `ctx.Call(`, SourceFramework: "server"},
+		{Name: "server-to-binary-child-workflow", SourcePattern: regexp.MustCompile(`ctx\.ExecuteChildWorkflow\(`), TargetTemplate: `ctx.Call(`, SourceFramework: "server"},
+		{Name: "server-to-binary-get-signal", SourcePattern: regexp.MustCompile(`ctx\.GetSignalChannel\(`), TargetTemplate: `ctx.Promise(`, SourceFramework: "server"},
+		{Name: "server-to-binary-wait-signal", SourcePattern: regexp.MustCompile(`ctx\.WaitForSignal\(`), TargetTemplate: `ctx.Await(`, SourceFramework: "server"},
+		{Name: "server-to-binary-set-state", SourcePattern: regexp.MustCompile(`ctx\.SetState\(`), TargetTemplate: `ctx.Set(`, SourceFramework: "server"},
+		{Name: "server-to-binary-get-state", SourcePattern: regexp.MustCompile(`ctx\.GetState\(`), TargetTemplate: `ctx.Get(`, SourceFramework: "server"},
+		{Name: "server-to-binary-future", SourcePattern: regexp.MustCompile(`velocity\.Future`), TargetTemplate: `binary.Future`, SourceFramework: "server"},
+		{Name: "server-to-binary-new-future", SourcePattern: regexp.MustCompile(`ctx\.NewFuture\(\)`), TargetTemplate: `ctx.NewPromise()`, SourceFramework: "server"},
+		{Name: "server-to-binary-new-channel", SourcePattern: regexp.MustCompile(`ctx\.NewChannel\(\)`), TargetTemplate: `ctx.NewPromise()`, SourceFramework: "server"},
+		{Name: "server-to-binary-relay-client", SourcePattern: regexp.MustCompile(`ctx\.NewRelayClient\(`), TargetTemplate: `ctx.NewServiceClient(`, SourceFramework: "server"},
+		{Name: "server-to-binary-signal-external", SourcePattern: regexp.MustCompile(`ctx\.SignalExternalWorkflow\(`), TargetTemplate: `ctx.Send(`, SourceFramework: "server"},
+	},
+	// ── Server → Embedded ────────────────────────────────────────────────────
+	"server→embedded": {
+		{Name: "server-to-embedded-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/embedded"`, SourceFramework: "server"},
+		{Name: "server-to-embedded-execute-activity", SourcePattern: regexp.MustCompile(`ctx\.ExecuteActivity\(`), TargetTemplate: `ctx.Invoke(`, SourceFramework: "server"},
+		{Name: "server-to-embedded-child-workflow", SourcePattern: regexp.MustCompile(`ctx\.ExecuteChildWorkflow\(`), TargetTemplate: `ctx.StartChildWorkflow(`, SourceFramework: "server"},
+		{Name: "server-to-embedded-get-signal", SourcePattern: regexp.MustCompile(`ctx\.GetSignalChannel\(`), TargetTemplate: `ctx.AwaitSignal(`, SourceFramework: "server"},
+		{Name: "server-to-embedded-wait-signal", SourcePattern: regexp.MustCompile(`ctx\.WaitForSignal\(`), TargetTemplate: `ctx.Await(`, SourceFramework: "server"},
+		{Name: "server-to-embedded-set-state", SourcePattern: regexp.MustCompile(`ctx\.SetState\(`), TargetTemplate: `ctx.SetState(`, SourceFramework: "server"},
+		{Name: "server-to-embedded-get-state", SourcePattern: regexp.MustCompile(`ctx\.GetState\(`), TargetTemplate: `ctx.GetState(`, SourceFramework: "server"},
+		{Name: "server-to-embedded-future", SourcePattern: regexp.MustCompile(`velocity\.Future`), TargetTemplate: `embedded.Future`, SourceFramework: "server"},
+		{Name: "server-to-embedded-relay-client", SourcePattern: regexp.MustCompile(`ctx\.NewRelayClient\(`), TargetTemplate: `ctx.NewClient(`, SourceFramework: "server"},
+	},
+	// ── Binary → Server ──────────────────────────────────────────────────────
+	"binary→server": {
+		{Name: "binary-to-server-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go/binary"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`, SourceFramework: "binary"},
+		{Name: "binary-to-server-call", SourcePattern: regexp.MustCompile(`ctx\.Call\(`), TargetTemplate: `ctx.ExecuteActivity(`, SourceFramework: "binary"},
+		{Name: "binary-to-server-promise", SourcePattern: regexp.MustCompile(`ctx\.Promise\(`), TargetTemplate: `ctx.GetSignalChannel(`, SourceFramework: "binary"},
+		{Name: "binary-to-server-await", SourcePattern: regexp.MustCompile(`ctx\.Await\(`), TargetTemplate: `ctx.WaitForSignal(`, SourceFramework: "binary"},
+		{Name: "binary-to-server-set", SourcePattern: regexp.MustCompile(`ctx\.Set\(`), TargetTemplate: `ctx.SetState(`, SourceFramework: "binary"},
+		{Name: "binary-to-server-get", SourcePattern: regexp.MustCompile(`ctx\.Get\(`), TargetTemplate: `ctx.GetState(`, SourceFramework: "binary"},
+		{Name: "binary-to-server-future", SourcePattern: regexp.MustCompile(`binary\.Future`), TargetTemplate: `velocity.Future`, SourceFramework: "binary"},
+		{Name: "binary-to-server-new-promise", SourcePattern: regexp.MustCompile(`ctx\.NewPromise\(\)`), TargetTemplate: `ctx.NewFuture()`, SourceFramework: "binary"},
+		{Name: "binary-to-server-service-client", SourcePattern: regexp.MustCompile(`ctx\.NewServiceClient\(`), TargetTemplate: `ctx.NewRelayClient(`, SourceFramework: "binary"},
+		{Name: "binary-to-server-send", SourcePattern: regexp.MustCompile(`ctx\.Send\(`), TargetTemplate: `ctx.SignalExternalWorkflow(`, SourceFramework: "binary"},
+	},
+	// ── Binary → Embedded ────────────────────────────────────────────────────
+	"binary→embedded": {
+		{Name: "binary-to-embedded-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go/binary"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/embedded"`, SourceFramework: "binary"},
+		{Name: "binary-to-embedded-call", SourcePattern: regexp.MustCompile(`ctx\.Call\(`), TargetTemplate: `ctx.Invoke(`, SourceFramework: "binary"},
+		{Name: "binary-to-embedded-promise", SourcePattern: regexp.MustCompile(`ctx\.Promise\(`), TargetTemplate: `ctx.AwaitSignal(`, SourceFramework: "binary"},
+		{Name: "binary-to-embedded-set", SourcePattern: regexp.MustCompile(`ctx\.Set\(`), TargetTemplate: `ctx.SetState(`, SourceFramework: "binary"},
+		{Name: "binary-to-embedded-get", SourcePattern: regexp.MustCompile(`ctx\.Get\(`), TargetTemplate: `ctx.GetState(`, SourceFramework: "binary"},
+		{Name: "binary-to-embedded-future", SourcePattern: regexp.MustCompile(`binary\.Future`), TargetTemplate: `embedded.Future`, SourceFramework: "binary"},
+		{Name: "binary-to-embedded-service-client", SourcePattern: regexp.MustCompile(`ctx\.NewServiceClient\(`), TargetTemplate: `ctx.NewClient(`, SourceFramework: "binary"},
+		{Name: "binary-to-embedded-send", SourcePattern: regexp.MustCompile(`ctx\.Send\(`), TargetTemplate: `ctx.Signal(`, SourceFramework: "binary"},
+	},
+	// ── Embedded → Server ────────────────────────────────────────────────────
+	"embedded→server": {
+		{Name: "embedded-to-server-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go/embedded"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`, SourceFramework: "embedded"},
+		{Name: "embedded-to-server-invoke", SourcePattern: regexp.MustCompile(`ctx\.Invoke\(`), TargetTemplate: `ctx.ExecuteActivity(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-server-child-wf", SourcePattern: regexp.MustCompile(`ctx\.StartChildWorkflow\(`), TargetTemplate: `ctx.ExecuteChildWorkflow(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-server-await-signal", SourcePattern: regexp.MustCompile(`ctx\.AwaitSignal\(`), TargetTemplate: `ctx.GetSignalChannel(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-server-future", SourcePattern: regexp.MustCompile(`embedded\.Future`), TargetTemplate: `velocity.Future`, SourceFramework: "embedded"},
+		{Name: "embedded-to-server-client", SourcePattern: regexp.MustCompile(`ctx\.NewClient\(`), TargetTemplate: `ctx.NewRelayClient(`, SourceFramework: "embedded"},
+	},
+	// ── Embedded → Binary ────────────────────────────────────────────────────
+	"embedded→binary": {
+		{Name: "embedded-to-binary-import", SourcePattern: regexp.MustCompile(`"github\.com/velocity-workflow/velocity-sdk-go/embedded"`), TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/binary"`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-invoke", SourcePattern: regexp.MustCompile(`ctx\.Invoke\(`), TargetTemplate: `ctx.Call(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-child-wf", SourcePattern: regexp.MustCompile(`ctx\.StartChildWorkflow\(`), TargetTemplate: `ctx.Call(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-await-signal", SourcePattern: regexp.MustCompile(`ctx\.AwaitSignal\(`), TargetTemplate: `ctx.Promise(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-set-state", SourcePattern: regexp.MustCompile(`ctx\.SetState\(`), TargetTemplate: `ctx.Set(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-get-state", SourcePattern: regexp.MustCompile(`ctx\.GetState\(`), TargetTemplate: `ctx.Get(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-future", SourcePattern: regexp.MustCompile(`embedded\.Future`), TargetTemplate: `binary.Future`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-client", SourcePattern: regexp.MustCompile(`ctx\.NewClient\(`), TargetTemplate: `ctx.NewServiceClient(`, SourceFramework: "embedded"},
+		{Name: "embedded-to-binary-signal", SourcePattern: regexp.MustCompile(`ctx\.Signal\(`), TargetTemplate: `ctx.Send(`, SourceFramework: "embedded"},
+	},
+}
+
+// GetInterFlavorPatterns returns patterns for a specific source→target migration.
+func GetInterFlavorPatterns(source, target string) []*MigrationPattern {
+	key := source + "→" + target
+	return InterFlavorPatternSets[key]
+}
+
 // ─── Framework Detection ─────────────────────────────────────────────────────
 
 // DetectResult holds the detected framework and confidence.
@@ -469,7 +553,7 @@ type DetectResult struct {
 
 // DetectFramework detects which framework a Go file uses.
 func DetectFramework(content string) DetectResult {
-	scores := map[string]float64{"temporal": 0, "restate": 0, "dbos": 0}
+	scores := map[string]float64{"temporal": 0, "restate": 0, "dbos": 0, "server": 0, "binary": 0, "embedded": 0}
 	evidence := map[string][]string{}
 
 	checks := []struct {
@@ -493,6 +577,19 @@ func DetectFramework(content string) DetectResult {
 		{regexp.MustCompile(`dbos\.TransactionContext`), "dbos", 2, "dbos.TransactionContext"},
 		{regexp.MustCompile(`dbos\.Enqueue`), "dbos", 1, "dbos.Enqueue"},
 		{regexp.MustCompile(`dbos\.HTTPHandler`), "dbos", 1, "dbos.HTTPHandler"},
+		// Velocity Server patterns
+		{regexp.MustCompile(`velocity-workflow/velocity-sdk-go"`), "server", 3, "Velocity Server SDK import"},
+		{regexp.MustCompile(`ctx\.ExecuteActivity\(`), "server", 1, "ctx.ExecuteActivity()"},
+		{regexp.MustCompile(`ctx\.GetSignalChannel\(`), "server", 1, "ctx.GetSignalChannel()"},
+		{regexp.MustCompile(`ctx\.WaitForSignal\(`), "server", 1, "ctx.WaitForSignal()"},
+		// Velocity Binary patterns
+		{regexp.MustCompile(`velocity-sdk-go/binary`), "binary", 3, "Velocity Binary SDK import"},
+		{regexp.MustCompile(`ctx\.NewServiceClient\(`), "binary", 1, "ctx.NewServiceClient()"},
+		{regexp.MustCompile(`ctx\.Send\(`), "binary", 1, "ctx.Send()"},
+		// Velocity Embedded patterns
+		{regexp.MustCompile(`velocity-sdk-go/embedded`), "embedded", 3, "Velocity Embedded SDK import"},
+		{regexp.MustCompile(`ctx\.Invoke\(`), "embedded", 1, "ctx.Invoke()"},
+		{regexp.MustCompile(`ctx\.AwaitSignal\(`), "embedded", 1, "ctx.AwaitSignal()"},
 	}
 
 	for _, c := range checks {
@@ -540,8 +637,14 @@ type FileResult struct {
 }
 
 // MigrateFile migrates a single Go file's content.
-func MigrateFile(content string, sourceFramework string) (string, FileResult) {
+// targetFlavor specifies the target Velocity flavor: "server", "binary", or "embedded".
+// Pass "" or "auto" to use the default target (server for temporal/restate, embedded for dbos).
+func MigrateFile(content string, sourceFramework string, targetFlavor ...string) (string, FileResult) {
 	result := FileResult{Success: true}
+	target := "server" // default
+	if len(targetFlavor) > 0 && targetFlavor[0] != "" {
+		target = targetFlavor[0]
+	}
 
 	// Auto-detect if needed
 	if sourceFramework == "auto" {
@@ -557,7 +660,29 @@ func MigrateFile(content string, sourceFramework string) (string, FileResult) {
 		result.DetectedFramework = sourceFramework
 	}
 
-	// Select patterns
+	// Check if this is an inter-flavor migration (Velocity source → different Velocity target)
+	velocityFlavors := map[string]bool{"server": true, "binary": true, "embedded": true}
+	if velocityFlavors[sourceFramework] && sourceFramework != target {
+		patterns := GetInterFlavorPatterns(sourceFramework, target)
+		if patterns == nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("no inter-flavor patterns: %s → %s", sourceFramework, target)
+			return content, result
+		}
+		migrated := content
+		count := 0
+		for _, p := range patterns {
+			newText := p.SourcePattern.ReplaceAllString(migrated, p.TargetTemplate)
+			if newText != migrated {
+				count++
+				migrated = newText
+			}
+		}
+		result.Transformations = count
+		return migrated, result
+	}
+
+	// Select patterns for external framework migrations
 	var patterns []*MigrationPattern
 	switch sourceFramework {
 	case "temporal":
@@ -619,6 +744,8 @@ func HasWorkflowContent(content string) bool {
 		"workflow.Context", "activity.Context",
 		"ExecuteActivity", "workflow.Sleep",
 		"restate.Context", "dbos.WorkflowContext",
+		"velocity-workflow/velocity-sdk-go", "velocity-sdk-go/binary",
+		"velocity-sdk-go/embedded", "ctx.Invoke(", "ctx.Call(",
 	}
 	for _, ind := range indicators {
 		if strings.Contains(content, ind) {
@@ -640,7 +767,8 @@ type BulkResult struct {
 }
 
 // BulkMigrate migrates all Go workflow files in a directory.
-func BulkMigrate(sourceDir, outputDir, sourceFramework string, dryRun bool) (*BulkResult, error) {
+// targetFlavor specifies the target Velocity flavor (server/binary/embedded).
+func BulkMigrate(sourceDir, outputDir, sourceFramework string, dryRun bool, targetFlavor ...string) (*BulkResult, error) {
 	result := &BulkResult{}
 
 	files, err := ScanGoFiles(sourceDir)
@@ -666,7 +794,7 @@ func BulkMigrate(sourceDir, outputDir, sourceFramework string, dryRun bool) (*Bu
 			continue
 		}
 
-		migrated, fileResult := MigrateFile(string(content), sourceFramework)
+		migrated, fileResult := MigrateFile(string(content), sourceFramework, targetFlavor...)
 		fileResult.SourcePath = filePath
 
 		if fileResult.Success && !dryRun {

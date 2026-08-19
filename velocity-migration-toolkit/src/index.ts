@@ -3,10 +3,10 @@
  * 
  * Converts workflows between SDK flavors:
  * - Temporal (Temporal SDK — direct migration)
- * - Classic (Temporal-compatible)
- * - Runtime (Restate-compatible)
- * - Embedded (DBOS-compatible)
- * - Python Runtime (Restate-compatible)
+ * - Server (Velocity Server — VCTP/UDP, replaces Temporal)
+ * - Binary (Velocity Binary — HTTP/NMCP, replaces Restate)
+ * - Embedded (Velocity Embedded — PostgreSQL, replaces DBOS)
+ * - Python Runtime (Python Restate-compatible)
  * 
  * Uses intermediate representation (IR) for flexible N×M conversions.
  * Performs real body transformation — not stubs.
@@ -14,7 +14,7 @@
 
 // ─── SDK Flavors ─────────────────────────────────────────────────────────────
 
-export type SDKFlavor = 'temporal' | 'classic' | 'runtime' | 'embedded' | 'python-runtime';
+export type SDKFlavor = 'temporal' | 'server' | 'binary' | 'embedded' | 'python-runtime';
 
 export interface MigrationOptions {
   source: SDKFlavor;
@@ -82,8 +82,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       if (skip.includes(fnName) || fnName.startsWith('_')) return m[0];
       if (['if','for','while','switch','catch','return','new','throw','typeof','instanceof','void','delete','in','of'].includes(fnName)) return m[0];
       switch (target) {
-        case 'classic': return `await this.executeActivity('${fnName}'${args ? ', ' + args : ''})`;
-        case 'runtime': return `await ctx.invoke('${fnName}', 'execute'${args ? ', ' + args : ''})`;
+        case 'server': return `await this.executeActivity('${fnName}'${args ? ', ' + args : ''})`;
+        case 'binary': return `await ctx.invoke('${fnName}', 'execute'${args ? ', ' + args : ''})`;
         case 'embedded': return `await ctx.invoke('${fnName}', 'execute'${args ? ', ' + args : ''})`;
         case 'python-runtime': return `await ctx.invoke('${fnName}', 'execute'${args ? ', ' + args : ''})`;
         default: return m[0];
@@ -96,8 +96,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     replacement: (m, target) => {
       if (target === 'temporal') return m[0];
       switch (target) {
-        case 'classic': return `await this.sleep(${m[1]})`;
-        case 'runtime': return `await ctx.sleep(${m[1]})`;
+        case 'server': return `await this.sleep(${m[1]})`;
+        case 'binary': return `await ctx.sleep(${m[1]})`;
         case 'embedded': return `await ctx.sleep(${m[1]})`;
         case 'python-runtime': return `await ctx.sleep(${m[1]})`;
         default: return m[0];
@@ -114,8 +114,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       const sigMatch = /['"](\w+)['"]/.exec(args);
       const sigName = sigMatch ? sigMatch[1] : args;
       switch (target) {
-        case 'classic': return `await this.waitForSignal('${sigName}')`;
-        case 'runtime': return `await ctx.promise('${sigName}')`;
+        case 'server': return `await this.waitForSignal('${sigName}')`;
+        case 'binary': return `await ctx.promise('${sigName}')`;
         case 'embedded': return `await ctx.promise('${sigName}')`;
         case 'python-runtime': return `await ctx.promise('${sigName}')`;
         default: return m[0];
@@ -129,107 +129,107 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       if (target === 'temporal') return m[0];
       const sigName = m[1];
       switch (target) {
-        case 'classic': return `/* signal: ${sigName} */`;
-        case 'runtime': return `/* signal: ${sigName} */`;
+        case 'server': return `/* signal: ${sigName} */`;
+        case 'binary': return `/* signal: ${sigName} */`;
         case 'embedded': return `/* signal: ${sigName} */`;
         case 'python-runtime': return `# signal: ${sigName}`;
         default: return m[0];
       }
     },
   },
-  // ── Classic → others: await this.executeActivity('Name', ...args) ──
+  // ── Server → others: await this.executeActivity('Name', ...args) ──
   {
     pattern: /await\s+this\.executeActivity\(\s*['"](\w+)['"]\s*(?:,\s*([^)]+))?\)/g,
     replacement: (m, target) => {
       const actName = m[1];
       const args = m[2] ? `, ${m[2]}` : '';
       switch (target) {
-        case 'runtime': return `await ctx.invoke('${actName}', 'execute'${args})`;
+        case 'binary': return `await ctx.invoke('${actName}', 'execute'${args})`;
         case 'embedded': return `await ctx.invoke('${actName}', 'execute'${args})`;
         case 'python-runtime': return `await ctx.invoke('${actName}', 'execute'${args})`;
-        default: return m[0]; // classic → classic
+        default: return m[0]; // server → server
       }
     },
   },
-  // ── Classic → others: this.executeActivity('Name', ...args) (without await) ──
+  // ── Server → others: this.executeActivity('Name', ...args) (without await) ──
   {
     pattern: /this\.executeActivity\(\s*['"](\w+)['"]\s*(?:,\s*([^)]+))?\)/g,
     replacement: (m, target) => {
       const actName = m[1];
       const args = m[2] ? `, ${m[2]}` : '';
       switch (target) {
-        case 'runtime': return `await ctx.invoke('${actName}', 'execute'${args})`;
+        case 'binary': return `await ctx.invoke('${actName}', 'execute'${args})`;
         case 'embedded': return `await ctx.invoke('${actName}', 'execute'${args})`;
         case 'python-runtime': return `await ctx.invoke('${actName}', 'execute'${args})`;
-        default: return m[0]; // classic → classic
+        default: return m[0]; // server → server
       }
     },
   },
-  // ── Classic → others: this.waitForSignal('name') ──
+  // ── Server → others: this.waitForSignal('name') ──
   {
     pattern: /this\.waitForSignal\(\s*['"](\w+)['"]\s*\)/g,
     replacement: (m, target) => {
       const sigName = m[1];
       switch (target) {
-        case 'runtime': return `await ctx.promise('${sigName}')`;
+        case 'binary': return `await ctx.promise('${sigName}')`;
         case 'embedded': return `await ctx.promise('${sigName}')`;
         case 'python-runtime': return `await ctx.promise('${sigName}')`;
         default: return m[0];
       }
     },
   },
-  // ── Classic → others: this.sleep(ms) ──
+  // ── Server → others: this.sleep(ms) ──
   {
     pattern: /this\.sleep\(\s*([^)]+)\)/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'runtime': return `await ctx.sleep(${m[1]})`;
+        case 'binary': return `await ctx.sleep(${m[1]})`;
         case 'embedded': return `await ctx.sleep(${m[1]})`;
         case 'python-runtime': return `await ctx.sleep(${m[1]})`;
         default: return m[0];
       }
     },
   },
-  // ── Classic → others: this.heartbeat(data) ──
+  // ── Server → others: this.heartbeat(data) ──
   {
     pattern: /this\.heartbeat\(\s*([^)]*)\)/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'runtime': return `ctx.run('heartbeat', () => { /* ${m[1] || 'heartbeat'} */ })`;
+        case 'binary': return `ctx.run('heartbeat', () => { /* ${m[1] || 'heartbeat'} */ })`;
         case 'embedded': return `ctx.run('heartbeat', () => { /* ${m[1] || 'heartbeat'} */ })`;
         case 'python-runtime': return `await ctx.run('heartbeat', lambda: None)  # heartbeat: ${m[1] || ''}`;
         default: return m[0];
       }
     },
   },
-  // ── Runtime → others: ctx.get('key') ──
+  // ── Binary → others: ctx.get('key') ──
   {
     pattern: /await\s+ctx\.get\(\s*['"](\w+)['"]\s*\)/g,
     replacement: (m, target) => {
       const key = m[1];
       switch (target) {
-        case 'classic': return `this._state?.['${key}']`;
+        case 'server': return `this._state?.['${key}']`;
         case 'embedded': return `ctx.getState('${key}')`;
         case 'python-runtime': return `await ctx.get('${key}')`;
         default: return m[0];
       }
     },
   },
-  // ── Runtime → others: ctx.set('key', val) ──
+  // ── Binary → others: ctx.set('key', val) ──
   {
     pattern: /await\s+ctx\.set\(\s*['"](\w+)['"]\s*,\s*([^)]+)\)/g,
     replacement: (m, target) => {
       const key = m[1];
       const val = m[2];
       switch (target) {
-        case 'classic': return `/* state: ${key} = ${val} */`;
+        case 'server': return `/* state: ${key} = ${val} */`;
         case 'embedded': return `ctx.setState('${key}', ${val})`;
         case 'python-runtime': return `await ctx.set('${key}', ${val})`;
         default: return m[0];
       }
     },
   },
-  // ── Runtime → others: ctx.invoke('Svc', 'handler', ...args) ──
+  // ── Binary → others: ctx.invoke('Svc', 'handler', ...args) ──
   {
     pattern: /await\s+ctx\.invoke\(\s*['"](\w+)['"]\s*,\s*['"](\w+)['"]\s*(?:,\s*([^)]+))?\)/g,
     replacement: (m, target) => {
@@ -237,45 +237,45 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       const handler = m[2];
       const args = m[3] ? `, ${m[3]}` : '';
       switch (target) {
-        case 'classic': return `await this.executeActivity('${svc}'${args})`;
+        case 'server': return `await this.executeActivity('${svc}'${args})`;
         case 'embedded': return `await ctx.invoke('${svc}', '${handler}'${args})`;
         case 'python-runtime': return `await ctx.invoke('${svc}', '${handler}'${args})`;
         default: return m[0];
       }
     },
   },
-  // ── Runtime → others: ctx.run('name', () => expr) ──
+  // ── Binary → others: ctx.run('name', () => expr) ──
   {
-    pattern: /await\s+ctx\.run\(\s*['"](\w+)['"]\s*,\s*(?:\(\)\s*=>\s*([^)]+)|(\w+)\s*\))/g,
+    pattern: /await\s+ctx\.run\(\s*['"](\w+)['"]\s*,\s*(?:\(\)\s*=>\s*([^)]+)|(\w+)\s*\)\)/g,
     replacement: (m, target) => {
       const name = m[1];
       const expr = m[2] || m[3] || '';
       switch (target) {
-        case 'classic': return `await this.executeActivity('${name}', ${expr})`;
+        case 'server': return `await this.executeActivity('${name}', ${expr})`;
         case 'embedded': return `await ctx.run('${name}', () => ${expr})`;
         case 'python-runtime': return `await ctx.run('${name}', lambda: ${expr})`;
         default: return m[0];
       }
     },
   },
-  // ── Runtime → others: ctx.sleep(ms) ──
+  // ── Binary → others: ctx.sleep(ms) ──
   {
     pattern: /await\s+ctx\.sleep\(\s*([^)]+)\)/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `await this.sleep(${m[1]})`;
+        case 'server': return `await this.sleep(${m[1]})`;
         case 'embedded': return `await ctx.sleep(${m[1]})`;
         case 'python-runtime': return `await ctx.sleep(${m[1]})`;
         default: return m[0];
       }
     },
   },
-  // ── Runtime → others: ctx.awakeable<T>() ──
+  // ── Binary → others: ctx.awakeable<T>() ──
   {
     pattern: /ctx\.awakeable(?:<([^>]+)>)?\(\)/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `/* awakeable — use signal */`;
+        case 'server': return `/* awakeable — use signal */`;
         case 'embedded': return `/* awakeable — use promise */`;
         case 'python-runtime': return `ctx.awakeable()`;
         default: return m[0];
@@ -288,8 +288,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     replacement: (m, target) => {
       const key = m[1];
       switch (target) {
-        case 'classic': return `this._state?.['${key}']`;
-        case 'runtime': return `await ctx.get('${key}')`;
+        case 'server': return `this._state?.['${key}']`;
+        case 'binary': return `await ctx.get('${key}')`;
         case 'python-runtime': return `await ctx.get('${key}')`;
         default: return m[0];
       }
@@ -302,8 +302,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       const key = m[1];
       const val = m[2];
       switch (target) {
-        case 'classic': return `/* state: ${key} = ${val} */`;
-        case 'runtime': return `await ctx.set('${key}', ${val})`;
+        case 'server': return `/* state: ${key} = ${val} */`;
+        case 'binary': return `await ctx.set('${key}', ${val})`;
         case 'python-runtime': return `await ctx.set('${key}', ${val})`;
         default: return m[0];
       }
@@ -317,8 +317,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       const method = m[2];
       const args = m[3] ? `, ${m[3]}` : '';
       switch (target) {
-        case 'classic': return `await this.executeActivity('${svc}'${args})`;
-        case 'runtime': return `await ctx.invoke('${svc}', '${method}'${args})`;
+        case 'server': return `await this.executeActivity('${svc}'${args})`;
+        case 'binary': return `await ctx.invoke('${svc}', '${method}'${args})`;
         case 'python-runtime': return `await ctx.invoke('${svc}', '${method}'${args})`;
         default: return m[0];
       }
@@ -330,8 +330,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     replacement: (m, target) => {
       const key = m[1];
       switch (target) {
-        case 'classic': return `this._state?.['${key}']`;
-        case 'runtime': return `await ctx.get('${key}')`;
+        case 'server': return `this._state?.['${key}']`;
+        case 'binary': return `await ctx.get('${key}')`;
         case 'embedded': return `ctx.getState('${key}')`;
         default: return m[0];
       }
@@ -344,8 +344,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       const key = m[1];
       const val = m[2];
       switch (target) {
-        case 'classic': return `/* state: ${key} = ${val} */`;
-        case 'runtime': return `await ctx.set('${key}', ${val})`;
+        case 'server': return `/* state: ${key} = ${val} */`;
+        case 'binary': return `await ctx.set('${key}', ${val})`;
         case 'embedded': return `ctx.setState('${key}', ${val})`;
         default: return m[0];
       }
@@ -359,8 +359,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       const handler = m[2];
       const args = m[3] ? `, ${m[3]}` : '';
       switch (target) {
-        case 'classic': return `await this.executeActivity('${svc}'${args})`;
-        case 'runtime': return `await ctx.invoke('${svc}', '${handler}'${args})`;
+        case 'server': return `await this.executeActivity('${svc}'${args})`;
+        case 'binary': return `await ctx.invoke('${svc}', '${handler}'${args})`;
         case 'embedded': return `await ctx.invoke('${svc}', '${handler}'${args})`;
         default: return m[0];
       }
@@ -371,8 +371,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /await\s+ctx\.sleep\(\s*([^)]+)\)/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `await this.sleep(${m[1]})`;
-        case 'runtime': return `await ctx.sleep(${m[1]})`;
+        case 'server': return `await this.sleep(${m[1]})`;
+        case 'binary': return `await ctx.sleep(${m[1]})`;
         case 'embedded': return `await ctx.sleep(${m[1]})`;
         default: return m[0];
       }
@@ -385,8 +385,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       const name = m[1];
       const expr = m[2];
       switch (target) {
-        case 'classic': return `await this.executeActivity('${name}', ${expr})`;
-        case 'runtime': return `await ctx.run('${name}', () => ${expr})`;
+        case 'server': return `await this.executeActivity('${name}', ${expr})`;
+        case 'binary': return `await ctx.run('${name}', () => ${expr})`;
         case 'embedded': return `await ctx.run('${name}', () => ${expr})`;
         default: return m[0];
       }
@@ -422,8 +422,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     replacement: (m, target) => {
       const wfName = m[1];
       switch (target) {
-        case 'classic': return `this.executeChildWorkflow(${wfName}`;
-        case 'runtime': return `ctx.executeChildWorkflow(${wfName}`;
+        case 'server': return `this.executeChildWorkflow(${wfName}`;
+        case 'binary': return `ctx.executeChildWorkflow(${wfName}`;
         case 'embedded': return `ctx.executeChildWorkflow(${wfName}`;
         default: return m[0];
       }
@@ -434,8 +434,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     replacement: (m, target) => {
       const wfName = m[1];
       switch (target) {
-        case 'classic': return `this.startChildWorkflow(${wfName}`;
-        case 'runtime': return `ctx.startChildWorkflow(${wfName}`;
+        case 'server': return `this.startChildWorkflow(${wfName}`;
+        case 'binary': return `ctx.startChildWorkflow(${wfName}`;
         case 'embedded': return `ctx.startChildWorkflow(${wfName}`;
         default: return m[0];
       }
@@ -446,8 +446,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.ActivityOptions\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `new ActivityOptions(`;
-        case 'runtime': return `new ActivityOptions(`;
+        case 'server': return `new ActivityOptions(`;
+        case 'binary': return `new ActivityOptions(`;
         case 'embedded': return `new ActivityOptions(`;
         default: return m[0];
       }
@@ -458,8 +458,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     replacement: (m, target) => {
       const actName = m[1];
       switch (target) {
-        case 'classic': return `this.executeLocalActivity(${actName}`;
-        case 'runtime': return `ctx.executeLocalActivity(${actName}`;
+        case 'server': return `this.executeLocalActivity(${actName}`;
+        case 'binary': return `ctx.executeLocalActivity(${actName}`;
         case 'embedded': return `ctx.executeLocalActivity(${actName}`;
         default: return m[0];
       }
@@ -470,8 +470,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.condition\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.await(`;
-        case 'runtime': return `ctx.await(`;
+        case 'server': return `this.await(`;
+        case 'binary': return `ctx.await(`;
         case 'embedded': return `ctx.await(`;
         default: return m[0];
       }
@@ -481,8 +481,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.conditionWithTimeout\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.awaitWithTimeout(`;
-        case 'runtime': return `ctx.awaitWithTimeout(`;
+        case 'server': return `this.awaitWithTimeout(`;
+        case 'binary': return `ctx.awaitWithTimeout(`;
         case 'embedded': return `ctx.awaitWithTimeout(`;
         default: return m[0];
       }
@@ -492,8 +492,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /new\s+Promise\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.createPromise(`;
-        case 'runtime': return `ctx.createPromise(`;
+        case 'server': return `this.createPromise(`;
+        case 'binary': return `ctx.createPromise(`;
         case 'embedded': return `ctx.createPromise(`;
         default: return m[0];
       }
@@ -504,8 +504,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.newNexusClient\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.newRelayClient(`;
-        case 'runtime': return `ctx.newRelayClient(`;
+        case 'server': return `this.newRelayClient(`;
+        case 'binary': return `ctx.newRelayClient(`;
         case 'embedded': return `ctx.newRelayClient(`;
         default: return m[0];
       }
@@ -515,8 +515,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /nexusClient\.executeOperation\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `relayClient.execute(`;
-        case 'runtime': return `relayClient.execute(`;
+        case 'server': return `relayClient.execute(`;
+        case 'binary': return `relayClient.execute(`;
         case 'embedded': return `relayClient.execute(`;
         default: return m[0];
       }
@@ -527,8 +527,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /activity\.info\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.getActivityInfo(`;
-        case 'runtime': return `ctx.getActivityInfo(`;
+        case 'server': return `this.getActivityInfo(`;
+        case 'binary': return `ctx.getActivityInfo(`;
         case 'embedded': return `ctx.getActivityInfo(`;
         default: return m[0];
       }
@@ -538,8 +538,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /activity\.heartbeat\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.heartbeat(`;
-        case 'runtime': return `ctx.heartbeat(`;
+        case 'server': return `this.heartbeat(`;
+        case 'binary': return `ctx.heartbeat(`;
         case 'embedded': return `ctx.heartbeat(`;
         default: return m[0];
       }
@@ -550,8 +550,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.info\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.getWorkflowInfo(`;
-        case 'runtime': return `ctx.getWorkflowInfo(`;
+        case 'server': return `this.getWorkflowInfo(`;
+        case 'binary': return `ctx.getWorkflowInfo(`;
         case 'embedded': return `ctx.getWorkflowInfo(`;
         default: return m[0];
       }
@@ -561,8 +561,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.logger\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.logger(`;
-        case 'runtime': return `ctx.logger(`;
+        case 'server': return `this.logger(`;
+        case 'binary': return `ctx.logger(`;
         case 'embedded': return `ctx.logger(`;
         default: return m[0];
       }
@@ -572,8 +572,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.withCancel\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.withCancel(`;
-        case 'runtime': return `ctx.withCancel(`;
+        case 'server': return `this.withCancel(`;
+        case 'binary': return `ctx.withCancel(`;
         case 'embedded': return `ctx.withCancel(`;
         default: return m[0];
       }
@@ -583,8 +583,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.signalExternalWorkflow\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.signalExternalWorkflow(`;
-        case 'runtime': return `ctx.signalExternalWorkflow(`;
+        case 'server': return `this.signalExternalWorkflow(`;
+        case 'binary': return `ctx.signalExternalWorkflow(`;
         case 'embedded': return `ctx.signalExternalWorkflow(`;
         default: return m[0];
       }
@@ -594,8 +594,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.getVersion\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.getVersion(`;
-        case 'runtime': return `ctx.getVersion(`;
+        case 'server': return `this.getVersion(`;
+        case 'binary': return `ctx.getVersion(`;
         case 'embedded': return `ctx.getVersion(`;
         default: return m[0];
       }
@@ -605,8 +605,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.upsertSearchAttributes\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.upsertSearchAttributes(`;
-        case 'runtime': return `ctx.upsertSearchAttributes(`;
+        case 'server': return `this.upsertSearchAttributes(`;
+        case 'binary': return `ctx.upsertSearchAttributes(`;
         case 'embedded': return `ctx.upsertSearchAttributes(`;
         default: return m[0];
       }
@@ -616,8 +616,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /wf\.upsertMemo\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `this.upsertMemo(`;
-        case 'runtime': return `ctx.upsertMemo(`;
+        case 'server': return `this.upsertMemo(`;
+        case 'binary': return `ctx.upsertMemo(`;
         case 'embedded': return `ctx.upsertMemo(`;
         default: return m[0];
       }
@@ -628,8 +628,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /new\s+ApplicationError\s*\(/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `new VelocityApplicationError(`;
-        case 'runtime': return `new VelocityApplicationError(`;
+        case 'server': return `new VelocityApplicationError(`;
+        case 'binary': return `new VelocityApplicationError(`;
         case 'embedded': return `new VelocityApplicationError(`;
         default: return m[0];
       }
@@ -639,8 +639,8 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
     pattern: /CanceledError/g,
     replacement: (m, target) => {
       switch (target) {
-        case 'classic': return `VelocityCanceledError`;
-        case 'runtime': return `VelocityCanceledError`;
+        case 'server': return `VelocityCanceledError`;
+        case 'binary': return `VelocityCanceledError`;
         case 'embedded': return `VelocityCanceledError`;
         default: return m[0];
       }
@@ -926,7 +926,7 @@ export function parseTemporal(code: string): WorkflowIR[] {
   return workflows;
 }
 
-export function parseClassic(code: string): WorkflowIR[] {
+export function parseServer(code: string): WorkflowIR[] {
   const workflows: WorkflowIR[] = [];
   const allImports = extractImports(code);
 
@@ -942,7 +942,7 @@ export function parseClassic(code: string): WorkflowIR[] {
       type: 'workflow',
       methods: parseTSMethods(extracted.block),
       imports: allImports.filter(i => i !== name),
-      metadata: { sdk: 'classic' },
+      metadata: { sdk: 'server' },
     });
   }
 
@@ -957,14 +957,14 @@ export function parseClassic(code: string): WorkflowIR[] {
       type: 'activity',
       methods: parseTSMethods(extracted.block),
       imports: allImports.filter(i => i !== name),
-      metadata: { sdk: 'classic' },
+      metadata: { sdk: 'server' },
     });
   }
 
   return workflows;
 }
 
-export function parseRuntime(code: string): WorkflowIR[] {
+export function parseBinary(code: string): WorkflowIR[] {
   const workflows: WorkflowIR[] = [];
   const allImports = extractImports(code);
 
@@ -980,7 +980,7 @@ export function parseRuntime(code: string): WorkflowIR[] {
       type: 'virtualObject',
       methods: handlers,
       imports: allImports,
-      metadata: { sdk: 'runtime' },
+      metadata: { sdk: 'binary' },
     });
   }
 
@@ -989,13 +989,13 @@ export function parseRuntime(code: string): WorkflowIR[] {
   while ((match = serviceRegex.exec(code)) !== null) {
     const varName = match[1];
     const svcName = match[2];
-    const handlers = parseRuntimeHandlers(code, varName);
+    const handlers = parseBinaryHandlers(code, varName);
     workflows.push({
       name: svcName,
       type: 'service',
       methods: handlers,
       imports: allImports,
-      metadata: { sdk: 'runtime' },
+      metadata: { sdk: 'binary' },
     });
   }
 
@@ -1004,20 +1004,20 @@ export function parseRuntime(code: string): WorkflowIR[] {
   while ((match = wfRegex.exec(code)) !== null) {
     const varName = match[1];
     const wfName = match[2];
-    const handlers = parseRuntimeHandlers(code, varName);
+    const handlers = parseBinaryHandlers(code, varName);
     workflows.push({
       name: wfName,
       type: 'workflow',
       methods: handlers,
       imports: allImports,
-      metadata: { sdk: 'runtime' },
+      metadata: { sdk: 'binary' },
     });
   }
 
   return workflows;
 }
 
-function parseRuntimeHandlers(code: string, varName: string): MethodIR[] {
+function parseBinaryHandlers(code: string, varName: string): MethodIR[] {
   const handlers: MethodIR[] = [];
   // Match handler with balanced paren extraction for complex params
   const handlerStartRegex = new RegExp(
@@ -1325,9 +1325,9 @@ function findTopLevelColon(s: string): number {
 
 // ─── Generators (IR → SDK) ──────────────────────────────────────────────────
 
-export function generateClassic(workflows: WorkflowIR[], source: SDKFlavor): string {
+export function generateServer(workflows: WorkflowIR[], source: SDKFlavor): string {
   const lines: string[] = [
-    "import { Workflow, Activity, Worker, Client } from '@velocity-workflow/classic';",
+    "import { Workflow, Activity, Worker, Client } from '@velocity-workflow/server';",
     '',
   ];
 
@@ -1341,7 +1341,7 @@ export function generateClassic(workflows: WorkflowIR[], source: SDKFlavor): str
           .filter(p => p.name !== 'ctx' && p.name !== 'self')
           .map(p => `${p.name}: ${p.type}`)
           .join(', ');
-        const transformed = transformBody(mainMethod.body, source, 'classic');
+        const transformed = transformBody(mainMethod.body, source, 'server');
         lines.push(`  async execute(${params}): Promise<any> {`);
         lines.push(indent(transformed, 4));
         lines.push(`  }`);
@@ -1361,7 +1361,7 @@ export function generateClassic(workflows: WorkflowIR[], source: SDKFlavor): str
           .filter(p => p.name !== 'ctx' && p.name !== 'self')
           .map(p => `${p.name}: ${p.type}`)
           .join(', ');
-        const transformed = transformBody(mainMethod.body, source, 'classic');
+        const transformed = transformBody(mainMethod.body, source, 'server');
         lines.push(`  async execute(${params}): Promise<any> {`);
         lines.push(indent(transformed, 4));
         lines.push(`  }`);
@@ -1378,9 +1378,9 @@ export function generateClassic(workflows: WorkflowIR[], source: SDKFlavor): str
   return lines.join('\n');
 }
 
-export function generateRuntime(workflows: WorkflowIR[], source: SDKFlavor): string {
+export function generateBinary(workflows: WorkflowIR[], source: SDKFlavor): string {
   const lines: string[] = [
-    "import { VirtualObject, Service, RuntimeServer } from '@velocity-workflow/runtime';",
+    "import { VirtualObject, Service, RuntimeServer } from '@velocity-workflow/binary';",
     '',
   ];
 
@@ -1393,7 +1393,7 @@ export function generateRuntime(workflows: WorkflowIR[], source: SDKFlavor): str
           .filter(p => p.name !== 'ctx' && p.name !== 'self')
           .map(p => `${p.name}: ${p.type}`)
           .join(', ');
-        const transformed = transformBody(method.body, source, 'runtime');
+        const transformed = transformBody(method.body, source, 'binary');
         lines.push(`${wf.name}.addHandler('${method.name}', async (ctx${params ? ', ' + params : ''}) => {`);
         lines.push(indent(transformed, 2));
         lines.push(`});`);
@@ -1410,7 +1410,7 @@ export function generateRuntime(workflows: WorkflowIR[], source: SDKFlavor): str
           .filter(p => p.name !== 'ctx' && p.name !== 'self')
           .map(p => `${p.name}: ${p.type}`)
           .join(', ');
-        const transformed = transformBody(method.body, source, 'runtime');
+        const transformed = transformBody(method.body, source, 'binary');
         lines.push(`${wf.name}.addHandler('${method.name}', async (ctx${params ? ', ' + params : ''}) => {`);
         lines.push(indent(transformed, 2));
         lines.push(`});`);
@@ -1530,11 +1530,11 @@ export function migrate(code: string, options: MigrationOptions): string {
     case 'temporal':
       ir = parseTemporal(code);
       break;
-    case 'classic':
-      ir = parseClassic(code);
+    case 'server':
+      ir = parseServer(code);
       break;
-    case 'runtime':
-      ir = parseRuntime(code);
+    case 'binary':
+      ir = parseBinary(code);
       break;
     case 'embedded':
       ir = parseEmbedded(code);
@@ -1548,10 +1548,10 @@ export function migrate(code: string, options: MigrationOptions): string {
 
   // Generate target from IR
   switch (target) {
-    case 'classic':
-      return generateClassic(ir, source);
-    case 'runtime':
-      return generateRuntime(ir, source);
+    case 'server':
+      return generateServer(ir, source);
+    case 'binary':
+      return generateBinary(ir, source);
     case 'embedded':
       return generateEmbedded(ir, source);
     case 'python-runtime':
@@ -1564,7 +1564,7 @@ export function migrate(code: string, options: MigrationOptions): string {
 // ─── Utility Exports ─────────────────────────────────────────────────────────
 
 export function getSupportedMigrations(): string[] {
-  const flavors: SDKFlavor[] = ['temporal', 'classic', 'runtime', 'embedded', 'python-runtime'];
+  const flavors: SDKFlavor[] = ['temporal', 'server', 'binary', 'embedded', 'python-runtime'];
   const migrations: string[] = [];
   for (const source of flavors) {
     for (const target of flavors) {
@@ -1579,8 +1579,8 @@ export function getSupportedMigrations(): string[] {
 export function validateMigration(code: string, source: SDKFlavor): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   const ir = source === 'temporal' ? parseTemporal(code) :
-             source === 'classic' ? parseClassic(code) :
-             source === 'runtime' ? parseRuntime(code) :
+             source === 'server' ? parseServer(code) :
+             source === 'binary' ? parseBinary(code) :
              source === 'embedded' ? parseEmbedded(code) :
              parsePythonRuntime(code);
   if (ir.length === 0) {

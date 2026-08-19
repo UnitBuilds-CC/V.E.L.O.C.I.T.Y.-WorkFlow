@@ -433,6 +433,61 @@ fn dbos_patterns() -> Vec<MigrationPattern> {
     ]
 }
 
+// ─── Inter-Flavor Migration Patterns (Server ↔ Binary ↔ Embedded) ────────────
+
+pub fn inter_flavor_patterns(source: &str, target: &str) -> Vec<MigrationPattern> {
+    let key = format!("{}→{}", source, target);
+    match key.as_str() {
+        "server→binary" => vec![
+            MigrationPattern { name: "s2b-import", source_pattern: "use velocity_sdk::", target_template: "use velocity_sdk::binary::", source_framework: "server" },
+            MigrationPattern { name: "s2b-execute-activity", source_pattern: "ctx.execute_activity(", target_template: "ctx.invoke(", source_framework: "server" },
+            MigrationPattern { name: "s2b-child-workflow", source_pattern: "ctx.execute_child_workflow(", target_template: "ctx.invoke(", source_framework: "server" },
+            MigrationPattern { name: "s2b-get-signal", source_pattern: "ctx.get_signal_channel(", target_template: "ctx.promise(", source_framework: "server" },
+            MigrationPattern { name: "s2b-wait-signal", source_pattern: "ctx.wait_for_signal(", target_template: "ctx.await_condition(", source_framework: "server" },
+            MigrationPattern { name: "s2b-set-state", source_pattern: "ctx.set_state(", target_template: "ctx.set(", source_framework: "server" },
+            MigrationPattern { name: "s2b-get-state", source_pattern: "ctx.get_state(", target_template: "ctx.get(", source_framework: "server" },
+            MigrationPattern { name: "s2b-relay-client", source_pattern: "ctx.new_relay_client(", target_template: "ctx.new_service_client(", source_framework: "server" },
+        ],
+        "server→embedded" => vec![
+            MigrationPattern { name: "s2e-import", source_pattern: "use velocity_sdk::", target_template: "use velocity_sdk::embedded::", source_framework: "server" },
+            MigrationPattern { name: "s2e-execute-activity", source_pattern: "ctx.execute_activity(", target_template: "ctx.invoke(", source_framework: "server" },
+            MigrationPattern { name: "s2e-child-workflow", source_pattern: "ctx.execute_child_workflow(", target_template: "ctx.start_child_workflow(", source_framework: "server" },
+            MigrationPattern { name: "s2e-get-signal", source_pattern: "ctx.get_signal_channel(", target_template: "ctx.await_signal(", source_framework: "server" },
+            MigrationPattern { name: "s2e-relay-client", source_pattern: "ctx.new_relay_client(", target_template: "ctx.new_client(", source_framework: "server" },
+        ],
+        "binary→server" => vec![
+            MigrationPattern { name: "b2s-import", source_pattern: "use velocity_sdk::binary::", target_template: "use velocity_sdk::", source_framework: "binary" },
+            MigrationPattern { name: "b2s-invoke", source_pattern: "ctx.invoke(", target_template: "ctx.execute_activity(", source_framework: "binary" },
+            MigrationPattern { name: "b2s-promise", source_pattern: "ctx.promise(", target_template: "ctx.get_signal_channel(", source_framework: "binary" },
+            MigrationPattern { name: "b2s-set", source_pattern: "ctx.set(", target_template: "ctx.set_state(", source_framework: "binary" },
+            MigrationPattern { name: "b2s-get", source_pattern: "ctx.get(", target_template: "ctx.get_state(", source_framework: "binary" },
+            MigrationPattern { name: "b2s-service-client", source_pattern: "ctx.new_service_client(", target_template: "ctx.new_relay_client(", source_framework: "binary" },
+        ],
+        "binary→embedded" => vec![
+            MigrationPattern { name: "b2e-import", source_pattern: "use velocity_sdk::binary::", target_template: "use velocity_sdk::embedded::", source_framework: "binary" },
+            MigrationPattern { name: "b2e-promise", source_pattern: "ctx.promise(", target_template: "ctx.await_signal(", source_framework: "binary" },
+            MigrationPattern { name: "b2e-set", source_pattern: "ctx.set(", target_template: "ctx.set_state(", source_framework: "binary" },
+            MigrationPattern { name: "b2e-get", source_pattern: "ctx.get(", target_template: "ctx.get_state(", source_framework: "binary" },
+            MigrationPattern { name: "b2e-service-client", source_pattern: "ctx.new_service_client(", target_template: "ctx.new_client(", source_framework: "binary" },
+        ],
+        "embedded→server" => vec![
+            MigrationPattern { name: "e2s-import", source_pattern: "use velocity_sdk::embedded::", target_template: "use velocity_sdk::", source_framework: "embedded" },
+            MigrationPattern { name: "e2s-await-signal", source_pattern: "ctx.await_signal(", target_template: "ctx.get_signal_channel(", source_framework: "embedded" },
+            MigrationPattern { name: "e2s-child-wf", source_pattern: "ctx.start_child_workflow(", target_template: "ctx.execute_child_workflow(", source_framework: "embedded" },
+            MigrationPattern { name: "e2s-client", source_pattern: "ctx.new_client(", target_template: "ctx.new_relay_client(", source_framework: "embedded" },
+        ],
+        "embedded→binary" => vec![
+            MigrationPattern { name: "e2b-import", source_pattern: "use velocity_sdk::embedded::", target_template: "use velocity_sdk::binary::", source_framework: "embedded" },
+            MigrationPattern { name: "e2b-await-signal", source_pattern: "ctx.await_signal(", target_template: "ctx.promise(", source_framework: "embedded" },
+            MigrationPattern { name: "e2b-set-state", source_pattern: "ctx.set_state(", target_template: "ctx.set(", source_framework: "embedded" },
+            MigrationPattern { name: "e2b-get-state", source_pattern: "ctx.get_state(", target_template: "ctx.get(", source_framework: "embedded" },
+            MigrationPattern { name: "e2b-child-wf", source_pattern: "ctx.start_child_workflow(", target_template: "ctx.invoke(", source_framework: "embedded" },
+            MigrationPattern { name: "e2b-client", source_pattern: "ctx.new_client(", target_template: "ctx.new_service_client(", source_framework: "embedded" },
+        ],
+        _ => vec![],
+    }
+}
+
 // ─── Framework Detection ─────────────────────────────────────────────────────
 
 pub struct DetectionResult {
@@ -446,6 +501,9 @@ pub fn detect_framework(content: &str) -> DetectionResult {
         ("temporal", 0, vec![]),
         ("restate", 0, vec![]),
         ("dbos", 0, vec![]),
+        ("server", 0, vec![]),
+        ("binary", 0, vec![]),
+        ("embedded", 0, vec![]),
     ];
 
     // Temporal checks
@@ -506,6 +564,40 @@ pub fn detect_framework(content: &str) -> DetectionResult {
         scores[2].2.push("DBOS queue/HTTP handler".into());
     }
 
+    // Velocity Server checks
+    if (content.contains("use velocity_sdk::") && !content.contains("velocity_sdk::binary") && !content.contains("velocity_sdk::embedded")) || content.contains("velocity-workflow-sdk") {
+        scores[3].1 += 3;
+        scores[3].2.push("Velocity Server SDK dependency".into());
+    }
+    if content.contains("ctx.execute_activity(") {
+        scores[3].1 += 1;
+        scores[3].2.push("ctx.execute_activity() call".into());
+    }
+    if content.contains("ctx.get_signal_channel(") {
+        scores[3].1 += 1;
+        scores[3].2.push("ctx.get_signal_channel() call".into());
+    }
+
+    // Velocity Binary checks
+    if content.contains("velocity_sdk::binary") {
+        scores[4].1 += 3;
+        scores[4].2.push("Velocity Binary SDK dependency".into());
+    }
+    if content.contains("ctx.new_service_client(") {
+        scores[4].1 += 1;
+        scores[4].2.push("ctx.new_service_client() call".into());
+    }
+
+    // Velocity Embedded checks
+    if content.contains("velocity_sdk::embedded") {
+        scores[5].1 += 3;
+        scores[5].2.push("Velocity Embedded SDK dependency".into());
+    }
+    if content.contains("ctx.await_signal(") {
+        scores[5].1 += 1;
+        scores[5].2.push("ctx.await_signal() call".into());
+    }
+
     // Find best match
     let (best_fw, best_score, best_evidence) = scores
         .iter()
@@ -537,7 +629,7 @@ pub struct FileResult {
     pub transformations: usize,
 }
 
-pub fn migrate_file(content: &str, source_framework: &str) -> (String, FileResult) {
+pub fn migrate_file(content: &str, source_framework: &str, target_flavor: &str) -> (String, FileResult) {
     let mut result = FileResult {
         source_path: String::new(),
         success: true,
@@ -562,6 +654,27 @@ pub fn migrate_file(content: &str, source_framework: &str) -> (String, FileResul
         result.detected_framework = source_framework.to_string();
         source_framework.to_string()
     };
+
+    // Check if this is an inter-flavor migration
+    let velocity_flavors = ["server", "binary", "embedded"];
+    if velocity_flavors.contains(&framework.as_str()) && framework != target_flavor {
+        let patterns = inter_flavor_patterns(&framework, target_flavor);
+        if patterns.is_empty() {
+            result.success = false;
+            result.error = Some(format!("No inter-flavor patterns: {} → {}", framework, target_flavor));
+            return (content.to_string(), result);
+        }
+        let mut migrated = content.to_string();
+        let mut count = 0;
+        for p in &patterns {
+            if migrated.contains(p.source_pattern) {
+                migrated = migrated.replace(p.source_pattern, p.target_template);
+                count += 1;
+            }
+        }
+        result.transformations = count;
+        return (migrated, result);
+    }
 
     let patterns = match framework.as_str() {
         "temporal" => temporal_patterns(),
@@ -626,6 +739,7 @@ pub fn has_workflow_content(content: &str) -> bool {
         "temporal", "restate", "dbos",
         "execute_activity", "ctx.run(",
         "#[restate::", "#[dbos::",
+        "velocity_sdk::", "velocity_sdk::binary", "velocity_sdk::embedded",
     ];
     indicators.iter().any(|i| content.contains(i))
 }
@@ -637,6 +751,7 @@ fn main() {
 
     let mut src: Option<String> = None;
     let mut from = "auto".to_string();
+    let mut to = "server".to_string();
     let mut output: Option<String> = None;
     let mut dry_run = false;
     let mut detect = false;
@@ -646,6 +761,7 @@ fn main() {
         match args[i].as_str() {
             "--src" => { i += 1; src = args.get(i).cloned(); }
             "--from" => { i += 1; from = args.get(i).cloned().unwrap_or("auto".into()); }
+            "--to" => { i += 1; to = args.get(i).cloned().unwrap_or("server".into()); }
             "--output" | "-o" => { i += 1; output = args.get(i).cloned(); }
             "--dry-run" => dry_run = true,
             "--detect" => detect = true,
@@ -653,7 +769,8 @@ fn main() {
                 println!("Velocity Rust Migration Tool\n");
                 println!("Usage:");
                 println!("  --src <file|dir>     Source file or directory");
-                println!("  --from <framework>   Source: temporal, restate, dbos, auto");
+                println!("  --from <framework>   Source: temporal, restate, dbos, server, binary, embedded, auto");
+                println!("  --to <flavor>        Target: server, binary, embedded");
                 println!("  --output <path>      Output file or directory");
                 println!("  --dry-run            Detect without writing");
                 println!("  --detect             Detect framework in directory");
@@ -705,7 +822,7 @@ fn main() {
             std::process::exit(1);
         });
 
-        let (migrated, result) = migrate_file(&content, &from);
+        let (migrated, result) = migrate_file(&content, &from, &to);
         if !result.success {
             eprintln!("Migration failed: {}", result.error.unwrap_or_default());
             std::process::exit(1);
@@ -747,7 +864,7 @@ fn main() {
             continue;
         }
 
-        let (migrated, result) = migrate_file(&content, &from);
+        let (migrated, result) = migrate_file(&content, &from, &to);
         let rel = f.strip_prefix(src_path).unwrap_or(f);
 
         if result.success && !dry_run {

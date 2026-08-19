@@ -150,7 +150,7 @@ const FRAMEWORK_SIGNATURES: Record<string, { patterns: RegExp[]; flavor: SDKFlav
     ],
   },
   'restate': {
-    flavor: 'runtime',
+    flavor: 'binary',
     patterns: [
       /from\s+['"]@restatedev\//,
       /import\s+restate/,
@@ -181,21 +181,21 @@ const FRAMEWORK_SIGNATURES: Record<string, { patterns: RegExp[]; flavor: SDKFlav
       /@DBOS\.httpHandler/,
     ],
   },
-  'velocity-classic': {
-    flavor: 'classic',
+  'velocity-server': {
+    flavor: 'server',
     patterns: [
-      /from\s+['"]@velocity-workflow\/classic/,
-      /from\s+['"]velocity_sdk.*classic/,
+      /from\s+['"]@velocity-workflow\/server/,
+      /from\s+['"]velocity_sdk.*server/,
       /extends\s+Workflow/,
       /this\.executeActivity\(/,
       /this\.waitForSignal\(/,
     ],
   },
-  'velocity-runtime': {
-    flavor: 'runtime',
+  'velocity-binary': {
+    flavor: 'binary',
     patterns: [
-      /from\s+['"]@velocity-workflow\/runtime/,
-      /from\s+['"]velocity_sdk.*runtime/,
+      /from\s+['"]@velocity-workflow\/binary/,
+      /from\s+['"]velocity_sdk.*binary/,
       /VirtualObject/,
       /ctx\.sleep\(/,
     ],
@@ -240,7 +240,7 @@ export function detectFramework(source: string, extension?: string): DetectionRe
   }
 
   if (bestScore === 0) {
-    return { framework: 'classic', confidence: 0, evidence: ['No framework signatures detected'] };
+    return { framework: 'server', confidence: 0, evidence: ['No framework signatures detected'] };
   }
 
   const totalScore = Object.values(scores).reduce((s, d) => s + d.score, 0);
@@ -275,7 +275,7 @@ export function detectProjectFramework(rootDir: string): DetectionResult {
     }
   }
 
-  let best: SDKFlavor = 'classic';
+  let best: SDKFlavor = 'server';
   let bestScore = 0;
   for (const [flavor, score] of Object.entries(scores)) {
     if (score > bestScore) {

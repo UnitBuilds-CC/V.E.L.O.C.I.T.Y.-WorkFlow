@@ -296,7 +296,7 @@ try {
 
 function generateTestFile(filePath: string, flavor: SDKFlavor): string {
   const moduleName = path.basename(filePath, path.extname(filePath));
-  return `import { ${flavor === 'classic' ? 'Workflow, Activity' : flavor === 'runtime' ? 'VirtualObject, Service' : 'Durable, DurableContext'} } from '@velocity-workflow/${flavor === 'python-runtime' ? 'runtime' : flavor}';
+  return `import { ${flavor === 'server' ? 'Workflow, Activity' : flavor === 'binary' ? 'VirtualObject, Service' : 'Durable, DurableContext'} } from '@velocity-workflow/${flavor === 'python-runtime' ? 'binary' : flavor}';
 
 describe('${moduleName} (migrated)', () => {
   test('should be defined', () => {

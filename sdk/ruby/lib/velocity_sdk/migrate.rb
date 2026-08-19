@@ -250,11 +250,66 @@ module VelocitySDK
       'dbos'     => DBOS_PATTERNS,
     }.freeze
 
+    # ─── Inter-Flavor Migration Patterns (Server ↔ Binary ↔ Embedded) ───────
+
+    INTER_FLAVOR_PATTERNS = {
+      'server→binary' => [
+        MigrationPattern.new('s2b-import', /VelocitySDK::Workflow/, 'VelocitySDK::Binary::Workflow'),
+        MigrationPattern.new('s2b-execute-activity', /ctx\.execute_activity\(/, 'ctx.invoke('),
+        MigrationPattern.new('s2b-child-workflow', /ctx\.execute_child_workflow\(/, 'ctx.invoke('),
+        MigrationPattern.new('s2b-get-signal', /ctx\.get_signal_channel\(/, 'ctx.promise('),
+        MigrationPattern.new('s2b-wait-signal', /ctx\.wait_for_signal\(/, 'ctx.await_condition('),
+        MigrationPattern.new('s2b-set-state', /ctx\.set_state\(/, 'ctx.set('),
+        MigrationPattern.new('s2b-get-state', /ctx\.get_state\(/, 'ctx.get('),
+        MigrationPattern.new('s2b-relay-client', /ctx\.new_relay_client\(/, 'ctx.new_service_client('),
+      ].freeze,
+      'server→embedded' => [
+        MigrationPattern.new('s2e-import', /VelocitySDK::Workflow/, 'VelocitySDK::Embedded::Workflow'),
+        MigrationPattern.new('s2e-execute-activity', /ctx\.execute_activity\(/, 'ctx.invoke('),
+        MigrationPattern.new('s2e-child-workflow', /ctx\.execute_child_workflow\(/, 'ctx.start_child_workflow('),
+        MigrationPattern.new('s2e-get-signal', /ctx\.get_signal_channel\(/, 'ctx.await_signal('),
+        MigrationPattern.new('s2e-relay-client', /ctx\.new_relay_client\(/, 'ctx.new_client('),
+      ].freeze,
+      'binary→server' => [
+        MigrationPattern.new('b2s-import', /VelocitySDK::Binary::Workflow/, 'VelocitySDK::Workflow'),
+        MigrationPattern.new('b2s-invoke', /ctx\.invoke\(/, 'ctx.execute_activity('),
+        MigrationPattern.new('b2s-promise', /ctx\.promise\(/, 'ctx.get_signal_channel('),
+        MigrationPattern.new('b2s-set', /ctx\.set\(/, 'ctx.set_state('),
+        MigrationPattern.new('b2s-get', /ctx\.get\(/, 'ctx.get_state('),
+        MigrationPattern.new('b2s-service-client', /ctx\.new_service_client\(/, 'ctx.new_relay_client('),
+      ].freeze,
+      'binary→embedded' => [
+        MigrationPattern.new('b2e-import', /VelocitySDK::Binary::Workflow/, 'VelocitySDK::Embedded::Workflow'),
+        MigrationPattern.new('b2e-promise', /ctx\.promise\(/, 'ctx.await_signal('),
+        MigrationPattern.new('b2e-set', /ctx\.set\(/, 'ctx.set_state('),
+        MigrationPattern.new('b2e-get', /ctx\.get\(/, 'ctx.get_state('),
+        MigrationPattern.new('b2e-service-client', /ctx\.new_service_client\(/, 'ctx.new_client('),
+      ].freeze,
+      'embedded→server' => [
+        MigrationPattern.new('e2s-import', /VelocitySDK::Embedded::Workflow/, 'VelocitySDK::Workflow'),
+        MigrationPattern.new('e2s-await-signal', /ctx\.await_signal\(/, 'ctx.get_signal_channel('),
+        MigrationPattern.new('e2s-child-wf', /ctx\.start_child_workflow\(/, 'ctx.execute_child_workflow('),
+        MigrationPattern.new('e2s-client', /ctx\.new_client\(/, 'ctx.new_relay_client('),
+      ].freeze,
+      'embedded→binary' => [
+        MigrationPattern.new('e2b-import', /VelocitySDK::Embedded::Workflow/, 'VelocitySDK::Binary::Workflow'),
+        MigrationPattern.new('e2b-await-signal', /ctx\.await_signal\(/, 'ctx.promise('),
+        MigrationPattern.new('e2b-set-state', /ctx\.set_state\(/, 'ctx.set('),
+        MigrationPattern.new('e2b-get-state', /ctx\.get_state\(/, 'ctx.get('),
+        MigrationPattern.new('e2b-child-wf', /ctx\.start_child_workflow\(/, 'ctx.invoke('),
+        MigrationPattern.new('e2b-client', /ctx\.new_client\(/, 'ctx.new_service_client('),
+      ].freeze,
+    }.freeze
+
+    def self.get_inter_flavor_patterns(source, target)
+      INTER_FLAVOR_PATTERNS["#{source}→#{target}"] || []
+    end
+
     # ─── Framework Detection ───────────────────────────────────────────────
 
     def self.detect_framework(content)
-      scores = { 'temporal' => 0, 'restate' => 0, 'dbos' => 0 }
-      evidence = { 'temporal' => [], 'restate' => [], 'dbos' => [] }
+      scores = { 'temporal' => 0, 'restate' => 0, 'dbos' => 0, 'server' => 0, 'binary' => 0, 'embedded' => 0 }
+      evidence = { 'temporal' => [], 'restate' => [], 'dbos' => [], 'server' => [], 'binary' => [], 'embedded' => [] }
 
       # Temporal
       if content.match?(/temporal\/workflow/) || content.match?(/Temporal::Workflow/)
@@ -306,6 +361,40 @@ module VelocitySDK
         evidence['dbos'] << 'DBOS queue/HTTP handler'
       end
 
+      # Velocity Server
+      if content.match?(/VelocitySDK::Workflow/) && !content.match?(/VelocitySDK::Binary/) && !content.match?(/VelocitySDK::Embedded/)
+        scores['server'] += 3
+        evidence['server'] << 'Velocity Server import'
+      end
+      if content.match?(/ctx\.execute_activity\s*\(/)
+        scores['server'] += 1
+        evidence['server'] << 'ctx.execute_activity()'
+      end
+      if content.match?(/ctx\.get_signal_channel\s*\(/)
+        scores['server'] += 1
+        evidence['server'] << 'ctx.get_signal_channel()'
+      end
+
+      # Velocity Binary
+      if content.match?(/VelocitySDK::Binary/)
+        scores['binary'] += 3
+        evidence['binary'] << 'Velocity Binary import'
+      end
+      if content.match?(/ctx\.new_service_client\s*\(/)
+        scores['binary'] += 1
+        evidence['binary'] << 'ctx.new_service_client()'
+      end
+
+      # Velocity Embedded
+      if content.match?(/VelocitySDK::Embedded/)
+        scores['embedded'] += 3
+        evidence['embedded'] << 'Velocity Embedded import'
+      end
+      if content.match?(/ctx\.await_signal\s*\(/)
+        scores['embedded'] += 1
+        evidence['embedded'] << 'ctx.await_signal()'
+      end
+
       best = scores.max_by { |_, v| v }
       total = scores.values.sum
       confidence = total > 0 ? best[1].to_f / total : 0.0
@@ -315,7 +404,7 @@ module VelocitySDK
 
     # ─── File Migration ────────────────────────────────────────────────────
 
-    def self.migrate_file(content, source_framework)
+    def self.migrate_file(content, source_framework, target_flavor = 'server')
       result = { success: true, detected: '', transformations: 0, error: nil }
 
       if source_framework == 'auto'
@@ -327,6 +416,24 @@ module VelocitySDK
         source_framework = detection[:framework]
       else
         result[:detected] = source_framework
+      end
+
+      # Check if this is an inter-flavor migration
+      velocity_flavors = %w[server binary embedded]
+      if velocity_flavors.include?(source_framework) && source_framework != target_flavor
+        patterns = get_inter_flavor_patterns(source_framework, target_flavor)
+        if patterns.empty?
+          return [content, { success: false, error: "No inter-flavor patterns: #{source_framework} → #{target_flavor}" }]
+        end
+        migrated = content.dup
+        count = 0
+        patterns.each do |p|
+          new_text = migrated.gsub(p.source_pattern, p.target_template)
+          count += 1 if new_text != migrated
+          migrated = new_text
+        end
+        result[:transformations] = count
+        return [migrated, result]
       end
 
       patterns = ALL_PATTERNS[source_framework]
@@ -360,13 +467,13 @@ module VelocitySDK
     end
 
     def self.has_workflow_content?(content)
-      indicators = ['Temporal::', 'Restate::', 'DBOS::', 'temporal/', 'execute_activity', 'context.run']
+      indicators = ['Temporal::', 'Restate::', 'DBOS::', 'temporal/', 'execute_activity', 'context.run', 'VelocitySDK::Workflow', 'VelocitySDK::Binary', 'VelocitySDK::Embedded']
       indicators.any? { |i| content.include?(i) }
     end
 
     # ─── Bulk Migration ────────────────────────────────────────────────────
 
-    def self.bulk_migrate(source_dir, output_dir, from, dry_run: false)
+    def self.bulk_migrate(source_dir, output_dir, from, dry_run: false, target_flavor: 'server')
       files = scan_ruby_files(source_dir)
       results = { total: files.size, migrated: 0, failed: 0, skipped: 0, details: [] }
 
@@ -377,7 +484,7 @@ module VelocitySDK
           next
         end
 
-        migrated, result = migrate_file(content, from)
+        migrated, result = migrate_file(content, from, target_flavor)
 
         if result[:success] && !dry_run
           rel_path = file_path.sub("#{source_dir}/", '')
@@ -405,11 +512,12 @@ if __FILE__ == $PROGRAM_NAME
   require 'optparse'
   require 'fileutils'
 
-  options = { from: 'auto' }
+  options = { from: 'auto', to: 'server' }
   OptionParser.new do |opts|
     opts.banner = "Velocity Ruby Migration Tool\n\nUsage: ruby migrate.rb [options]"
     opts.on('--src PATH', 'Source file or directory') { |v| options[:src] = v }
-    opts.on('--from FRAMEWORK', 'Source: temporal, restate, dbos, auto') { |v| options[:from] = v }
+    opts.on('--from FRAMEWORK', 'Source: temporal, restate, dbos, server, binary, embedded, auto') { |v| options[:from] = v }
+    opts.on('--to FLAVOR', 'Target: server, binary, embedded') { |v| options[:to] = v }
     opts.on('--output PATH', '-o PATH', 'Output file or directory') { |v| options[:output] = v }
     opts.on('--dry-run', 'Detect without writing') { options[:dry_run] = true }
     opts.on('--detect', 'Detect framework in directory') { options[:detect] = true }
@@ -436,7 +544,7 @@ if __FILE__ == $PROGRAM_NAME
 
   if File.file?(options[:src])
     content = File.read(options[:src])
-    migrated, result = VelocitySDK::Migrate.migrate_file(content, options[:from])
+    migrated, result = VelocitySDK::Migrate.migrate_file(content, options[:from], options[:to])
     unless result[:success]
       $stderr.puts "Failed: #{result[:error]}"
       exit 1
@@ -459,7 +567,7 @@ if __FILE__ == $PROGRAM_NAME
     puts "Source framework: #{options[:from]}\n\n"
 
     results = VelocitySDK::Migrate.bulk_migrate(
-      options[:src], output_dir, options[:from], dry_run: options[:dry_run]
+      options[:src], output_dir, options[:from], dry_run: options[:dry_run], target_flavor: options[:to]
     )
     puts "Results:"
     puts "  Total: #{results[:total]}"

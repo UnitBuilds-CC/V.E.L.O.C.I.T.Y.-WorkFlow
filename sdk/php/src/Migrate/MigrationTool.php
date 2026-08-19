@@ -311,12 +311,67 @@ class MigrationTool
         ];
     }
 
+    /** ─── Inter-Flavor Migration Patterns (Server ↔ Binary ↔ Embedded) ─── */
+
+    public static function getInterFlavorPatterns(string $source, string $target): array
+    {
+        $all = [
+            'server→binary' => [
+                ['name' => 's2b-import', 'pattern' => '/Velocity\\\\Workflow/', 'target' => 'Velocity\\Binary\\Workflow', 'framework' => 'server'],
+                ['name' => 's2b-execute-activity', 'pattern' => '/\$ctx->executeActivity\(/', 'target' => '$ctx->invoke(', 'framework' => 'server'],
+                ['name' => 's2b-child-workflow', 'pattern' => '/\$ctx->executeChildWorkflow\(/', 'target' => '$ctx->invoke(', 'framework' => 'server'],
+                ['name' => 's2b-get-signal', 'pattern' => '/\$ctx->getSignalChannel\(/', 'target' => '$ctx->promise(', 'framework' => 'server'],
+                ['name' => 's2b-wait-signal', 'pattern' => '/\$ctx->waitForSignal\(/', 'target' => '$ctx->awaitCondition(', 'framework' => 'server'],
+                ['name' => 's2b-set-state', 'pattern' => '/\$ctx->setState\(/', 'target' => '$ctx->set(', 'framework' => 'server'],
+                ['name' => 's2b-get-state', 'pattern' => '/\$ctx->getState\(/', 'target' => '$ctx->get(', 'framework' => 'server'],
+                ['name' => 's2b-relay-client', 'pattern' => '/\$ctx->newRelayClient\(/', 'target' => '$ctx->newServiceClient(', 'framework' => 'server'],
+            ],
+            'server→embedded' => [
+                ['name' => 's2e-import', 'pattern' => '/Velocity\\\\Workflow/', 'target' => 'Velocity\\Embedded\\Workflow', 'framework' => 'server'],
+                ['name' => 's2e-execute-activity', 'pattern' => '/\$ctx->executeActivity\(/', 'target' => '$ctx->invoke(', 'framework' => 'server'],
+                ['name' => 's2e-child-workflow', 'pattern' => '/\$ctx->executeChildWorkflow\(/', 'target' => '$ctx->startChildWorkflow(', 'framework' => 'server'],
+                ['name' => 's2e-get-signal', 'pattern' => '/\$ctx->getSignalChannel\(/', 'target' => '$ctx->awaitSignal(', 'framework' => 'server'],
+                ['name' => 's2e-relay-client', 'pattern' => '/\$ctx->newRelayClient\(/', 'target' => '$ctx->newClient(', 'framework' => 'server'],
+            ],
+            'binary→server' => [
+                ['name' => 'b2s-import', 'pattern' => '/Velocity\\\\Binary\\\\Workflow/', 'target' => 'Velocity\\Workflow', 'framework' => 'binary'],
+                ['name' => 'b2s-invoke', 'pattern' => '/\$ctx->invoke\(/', 'target' => '$ctx->executeActivity(', 'framework' => 'binary'],
+                ['name' => 'b2s-promise', 'pattern' => '/\$ctx->promise\(/', 'target' => '$ctx->getSignalChannel(', 'framework' => 'binary'],
+                ['name' => 'b2s-set', 'pattern' => '/\$ctx->set\(/', 'target' => '$ctx->setState(', 'framework' => 'binary'],
+                ['name' => 'b2s-get', 'pattern' => '/\$ctx->get\(/', 'target' => '$ctx->getState(', 'framework' => 'binary'],
+                ['name' => 'b2s-service-client', 'pattern' => '/\$ctx->newServiceClient\(/', 'target' => '$ctx->newRelayClient(', 'framework' => 'binary'],
+            ],
+            'binary→embedded' => [
+                ['name' => 'b2e-import', 'pattern' => '/Velocity\\\\Binary\\\\Workflow/', 'target' => 'Velocity\\Embedded\\Workflow', 'framework' => 'binary'],
+                ['name' => 'b2e-promise', 'pattern' => '/\$ctx->promise\(/', 'target' => '$ctx->awaitSignal(', 'framework' => 'binary'],
+                ['name' => 'b2e-set', 'pattern' => '/\$ctx->set\(/', 'target' => '$ctx->setState(', 'framework' => 'binary'],
+                ['name' => 'b2e-get', 'pattern' => '/\$ctx->get\(/', 'target' => '$ctx->getState(', 'framework' => 'binary'],
+                ['name' => 'b2e-service-client', 'pattern' => '/\$ctx->newServiceClient\(/', 'target' => '$ctx->newClient(', 'framework' => 'binary'],
+            ],
+            'embedded→server' => [
+                ['name' => 'e2s-import', 'pattern' => '/Velocity\\\\Embedded\\\\Workflow/', 'target' => 'Velocity\\Workflow', 'framework' => 'embedded'],
+                ['name' => 'e2s-await-signal', 'pattern' => '/\$ctx->awaitSignal\(/', 'target' => '$ctx->getSignalChannel(', 'framework' => 'embedded'],
+                ['name' => 'e2s-child-wf', 'pattern' => '/\$ctx->startChildWorkflow\(/', 'target' => '$ctx->executeChildWorkflow(', 'framework' => 'embedded'],
+                ['name' => 'e2s-client', 'pattern' => '/\$ctx->newClient\(/', 'target' => '$ctx->newRelayClient(', 'framework' => 'embedded'],
+            ],
+            'embedded→binary' => [
+                ['name' => 'e2b-import', 'pattern' => '/Velocity\\\\Embedded\\\\Workflow/', 'target' => 'Velocity\\Binary\\Workflow', 'framework' => 'embedded'],
+                ['name' => 'e2b-await-signal', 'pattern' => '/\$ctx->awaitSignal\(/', 'target' => '$ctx->promise(', 'framework' => 'embedded'],
+                ['name' => 'e2b-set-state', 'pattern' => '/\$ctx->setState\(/', 'target' => '$ctx->set(', 'framework' => 'embedded'],
+                ['name' => 'e2b-get-state', 'pattern' => '/\$ctx->getState\(/', 'target' => '$ctx->get(', 'framework' => 'embedded'],
+                ['name' => 'e2b-child-wf', 'pattern' => '/\$ctx->startChildWorkflow\(/', 'target' => '$ctx->invoke(', 'framework' => 'embedded'],
+                ['name' => 'e2b-client', 'pattern' => '/\$ctx->newClient\(/', 'target' => '$ctx->newServiceClient(', 'framework' => 'embedded'],
+            ],
+        ];
+        return $all["$source→$target"] ?? [];
+    }
+
     /** ─── Framework Detection ─────────────────────────────────────────── */
 
     public static function detectFramework(string $content): array
     {
-        $scores = ['temporal' => 0, 'restate' => 0, 'dbos' => 0];
-        $evidence = ['temporal' => [], 'restate' => [], 'dbos' => []];
+        $scores = ['temporal' => 0, 'restate' => 0, 'dbos' => 0, 'server' => 0, 'binary' => 0, 'embedded' => 0];
+        $evidence = ['temporal' => [], 'restate' => [], 'dbos' => [], 'server' => [], 'binary' => [], 'embedded' => []];
 
         // Temporal
         if (str_contains($content, 'Temporal\\Workflow')) { $scores['temporal'] += 3; $evidence['temporal'][] = 'Temporal workflow import'; }
@@ -336,6 +391,19 @@ class MigrationTool
         if (str_contains($content, '#[DBOS\Workflow')) { $scores['dbos'] += 2; $evidence['dbos'][] = '#[DBOS\Workflow]'; }
         if (str_contains($content, 'DBOS::enqueue') || str_contains($content, '#[DBOS\HttpHandler')) { $scores['dbos'] += 1; $evidence['dbos'][] = 'DBOS queue/HTTP handler'; }
 
+        // Velocity Server
+        if (str_contains($content, 'Velocity\\Workflow') && !str_contains($content, 'Velocity\\Binary') && !str_contains($content, 'Velocity\\Embedded')) { $scores['server'] += 3; $evidence['server'][] = 'Velocity Server import'; }
+        if (str_contains($content, '$ctx->executeActivity(')) { $scores['server'] += 1; $evidence['server'][] = '$ctx->executeActivity()'; }
+        if (str_contains($content, '$ctx->getSignalChannel(')) { $scores['server'] += 1; $evidence['server'][] = '$ctx->getSignalChannel()'; }
+
+        // Velocity Binary
+        if (str_contains($content, 'Velocity\\Binary')) { $scores['binary'] += 3; $evidence['binary'][] = 'Velocity Binary import'; }
+        if (str_contains($content, '$ctx->newServiceClient(')) { $scores['binary'] += 1; $evidence['binary'][] = '$ctx->newServiceClient()'; }
+
+        // Velocity Embedded
+        if (str_contains($content, 'Velocity\\Embedded')) { $scores['embedded'] += 3; $evidence['embedded'][] = 'Velocity Embedded import'; }
+        if (str_contains($content, '$ctx->awaitSignal(')) { $scores['embedded'] += 1; $evidence['embedded'][] = '$ctx->awaitSignal()'; }
+
         $best = 'temporal';
         $bestScore = 0;
         foreach ($scores as $fw => $score) {
@@ -349,7 +417,7 @@ class MigrationTool
 
     /** ─── File Migration ──────────────────────────────────────────────── */
 
-    public static function migrateFile(string $content, string $sourceFramework): array
+    public static function migrateFile(string $content, string $sourceFramework, string $targetFlavor = 'server'): array
     {
         $result = ['success' => true, 'detected' => '', 'transformations' => 0, 'error' => null];
 
@@ -362,6 +430,26 @@ class MigrationTool
             $sourceFramework = $detection['framework'];
         } else {
             $result['detected'] = $sourceFramework;
+        }
+
+        // Check if this is an inter-flavor migration
+        $velocityFlavors = ['server', 'binary', 'embedded'];
+        if (in_array($sourceFramework, $velocityFlavors) && $sourceFramework !== $targetFlavor) {
+            $patterns = self::getInterFlavorPatterns($sourceFramework, $targetFlavor);
+            if (empty($patterns)) {
+                return [$content, ['success' => false, 'error' => "No inter-flavor patterns: $sourceFramework → $targetFlavor"]];
+            }
+            $migrated = $content;
+            $count = 0;
+            foreach ($patterns as $p) {
+                $newText = preg_replace($p['pattern'], $p['target'], $migrated, -1, $n);
+                if ($n > 0) {
+                    $migrated = $newText;
+                    $count += $n;
+                }
+            }
+            $result['transformations'] = $count;
+            return [$migrated, $result];
         }
 
         $patterns = match($sourceFramework) {
@@ -414,7 +502,7 @@ class MigrationTool
 
     public static function hasWorkflowContent(string $content): bool
     {
-        $indicators = ['Temporal\\', 'Restate\\', 'DBOS\\', '#[WorkflowMethod', '#[ActivityMethod', 'Workflow::sleep'];
+        $indicators = ['Temporal\\', 'Restate\\', 'DBOS\\', '#[WorkflowMethod', '#[ActivityMethod', 'Workflow::sleep', 'Velocity\\Workflow', 'Velocity\\Binary', 'Velocity\\Embedded'];
         foreach ($indicators as $ind) {
             if (str_contains($content, $ind)) return true;
         }
@@ -423,7 +511,7 @@ class MigrationTool
 
     /** ─── Bulk Migration ──────────────────────────────────────────────── */
 
-    public static function bulkMigrate(string $sourceDir, string $outputDir, string $from, bool $dryRun = false): array
+    public static function bulkMigrate(string $sourceDir, string $outputDir, string $from, bool $dryRun = false, string $targetFlavor = 'server'): array
     {
         $files = self::scanPhpFiles($sourceDir);
         $results = ['total' => count($files), 'migrated' => 0, 'failed' => 0, 'skipped' => 0, 'details' => []];
@@ -432,7 +520,7 @@ class MigrationTool
             $content = file_get_contents($filePath);
             if (!self::hasWorkflowContent($content)) { $results['skipped']++; continue; }
 
-            [$migrated, $result] = self::migrateFile($content, $from);
+            [$migrated, $result] = self::migrateFile($content, $from, $targetFlavor);
 
             if ($result['success'] && !$dryRun) {
                 $relPath = str_replace($sourceDir . DIRECTORY_SEPARATOR, '', $filePath);
@@ -457,12 +545,13 @@ class MigrationTool
 
 if (php_sapi_name() === 'cli' && basename(__FILE__) === basename($GLOBALS['argv'][0] ?? '')) {
     $args = array_slice($GLOBALS['argv'], 1);
-    $src = null; $from = 'auto'; $output = null; $dryRun = false; $detect = false;
+    $src = null; $from = 'auto'; $to = 'server'; $output = null; $dryRun = false; $detect = false;
 
     for ($i = 0; $i < count($args); $i++) {
         switch ($args[$i]) {
             case '--src': $src = $args[++$i]; break;
             case '--from': $from = $args[++$i]; break;
+            case '--to': $to = $args[++$i]; break;
             case '--output': case '-o': $output = $args[++$i]; break;
             case '--dry-run': $dryRun = true; break;
             case '--detect': $detect = true; break;
@@ -493,7 +582,7 @@ if (php_sapi_name() === 'cli' && basename(__FILE__) === basename($GLOBALS['argv'
 
     if (is_file($src)) {
         $content = file_get_contents($src);
-        [$migrated, $result] = MigrationTool::migrateFile($content, $from);
+        [$migrated, $result] = MigrationTool::migrateFile($content, $from, $to);
         if (!$result['success']) { fwrite(STDERR, "Failed: {$result['error']}\n"); exit(1); }
         if ($output) { file_put_contents($output, $migrated); echo "Written to: $output\n"; }
         else { echo $migrated; }
@@ -507,7 +596,7 @@ if (php_sapi_name() === 'cli' && basename(__FILE__) === basename($GLOBALS['argv'
         echo "Output: " . ($dryRun ? '(dry run)' : $outputDir) . "\n";
         echo "Source framework: $from\n\n";
 
-        $results = MigrationTool::bulkMigrate($src, $outputDir, $from, $dryRun);
+        $results = MigrationTool::bulkMigrate($src, $outputDir, $from, $dryRun, $to);
         echo "Results:\n";
         echo "  Total: {$results['total']}\n";
         echo "  Migrated: {$results['migrated']}\n";
