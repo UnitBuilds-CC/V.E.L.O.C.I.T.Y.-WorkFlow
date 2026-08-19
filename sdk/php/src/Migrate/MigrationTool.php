@@ -93,6 +93,26 @@ class MigrationTool
              'pattern' => '/\$client->start\s*\(\s*(\w+)::class/',
              'target'  => '$client->executeWorkflow($1::class',
              'framework' => 'temporal'],
+            // Search attributes
+            ['name' => 'temporal-search-attributes',
+             'pattern' => '/Workflow::getSearchAttributes\(/',
+             'target'  => '$ctx->getSearchAttributes(',
+             'framework' => 'temporal'],
+            // Memo
+            ['name' => 'temporal-memo',
+             'pattern' => '/Workflow::getMemo\(/',
+             'target'  => '$ctx->getMemo(',
+             'framework' => 'temporal'],
+            // Update handler
+            ['name' => 'temporal-update-handler',
+             'pattern' => '/#\[UpdateMethod\]/',
+             'target'  => '#[UpdateMethod]',
+             'framework' => 'temporal'],
+            // Continue-as-new
+            ['name' => 'temporal-continue-as-new',
+             'pattern' => '/Workflow::continueAsNew\(/',
+             'target'  => '$ctx->continueAsNew(',
+             'framework' => 'temporal'],
         ];
     }
 
@@ -122,8 +142,18 @@ class MigrationTool
              'target'  => '$ctx->getState(\'$1\')',
              'framework' => 'restate'],
             ['name' => 'restate-context-set',
-             'pattern' => '/\$context->set\(\s*[\'"](\w+)[\'"]\s*,/',
+             'pattern' => '/\$context->set\(\s*[\'"]+(\w+)[\'"]+\s*,/',
              'target'  => '$ctx->setState(\'$1\',',
+             'framework' => 'restate'],
+            // Idempotency key
+            ['name' => 'restate-idempotency-key',
+             'pattern' => '/\$context->idempotencyKey\(/',
+             'target'  => '$ctx->idempotencyKey(',
+             'framework' => 'restate'],
+            // Service client
+            ['name' => 'restate-service-client',
+             'pattern' => '/RestateClient::create\(/',
+             'target'  => 'VelocityClient::create(',
              'framework' => 'restate'],
         ];
     }
@@ -157,6 +187,20 @@ class MigrationTool
              'pattern' => '/DBOS::setEvent\(/',
              'target'  => '$ctx->setEvent(',
              'framework' => 'dbos'],
+            // Queue operations
+            ['name' => 'dbos-queue-enqueue',
+             'pattern' => '/DBOS::enqueue\(/',
+             'target'  => '$ctx->enqueue(',
+             'framework' => 'dbos'],
+            ['name' => 'dbos-queue-dequeue',
+             'pattern' => '/DBOS::dequeue\(/',
+             'target'  => '$ctx->dequeue(',
+             'framework' => 'dbos'],
+            // HTTP handler
+            ['name' => 'dbos-http-handler',
+             'pattern' => '/#\[DBOS\\\\HttpHandler/',
+             'target'  => '#[HttpHandler',
+             'framework' => 'dbos'],
         ];
     }
 
@@ -172,14 +216,18 @@ class MigrationTool
         if (str_contains($content, 'Temporal\\Activity')) { $scores['temporal'] += 3; $evidence['temporal'][] = 'Temporal activity import'; }
         if (str_contains($content, '#[WorkflowMethod')) { $scores['temporal'] += 2; $evidence['temporal'][] = '#[WorkflowMethod]'; }
         if (str_contains($content, 'Workflow::sleep')) { $scores['temporal'] += 1; $evidence['temporal'][] = 'Workflow::sleep'; }
+        if (str_contains($content, 'Workflow::getSearchAttributes') || str_contains($content, 'Workflow::continueAsNew')) { $scores['temporal'] += 1; $evidence['temporal'][] = 'Temporal advanced workflow API'; }
+        if (str_contains($content, '#[UpdateMethod]')) { $scores['temporal'] += 1; $evidence['temporal'][] = 'UpdateMethod handler'; }
 
         // Restate
         if (str_contains($content, 'Restate\\')) { $scores['restate'] += 3; $evidence['restate'][] = 'Restate import'; }
         if (str_contains($content, '$context->run(')) { $scores['restate'] += 1; $evidence['restate'][] = '$context->run()'; }
+        if (str_contains($content, '$context->idempotencyKey') || str_contains($content, 'RestateClient')) { $scores['restate'] += 1; $evidence['restate'][] = 'Restate idempotency/client'; }
 
         // DBOS
         if (str_contains($content, 'DBOS\\')) { $scores['dbos'] += 3; $evidence['dbos'][] = 'DBOS import'; }
-        if (str_contains($content, '#[DBOS\\Workflow')) { $scores['dbos'] += 2; $evidence['dbos'][] = '#[DBOS\\Workflow]'; }
+        if (str_contains($content, '#[DBOS\Workflow')) { $scores['dbos'] += 2; $evidence['dbos'][] = '#[DBOS\Workflow]'; }
+        if (str_contains($content, 'DBOS::enqueue') || str_contains($content, '#[DBOS\HttpHandler')) { $scores['dbos'] += 1; $evidence['dbos'][] = 'DBOS queue/HTTP handler'; }
 
         $best = 'temporal';
         $bestScore = 0;

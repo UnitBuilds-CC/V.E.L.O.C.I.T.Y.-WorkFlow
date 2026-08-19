@@ -143,6 +143,10 @@ const FRAMEWORK_SIGNATURES: Record<string, { patterns: RegExp[]; flavor: SDKFlav
       /Temporal::new/,
       /workflow\.Context/,
       /workflow\.ExecuteActivity/,
+      /workflow\.searchAttributes\(/,
+      /workflow\.getMemo\(/,
+      /@workflow\.update/,
+      /workflow\.continueAsNew\(/,
     ],
   },
   'restate': {
@@ -157,6 +161,8 @@ const FRAMEWORK_SIGNATURES: Record<string, { patterns: RegExp[]; flavor: SDKFlav
       /ctx\.invoke\(/,
       /\[restate::service\]/,
       /restate_sdk/,
+      /ctx\.idempotencyKey/,
+      /restate\.ServiceClient/,
     ],
   },
   'dbos': {
@@ -170,6 +176,9 @@ const FRAMEWORK_SIGNATURES: Record<string, { patterns: RegExp[]; flavor: SDKFlav
       /DBOS\.sleep/,
       /DBOS\.recv/,
       /dbos\.transaction/,
+      /DBOS\.enqueue\(/,
+      /DBOS\.dequeue\(/,
+      /@DBOS\.httpHandler/,
     ],
   },
   'velocity-classic': {

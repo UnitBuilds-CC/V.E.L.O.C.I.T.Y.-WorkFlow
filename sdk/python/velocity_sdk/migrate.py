@@ -110,6 +110,34 @@ TEMPORAL_PATTERNS: list[MigrationPattern] = [
         target_template='class \\1:  # Velocity workflow',
         source_framework='temporal',
     ),
+    # Search attributes
+    MigrationPattern(
+        name='temporal-search-attributes',
+        source_pattern=re.compile(r'workflow\.search_attributes\s*\('),
+        target_template='ctx.search_attributes(',
+        source_framework='temporal',
+    ),
+    # Memo
+    MigrationPattern(
+        name='temporal-memo',
+        source_pattern=re.compile(r'workflow\.memo\b'),
+        target_template='ctx.memo',
+        source_framework='temporal',
+    ),
+    # Update handler
+    MigrationPattern(
+        name='temporal-update-handler',
+        source_pattern=re.compile(r'@workflow\.update'),
+        target_template='@update',
+        source_framework='temporal',
+    ),
+    # Continue-as-new
+    MigrationPattern(
+        name='temporal-continue-as-new',
+        source_pattern=re.compile(r'workflow\.continue_as_new\s*\('),
+        target_template='ctx.continue_as_new(',
+        source_framework='temporal',
+    ),
 ]
 
 # ─── Restate → Velocity Patterns ─────────────────────────────────────────────
@@ -159,8 +187,22 @@ RESTATE_PATTERNS: list[MigrationPattern] = [
     ),
     MigrationPattern(
         name='restate-ctx-invoke',
-        source_pattern=re.compile(r'await\s+ctx\.invoke\s*\(\s*(\w+)\s*,\s*[\'"](\w+)[\'"]'),
+        source_pattern=re.compile(r'await\s+ctx\.invoke\s*\(\s*(\w+)\s*,\s*[\'"]+(\w+)[\'"]+'),
         target_template='await ctx.execute_activity(\\1.\\2',
+        source_framework='restate',
+    ),
+    # Idempotency key
+    MigrationPattern(
+        name='restate-idempotency-key',
+        source_pattern=re.compile(r'ctx\.idempotency_key\b'),
+        target_template='ctx.idempotency_key',
+        source_framework='restate',
+    ),
+    # Service client
+    MigrationPattern(
+        name='restate-service-client',
+        source_pattern=re.compile(r'restate\.client\.ServiceClient\s*\('),
+        target_template='VelocityClient(',
         source_framework='restate',
     ),
 ]
@@ -206,8 +248,28 @@ DBOS_PATTERNS: list[MigrationPattern] = [
     ),
     MigrationPattern(
         name='dbos-get-event',
-        source_pattern=re.compile(r'await\s+DBOS\.get_event\s*\(\s*[\'"](\w+)[\'"]'),
+        source_pattern=re.compile(r'await\s+DBOS\.get_event\s*\(\s*[\'"]+(\w+)[\'"]+'),
         target_template='await ctx.get_event(\\1\\1)',
+        source_framework='dbos',
+    ),
+    # Queue operations
+    MigrationPattern(
+        name='dbos-queue-enqueue',
+        source_pattern=re.compile(r'await\s+DBOS\.enqueue\s*\('),
+        target_template='await ctx.enqueue(',
+        source_framework='dbos',
+    ),
+    MigrationPattern(
+        name='dbos-queue-dequeue',
+        source_pattern=re.compile(r'await\s+DBOS\.dequeue\s*\('),
+        target_template='await ctx.dequeue(',
+        source_framework='dbos',
+    ),
+    # HTTP handler
+    MigrationPattern(
+        name='dbos-http-handler',
+        source_pattern=re.compile(r'@DBOS\.http_handler\s*\('),
+        target_template='@http_handler(',
         source_framework='dbos',
     ),
 ]
@@ -227,18 +289,26 @@ def detect_framework(content: str) -> tuple[str, float]:
     if re.search(r'workflow\.execute_activity', content): scores['temporal'] += 2
     if re.search(r'@workflow\.signal', content): scores['temporal'] += 1
     if re.search(r'Temporal.*Client', content): scores['temporal'] += 1
+    if re.search(r'workflow\.search_attributes', content): scores['temporal'] += 1
+    if re.search(r'@workflow\.update', content): scores['temporal'] += 1
+    if re.search(r'workflow\.continue_as_new', content): scores['temporal'] += 1
+    if re.search(r'workflow\.memo', content): scores['temporal'] += 1
 
     # Restate indicators
     if re.search(r'from\s+restate\s+import', content): scores['restate'] += 3
     if re.search(r'@restate\.service', content): scores['restate'] += 2
     if re.search(r'ctx\.run\(', content): scores['restate'] += 1
     if re.search(r'ctx\.invoke\(', content): scores['restate'] += 1
+    if re.search(r'ctx\.idempotency_key', content): scores['restate'] += 1
+    if re.search(r'ServiceClient', content): scores['restate'] += 1
 
     # DBOS indicators
     if re.search(r'from\s+dbos\s+import', content): scores['dbos'] += 3
     if re.search(r'@DBOS\.workflow', content): scores['dbos'] += 2
     if re.search(r'@DBOS\.transaction', content): scores['dbos'] += 2
     if re.search(r'DBOS\.sleep', content): scores['dbos'] += 1
+    if re.search(r'DBOS\.enqueue', content): scores['dbos'] += 1
+    if re.search(r'@DBOS\.http_handler', content): scores['dbos'] += 1
 
     best = max(scores, key=scores.get)
     total = sum(scores.values())

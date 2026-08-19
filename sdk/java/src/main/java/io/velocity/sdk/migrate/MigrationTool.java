@@ -95,7 +95,23 @@ public class MigrationTool {
             "VelocityWorker.create(", "temporal"),
         new MigrationPattern("temporal-execute-workflow",
             "client\\.newWorkflowStub\\(\\s*(\\w+)\\.class",
-            "client.newWorkflowStub($1.class", "temporal")
+            "client.newWorkflowStub($1.class", "temporal"),
+        // Search attributes
+        new MigrationPattern("temporal-search-attributes",
+            "Workflow\\.getSearchAttributes\\(",
+            "WorkflowContext.getSearchAttributes(", "temporal"),
+        // Memo
+        new MigrationPattern("temporal-memo",
+            "Workflow\\.getMemo\\(",
+            "WorkflowContext.getMemo(", "temporal"),
+        // Update handler
+        new MigrationPattern("temporal-update-handler",
+            "@UpdateMethod",
+            "@UpdateMethod", "temporal"),
+        // Continue-as-new
+        new MigrationPattern("temporal-continue-as-new",
+            "Workflow\\.continueAsNew\\(",
+            "WorkflowContext.continueAsNew(", "temporal")
     );
 
     // ─── Restate → Velocity Patterns ─────────────────────────────────────────
@@ -121,7 +137,15 @@ public class MigrationTool {
             "ctx.getState(", "restate"),
         new MigrationPattern("restate-context-set",
             "context\\.set\\(",
-            "ctx.setState(", "restate")
+            "ctx.setState(", "restate"),
+        // Idempotency key
+        new MigrationPattern("restate-idempotency-key",
+            "context\\.idempotencyKey\\(",
+            "ctx.idempotencyKey(", "restate"),
+        // Service client
+        new MigrationPattern("restate-service-client",
+            "RestateServiceClient\\.create\\(",
+            "VelocityClient.create(", "restate")
     );
 
     // ─── DBOS → Velocity Patterns ────────────────────────────────────────────
@@ -147,7 +171,18 @@ public class MigrationTool {
             "WorkflowContext.setEvent(", "dbos"),
         new MigrationPattern("dbos-get-event",
             "DBOS\\.getEvent\\(",
-            "WorkflowContext.getEvent(", "dbos")
+            "WorkflowContext.getEvent(", "dbos"),
+        // Queue operations
+        new MigrationPattern("dbos-queue-enqueue",
+            "DBOS\\.enqueue\\(",
+            "WorkflowContext.enqueue(", "dbos"),
+        new MigrationPattern("dbos-queue-dequeue",
+            "DBOS\\.dequeue\\(",
+            "WorkflowContext.dequeue(", "dbos"),
+        // HTTP handler
+        new MigrationPattern("dbos-http-handler",
+            "@DBOS\\.HttpHandler",
+            "@HttpHandler", "dbos")
     );
 
     // ─── Framework Detection ─────────────────────────────────────────────────
@@ -195,6 +230,14 @@ public class MigrationTool {
             scores.merge("temporal", 1, Integer::sum);
             evidence.get("temporal").add("Workflow.sleep");
         }
+        if (content.contains("Workflow.getSearchAttributes") || content.contains("Workflow.getMemo")) {
+            scores.merge("temporal", 1, Integer::sum);
+            evidence.get("temporal").add("Workflow search attributes/memo");
+        }
+        if (content.contains("Workflow.continueAsNew")) {
+            scores.merge("temporal", 1, Integer::sum);
+            evidence.get("temporal").add("Workflow.continueAsNew");
+        }
 
         // Restate checks
         if (content.contains("dev.restate.sdk")) {
@@ -205,6 +248,10 @@ public class MigrationTool {
             scores.merge("restate", 1, Integer::sum);
             evidence.get("restate").add("context.run()");
         }
+        if (content.contains("context.idempotencyKey") || content.contains("RestateServiceClient")) {
+            scores.merge("restate", 1, Integer::sum);
+            evidence.get("restate").add("Restate idempotency/client");
+        }
 
         // DBOS checks
         if (content.contains("com.dbos")) {
@@ -214,6 +261,10 @@ public class MigrationTool {
         if (content.contains("@DBOS.Workflow") || content.contains("@DBOS")) {
             scores.merge("dbos", 2, Integer::sum);
             evidence.get("dbos").add("@DBOS annotation");
+        }
+        if (content.contains("DBOS.enqueue") || content.contains("@DBOS.HttpHandler")) {
+            scores.merge("dbos", 1, Integer::sum);
+            evidence.get("dbos").add("DBOS queue/HTTP handler");
         }
 
         // Find best match

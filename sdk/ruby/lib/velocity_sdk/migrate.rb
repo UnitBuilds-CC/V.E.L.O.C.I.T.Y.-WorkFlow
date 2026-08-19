@@ -73,6 +73,22 @@ module VelocitySDK
       MigrationPattern.new('temporal-start-workflow',
         /client\.execute_workflow\s*\(/,
         'client.execute_workflow('),
+      # Search attributes
+      MigrationPattern.new('temporal-search-attributes',
+        /Workflow\.search_attributes\s*\(/,
+        'ctx.search_attributes('),
+      # Memo
+      MigrationPattern.new('temporal-memo',
+        /Workflow\.memo\b/,
+        'ctx.memo'),
+      # Update handler
+      MigrationPattern.new('temporal-update-handler',
+        /define_update\s*\(/,
+        'define_update('),
+      # Continue-as-new
+      MigrationPattern.new('temporal-continue-as-new',
+        /Workflow\.continue_as_new\s*\(/,
+        'ctx.continue_as_new('),
     ].freeze
 
     # ─── Restate → Velocity Patterns ───────────────────────────────────────
@@ -97,8 +113,16 @@ module VelocitySDK
         /context\.get\s*\(\s*['"](\w+)['"]/,
         "ctx.get_state('\\1')"),
       MigrationPattern.new('restate-ctx-set',
-        /context\.set\s*\(\s*['"](\w+)['"]/,
+        /context\.set\s*\(\s*['"]+(\w+)['"]+/,
         "ctx.set_state('\\1'"),
+      # Idempotency key
+      MigrationPattern.new('restate-idempotency-key',
+        /context\.idempotency_key\b/,
+        'ctx.idempotency_key'),
+      # Service client
+      MigrationPattern.new('restate-service-client',
+        /Restate::ServiceClient\.new\s*\(/,
+        'VelocitySDK::VelocityClient.new('),
     ].freeze
 
     # ─── DBOS → Velocity Patterns ──────────────────────────────────────────
@@ -125,6 +149,17 @@ module VelocitySDK
       MigrationPattern.new('dbos-get-event',
         /DBOS\.get_event\s*\(/,
         'ctx.get_event('),
+      # Queue operations
+      MigrationPattern.new('dbos-queue-enqueue',
+        /DBOS\.enqueue\s*\(/,
+        'ctx.enqueue('),
+      MigrationPattern.new('dbos-queue-dequeue',
+        /DBOS\.dequeue\s*\(/,
+        'ctx.dequeue('),
+      # HTTP handler
+      MigrationPattern.new('dbos-http-handler',
+        /extend\s+DBOS::HttpHandler/,
+        'include VelocitySDK::HttpHandler'),
     ].freeze
 
     ALL_PATTERNS = {
@@ -152,6 +187,14 @@ module VelocitySDK
         scores['temporal'] += 1
         evidence['temporal'] << 'execute_activity call'
       end
+      if content.match?(/Workflow\.search_attributes/) || content.match?(/Workflow\.continue_as_new/)
+        scores['temporal'] += 1
+        evidence['temporal'] << 'Temporal advanced workflow API'
+      end
+      if content.match?(/define_update\s*\(/)
+        scores['temporal'] += 1
+        evidence['temporal'] << 'Temporal update handler'
+      end
 
       # Restate
       if content.match?(/require\s+['"]restate['"]/) || content.match?(/Restate::/)
@@ -162,6 +205,10 @@ module VelocitySDK
         scores['restate'] += 1
         evidence['restate'] << 'context.run()'
       end
+      if content.match?(/context\.idempotency_key/) || content.match?(/Restate::ServiceClient/)
+        scores['restate'] += 1
+        evidence['restate'] << 'Restate idempotency/client'
+      end
 
       # DBOS
       if content.match?(/require\s+['"]dbos['"]/) || content.match?(/DBOS::/)
@@ -171,6 +218,10 @@ module VelocitySDK
       if content.match?(/DBOS\.sleep/)
         scores['dbos'] += 1
         evidence['dbos'] << 'DBOS.sleep'
+      end
+      if content.match?(/DBOS\.enqueue/) || content.match?(/DBOS::HttpHandler/)
+        scores['dbos'] += 1
+        evidence['dbos'] << 'DBOS queue/HTTP handler'
       end
 
       best = scores.max_by { |_, v| v }

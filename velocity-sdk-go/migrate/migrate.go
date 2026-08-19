@@ -116,6 +116,34 @@ var TemporalPatterns = []*MigrationPattern{
 		TargetTemplate: `client.ExecuteWorkflow(ctx,`,
 		SourceFramework: "temporal",
 	},
+	// Search attributes
+	{
+		Name:           "temporal-search-attributes",
+		SourcePattern:  regexp.MustCompile(`workflow\.GetSearchAttributes\s*\(`),
+		TargetTemplate: `ctx.GetSearchAttributes(`,
+		SourceFramework: "temporal",
+	},
+	// Memo
+	{
+		Name:           "temporal-memo",
+		SourcePattern:  regexp.MustCompile(`workflow\.GetMemo\s*\(`),
+		TargetTemplate: `ctx.GetMemo(`,
+		SourceFramework: "temporal",
+	},
+	// Update handler
+	{
+		Name:           "temporal-update-handler",
+		SourcePattern:  regexp.MustCompile(`workflow\.SetUpdateHandler\s*\(`),
+		TargetTemplate: `ctx.SetUpdateHandler(`,
+		SourceFramework: "temporal",
+	},
+	// Continue-as-new
+	{
+		Name:           "temporal-continue-as-new",
+		SourcePattern:  regexp.MustCompile(`workflow\.ContinueAsNew\s*\(`),
+		TargetTemplate: `ctx.ContinueAsNew(`,
+		SourceFramework: "temporal",
+	},
 }
 
 // ─── Restate → Velocity Patterns ─────────────────────────────────────────────
@@ -155,6 +183,20 @@ var RestatePatterns = []*MigrationPattern{
 		Name:           "restate-ctx-set",
 		SourcePattern:  regexp.MustCompile(`ctx\.Set\s*\(\s*['"](\w+)['"]`),
 		TargetTemplate: `ctx.SetState("$1"`,
+		SourceFramework: "restate",
+	},
+	// Idempotency key
+	{
+		Name:           "restate-idempotency-key",
+		SourcePattern:  regexp.MustCompile(`ctx\.IdempotencyKey\s*\(`),
+		TargetTemplate: `ctx.IdempotencyKey(`,
+		SourceFramework: "restate",
+	},
+	// Service client
+	{
+		Name:           "restate-service-client",
+		SourcePattern:  regexp.MustCompile(`restate\.NewServiceClient\s*\(`),
+		TargetTemplate: `velocity.NewClient(`,
 		SourceFramework: "restate",
 	},
 }
@@ -198,6 +240,26 @@ var DBOSPatterns = []*MigrationPattern{
 		TargetTemplate: `ctx.Recv(`,
 		SourceFramework: "dbos",
 	},
+	// Queue operations
+	{
+		Name:           "dbos-queue-enqueue",
+		SourcePattern:  regexp.MustCompile(`dbos\.Enqueue\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.Enqueue(`,
+		SourceFramework: "dbos",
+	},
+	{
+		Name:           "dbos-queue-dequeue",
+		SourcePattern:  regexp.MustCompile(`dbos\.Dequeue\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.Dequeue(`,
+		SourceFramework: "dbos",
+	},
+	// HTTP handler
+	{
+		Name:           "dbos-http-handler",
+		SourcePattern:  regexp.MustCompile(`dbos\.HTTPHandler\s*\(`),
+		TargetTemplate: `velocity.HTTPHandler(`,
+		SourceFramework: "dbos",
+	},
 }
 
 // AllPatterns combines all framework patterns.
@@ -226,12 +288,18 @@ func DetectFramework(content string) DetectResult {
 		{regexp.MustCompile(`go\.temporal\.io/sdk`), "temporal", 3, "Temporal SDK import"},
 		{regexp.MustCompile(`workflow\.Context`), "temporal", 2, "workflow.Context usage"},
 		{regexp.MustCompile(`workflow\.ExecuteActivity`), "temporal", 2, "workflow.ExecuteActivity"},
+		{regexp.MustCompile(`workflow\.GetSearchAttributes`), "temporal", 1, "workflow.GetSearchAttributes"},
+		{regexp.MustCompile(`workflow\.SetUpdateHandler`), "temporal", 1, "workflow.SetUpdateHandler"},
+		{regexp.MustCompile(`workflow\.ContinueAsNew`), "temporal", 1, "workflow.ContinueAsNew"},
 		{regexp.MustCompile(`restatedev/sdk-go`), "restate", 3, "Restate SDK import"},
 		{regexp.MustCompile(`restate\.Context`), "restate", 2, "restate.Context usage"},
 		{regexp.MustCompile(`ctx\.Call\(`), "restate", 1, "ctx.Call()"},
+		{regexp.MustCompile(`restate\.NewServiceClient`), "restate", 1, "restate.NewServiceClient"},
 		{regexp.MustCompile(`dbos-inc/dbos-go`), "dbos", 3, "DBOS SDK import"},
 		{regexp.MustCompile(`dbos\.WorkflowContext`), "dbos", 2, "dbos.WorkflowContext"},
 		{regexp.MustCompile(`dbos\.TransactionContext`), "dbos", 2, "dbos.TransactionContext"},
+		{regexp.MustCompile(`dbos\.Enqueue`), "dbos", 1, "dbos.Enqueue"},
+		{regexp.MustCompile(`dbos\.HTTPHandler`), "dbos", 1, "dbos.HTTPHandler"},
 	}
 
 	for _, c := range checks {

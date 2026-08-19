@@ -107,6 +107,34 @@ fn temporal_patterns() -> Vec<MigrationPattern> {
             target_template: "worker.register_activity(",
             source_framework: "temporal",
         },
+        // Search attributes
+        MigrationPattern {
+            name: "temporal-search-attributes",
+            source_pattern: "workflow::search_attributes(",
+            target_template: "ctx.search_attributes(",
+            source_framework: "temporal",
+        },
+        // Memo
+        MigrationPattern {
+            name: "temporal-memo",
+            source_pattern: "workflow::memo(",
+            target_template: "ctx.memo(",
+            source_framework: "temporal",
+        },
+        // Update handler
+        MigrationPattern {
+            name: "temporal-update-handler",
+            source_pattern: "#[temporal::update]",
+            target_template: "#[velocity::update]",
+            source_framework: "temporal",
+        },
+        // Continue-as-new
+        MigrationPattern {
+            name: "temporal-continue-as-new",
+            source_pattern: "workflow::continue_as_new(",
+            target_template: "ctx.continue_as_new(",
+            source_framework: "temporal",
+        },
     ]
 }
 
@@ -154,6 +182,20 @@ fn restate_patterns() -> Vec<MigrationPattern> {
             name: "restate-service-handler",
             source_pattern: "#[restate::handler]",
             target_template: "#[velocity::workflow]",
+            source_framework: "restate",
+        },
+        // Idempotency key
+        MigrationPattern {
+            name: "restate-idempotency-key",
+            source_pattern: "ctx.idempotency_key()",
+            target_template: "ctx.idempotency_key()",
+            source_framework: "restate",
+        },
+        // Service client
+        MigrationPattern {
+            name: "restate-service-client",
+            source_pattern: "restate::Client::new(",
+            target_template: "velocity_sdk::Client::new(",
             source_framework: "restate",
         },
     ]
@@ -211,6 +253,26 @@ fn dbos_patterns() -> Vec<MigrationPattern> {
             target_template: "ctx.get_event(",
             source_framework: "dbos",
         },
+        // Queue operations
+        MigrationPattern {
+            name: "dbos-queue-enqueue",
+            source_pattern: "dbos::enqueue(",
+            target_template: "ctx.enqueue(",
+            source_framework: "dbos",
+        },
+        MigrationPattern {
+            name: "dbos-queue-dequeue",
+            source_pattern: "dbos::dequeue(",
+            target_template: "ctx.dequeue(",
+            source_framework: "dbos",
+        },
+        // HTTP handler
+        MigrationPattern {
+            name: "dbos-http-handler",
+            source_pattern: "#[dbos::http_handler]",
+            target_template: "#[velocity::http_handler]",
+            source_framework: "dbos",
+        },
     ]
 }
 
@@ -242,6 +304,14 @@ pub fn detect_framework(content: &str) -> DetectionResult {
         scores[0].1 += 1;
         scores[0].2.push("execute_activity call".into());
     }
+    if content.contains("workflow::search_attributes") || content.contains("workflow::continue_as_new") {
+        scores[0].1 += 1;
+        scores[0].2.push("Temporal advanced workflow API".into());
+    }
+    if content.contains("#[temporal::update]") {
+        scores[0].1 += 1;
+        scores[0].2.push("Temporal update handler".into());
+    }
 
     // Restate checks
     if content.contains("restate-sdk") || content.contains("restate_sdk") {
@@ -256,6 +326,10 @@ pub fn detect_framework(content: &str) -> DetectionResult {
         scores[1].1 += 1;
         scores[1].2.push("ctx.run() call".into());
     }
+    if content.contains("ctx.idempotency_key") || content.contains("restate::Client") {
+        scores[1].1 += 1;
+        scores[1].2.push("Restate idempotency/client".into());
+    }
 
     // DBOS checks
     if content.contains("dbos-sdk") || content.contains("use dbos::") {
@@ -269,6 +343,10 @@ pub fn detect_framework(content: &str) -> DetectionResult {
     if content.contains("dbos::sleep") {
         scores[2].1 += 1;
         scores[2].2.push("dbos::sleep call".into());
+    }
+    if content.contains("dbos::enqueue") || content.contains("#[dbos::http_handler]") {
+        scores[2].1 += 1;
+        scores[2].2.push("DBOS queue/HTTP handler".into());
     }
 
     // Find best match

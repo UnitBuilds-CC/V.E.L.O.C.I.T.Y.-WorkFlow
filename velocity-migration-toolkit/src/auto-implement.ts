@@ -408,6 +408,188 @@ const dbosScanner: PatternScanner = {
   },
 };
 
+// ─── Gap Pattern Scanners ────────────────────────────────────────────────────
+
+/** Detects search attribute usage that could benefit from durable workflow context. */
+const searchAttributesScanner: PatternScanner = {
+  type: 'search-attributes',
+  extensions: ['.ts', '.js', '.py', '.go', '.java', '.rs'],
+  scan(content, filePath) {
+    const patterns: DetectedPattern[] = [];
+    const sigs = [
+      /workflow\.searchAttributes?\s*\(/,
+      /workflow\.getSearchAttributes\s*\(/,
+      /Workflow::search_attributes\s*\(/,
+      /Workflow::getSearchAttributes\s*\(/,
+    ];
+    for (const sig of sigs) {
+      const match = content.match(sig);
+      if (match) {
+        patterns.push({
+          type: 'search-attributes',
+          confidence: 0.85,
+          codeRegion: content.slice(Math.max(0, match.index! - 100), Math.min(content.length, match.index! + 200)),
+          startLine: content.slice(0, match.index).split('\n').length,
+          endLine: content.slice(0, match.index).split('\n').length,
+          entities: ['search-attributes-usage'],
+          description: `Search attributes usage detected — migrate to Velocity for durable context-aware search attributes`,
+        });
+      }
+    }
+    return patterns;
+  },
+};
+
+/** Detects queue operations that could benefit from durable queue processing. */
+const queueOperationScanner: PatternScanner = {
+  type: 'queue-operation',
+  extensions: ['.ts', '.js', '.py', '.go', '.java', '.rs', '.php', '.rb'],
+  scan(content, filePath) {
+    const patterns: DetectedPattern[] = [];
+    const sigs = [
+      /DBOS\.enqueue\s*\(/,
+      /DBOS\.dequeue\s*\(/,
+      /dbos::enqueue\s*\(/,
+      /dbos\.Enqueue\s*\(/,
+    ];
+    for (const sig of sigs) {
+      const match = content.match(sig);
+      if (match) {
+        patterns.push({
+          type: 'queue-operation',
+          confidence: 0.9,
+          codeRegion: content.slice(Math.max(0, match.index! - 100), Math.min(content.length, match.index! + 200)),
+          startLine: content.slice(0, match.index).split('\n').length,
+          endLine: content.slice(0, match.index).split('\n').length,
+          entities: ['queue-operation'],
+          description: `Queue operation detected — migrate to Velocity for durable queue processing with automatic retries`,
+        });
+      }
+    }
+    return patterns;
+  },
+};
+
+/** Detects HTTP handlers that could benefit from durable HTTP workflow integration. */
+const httpHandlerScanner: PatternScanner = {
+  type: 'http-handler',
+  extensions: ['.ts', '.js', '.py', '.go', '.java', '.rs', '.php', '.rb'],
+  scan(content, filePath) {
+    const patterns: DetectedPattern[] = [];
+    const sigs = [
+      /@DBOS\.httpHandler\s*\(/,
+      /#\[dbos::http_handler\]/,
+      /#\[DBOS\\HttpHandler/,
+      /dbos\.HTTPHandler\s*\(/,
+    ];
+    for (const sig of sigs) {
+      const match = content.match(sig);
+      if (match) {
+        patterns.push({
+          type: 'http-handler',
+          confidence: 0.85,
+          codeRegion: content.slice(Math.max(0, match.index! - 100), Math.min(content.length, match.index! + 200)),
+          startLine: content.slice(0, match.index).split('\n').length,
+          endLine: content.slice(0, match.index).split('\n').length,
+          entities: ['http-handler'],
+          description: `HTTP handler detected — migrate to Velocity for durable HTTP-triggered workflows`,
+        });
+      }
+    }
+    return patterns;
+  },
+};
+
+/** Detects update handler patterns that could benefit from durable update processing. */
+const updateHandlerScanner: PatternScanner = {
+  type: 'update-handler',
+  extensions: ['.ts', '.js', '.py', '.go', '.java', '.rs'],
+  scan(content, filePath) {
+    const patterns: DetectedPattern[] = [];
+    const sigs = [
+      /@workflow\.update/,
+      /#\[temporal::update\]/,
+      /@UpdateMethod/,
+      /workflow\.SetUpdateHandler\s*\(/,
+    ];
+    for (const sig of sigs) {
+      const match = content.match(sig);
+      if (match) {
+        patterns.push({
+          type: 'update-handler',
+          confidence: 0.85,
+          codeRegion: content.slice(Math.max(0, match.index! - 100), Math.min(content.length, match.index! + 200)),
+          startLine: content.slice(0, match.index).split('\n').length,
+          endLine: content.slice(0, match.index).split('\n').length,
+          entities: ['update-handler'],
+          description: `Update handler detected — migrate to Velocity for durable update processing`,
+        });
+      }
+    }
+    return patterns;
+  },
+};
+
+/** Detects continue-as-new patterns that could benefit from Velocity's workflow continuation. */
+const continueAsNewScanner: PatternScanner = {
+  type: 'continue-as-new',
+  extensions: ['.ts', '.js', '.py', '.go', '.java', '.rs'],
+  scan(content, filePath) {
+    const patterns: DetectedPattern[] = [];
+    const sigs = [
+      /workflow\.continueAsNew\s*\(/,
+      /workflow\.continue_as_new\s*\(/,
+      /Workflow::continue_as_new\s*\(/,
+      /Workflow::continueAsNew\s*\(/,
+    ];
+    for (const sig of sigs) {
+      const match = content.match(sig);
+      if (match) {
+        patterns.push({
+          type: 'continue-as-new',
+          confidence: 0.9,
+          codeRegion: content.slice(Math.max(0, match.index! - 100), Math.min(content.length, match.index! + 200)),
+          startLine: content.slice(0, match.index).split('\n').length,
+          endLine: content.slice(0, match.index).split('\n').length,
+          entities: ['continue-as-new'],
+          description: `Continue-as-new detected — migrate to Velocity for durable workflow continuation with state preservation`,
+        });
+      }
+    }
+    return patterns;
+  },
+};
+
+/** Detects idempotency key patterns that could benefit from Velocity's built-in idempotency. */
+const idempotencyScanner: PatternScanner = {
+  type: 'idempotency',
+  extensions: ['.ts', '.js', '.py', '.go', '.java', '.rs', '.php', '.rb'],
+  scan(content, filePath) {
+    const patterns: DetectedPattern[] = [];
+    const sigs = [
+      /ctx\.idempotencyKey/,
+      /context\.idempotency_key/,
+      /ctx\.IdempotencyKey\s*\(/,
+      /context\.idempotencyKey\s*\(/,
+    ];
+    for (const sig of sigs) {
+      const match = content.match(sig);
+      if (match) {
+        patterns.push({
+          type: 'idempotency',
+          confidence: 0.85,
+          codeRegion: content.slice(Math.max(0, match.index! - 100), Math.min(content.length, match.index! + 200)),
+          startLine: content.slice(0, match.index).split('\n').length,
+          endLine: content.slice(0, match.index).split('\n').length,
+          entities: ['idempotency-key'],
+          description: `Idempotency key detected — migrate to Velocity for built-in idempotency support`,
+        });
+      }
+    }
+    return patterns;
+  },
+};
+
 /** All registered pattern scanners. */
 const ALL_SCANNERS: PatternScanner[] = [
   expressScanner,
@@ -420,6 +602,12 @@ const ALL_SCANNERS: PatternScanner[] = [
   temporalScanner,
   restateScanner,
   dbosScanner,
+  searchAttributesScanner,
+  queueOperationScanner,
+  httpHandlerScanner,
+  updateHandlerScanner,
+  continueAsNewScanner,
+  idempotencyScanner,
 ];
 
 // ─── Code Generation ─────────────────────────────────────────────────────────
@@ -612,6 +800,147 @@ export class ${name}Workflow extends Workflow {
       return `// Auto-detected: ${pattern.description}
 // Use the migration toolkit for full conversion:
 //   velocity-migrate --project <dir> --from embedded --to classic
+`;
+
+    case 'search-attributes':
+      return `import { Workflow, Activity, Worker, Client } from '@velocity-workflow/classic';
+
+// Auto-implemented from: ${pattern.description}
+// Original pattern: ${pattern.type} — now has durable context-aware search attributes
+
+export class ${name}Workflow extends Workflow {
+  async execute(...args: any[]): Promise<any> {
+    // Search attributes are now managed through the durable workflow context
+    // They persist across workflow execution and are queryable
+    const result = await this.executeActivity('${name}Activity', args);
+    return result;
+  }
+}
+
+export class ${name}Activity extends Activity {
+  async execute(args: any[]): Promise<any> {
+    // TODO: Move logic from original code
+    // Search attributes can be set via: this.workflowContext.setSearchAttributes({...})
+    return args;
+  }
+}
+`;
+
+    case 'queue-operation':
+      return `import { Workflow, Activity, Worker, Client } from '@velocity-workflow/classic';
+
+// Auto-implemented from: ${pattern.description}
+// Original pattern: ${pattern.type} — now has durable queue processing
+
+export class ${name}Workflow extends Workflow {
+  async execute(...args: any[]): Promise<any> {
+    // Queue operations are now durable — messages survive crashes
+    const result = await this.executeActivity('${name}Activity', args);
+    return result;
+  }
+}
+
+export class ${name}Activity extends Activity {
+  async execute(args: any[]): Promise<any> {
+    // TODO: Move queue processing logic here
+    // Enqueue/dequeue are now handled durably by the Velocity engine
+    return args;
+  }
+}
+`;
+
+    case 'http-handler':
+      return `import { Workflow, Activity, Worker, Client } from '@velocity-workflow/classic';
+
+// Auto-implemented from: ${pattern.description}
+// Original pattern: ${pattern.type} — now has durable HTTP-triggered workflows
+
+export class ${name}Workflow extends Workflow {
+  async execute(httpRequest: any): Promise<any> {
+    // HTTP handler is now integrated with durable workflow execution
+    const result = await this.executeActivity('processHttpRequest', httpRequest);
+    return result;
+  }
+}
+
+export class ProcessHttpRequestActivity extends Activity {
+  async execute(request: any): Promise<any> {
+    // TODO: Move HTTP handling logic here
+    // Request/response is now durably tracked by the workflow engine
+    return { status: 200, body: request };
+  }
+}
+`;
+
+    case 'update-handler':
+      return `import { Workflow, Activity, Worker, Client } from '@velocity-workflow/classic';
+
+// Auto-implemented from: ${pattern.description}
+// Original pattern: ${pattern.type} — now has durable update processing
+
+export class ${name}Workflow extends Workflow {
+  async execute(...args: any[]): Promise<any> {
+    // Update handler is now durable — updates survive crashes
+    const result = await this.executeActivity('${name}Activity', args);
+    return result;
+  }
+}
+
+export class ${name}Activity extends Activity {
+  async execute(args: any[]): Promise<any> {
+    // TODO: Move update handling logic here
+    // Updates are now processed durably with automatic retry
+    return args;
+  }
+}
+`;
+
+    case 'continue-as-new':
+      return `import { Workflow, Activity, Worker, Client } from '@velocity-workflow/classic';
+
+// Auto-implemented from: ${pattern.description}
+// Original pattern: ${pattern.type} — now has durable workflow continuation
+
+export class ${name}Workflow extends Workflow {
+  async execute(...args: any[]): Promise<any> {
+    // Continue-as-new is now handled durably by the Velocity engine
+    // State is preserved across workflow continuations
+    const result = await this.executeActivity('${name}Activity', args);
+    return result;
+  }
+}
+
+export class ${name}Activity extends Activity {
+  async execute(args: any[]): Promise<any> {
+    // TODO: Move logic from original code
+    // Workflow continuation state is automatically persisted
+    return args;
+  }
+}
+`;
+
+    case 'idempotency':
+      return `import { Workflow, Activity, Worker, Client } from '@velocity-workflow/classic';
+
+// Auto-implemented from: ${pattern.description}
+// Original pattern: ${pattern.type} — now has built-in idempotency
+
+export class ${name}Workflow extends Workflow {
+  async execute(...args: any[]): Promise<any> {
+    // Idempotency is now built into the Velocity engine
+    // Duplicate requests are automatically deduplicated
+    const result = await this.executeActivity('${name}Activity', args);
+    return result;
+  }
+}
+
+export class ${name}Activity extends Activity {
+  async execute(args: any[]): Promise<any> {
+    // TODO: Move logic from original code
+    // No manual idempotency key management needed
+    return args;
+  }
+}
 `;
 
     default:
