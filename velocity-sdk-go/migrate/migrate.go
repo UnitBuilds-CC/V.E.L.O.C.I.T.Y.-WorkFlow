@@ -337,6 +337,38 @@ var TemporalPatterns = []*MigrationPattern{
 		TargetTemplate: `"github.com/velocity-workflow/sdk-go/relay"`,
 		SourceFramework: "temporal",
 	},
+	// ─── API Protobuf Subpackage Imports ──────────────────────────────────────
+	{
+		Name:           "temporal-import-api-subpackages",
+		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/api/(.+)"`),
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go/api/$1"`,
+		SourceFramework: "temporal",
+	},
+	// ─── SDK Utility Subpackage Imports ───────────────────────────────────────
+	{
+		Name:           "temporal-import-sdk-converter",
+		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/converter"`),
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go/converter"`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-import-sdk-log",
+		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/log"`),
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go/log"`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-import-sdk-testsuite",
+		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/testsuite"`),
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go/testsuite"`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-import-sdk-catchall",
+		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/(.+)"`),
+		TargetTemplate: `"github.com/velocity-workflow/sdk-go/$1"`,
+		SourceFramework: "temporal",
+	},
 	// ─── Qualified Type Reference Conversions ──────────────────────────────────
 	{
 		Name:           "temporal-workflow-context-type",
@@ -389,6 +421,13 @@ var TemporalPatterns = []*MigrationPattern{
 	{
 		Name:           "temporal-activity-package-ref",
 		SourcePattern:  regexp.MustCompile(`\bactivity\.(GetInfo|Heartbeat|RecordHeartbeat)`),
+		TargetTemplate: `velocity.$1`,
+		SourceFramework: "temporal",
+	},
+	// ─── temporal.* package-level catch-all ─────────────────────────────────────
+	{
+		Name:           "temporal-package-ref-catchall",
+		SourcePattern:  regexp.MustCompile(`\btemporal\.([A-Z]\w*)`),
 		TargetTemplate: `velocity.$1`,
 		SourceFramework: "temporal",
 	},
