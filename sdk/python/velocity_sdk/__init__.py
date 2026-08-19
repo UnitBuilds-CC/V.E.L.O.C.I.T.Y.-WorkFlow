@@ -51,6 +51,14 @@ from .annotations import (
     scan_module,
 )
 from .worker import Worker, WorkerOptions, WorkerStats, WorkflowContext
+from .migrate import (
+    migrate_file,
+    bulk_migrate,
+    detect_framework,
+    scan_python_files,
+    FileMigrationResult,
+    BulkResult,
+)
 
 __all__ = [
     # Client
@@ -114,6 +122,13 @@ __all__ = [
     "WorkerOptions",
     "WorkerStats",
     "WorkflowContext",
+    # Migration
+    "migrate_file",
+    "bulk_migrate",
+    "detect_framework",
+    "scan_python_files",
+    "FileMigrationResult",
+    "BulkResult",
 ]
 
 __version__ = "1.0.0"

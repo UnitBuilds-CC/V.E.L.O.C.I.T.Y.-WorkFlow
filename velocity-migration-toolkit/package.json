@@ -7,6 +7,12 @@
   "bin": {
     "velocity-migrate": "dist/cli.js"
   },
+  "exports": {
+    ".": "./dist/index.js",
+    "./scanner": "./dist/scanner.js",
+    "./auto-implement": "./dist/auto-implement.js",
+    "./csharp-bridge": "./dist/csharp-bridge.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "jest --verbose",

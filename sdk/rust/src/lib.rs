@@ -25,6 +25,7 @@ pub mod codec;
 pub mod update;
 pub mod auto_apply;
 pub mod worker;
+pub mod migrate;
 
 #[cfg(test)]
 mod tests;
@@ -50,6 +51,7 @@ pub use auto_apply::{
     workflow_count, activity_count,
 };
 pub use worker::{Worker, WorkerOptions, WorkerStats, WorkerStatsSnapshot};
+pub use migrate::{migrate_file, detect_framework, scan_rust_files, DetectionResult, FileResult};
 
 /// Re-export the engine's WorkflowStatus so consumers don't need a direct dep.
 pub use velocity_workflow_engine::WorkflowStatus;

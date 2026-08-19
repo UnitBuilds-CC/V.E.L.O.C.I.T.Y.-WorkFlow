@@ -1,0 +1,510 @@
+#!/usr/bin/env python3
+"""
+Velocity Python Migration Tool
+
+Scans a Python codebase for Temporal, Restate, or DBOS workflow patterns
+and converts them to Velocity Python SDK workflows.
+
+Usage:
+    python -m velocity_sdk.migrate --src ./my_project --from temporal --to velocity
+    python -m velocity_sdk.migrate --src ./workflows --from auto --to velocity
+    python -m velocity_sdk.migrate --src workflow.py --from restate --to velocity
+"""
+
+import argparse
+import os
+import re
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+
+# ─── Pattern Definitions ─────────────────────────────────────────────────────
+
+@dataclass
+class MigrationPattern:
+    """A source pattern and its Velocity replacement."""
+    name: str
+    source_pattern: re.Pattern
+    target_template: str
+    source_framework: str  # 'temporal', 'restate', 'dbos', or 'any'
+
+
+# ─── Temporal → Velocity Patterns ────────────────────────────────────────────
+
+TEMPORAL_PATTERNS: list[MigrationPattern] = [
+    # Import replacements
+    MigrationPattern(
+        name='temporal-import-workflow',
+        source_pattern=re.compile(r'from\s+temporalio\s+import\s+workflow'),
+        target_template='from velocity_sdk import workflow, WorkflowContext',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-activity',
+        source_pattern=re.compile(r'from\s+temporalio\s+import\s+activity'),
+        target_template='from velocity_sdk import activity, ActivityContext',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-client',
+        source_pattern=re.compile(r'from\s+temporalio\.client\s+import'),
+        target_template='from velocity_sdk.client import VelocityClient',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-worker',
+        source_pattern=re.compile(r'from\s+temporalio\.worker\s+import'),
+        target_template='from velocity_sdk.worker import Worker',
+        source_framework='temporal',
+    ),
+    # Decorator replacements
+    MigrationPattern(
+        name='temporal-workflow-decorator',
+        source_pattern=re.compile(r'@workflow\.run'),
+        target_template='@workflow',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-activity-decorator',
+        source_pattern=re.compile(r'@activity\.definition'),
+        target_template='@activity',
+        source_framework='temporal',
+    ),
+    # Method call replacements
+    MigrationPattern(
+        name='temporal-execute-activity',
+        source_pattern=re.compile(r'await\s+workflow\.execute_activity\s*\(\s*(\w+)\s*,\s*'),
+        target_template='await ctx.execute_activity(\\1, ',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-start-activity',
+        source_pattern=re.compile(r'await\s+workflow\.start_activity\s*\(\s*(\w+)\s*,\s*'),
+        target_template='await ctx.execute_activity(\\1, ',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-sleep',
+        source_pattern=re.compile(r'await\s+asyncio\.sleep\s*\('),
+        target_template='await ctx.sleep(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-signal-handler',
+        source_pattern=re.compile(r'@workflow\.signal'),
+        target_template='@signal',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-query-handler',
+        source_pattern=re.compile(r'@workflow\.query'),
+        target_template='@query',
+        source_framework='temporal',
+    ),
+    # Class inheritance
+    MigrationPattern(
+        name='temporal-workflow-class',
+        source_pattern=re.compile(r'class\s+(\w+)\s*:\s*#\s*Temporal\s*workflow'),
+        target_template='class \\1:  # Velocity workflow',
+        source_framework='temporal',
+    ),
+]
+
+# ─── Restate → Velocity Patterns ─────────────────────────────────────────────
+
+RESTATE_PATTERNS: list[MigrationPattern] = [
+    MigrationPattern(
+        name='restate-import',
+        source_pattern=re.compile(r'from\s+restate\s+import\s+'),
+        target_template='from velocity_sdk import ',
+        source_framework='restate',
+    ),
+    MigrationPattern(
+        name='restate-service-decorator',
+        source_pattern=re.compile(r'@restate\.service'),
+        target_template='@workflow',
+        source_framework='restate',
+    ),
+    MigrationPattern(
+        name='restate-handler',
+        source_pattern=re.compile(r'@ctx\.handler'),
+        target_template='@activity',
+        source_framework='restate',
+    ),
+    MigrationPattern(
+        name='restate-ctx-run',
+        source_pattern=re.compile(r'await\s+ctx\.run\s*\(\s*(\w+)\s*,\s*'),
+        target_template='await ctx.execute_activity(\\1, ',
+        source_framework='restate',
+    ),
+    MigrationPattern(
+        name='restate-ctx-get',
+        source_pattern=re.compile(r'await\s+ctx\.get\s*\(\s*[\'"](\w+)[\'"]'),
+        target_template='await ctx.get_state(\\1\\1)',
+        source_framework='restate',
+    ),
+    MigrationPattern(
+        name='restate-ctx-set',
+        source_pattern=re.compile(r'await\s+ctx\.set\s*\(\s*[\'"](\w+)[\'"]\s*,'),
+        target_template='await ctx.set_state(\\1\\1,',
+        source_framework='restate',
+    ),
+    MigrationPattern(
+        name='restate-ctx-sleep',
+        source_pattern=re.compile(r'await\s+ctx\.sleep\s*\('),
+        target_template='await ctx.sleep(',
+        source_framework='restate',
+    ),
+    MigrationPattern(
+        name='restate-ctx-invoke',
+        source_pattern=re.compile(r'await\s+ctx\.invoke\s*\(\s*(\w+)\s*,\s*[\'"](\w+)[\'"]'),
+        target_template='await ctx.execute_activity(\\1.\\2',
+        source_framework='restate',
+    ),
+]
+
+# ─── DBOS → Velocity Patterns ────────────────────────────────────────────────
+
+DBOS_PATTERNS: list[MigrationPattern] = [
+    MigrationPattern(
+        name='dbos-import',
+        source_pattern=re.compile(r'from\s+dbos\s+import\s+'),
+        target_template='from velocity_sdk import ',
+        source_framework='dbos',
+    ),
+    MigrationPattern(
+        name='dbos-workflow-decorator',
+        source_pattern=re.compile(r'@DBOS\.workflow'),
+        target_template='@workflow',
+        source_framework='dbos',
+    ),
+    MigrationPattern(
+        name='dbos-transaction-decorator',
+        source_pattern=re.compile(r'@DBOS\.transaction'),
+        target_template='@activity',
+        source_framework='dbos',
+    ),
+    MigrationPattern(
+        name='dbos-sleep',
+        source_pattern=re.compile(r'await\s+DBOS\.sleep\s*\('),
+        target_template='await ctx.sleep(',
+        source_framework='dbos',
+    ),
+    MigrationPattern(
+        name='dbos-recv',
+        source_pattern=re.compile(r'await\s+DBOS\.recv\s*\('),
+        target_template='await ctx.recv(',
+        source_framework='dbos',
+    ),
+    MigrationPattern(
+        name='dbos-set-event',
+        source_pattern=re.compile(r'await\s+DBOS\.set_event\s*\(\s*[\'"](\w+)[\'"]'),
+        target_template='await ctx.set_event(\\1\\1)',
+        source_framework='dbos',
+    ),
+    MigrationPattern(
+        name='dbos-get-event',
+        source_pattern=re.compile(r'await\s+DBOS\.get_event\s*\(\s*[\'"](\w+)[\'"]'),
+        target_template='await ctx.get_event(\\1\\1)',
+        source_framework='dbos',
+    ),
+]
+
+ALL_PATTERNS = TEMPORAL_PATTERNS + RESTATE_PATTERNS + DBOS_PATTERNS
+
+
+# ─── Framework Detection ─────────────────────────────────────────────────────
+
+def detect_framework(content: str) -> tuple[str, float]:
+    """Detect which framework the code uses. Returns (framework, confidence)."""
+    scores = {'temporal': 0, 'restate': 0, 'dbos': 0}
+
+    # Temporal indicators
+    if re.search(r'from\s+temporalio', content): scores['temporal'] += 3
+    if re.search(r'@workflow\.run', content): scores['temporal'] += 2
+    if re.search(r'workflow\.execute_activity', content): scores['temporal'] += 2
+    if re.search(r'@workflow\.signal', content): scores['temporal'] += 1
+    if re.search(r'Temporal.*Client', content): scores['temporal'] += 1
+
+    # Restate indicators
+    if re.search(r'from\s+restate\s+import', content): scores['restate'] += 3
+    if re.search(r'@restate\.service', content): scores['restate'] += 2
+    if re.search(r'ctx\.run\(', content): scores['restate'] += 1
+    if re.search(r'ctx\.invoke\(', content): scores['restate'] += 1
+
+    # DBOS indicators
+    if re.search(r'from\s+dbos\s+import', content): scores['dbos'] += 3
+    if re.search(r'@DBOS\.workflow', content): scores['dbos'] += 2
+    if re.search(r'@DBOS\.transaction', content): scores['dbos'] += 2
+    if re.search(r'DBOS\.sleep', content): scores['dbos'] += 1
+
+    best = max(scores, key=scores.get)
+    total = sum(scores.values())
+    confidence = scores[best] / total if total > 0 else 0.0
+    return best, confidence
+
+
+# ─── File Migration ──────────────────────────────────────────────────────────
+
+@dataclass
+class FileMigrationResult:
+    source_path: str
+    output_path: Optional[str] = None
+    success: bool = True
+    error: Optional[str] = None
+    detected_framework: str = ''
+    transformations: int = 0
+    confidence: float = 0.0
+
+
+def migrate_file(
+    content: str,
+    source_framework: str,
+    file_path: str = '<unknown>',
+) -> tuple[str, FileMigrationResult]:
+    """Migrate a single file's content. Returns (migrated_code, result)."""
+    result = FileMigrationResult(source_path=file_path)
+
+    # Auto-detect if needed
+    if source_framework == 'auto':
+        detected, confidence = detect_framework(content)
+        result.detected_framework = detected
+        result.confidence = confidence
+        if confidence < 0.3:
+            result.success = False
+            result.error = f'Low confidence detection: {detected} ({confidence:.2f})'
+            return content, result
+        source_framework = detected
+    else:
+        result.detected_framework = source_framework
+
+    # Select patterns
+    if source_framework == 'temporal':
+        patterns = TEMPORAL_PATTERNS
+    elif source_framework == 'restate':
+        patterns = RESTATE_PATTERNS
+    elif source_framework == 'dbos':
+        patterns = DBOS_PATTERNS
+    else:
+        result.success = False
+        result.error = f'Unknown source framework: {source_framework}'
+        return content, result
+
+    # Apply transformations
+    migrated = content
+    count = 0
+    for pattern in patterns:
+        new_text, n = pattern.source_pattern.subn(pattern.target_template, migrated)
+        if n > 0:
+            migrated = new_text
+            count += n
+
+    result.transformations = count
+
+    # Add Velocity import if not present
+    if 'from velocity_sdk import' not in migrated:
+        migrated = 'from velocity_sdk import workflow, activity, Worker\n' + migrated
+
+    return migrated, result
+
+
+# ─── Project Scanner ─────────────────────────────────────────────────────────
+
+SKIP_DIRS = {
+    'node_modules', '.git', '.venv', 'venv', '__pycache__', 'dist', 'build',
+    'target', '.mypy_cache', '.pytest_cache', '.tox', 'site-packages',
+}
+
+
+def scan_python_files(root_dir: str) -> list[str]:
+    """Recursively find all .py files in a directory."""
+    files = []
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        # Skip unwanted directories
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for fname in filenames:
+            if fname.endswith('.py'):
+                files.append(os.path.join(dirpath, fname))
+    return files
+
+
+def has_workflow_content(content: str) -> bool:
+    """Quick check if file contains workflow-related patterns."""
+    indicators = [
+        r'temporalio', r'restate', r'dbos',
+        r'@workflow', r'@activity', r'@DBOS',
+        r'async\s+def.*workflow', r'async\s+def.*activity',
+        r'execute_activity', r'ctx\.run\(', r'ctx\.invoke\(',
+    ]
+    return any(re.search(p, content) for p in indicators)
+
+
+# ─── Bulk Migration ──────────────────────────────────────────────────────────
+
+@dataclass
+class BulkResult:
+    total_files: int = 0
+    migrated: int = 0
+    failed: int = 0
+    skipped: int = 0
+    results: list[FileMigrationResult] = field(default_factory=list)
+
+
+def bulk_migrate(
+    source_dir: str,
+    output_dir: str,
+    source_framework: str = 'auto',
+    dry_run: bool = False,
+) -> BulkResult:
+    """Migrate all Python workflow files in a directory."""
+    result = BulkResult()
+
+    # Find all Python files
+    py_files = scan_python_files(source_dir)
+    result.total_files = len(py_files)
+
+    for file_path in py_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except Exception as e:
+            result.failed += 1
+            result.results.append(FileMigrationResult(
+                source_path=file_path, success=False, error=str(e),
+            ))
+            continue
+
+        # Skip files without workflow content
+        if not has_workflow_content(content):
+            result.skipped += 1
+            continue
+
+        # Migrate
+        migrated_code, file_result = migrate_file(
+            content, source_framework, file_path,
+        )
+        file_result.source_path = os.path.relpath(file_path, source_dir)
+
+        if file_result.success and not dry_run:
+            # Compute output path
+            rel_path = os.path.relpath(file_path, source_dir)
+            out_path = os.path.join(output_dir, rel_path)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            with open(out_path, 'w', encoding='utf-8') as f:
+                f.write(migrated_code)
+            file_result.output_path = out_path
+            result.migrated += 1
+        elif file_result.success:
+            result.migrated += 1
+        else:
+            result.failed += 1
+
+        result.results.append(file_result)
+
+    return result
+
+
+# ─── CLI ─────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Velocity Python Migration Tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Migrate a single file
+  python -m velocity_sdk.migrate --src workflow.py --from temporal --to velocity
+
+  # Migrate an entire project
+  python -m velocity_sdk.migrate --src ./my_project --from auto --to velocity --output ./migrated
+
+  # Detect framework
+  python -m velocity_sdk.migrate --detect ./my_project
+
+  # Dry run
+  python -m velocity_sdk.migrate --src ./my_project --from auto --to velocity --dry-run
+        """,
+    )
+    parser.add_argument('--src', required=True, help='Source file or directory')
+    parser.add_argument('--from', dest='source_framework', default='auto',
+                        choices=['temporal', 'restate', 'dbos', 'auto'],
+                        help='Source framework (default: auto-detect)')
+    parser.add_argument('--to', default='velocity', help='Target (always velocity)')
+    parser.add_argument('--output', '-o', help='Output file or directory')
+    parser.add_argument('--dry-run', action='store_true', help='Detect and report without writing')
+    parser.add_argument('--detect', action='store_true', help='Detect framework in directory')
+
+    args = parser.parse_args()
+
+    # Mode: detect
+    if args.detect:
+        if not os.path.isdir(args.src):
+            print(f'Error: --detect requires a directory: {args.src}')
+            sys.exit(1)
+        py_files = scan_python_files(args.src)
+        print(f'Scanning {len(py_files)} Python files in {args.src}...')
+        for f in py_files:
+            try:
+                with open(f, 'r', encoding='utf-8') as fh:
+                    content = fh.read()
+                fw, conf = detect_framework(content)
+                if conf > 0.3:
+                    print(f'  {os.path.relpath(f, args.src)}: {fw} ({conf:.0%})')
+            except Exception:
+                pass
+        return
+
+    # Mode: single file
+    if os.path.isfile(args.src):
+        with open(args.src, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        migrated, result = migrate_file(content, args.source_framework, args.src)
+
+        if not result.success:
+            print(f'Migration failed: {result.error}', file=sys.stderr)
+            sys.exit(1)
+
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as f:
+                f.write(migrated)
+            print(f'Written to: {args.output}')
+        else:
+            print(migrated)
+
+        print(f'\nDetected: {result.detected_framework}')
+        print(f'Transformations: {result.transformations}')
+        return
+
+    # Mode: directory
+    if os.path.isdir(args.src):
+        output_dir = args.output or os.path.join(args.src, '..', 'velocity-migrated')
+        print(f'Scanning: {args.src}')
+        print(f'Output: {output_dir if not args.dry_run else "(dry run)"}')
+        print(f'Source framework: {args.source_framework}')
+        print()
+
+        bulk = bulk_migrate(args.src, output_dir, args.source_framework, args.dry_run)
+
+        print(f'Results:')
+        print(f'  Total files: {bulk.total_files}')
+        print(f'  Migrated: {bulk.migrated}')
+        print(f'  Failed: {bulk.failed}')
+        print(f'  Skipped: {bulk.skipped}')
+
+        for r in bulk.results:
+            status = 'OK' if r.success else 'FAIL'
+            fw = r.detected_framework or '?'
+            print(f'  [{status}] {r.source_path} ({fw}, {r.transformations} changes)')
+            if r.error:
+                print(f'         Error: {r.error}')
+        return
+
+    print(f'Error: {args.src} is not a file or directory', file=sys.stderr)
+    sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
