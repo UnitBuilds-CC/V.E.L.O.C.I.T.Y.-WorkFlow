@@ -22,6 +22,11 @@
  */
 
 import { EventEmitter } from 'events';
+import {
+  getRegisteredWorkflows,
+  getRegisteredActivities,
+  type WorkflowClass,
+} from './decorators';
 
 // ─── Worker Configuration ─────────────────────────────────────────────────────
 
@@ -487,8 +492,27 @@ export class Worker extends EventEmitter {
       activities: options.activities ?? {},
       interceptors: options.interceptors ?? [],
     };
-    this.workflows = this.options.workflows;
-    this.activities = this.options.activities;
+    
+    // Merge manual registrations with auto-apply registry
+    this.workflows = { ...this.options.workflows };
+    this.activities = { ...this.options.activities };
+    
+    // Auto-discover workflows and activities from decorator registry
+    const autoWorkflows = getRegisteredWorkflows();
+    const autoActivities = getRegisteredActivities();
+    
+    autoWorkflows.forEach((WorkflowClass, workflowType) => {
+      if (!this.workflows[workflowType]) {
+        const instance = new WorkflowClass();
+        this.workflows[workflowType] = instance.run.bind(instance);
+      }
+    });
+    
+    autoActivities.forEach((handler, activityName) => {
+      if (!this.activities[activityName]) {
+        this.activities[activityName] = handler as ActivityImplementation;
+      }
+    });
   }
 
   /**

@@ -101,3 +101,18 @@ export type { WorkflowStubOptions } from './workflow-stub';
 // Update
 export { UpdateClient } from './update';
 export type { UpdateOptions, UpdateResult } from './update';
+
+// Auto-Apply Decorators
+export {
+  workflow,
+  activity,
+  signal,
+  query,
+  update,
+  getRegisteredWorkflows,
+  getRegisteredActivities,
+  clearRegistries,
+  workflowCount,
+  activityCount,
+} from './decorators';
+export type { WorkflowClass, ActivityOptions, WorkflowOptions } from './decorators';

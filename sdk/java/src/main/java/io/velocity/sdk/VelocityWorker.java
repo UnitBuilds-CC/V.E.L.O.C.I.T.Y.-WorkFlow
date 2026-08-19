@@ -11,8 +11,14 @@ import java.util.*;
  * <p>
  * Usage:
  * <pre>{@code
+ * // Manual registration
  * VelocityWorker worker = VelocityWorker.create("localhost:7234", "orders");
  * worker.registerWorkflow(OrderProcessingWorkflow.class);
+ * worker.start();
+ * 
+ * // Auto-apply registration (scans packages for @DurableWorkflow annotations)
+ * VelocityWorker worker = VelocityWorker.create("localhost:7234", "orders");
+ * worker.autoDiscoverWorkflows("com.example.workflows");
  * worker.start();
  * }</pre>
  */
@@ -77,6 +83,24 @@ public class VelocityWorker {
                 activityHandlers.put(actName, method);
             }
         }
+    }
+
+    /**
+     * Auto-discover and register all workflows in the specified packages.
+     * Scans for classes with @DurableWorkflow annotation and registers them automatically.
+     *
+     * @param packageNames packages to scan (e.g., "com.example.workflows")
+     */
+    public void autoDiscoverWorkflows(String... packageNames) {
+        WorkflowScanner scanner = new WorkflowScanner();
+        List<Class<?>> workflows = scanner.scanPackages(packageNames);
+        
+        for (Class<?> workflow : workflows) {
+            registerWorkflow(workflow);
+        }
+        
+        System.out.printf("[VelocityWorker] Auto-discovered %d workflows from packages: %s%n",
+                workflows.size(), String.join(", ", packageNames));
     }
 
     /**

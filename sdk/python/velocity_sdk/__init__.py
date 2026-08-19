@@ -39,6 +39,18 @@ from .payload_codec import (
     CodecChain,
 )
 from .workflow_stub import WorkflowStub, WorkflowStubOptions
+from .annotations import (
+    workflow,
+    activity,
+    signal,
+    query,
+    update,
+    get_registered_workflows,
+    get_registered_activities,
+    clear_registries,
+    scan_module,
+)
+from .worker import Worker, WorkerOptions, WorkerStats, WorkflowContext
 
 __all__ = [
     # Client
@@ -87,6 +99,21 @@ __all__ = [
     # Workflow Stub
     "WorkflowStub",
     "WorkflowStubOptions",
+    # Auto-Apply Decorators
+    "workflow",
+    "activity",
+    "signal",
+    "query",
+    "update",
+    "get_registered_workflows",
+    "get_registered_activities",
+    "clear_registries",
+    "scan_module",
+    # Worker
+    "Worker",
+    "WorkerOptions",
+    "WorkerStats",
+    "WorkflowContext",
 ]
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

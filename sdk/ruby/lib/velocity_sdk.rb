@@ -27,8 +27,10 @@ require_relative 'velocity_sdk/workflow_options'
 require_relative 'velocity_sdk/activity_options'
 require_relative 'velocity_sdk/activity_stub'
 require_relative 'velocity_sdk/connection'
+require_relative 'velocity_sdk/auto_apply'
+require_relative 'velocity_sdk/worker'
 
 module VelocitySdk
   # Gem version, kept in sync with the gemspec.
-  VERSION = '0.1.0'
+  VERSION = '1.0.0'
 end

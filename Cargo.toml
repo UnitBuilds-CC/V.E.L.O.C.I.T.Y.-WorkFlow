@@ -15,6 +15,7 @@ members = [
     "velocity-classic-server",
     "bench-suite/prod-bench",
     "bench-suite/velocity-bench-server",
+    "sdk/rust",
 ]
 resolver = "2"
 
