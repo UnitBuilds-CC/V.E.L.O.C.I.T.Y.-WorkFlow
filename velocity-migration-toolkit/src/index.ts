@@ -79,13 +79,13 @@ const CTX_RUN_PATTERN = new RegExp(
 const BODY_TRANSFORM_RULES: TransformRule[] = [
   // ── Temporal → Velocity: proxied activity call (e.g. await greet(args)) ──
   {
-    pattern: /(?<!this\.|ctx\.|\w)await\s+([a-z]\w*)\s*\(([^)]*)\)/g,
+    pattern: /(?<!this\.|ctx\.|\w)await\s+((?!scheduleActivity\b|scheduleLocalActivity\b|startChild\b)[a-z]\w*)\s*\(([^)]*)\)/g,
     replacement: (m, target) => {
       if (target === 'temporal') return m[0];
       const fnName = m[1];
       const args = m[2];
       // Skip known non-activity functions
-      const skip = ['console','JSON','String','Number','Array','Object','Math','Date','parseInt','parseFloat','setTimeout','setInterval','require','import','Error','Promise','Buffer','Map','Set','Symbol','RegExp','Reflect','Proxy','WeakMap','WeakSet','AbortController','fetch','queueMicrotask','structuredClone'];
+      const skip = ['console','JSON','String','Number','Array','Object','Math','Date','parseInt','parseFloat','setTimeout','setInterval','require','import','Error','Promise','Buffer','Map','Set','Symbol','RegExp','Reflect','Proxy','WeakMap','WeakSet','AbortController','fetch','queueMicrotask','structuredClone','scheduleActivity','scheduleLocalActivity','startChild'];
       if (skip.includes(fnName) || fnName.startsWith('_')) return m[0];
       if (['if','for','while','switch','catch','return','new','throw','typeof','instanceof','void','delete','in','of'].includes(fnName)) return m[0];
       switch (target) {

@@ -1051,56 +1051,56 @@ export const testWorkflow = defineWorkflow(async () => {
   describe('Import Transforms', () => {
     test('converts @temporalio/workflow to @velocity-workflow/server', () => {
       const source = `import { workflow } from '@temporalio/workflow';`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
+      const result = transformBody(source, 'temporal', 'server');
       expect(result).toContain(`from '@velocity-workflow/server'`);
       expect(result).not.toContain('@temporalio');
     });
 
     test('converts @temporalio/client to @velocity-workflow/client', () => {
       const source = `import { Client } from '@temporalio/client';`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
+      const result = transformBody(source, 'temporal', 'server');
       expect(result).toContain(`from '@velocity-workflow/client'`);
     });
 
     test('converts @temporalio/activity to @velocity-workflow/activity', () => {
       const source = `import { Context } from '@temporalio/activity';`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
+      const result = transformBody(source, 'temporal', 'server');
       expect(result).toContain(`from '@velocity-workflow/activity'`);
     });
 
     test('converts @temporalio/worker to @velocity-workflow/worker', () => {
       const source = `import { Worker } from '@temporalio/worker';`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
+      const result = transformBody(source, 'temporal', 'server');
       expect(result).toContain(`from '@velocity-workflow/worker'`);
     });
 
     test('converts @temporalio/common to @velocity-workflow/common', () => {
       const source = `import { RetryPolicy } from '@temporalio/common';`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
+      const result = transformBody(source, 'temporal', 'server');
       expect(result).toContain(`from '@velocity-workflow/common'`);
     });
 
     test('converts deep @temporalio/common/lib imports', () => {
       const source = `import { searchAttributes } from '@temporalio/common/lib/converter';`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
+      const result = transformBody(source, 'temporal', 'server');
       expect(result).toContain(`from '@velocity-workflow/common/lib/converter'`);
     });
 
     test('converts require() calls for @temporalio packages', () => {
       const source = `const { sleep } = require('@temporalio/activity');`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
+      const result = transformBody(source, 'temporal', 'server');
       expect(result).toContain(`require('@velocity-workflow/activity')`);
     });
 
     test('converts Go temporal imports', () => {
       const source = `import "go.temporal.io/sdk/workflow"`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
-      expect(result).toContain(`github.com/velocity-workflow/sdk-go`);
+      const result = transformBody(source, 'temporal', 'server');
+      expect(result).toContain(`github.com/velocity-workflow/velocity-sdk-go`);
     });
 
     test('converts Python temporal imports', () => {
       const source = `from temporalio import workflow`;
-      const result = migrate(source, { source: 'temporal', target: 'server' });
+      const result = transformBody(source, 'temporal', 'server');
       expect(result).toContain(`from velocity_sdk import workflow`);
     });
   });
