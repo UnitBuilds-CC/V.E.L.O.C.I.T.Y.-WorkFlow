@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -654,11 +654,16 @@ async fn handle_keyed_invoke(
 }
 
 /// Health check endpoint.
+/// Cached sysinfo::System — allocated once, reused for every /health call.
+/// Avoids per-request heap allocation from System::new().
+static SYSTEM_CACHE: OnceLock<Mutex<sysinfo::System>> = OnceLock::new();
+
 async fn handle_health() -> Json<serde_json::Value> {
-    // Read process RSS for memory reporting
+    // Read process RSS for memory reporting — zero-alloc after first call
     let rss_mb = {
-        use sysinfo::{Pid, System, ProcessesToUpdate};
-        let mut sys = System::new();
+        use sysinfo::{Pid, ProcessesToUpdate};
+        let sys = SYSTEM_CACHE.get_or_init(|| Mutex::new(sysinfo::System::new()));
+        let mut sys = sys.lock().unwrap();
         let pid = Pid::from(std::process::id() as usize);
         sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), false);
         sys.process(pid)

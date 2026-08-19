@@ -19,7 +19,7 @@ pub const SLAB_POOL_CAPACITY: usize = 65_536;
 /// Inline per-workflow metadata — no heap allocations.
 /// Padded to 128 bytes so slot total = SlabHeader(128) + SlotMeta(128) = 256 bytes.
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct SlotMeta {
     pub workflow_type_id: u64,
     pub namespace_id: u64,
@@ -80,6 +80,7 @@ impl SlotMeta {
 /// A single slab slot: fixed-size, no heap allocations.
 /// 128 (SlabHeader) + 128 (SlotMeta) = 256 bytes per slot.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct SlabSlot {
     pub header: SlabHeader,
     pub meta: SlotMeta,
@@ -120,11 +121,10 @@ pub struct WorkflowSlabPool {
 impl WorkflowSlabPool {
     /// Create a new slab pool with pre-allocated slots.
     /// Memory is allocated once and never grows.
+    /// Single heap allocation — `vec![value; N]` uses one `alloc_zeroed` + fill.
     pub fn new() -> Self {
-        let mut slots = Vec::with_capacity(SLAB_POOL_CAPACITY);
-        for _ in 0..SLAB_POOL_CAPACITY {
-            slots.push(SlabSlot::empty());
-        }
+        // SlabSlot is Copy + Clone — vec![val; N] does one allocation, not N
+        let slots = vec![SlabSlot::empty(); SLAB_POOL_CAPACITY];
         Self {
             slots,
             free_cursor: AtomicU16::new(0),
@@ -187,16 +187,16 @@ impl WorkflowSlabPool {
 
     /// Evict a workflow by slot index — immediately frees the slot.
     /// The caller should have already persisted state to WAL before calling this.
+    /// Zero-alloc: uses `write_bytes` to zero the slot in-place (no temporary).
     pub fn evict(&self, idx: usize) {
         if idx >= self.slots.len() {
             return;
         }
         
-        // Safety: exclusive write to this slot
+        // Zero the slot in-place — no temporary, no memcpy from stack
         let slot_ptr = &self.slots[idx] as *const SlabSlot as *mut SlabSlot;
         unsafe {
-            (*slot_ptr).header = SlabSlot::empty().header;
-            (*slot_ptr).meta = SlotMeta::empty();
+            std::ptr::write_bytes(slot_ptr as *mut u8, 0, std::mem::size_of::<SlabSlot>());
         }
         
         // Reset free_cursor to the evicted slot so next allocate() reuses it immediately

@@ -544,6 +544,12 @@ impl DeploymentPipeline {
             .copied()
     }
 
+    /// Fast check: are there any active deployments at all?
+    /// Zero-alloc — avoids `format!()` when no deployments exist (common case).
+    pub fn has_active_deployments(&self) -> bool {
+        !self.active_by_type.read().unwrap().is_empty()
+    }
+
     /// Get the active deployment for a workflow type.
     pub fn get_active_deployment(&self, workflow_type: &str) -> Option<WorkflowDeployment> {
         let active = self.active_by_type.read().unwrap();

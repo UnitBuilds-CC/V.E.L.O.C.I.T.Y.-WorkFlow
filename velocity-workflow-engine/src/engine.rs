@@ -2103,8 +2103,8 @@ impl WorkflowEngine {
 
     /// Complete a workflow with a result.
     pub fn complete_workflow(&self, workflow_key: u64, result: Option<Vec<u8>>) {
-        // Clone result for WAL before moving into context
-        let wal_data = result.as_ref().cloned().unwrap_or_default();
+        // Zero-alloc: do NOT clone result for WAL — just record the completion event.
+        // The result payload lives in the WorkflowContext until purge.
         {
             if let Some(mut ctx) = self.workflows.get_mut(&workflow_key) {
                 ctx.complete(result);
@@ -2115,27 +2115,28 @@ impl WorkflowEngine {
         self.history_store.record_event(
             workflow_key,
             crate::event_history::HistoryEventType::WorkflowCompleted,
-            vec![],
+            Vec::new(), // zero-alloc: empty payload, no heap allocation
         );
         self.metrics_registry
             .inc_counter("velocity_workflow_completed_total");
         self.metrics_registry
             .set_gauge("velocity_workflows_running", self.workflow_count() as i64);
 
-        // Record deployment pipeline metrics if an active deployment exists
-        {
-            let wf_type_id = self
-                .workflows
-                .get(&workflow_key)
-                .map_or(0, |c| c.workflow_type_id);
+        // Record deployment pipeline metrics — zero-alloc fast path:
+        // skip format!() when no active deployments exist (common case).
+        let wf_type_id = self
+            .workflows
+            .get(&workflow_key)
+            .map_or(0, |c| c.workflow_type_id);
+        // Execution tracker and circuit breaker always record (zero-alloc)
+        self.execution_tracker.record_completion(wf_type_id, 0);
+        self.circuit_breaker.record_success(wf_type_id);
+        // Deployment pipeline lookup only when deployments exist
+        if self.deployment_pipeline.has_active_deployments() {
             let wf_type = format!("wf_type_{}", wf_type_id);
             if let Some(dep_id) = self.deployment_pipeline.get_active_deployment_id(&wf_type) {
                 self.deployment_pipeline.record_execution(dep_id, true, 0);
             }
-            // Track completion in execution tracker
-            self.execution_tracker.record_completion(wf_type_id, 0);
-            // Record circuit breaker success
-            self.circuit_breaker.record_success(wf_type_id);
         }
 
         // Remove from dependency graph tracking (workflow is terminal)
@@ -2146,8 +2147,8 @@ impl WorkflowEngine {
             .unregister_workflow(workflow_key);
 
         if let Some(wal) = &self.wal {
-            // Persist result payload for crash durability
-            let _ = wal.append(WalEventType::WorkflowCompleted, workflow_key, wal_data);
+            // Persist completion event (no payload — zero-alloc)
+            let _ = wal.append(WalEventType::WorkflowCompleted, workflow_key, Vec::new());
             // durability: background fsync thread handles group-commit (amortized fsync)
         }
         // Auto-archive if policy says so

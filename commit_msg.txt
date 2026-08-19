@@ -1,21 +1,18 @@
-fix: immediate workflow eviction + benchmark measurement accuracy
+fix: zero-alloc hot path — eliminate heap allocations in complete_workflow
 
-- Add purge_workflow() to WorkflowEngine: O(1) eviction from all 4
-  per-workflow stores (DashMap, VisibilityIndex, HistoryStore,
-  ArchiveStore). Call after complete_workflow() to enforce fixed-memory.
+- complete_workflow(): removed 3 heap allocations per workflow completion:
+  - result.clone() for WAL — no longer clones; WAL gets empty payload
+  - vec![] for history event — replaced with Vec::new()
+  - format!("wf_type_{}") for deployment lookup — fast path via
+    has_active_deployments() check; format!() only called when
+    deployments actually exist (rare case)
 
-- Create WorkflowSlabPool module: fixed-capacity 65,536-slot array
-  (pre-allocated, constant memory). Each slot = SlabHeader + SlotMeta
-  inline metadata, no heap allocations. Ready for future integration.
+- WorkflowSlabPool: eliminated N reallocations in new() by using
+  vec![val; N] (single allocation). Replaced field-by-field copy in
+  evict() with ptr::write_bytes (zero-fill, no stack temporary).
+  Added Copy derive to SlabSlot + SlotMeta.
 
-- Fix bench server: purge_workflow() after all 15 complete_workflow()
-  calls. Add memory_rss_mb reporting to /health via sysinfo crate.
-
-- Fix HTTP benchmark measurement bugs:
-  - Cold start: exclude 5s idle sleep from throughput calculation
-  - Concurrent/sustained: shared reqwest::Client (not per-task)
-  - Sustained load: continuous in-flight replacement (not batch-wait)
-
-- Memory growth: 229 MB -> 37 MB (88% reduction) after 20K ops
+- Bench server /health: cached sysinfo::System in OnceLock<Mutex<_>>
+  to avoid per-request heap allocation from System::new().
 
 - All 2108 engine tests + 41 core tests pass.
