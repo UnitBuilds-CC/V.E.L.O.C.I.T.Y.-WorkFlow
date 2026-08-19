@@ -354,9 +354,9 @@ async fn main() {
         Duration::from_secs(cli.session_ttl_secs),
     );
 
-    println!("╦  ╦ ╔╗╔ ╦╔═ ╔═╗ ╦ ╦ ╔═╗ ╔╗╔ ╔═╗");
-    println!("╚╗╔╝ ║║║ ╠╩╗ ╠═╣ ║ ║ ║╣  ║║║ ║ ║");
-    println!("  ╚╝  ╝╚╝ ╩ ╩ ╩ ╩ ╚═╝ ╚═╝ ╝╚╝ ╚═╝");
+    println!("╔══╗ ╔═╗ ╔╦  ╔═╗ ╔═╗ ╦ ╦ ╔══╗ ╔═╗");
+    println!("║╞══ ║   ╠╦╗ ╠═  ║   ╞═╣ ║ ║ ╠╦╗");
+    println!("╚══╝ ╚═╝ ╩ ╚═ ╚═╝ ╚═╝ ╩ ╩ ╚══╝ ╩");
     println!("  VCTP Sidecar Proxy v{}", env!("CARGO_PKG_VERSION"));
     println!("  External: {}", cli.external_bind);
     println!("  Internal: {} (plaintext)", cli.internal_server);

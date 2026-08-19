@@ -1,14 +1,6 @@
-feat(engine): replace DashMap with fixed-capacity WorkflowContextPool
+fix: realign VELOCITY ASCII art banner across all servers
 
-Replace unbounded DashMap<u64, WorkflowContext> with WorkflowContextPool:
-- 8192 pre-allocated slots with O(1) key index and free list
-- Fixed memory: no growth during sustained benchmark (57-62 MB flat)
-- Eliminates DashMap bucket growth and Windows heap fragmentation
-- Migrate all ~40 DashMap call sites in engine.rs and ffi.rs
-- Add for_each_mut for mutable iteration (timeout checks)
-- All 2118 engine tests pass
-
-Benchmark (stress profile, 10x ops, 60s sustained):
-- Before: 11.4 -> 45.4 MB (+34 MB growth)
-- After: 57-62 MB (fixed, zero growth)
-- Throughput: 602 ops/sec sustained
+The box-drawing characters in the original banner did not form
+recognizable letters in many terminal fonts (E middle row looked
+like vertical lines, L middle looked like a corner). Redesign
+using proper horizontal bars for clear letter forms.
