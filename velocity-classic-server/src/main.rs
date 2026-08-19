@@ -149,11 +149,11 @@ async fn main() {
     ));
 
     println!(" #     #   #######   #          #####     ######   #######   #######   #     #");
-    println!(" #     #   #         #         #     #   #           #         #      #     #");
-    println!("  #   #    #         #         #     #   #           #         #       #   #");
-    println!("  #   #    #####     #         #     #   #           #         #        # #");
-    println!("   # #     #         #         #     #   #           #         #         #");
-    println!("   # #     #         #         #     #   #           #         #         #");
+    println!(" #     #   #         #         #     #   #            #          #       #     #");
+    println!("  #   #    #         #         #     #   #            #          #        #   #");
+    println!("  #   #    #####     #         #     #   #            #          #         # #");
+    println!("   # #     #         #         #     #   #            #          #          #");
+    println!("   # #     #         #         #     #   #            #          #          #");
     println!("    #      #######   #######    #####     ######   #######      #         #");
     println!("  Classic Server v{}", env!("CARGO_PKG_VERSION"));
     println!("  Shmem: {}", cli.shmem_path);

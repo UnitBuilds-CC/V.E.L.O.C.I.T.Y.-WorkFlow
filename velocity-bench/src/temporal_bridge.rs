@@ -1748,11 +1748,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grpc_addr: SocketAddr = format!("{}:{}", bind_ip, grpc_port).parse()?;
 
     info!(" #     #   #######   #          #####     ######   #######   #######   #     #");
-    info!(" #     #   #         #         #     #   #           #         #      #     #");
-    info!("  #   #    #         #         #     #   #           #         #       #   #");
-    info!("  #   #    #####     #         #     #   #           #         #        # #");
-    info!("   # #     #         #         #     #   #           #         #         #");
-    info!("   # #     #         #         #     #   #           #         #         #");
+    info!(" #     #   #         #         #     #   #            #          #       #     #");
+    info!("  #   #    #         #         #     #   #            #          #        #   #");
+    info!("  #   #    #####     #         #     #   #            #          #         # #");
+    info!("   # #     #         #         #     #   #            #          #          #");
+    info!("   # #     #         #         #     #   #            #          #          #");
     info!("    #      #######   #######    #####     ######   #######      #         #");
     info!("Temporal Bridge v0.2.0 — Fair-comparison mock mode");
     info!("gRPC:  http://{}", grpc_addr);

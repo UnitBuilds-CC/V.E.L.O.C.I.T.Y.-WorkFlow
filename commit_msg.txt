@@ -1,6 +1,1 @@
-fix: redesign VELOCITY ASCII banner with clearly readable 7-row letters
-
-The previous 5-row banner had letters that were hard to distinguish:
-E looked like C (missing middle bar), L looked like I (no bottom bar),
-C and O were identical. Use Python-generated 7-row font with 9-char
-wide letters that are unambiguously readable in any terminal font.
+fix: shift ITY letters 1 cell right in middle rows of VELOCITY banner
