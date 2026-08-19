@@ -138,6 +138,169 @@ TEMPORAL_PATTERNS: list[MigrationPattern] = [
         target_template='ctx.continue_as_new(',
         source_framework='temporal',
     ),
+    # ─── Child Workflow Patterns ─────────────────────────────────────────────
+    MigrationPattern(
+        name='temporal-execute-child-workflow',
+        source_pattern=re.compile(r'await\s+workflow\.execute_child_workflow\s*\(\s*(\w+)'),
+        target_template='await ctx.execute_child_workflow(\\1',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-start-child-workflow',
+        source_pattern=re.compile(r'await\s+workflow\.start_child_workflow\s*\(\s*(\w+)'),
+        target_template='await ctx.start_child_workflow(\\1',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-child-workflow-options',
+        source_pattern=re.compile(r'workflow\.ChildWorkflowOptions\s*\('),
+        target_template='velocity.ChildWorkflowOptions(',
+        source_framework='temporal',
+    ),
+    # ─── Activity Options Patterns ───────────────────────────────────────────
+    MigrationPattern(
+        name='temporal-activity-options',
+        source_pattern=re.compile(r'workflow\.ActivityOptions\s*\('),
+        target_template='velocity.ActivityOptions(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-execute-local-activity',
+        source_pattern=re.compile(r'await\s+workflow\.execute_local_activity\s*\(\s*(\w+)'),
+        target_template='await ctx.execute_local_activity(\\1',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-local-activity-options',
+        source_pattern=re.compile(r'workflow\.LocalActivityOptions\s*\('),
+        target_template='velocity.LocalActivityOptions(',
+        source_framework='temporal',
+    ),
+    # ─── Coroutine & Concurrency Patterns ────────────────────────────────────
+    MigrationPattern(
+        name='temporal-workflow-create-task',
+        source_pattern=re.compile(r'asyncio\.create_task\s*\('),
+        target_template='ctx.create_task(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-workflow-gather',
+        source_pattern=re.compile(r'asyncio\.gather\s*\('),
+        target_template='ctx.gather(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-workflow-await',
+        source_pattern=re.compile(r'await\s+workflow\.await_\s*\('),
+        target_template='await ctx.await_(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-workflow-await-with-timeout',
+        source_pattern=re.compile(r'await\s+workflow\.await_with_timeout\s*\('),
+        target_template='await ctx.await_with_timeout(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-new-future',
+        source_pattern=re.compile(r'workflow\.Future\s*\('),
+        target_template='ctx.Future(',
+        source_framework='temporal',
+    ),
+    # ─── Relay/Nexus Operation Patterns ──────────────────────────────────────
+    MigrationPattern(
+        name='temporal-new-nexus-client',
+        source_pattern=re.compile(r'workflow\.new_nexus_client\s*\('),
+        target_template='ctx.new_relay_client(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-nexus-execute-operation',
+        source_pattern=re.compile(r'await\s+client\.execute_operation\s*\('),
+        target_template='await relay_client.execute(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-nexus-operation-options',
+        source_pattern=re.compile(r'workflow\.NexusOperationOptions\s*\('),
+        target_template='velocity.RelayOperationOptions(',
+        source_framework='temporal',
+    ),
+    # ─── Activity Context Patterns ───────────────────────────────────────────
+    MigrationPattern(
+        name='temporal-activity-get-info',
+        source_pattern=re.compile(r'activity\.info\s*\('),
+        target_template='ctx.info()',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-activity-record-heartbeat',
+        source_pattern=re.compile(r'activity\.record_heartbeat\s*\('),
+        target_template='ctx.record_heartbeat(',
+        source_framework='temporal',
+    ),
+    # ─── Workflow Context Patterns ───────────────────────────────────────────
+    MigrationPattern(
+        name='temporal-workflow-get-info',
+        source_pattern=re.compile(r'workflow\.info\s*\('),
+        target_template='ctx.workflow_info()',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-workflow-get-logger',
+        source_pattern=re.compile(r'workflow\.logger\s*\('),
+        target_template='ctx.logger()',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-workflow-with-cancel',
+        source_pattern=re.compile(r'workflow\.with_cancel\s*\('),
+        target_template='ctx.with_cancel(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-signal-external-workflow',
+        source_pattern=re.compile(r'await\s+workflow\.signal_external_workflow\s*\('),
+        target_template='await ctx.signal_external_workflow(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-workflow-get-version',
+        source_pattern=re.compile(r'workflow\.get_version\s*\('),
+        target_template='ctx.get_version(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-upsert-search-attributes',
+        source_pattern=re.compile(r'await\s+workflow\.upsert_search_attributes\s*\('),
+        target_template='await ctx.upsert_search_attributes(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-upsert-memo',
+        source_pattern=re.compile(r'await\s+workflow\.upsert_memo\s*\('),
+        target_template='await ctx.upsert_memo(',
+        source_framework='temporal',
+    ),
+    # ─── Error Handling Patterns ─────────────────────────────────────────────
+    MigrationPattern(
+        name='temporal-new-application-error',
+        source_pattern=re.compile(r'workflow\.ApplicationError\s*\('),
+        target_template='velocity.ApplicationError(',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-canceled-error',
+        source_pattern=re.compile(r'workflow\.CanceledError'),
+        target_template='velocity.CanceledError',
+        source_framework='temporal',
+    ),
+    MigrationPattern(
+        name='temporal-import-temporal-package',
+        source_pattern=re.compile(r'from\s+temporalio\.nexus\s+import'),
+        target_template='from velocity_sdk.relay import',
+        source_framework='temporal',
+    ),
 ]
 
 # ─── Restate → Velocity Patterns ─────────────────────────────────────────────

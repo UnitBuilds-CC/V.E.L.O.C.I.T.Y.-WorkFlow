@@ -416,6 +416,236 @@ const BODY_TRANSFORM_RULES: TransformRule[] = [
       return `${m[1]} || ${m[2]}`;
     },
   },
+  // ─── Child Workflow Patterns ─────────────────────────────────────────────
+  {
+    pattern: /wf\.executeChildWorkflow\s*\(\s*(['"]\w+['"])/g,
+    replacement: (m, target) => {
+      const wfName = m[1];
+      switch (target) {
+        case 'classic': return `this.executeChildWorkflow(${wfName}`;
+        case 'runtime': return `ctx.executeChildWorkflow(${wfName}`;
+        case 'embedded': return `ctx.executeChildWorkflow(${wfName}`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.startChildWorkflow\s*\(\s*(['"]\w+['"])/g,
+    replacement: (m, target) => {
+      const wfName = m[1];
+      switch (target) {
+        case 'classic': return `this.startChildWorkflow(${wfName}`;
+        case 'runtime': return `ctx.startChildWorkflow(${wfName}`;
+        case 'embedded': return `ctx.startChildWorkflow(${wfName}`;
+        default: return m[0];
+      }
+    },
+  },
+  // ─── Activity Options Patterns ───────────────────────────────────────────
+  {
+    pattern: /wf\.ActivityOptions\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `new ActivityOptions(`;
+        case 'runtime': return `new ActivityOptions(`;
+        case 'embedded': return `new ActivityOptions(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.executeLocalActivity\s*\(\s*(['"]\w+['"])/g,
+    replacement: (m, target) => {
+      const actName = m[1];
+      switch (target) {
+        case 'classic': return `this.executeLocalActivity(${actName}`;
+        case 'runtime': return `ctx.executeLocalActivity(${actName}`;
+        case 'embedded': return `ctx.executeLocalActivity(${actName}`;
+        default: return m[0];
+      }
+    },
+  },
+  // ─── Coroutine & Concurrency Patterns ────────────────────────────────────
+  {
+    pattern: /wf\.condition\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.await(`;
+        case 'runtime': return `ctx.await(`;
+        case 'embedded': return `ctx.await(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.conditionWithTimeout\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.awaitWithTimeout(`;
+        case 'runtime': return `ctx.awaitWithTimeout(`;
+        case 'embedded': return `ctx.awaitWithTimeout(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /new\s+Promise\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.createPromise(`;
+        case 'runtime': return `ctx.createPromise(`;
+        case 'embedded': return `ctx.createPromise(`;
+        default: return m[0];
+      }
+    },
+  },
+  // ─── Relay/Nexus Operation Patterns ──────────────────────────────────────
+  {
+    pattern: /wf\.newNexusClient\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.newRelayClient(`;
+        case 'runtime': return `ctx.newRelayClient(`;
+        case 'embedded': return `ctx.newRelayClient(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /nexusClient\.executeOperation\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `relayClient.execute(`;
+        case 'runtime': return `relayClient.execute(`;
+        case 'embedded': return `relayClient.execute(`;
+        default: return m[0];
+      }
+    },
+  },
+  // ─── Activity Context Patterns ───────────────────────────────────────────
+  {
+    pattern: /activity\.info\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.getActivityInfo(`;
+        case 'runtime': return `ctx.getActivityInfo(`;
+        case 'embedded': return `ctx.getActivityInfo(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /activity\.heartbeat\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.heartbeat(`;
+        case 'runtime': return `ctx.heartbeat(`;
+        case 'embedded': return `ctx.heartbeat(`;
+        default: return m[0];
+      }
+    },
+  },
+  // ─── Workflow Context Patterns ───────────────────────────────────────────
+  {
+    pattern: /wf\.info\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.getWorkflowInfo(`;
+        case 'runtime': return `ctx.getWorkflowInfo(`;
+        case 'embedded': return `ctx.getWorkflowInfo(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.logger\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.logger(`;
+        case 'runtime': return `ctx.logger(`;
+        case 'embedded': return `ctx.logger(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.withCancel\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.withCancel(`;
+        case 'runtime': return `ctx.withCancel(`;
+        case 'embedded': return `ctx.withCancel(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.signalExternalWorkflow\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.signalExternalWorkflow(`;
+        case 'runtime': return `ctx.signalExternalWorkflow(`;
+        case 'embedded': return `ctx.signalExternalWorkflow(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.getVersion\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.getVersion(`;
+        case 'runtime': return `ctx.getVersion(`;
+        case 'embedded': return `ctx.getVersion(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.upsertSearchAttributes\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.upsertSearchAttributes(`;
+        case 'runtime': return `ctx.upsertSearchAttributes(`;
+        case 'embedded': return `ctx.upsertSearchAttributes(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /wf\.upsertMemo\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `this.upsertMemo(`;
+        case 'runtime': return `ctx.upsertMemo(`;
+        case 'embedded': return `ctx.upsertMemo(`;
+        default: return m[0];
+      }
+    },
+  },
+  // ─── Error Handling Patterns ─────────────────────────────────────────────
+  {
+    pattern: /new\s+ApplicationError\s*\(/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `new VelocityApplicationError(`;
+        case 'runtime': return `new VelocityApplicationError(`;
+        case 'embedded': return `new VelocityApplicationError(`;
+        default: return m[0];
+      }
+    },
+  },
+  {
+    pattern: /CanceledError/g,
+    replacement: (m, target) => {
+      switch (target) {
+        case 'classic': return `VelocityCanceledError`;
+        case 'runtime': return `VelocityCanceledError`;
+        case 'embedded': return `VelocityCanceledError`;
+        default: return m[0];
+      }
+    },
+  },
 ];
 
 // ─── Python ↔ TypeScript Type Mapping ────────────────────────────────────────

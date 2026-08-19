@@ -135,6 +135,163 @@ fn temporal_patterns() -> Vec<MigrationPattern> {
             target_template: "ctx.continue_as_new(",
             source_framework: "temporal",
         },
+        // ─── Child Workflow Patterns ─────────────────────────────────────────────
+        MigrationPattern {
+            name: "temporal-execute-child-workflow",
+            source_pattern: "workflow::execute_child_workflow(",
+            target_template: "ctx.execute_child_workflow(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-child-workflow-options",
+            source_pattern: "ChildWorkflowOptions::new(",
+            target_template: "ChildWorkflowOptions::new(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-child-workflow-future",
+            source_pattern: "ChildWorkflowFuture<",
+            target_template: "ChildWorkflowFuture<",
+            source_framework: "temporal",
+        },
+        // ─── Activity Options Patterns ───────────────────────────────────────────
+        MigrationPattern {
+            name: "temporal-activity-options",
+            source_pattern: "ActivityOptions::new(",
+            target_template: "ActivityOptions::new(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-execute-local-activity",
+            source_pattern: "workflow::execute_local_activity(",
+            target_template: "ctx.execute_local_activity(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-local-activity-options",
+            source_pattern: "LocalActivityOptions::new(",
+            target_template: "LocalActivityOptions::new(",
+            source_framework: "temporal",
+        },
+        // ─── Coroutine & Concurrency Patterns ────────────────────────────────────
+        MigrationPattern {
+            name: "temporal-tokio-spawn",
+            source_pattern: "tokio::spawn(",
+            target_template: "ctx.spawn(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-workflow-await",
+            source_pattern: "workflow::await(",
+            target_template: "ctx.await(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-workflow-await-with-timeout",
+            source_pattern: "workflow::await_with_timeout(",
+            target_template: "ctx.await_with_timeout(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-future",
+            source_pattern: "Future<",
+            target_template: "Future<",
+            source_framework: "temporal",
+        },
+        // ─── Relay/Nexus Operation Patterns ──────────────────────────────────────
+        MigrationPattern {
+            name: "temporal-new-nexus-client",
+            source_pattern: "workflow::new_nexus_client(",
+            target_template: "ctx.new_relay_client(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-nexus-execute-operation",
+            source_pattern: "nexus_client.execute_operation(",
+            target_template: "relay_client.execute(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-nexus-operation-options",
+            source_pattern: "NexusOperationOptions::new(",
+            target_template: "RelayOperationOptions::new(",
+            source_framework: "temporal",
+        },
+        // ─── Activity Context Patterns ───────────────────────────────────────────
+        MigrationPattern {
+            name: "temporal-activity-get-info",
+            source_pattern: "activity::info(",
+            target_template: "ctx.info(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-activity-record-heartbeat",
+            source_pattern: "activity::heartbeat(",
+            target_template: "ctx.heartbeat(",
+            source_framework: "temporal",
+        },
+        // ─── Workflow Context Patterns ───────────────────────────────────────────
+        MigrationPattern {
+            name: "temporal-workflow-get-info",
+            source_pattern: "workflow::info(",
+            target_template: "ctx.workflow_info(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-workflow-get-logger",
+            source_pattern: "workflow::logger(",
+            target_template: "ctx.logger(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-workflow-with-cancel",
+            source_pattern: "workflow::with_cancel(",
+            target_template: "ctx.with_cancel(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-signal-external-workflow",
+            source_pattern: "workflow::signal_external_workflow(",
+            target_template: "ctx.signal_external_workflow(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-workflow-get-version",
+            source_pattern: "workflow::get_version(",
+            target_template: "ctx.get_version(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-upsert-search-attributes",
+            source_pattern: "workflow::upsert_search_attributes(",
+            target_template: "ctx.upsert_search_attributes(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-upsert-memo",
+            source_pattern: "workflow::upsert_memo(",
+            target_template: "ctx.upsert_memo(",
+            source_framework: "temporal",
+        },
+        // ─── Error Handling Patterns ─────────────────────────────────────────────
+        MigrationPattern {
+            name: "temporal-new-application-error",
+            source_pattern: "ApplicationError::new(",
+            target_template: "VelocityApplicationError::new(",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-canceled-error",
+            source_pattern: "CanceledError",
+            target_template: "VelocityCanceledError",
+            source_framework: "temporal",
+        },
+        MigrationPattern {
+            name: "temporal-import-nexus-package",
+            source_pattern: "use temporal_nexus::",
+            target_template: "use velocity_sdk::relay::",
+            source_framework: "temporal",
+        },
     ]
 }
 

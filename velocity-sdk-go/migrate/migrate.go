@@ -144,6 +144,199 @@ var TemporalPatterns = []*MigrationPattern{
 		TargetTemplate: `ctx.ContinueAsNew(`,
 		SourceFramework: "temporal",
 	},
+	// ─── Child Workflow Patterns ─────────────────────────────────────────────
+	{
+		Name:           "temporal-execute-child-workflow",
+		SourcePattern:  regexp.MustCompile(`workflow\.ExecuteChildWorkflow\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.ExecuteChildWorkflow(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-with-child-options",
+		SourcePattern:  regexp.MustCompile(`workflow\.WithChildOptions\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.WithChildOptions(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-child-workflow-future",
+		SourcePattern:  regexp.MustCompile(`workflow\.ChildWorkflowFuture`),
+		TargetTemplate: `velocity.ChildWorkflowFuture`,
+		SourceFramework: "temporal",
+	},
+	// ─── Activity Options Patterns ───────────────────────────────────────────
+	{
+		Name:           "temporal-with-activity-options",
+		SourcePattern:  regexp.MustCompile(`workflow\.WithActivityOptions\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.WithActivityOptions(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-activity-options",
+		SourcePattern:  regexp.MustCompile(`workflow\.ActivityOptions\{`),
+		TargetTemplate: `velocity.ActivityOptions{`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-execute-local-activity",
+		SourcePattern:  regexp.MustCompile(`workflow\.ExecuteLocalActivity\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.ExecuteLocalActivity(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-with-local-activity-options",
+		SourcePattern:  regexp.MustCompile(`workflow\.WithLocalActivityOptions\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.WithLocalActivityOptions(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-local-activity-options",
+		SourcePattern:  regexp.MustCompile(`workflow\.LocalActivityOptions\{`),
+		TargetTemplate: `velocity.LocalActivityOptions{`,
+		SourceFramework: "temporal",
+	},
+	// ─── Coroutine & Concurrency Patterns ────────────────────────────────────
+	{
+		Name:           "temporal-workflow-go",
+		SourcePattern:  regexp.MustCompile(`workflow\.Go\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.Go(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-workflow-await",
+		SourcePattern:  regexp.MustCompile(`workflow\.Await\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.Await(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-workflow-await-with-timeout",
+		SourcePattern:  regexp.MustCompile(`workflow\.AwaitWithTimeout\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.AwaitWithTimeout(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-new-future",
+		SourcePattern:  regexp.MustCompile(`workflow\.NewFuture\s*\(\s*ctx\s*\)`),
+		TargetTemplate: `ctx.NewFuture()`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-new-channel",
+		SourcePattern:  regexp.MustCompile(`workflow\.NewChannel\s*\(\s*ctx\s*\)`),
+		TargetTemplate: `ctx.NewChannel()`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-workflow-future",
+		SourcePattern:  regexp.MustCompile(`workflow\.Future`),
+		TargetTemplate: `velocity.Future`,
+		SourceFramework: "temporal",
+	},
+	// ─── Relay/Nexus Operation Patterns ──────────────────────────────────────
+	{
+		Name:           "temporal-new-nexus-client",
+		SourcePattern:  regexp.MustCompile(`workflow\.NewNexusClient\s*\(`),
+		TargetTemplate: `ctx.NewRelayClient(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-nexus-operation-future",
+		SourcePattern:  regexp.MustCompile(`workflow\.NexusOperationFuture`),
+		TargetTemplate: `velocity.RelayOperationFuture`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-nexus-execute-operation",
+		SourcePattern:  regexp.MustCompile(`client\.ExecuteOperation\s*\(`),
+		TargetTemplate: `relayClient.Execute(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-nexus-operation-options",
+		SourcePattern:  regexp.MustCompile(`workflow\.NexusOperationOptions\{`),
+		TargetTemplate: `velocity.RelayOperationOptions{`,
+		SourceFramework: "temporal",
+	},
+	// ─── Activity Context Patterns ───────────────────────────────────────────
+	{
+		Name:           "temporal-activity-get-info",
+		SourcePattern:  regexp.MustCompile(`activity\.GetInfo\s*\(\s*ctx\s*\)`),
+		TargetTemplate: `ctx.GetInfo()`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-activity-record-heartbeat",
+		SourcePattern:  regexp.MustCompile(`activity\.RecordHeartbeat\s*\(\s*ctx\s*`),
+		TargetTemplate: `ctx.RecordHeartbeat(`,
+		SourceFramework: "temporal",
+	},
+	// ─── Workflow Context Patterns ───────────────────────────────────────────
+	{
+		Name:           "temporal-workflow-get-info",
+		SourcePattern:  regexp.MustCompile(`workflow\.GetInfo\s*\(\s*ctx\s*\)`),
+		TargetTemplate: `ctx.GetWorkflowInfo()`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-workflow-get-logger",
+		SourcePattern:  regexp.MustCompile(`workflow\.GetLogger\s*\(\s*ctx\s*\)`),
+		TargetTemplate: `ctx.Logger()`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-workflow-with-cancel",
+		SourcePattern:  regexp.MustCompile(`workflow\.WithCancel\s*\(\s*ctx\s*\)`),
+		TargetTemplate: `ctx.WithCancel()`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-signal-external-workflow",
+		SourcePattern:  regexp.MustCompile(`workflow\.SignalExternalWorkflow\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.SignalExternalWorkflow(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-workflow-get-version",
+		SourcePattern:  regexp.MustCompile(`workflow\.GetVersion\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.GetVersion(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-upsert-search-attributes",
+		SourcePattern:  regexp.MustCompile(`workflow\.UpsertSearchAttributes\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.UpsertSearchAttributes(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-upsert-memo",
+		SourcePattern:  regexp.MustCompile(`workflow\.UpsertMemo\s*\(\s*ctx\s*,`),
+		TargetTemplate: `ctx.UpsertMemo(`,
+		SourceFramework: "temporal",
+	},
+	// ─── Error Handling Patterns ─────────────────────────────────────────────
+	{
+		Name:           "temporal-new-application-error",
+		SourcePattern:  regexp.MustCompile(`temporal\.NewApplicationError\s*\(`),
+		TargetTemplate: `velocity.NewApplicationError(`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-canceled-error",
+		SourcePattern:  regexp.MustCompile(`temporal\.CanceledError`),
+		TargetTemplate: `velocity.CanceledError`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-import-temporal-package",
+		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/temporal"`),
+		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go"`,
+		SourceFramework: "temporal",
+	},
+	{
+		Name:           "temporal-import-nexus-package",
+		SourcePattern:  regexp.MustCompile(`"go\.temporal\.io/sdk/temporalnexus"`),
+		TargetTemplate: `"github.com/velocity-workflow/velocity-sdk-go/relay"`,
+		SourceFramework: "temporal",
+	},
 }
 
 // ─── Restate → Velocity Patterns ─────────────────────────────────────────────
